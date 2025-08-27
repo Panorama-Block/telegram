@@ -1,0 +1,26 @@
+{
+  "name": "telegram-gateway-monorepo",
+  "private": true,
+  "packageManager": "pnpm@9.6.0",
+  "scripts": {
+    "dev": "pnpm -C apps/gateway dev",
+    "dev:gateway": "pnpm -C apps/gateway dev",
+    "dev:webapp": "pnpm -C apps/webapp dev",
+    "build": "pnpm -r run build",
+    "test": "pnpm -r test",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.2",
+    "@typescript-eslint/eslint-plugin": "^8.0.1",
+    "@typescript-eslint/parser": "^8.0.1",
+    "eslint": "^9.7.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "prettier": "^3.3.2",
+    "typescript": "^5.5.2",
+    "vitest": "^2.0.5"
+  }
+}
+

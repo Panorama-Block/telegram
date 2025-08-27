@@ -1,0 +1,12 @@
+node_modules
+dist
+.DS_Store
+.env
+.env.*
+coverage
+pnpm-lock.yaml
+
+.env.local
+/env.local
+.env
+env
