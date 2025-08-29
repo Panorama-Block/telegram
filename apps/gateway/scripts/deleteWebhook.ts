@@ -1,4 +1,4 @@
-import { parseEnv } from '../src/env';
+import { parseEnv } from '../src/env.js';
 
 async function main() {
   const env = parseEnv();

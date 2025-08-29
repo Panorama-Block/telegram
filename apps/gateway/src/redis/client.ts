@@ -1,5 +1,5 @@
 import Redis, { type Redis as IORedis } from 'ioredis';
-import { parseEnv } from '../env';
+import { parseEnv } from '../env.js';
 
 let client: IORedis | null = null;
 

@@ -2,13 +2,17 @@ import Fastify from 'fastify';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Bot, InlineKeyboard, webhookCallback } from 'grammy';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 
-import { parseEnv } from './env';
-import { registerAuthRoutes } from './routes/auth';
-import { registerChatHandlers } from './handlers/chat';
+import { parseEnv } from './env.js';
+import { registerAuthRoutes } from './routes/auth.js';
+import { registerMetricsRoutes } from './routes/metrics.js';
+import { registerChatHandlers } from './handlers/chat.js';
+import { registerCommandHandlers } from './handlers/commands.js';
+import { registerErrorHandler } from './middleware/errorHandler.js';
 
 export async function createServer(): Promise<FastifyInstance> {
   const env = parseEnv();
@@ -26,6 +30,13 @@ export async function createServer(): Promise<FastifyInstance> {
     origin: true,
   });
 
+  // Rate limiting
+  await app.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+    redis: null, // usar in-memory para dev, Redis para prod
+  });
+
   // Servir WebApp estática (build de apps/webapp)
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
@@ -36,17 +47,22 @@ export async function createServer(): Promise<FastifyInstance> {
     decorateReply: false,
   });
 
-  // Healthcheck
+  // Error handling
+  await registerErrorHandler(app);
+
+  // Routes
   app.get('/healthz', async () => ({ status: 'ok' }));
   await registerAuthRoutes(app);
+  await registerMetricsRoutes(app);
 
   // Telegram Bot via grammY
   const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
+  registerCommandHandlers(bot);
   registerChatHandlers(bot);
   bot.command('start', async (ctx) => {
-    const env = parseEnv();
-    const webAppUrl = process.env['PUBLIC_WEBAPP_URL'] || '';
-    const kb = new InlineKeyboard().webApp('Abrir Zico', webAppUrl || 'https://example.com');
+    const baseUrl = process.env['PUBLIC_GATEWAY_URL'] || `http://localhost:${process.env['PORT'] || '7777'}`;
+    const webAppUrl = `${baseUrl}/webapp`;
+    const kb = new InlineKeyboard().webApp('Abrir Zico', webAppUrl);
     await ctx.reply('Zico Agent no Telegram — pronto!', {
       reply_markup: kb,
     });

@@ -1,17 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { parseEnv } from '../env';
-import { AuthClient, decodeJwtExp } from '../clients/authClient';
-import { getRedisClient } from '../redis/client';
-import { saveLink } from '../repos/links';
-import { saveSession } from '../repos/sessions';
+import { parseEnv } from '../env.js';
+import { AuthClient, decodeJwtExp } from '../clients/authClient.js';
+import { getRedisClient } from '../redis/client.js';
+import { saveLink } from '../repos/links.js';
+import { saveSession } from '../repos/sessions.js';
 import {
   computeHmacHex,
   deriveSecretKey,
   parseInitDataString,
   validateInitDataBody,
-} from '../utils/telegramInitData';
+} from '../utils/telegramInitData.js';
 
 export async function registerAuthRoutes(app: FastifyInstance) {
   const env = parseEnv();

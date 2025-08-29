@@ -3,7 +3,8 @@ import { z } from 'zod';
 const EnvSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1),
   TELEGRAM_WEBHOOK_SECRET: z.string().min(1),
-  PORT: z.string().default('8888'),
+  PUBLIC_GATEWAY_URL: z.string().url().optional(),
+  PORT: z.string().default('7777'),
   TELEGRAM_INITDATA_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(600),
   REDIS_URL: z.string().default(''),
   AUTH_API_BASE: z.string().url().optional(),

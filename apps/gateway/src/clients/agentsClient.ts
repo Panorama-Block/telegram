@@ -1,4 +1,4 @@
-import { parseEnv } from '../env';
+import { parseEnv } from '../env.js';
 
 export interface ChatRequest {
   user_id: string;
