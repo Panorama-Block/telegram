@@ -1,10 +1,21 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 
-export default defineConfig({
-  server: {
-    port: 5173,
-    strictPort: true,
-  },
+export default defineConfig(({ mode }) => {
+  // Carregar .env da raiz do projeto
+  const env = loadEnv(mode, '../../', '');
+  
+  return {
+    server: {
+      port: 5173,
+      strictPort: true,
+    },
+    define: {
+      // Passar env vars para o cliente
+      'import.meta.env.VITE_GATEWAY_BASE': JSON.stringify(
+        env.PUBLIC_GATEWAY_URL || 'http://localhost:7777'
+      ),
+    },
+  };
 });
 
 

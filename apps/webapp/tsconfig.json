@@ -3,7 +3,8 @@
   "compilerOptions": {
     "outDir": "dist",
     "jsx": "react-jsx",
-    "types": ["vitest"]
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vitest", "vite/client"]
   },
   "include": ["src", "vite.config.ts", "test"]
 }
