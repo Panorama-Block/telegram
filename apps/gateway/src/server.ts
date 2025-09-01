@@ -6,6 +6,7 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
+import { existsSync } from 'node:fs';
 
 import { parseEnv } from './env.js';
 import { registerAuthRoutes } from './routes/auth.js';
@@ -41,11 +42,18 @@ export async function createServer(): Promise<FastifyInstance> {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
   const webappDir = join(__dirname, '../../webapp/dist');
+  
+  // Log para verificar se a pasta existe
+  app.log.info({ webappDir, exists: existsSync(webappDir) }, 'webapp static dir');
+  
   await app.register(fastifyStatic, {
     root: webappDir,
     prefix: '/webapp/',
     decorateReply: false,
   });
+
+  // Redirect /webapp → /webapp/ para evitar 404
+  app.get('/webapp', async (_req, reply) => reply.redirect('/webapp/'));
 
   // Error handling
   await registerErrorHandler(app);
@@ -55,13 +63,13 @@ export async function createServer(): Promise<FastifyInstance> {
   await registerAuthRoutes(app);
   await registerMetricsRoutes(app);
 
-  // Telegram Bot via grammY
+  // Telegram Bot via 
   const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
   registerCommandHandlers(bot);
   registerChatHandlers(bot);
   bot.command('start', async (ctx) => {
     const baseUrl = process.env['PUBLIC_GATEWAY_URL'] || `http://localhost:${process.env['PORT'] || '7777'}`;
-    const webAppUrl = `${baseUrl}/webapp`;
+    const webAppUrl = `${baseUrl}/webapp/`;
     const kb = new InlineKeyboard().webApp('Abrir Zico', webAppUrl);
     await ctx.reply('Zico Agent no Telegram — pronto!', {
       reply_markup: kb,

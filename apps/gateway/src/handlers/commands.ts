@@ -21,7 +21,7 @@ _Desenvolvido com ❤️ para a comunidade crypto_
 
   bot.command('settings', async (ctx) => {
       const baseUrl = process.env['PUBLIC_GATEWAY_URL'] || `http://localhost:${process.env['PORT'] || '7777'}`;
-      const webAppUrl = `${baseUrl}/webapp`;
+      const webAppUrl = `${baseUrl}/webapp/`;
     
     const keyboard = new InlineKeyboard()
       .webApp('🔧 Abrir Configurações', webAppUrl)

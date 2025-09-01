@@ -5,6 +5,11 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '../../', '');
   
   return {
+    base: '/webapp/',        // ESSENCIAL para casar com o prefixo do servidor
+    
+    build: { 
+      outDir: 'dist' 
+    },
     server: {
       port: 5173,
       strictPort: true,
