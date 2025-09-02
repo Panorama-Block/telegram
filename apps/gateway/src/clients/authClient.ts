@@ -21,10 +21,12 @@ export interface AuthResponse {
 
 export class AuthClient {
   private readonly baseUrl: string | undefined;
+  private readonly timeoutMs: number;
 
   constructor() {
     const env = parseEnv();
     this.baseUrl = env.AUTH_API_BASE;
+    this.timeoutMs = 10000;
   }
 
   private ensureConfigured() {
@@ -33,11 +35,15 @@ export class AuthClient {
 
   async registerTelegram(input: AuthRegisterTelegramRequest): Promise<AuthResponse> {
     this.ensureConfigured();
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), this.timeoutMs);
     const res = await fetch(`${this.baseUrl}/auth/register_telegram`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
+      signal: controller.signal,
     });
+    clearTimeout(t);
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`register_telegram falhou: ${res.status} ${text}`);
@@ -47,11 +53,15 @@ export class AuthClient {
 
   async exchangeTelegram(input: AuthExchangeTelegramRequest): Promise<AuthResponse> {
     this.ensureConfigured();
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), this.timeoutMs);
     const res = await fetch(`${this.baseUrl}/auth/telegram/exchange`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
+      signal: controller.signal,
     });
+    clearTimeout(t);
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`exchange falhou: ${res.status} ${text}`);
@@ -75,5 +85,4 @@ export function decodeJwtExp(jwt: string): number | null {
     return null;
   }
 }
-
 

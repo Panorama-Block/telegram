@@ -9,6 +9,10 @@ const EnvSchema = z.object({
   REDIS_URL: z.string().default(''),
   AUTH_API_BASE: z.string().url().optional(),
   AGENTS_API_BASE: z.string().url().optional(),
+  DEFAULT_CHAIN_ID: z.coerce.number().int().positive().default(8453),
+  DEFAULT_WALLET_ADDRESS: z.string().optional(),
+  AGENTS_RESPONSE_MESSAGE_PATH: z.string().optional(),
+  AGENTS_DEBUG_SHAPE: z.coerce.boolean().optional().default(false),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -21,5 +25,3 @@ export function parseEnv(env = process.env): Env {
   }
   return result.data;
 }
-
-

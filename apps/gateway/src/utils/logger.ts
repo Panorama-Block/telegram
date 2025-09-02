@@ -14,11 +14,17 @@ export interface LogContext {
 export class StructuredLogger {
   private formatLog(level: string, message: string, context: LogContext) {
     const timestamp = new Date().toISOString();
+    const { error, ...rest } = context;
     const logData = {
       timestamp,
       level,
       message,
-      ...context,
+      ...rest,
+      ...(error instanceof Error
+        ? { error_message: error.message, error_stack: error.stack }
+        : error
+        ? { error }
+        : {}),
     };
     return JSON.stringify(logData);
   }

@@ -3,10 +3,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Bot, InlineKeyboard, webhookCallback } from 'grammy';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
-import { existsSync } from 'node:fs';
 
 import { parseEnv } from './env.js';
 import { registerAuthRoutes } from './routes/auth.js';
@@ -38,22 +36,7 @@ export async function createServer(): Promise<FastifyInstance> {
     redis: null, // usar in-memory para dev, Redis para prod
   });
 
-  // Servir WebApp estática (build de apps/webapp)
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-  const webappDir = join(__dirname, '../../webapp/dist');
-  
-  // Log para verificar se a pasta existe
-  app.log.info({ webappDir, exists: existsSync(webappDir) }, 'webapp static dir');
-  
-  await app.register(fastifyStatic, {
-    root: webappDir,
-    prefix: '/webapp/',
-    decorateReply: false,
-  });
-
-  // Redirect /webapp → /webapp/ para evitar 404
-  app.get('/webapp', async (_req, reply) => reply.redirect('/webapp/'));
+  // WebApp desativado no modo chat-only.
 
   // Error handling
   await registerErrorHandler(app);
@@ -63,22 +46,24 @@ export async function createServer(): Promise<FastifyInstance> {
   await registerAuthRoutes(app);
   await registerMetricsRoutes(app);
 
-  // Telegram Bot via 
+  // Telegram Bot via webhook
   const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
   registerCommandHandlers(bot);
   registerChatHandlers(bot);
   bot.command('start', async (ctx) => {
-    const baseUrl = process.env['PUBLIC_GATEWAY_URL'] || `http://localhost:${process.env['PORT'] || '7777'}`;
-    const webAppUrl = `${baseUrl}/webapp/`;
-    const kb = new InlineKeyboard().webApp('Abrir Zico', webAppUrl);
-    await ctx.reply('Zico Agent no Telegram — pronto!', {
-      reply_markup: kb,
-    });
+    const kb = new InlineKeyboard()
+      .text('🆘 Ajuda', 'about')
+      .row()
+      .text('📊 Status', 'status')
+      .row()
+      .text('🔗 Link', 'link')
+      .text('❌ Unlink', 'unlink')
+      .row()
+      .text('🔄 Swap', 'swap:start');
+    await ctx.reply('Zico Agent no Telegram — tudo via chat. Escolha abaixo:', { reply_markup: kb });
   });
 
-  const callback = webhookCallback(bot, 'fastify', {
-    secretToken: env.TELEGRAM_WEBHOOK_SECRET,
-  });
+  const callback = webhookCallback(bot, 'fastify', 'return', 10000, env.TELEGRAM_WEBHOOK_SECRET);
 
   app.post('/telegram/webhook', async (req: FastifyRequest, reply: FastifyReply) => {
     // Verificação do header secreto é feita pelo grammY ao validar a requisição
@@ -94,5 +79,3 @@ export async function start() {
   const port = Number(env.PORT);
   await app.listen({ port, host: '0.0.0.0' });
 }
-
-
