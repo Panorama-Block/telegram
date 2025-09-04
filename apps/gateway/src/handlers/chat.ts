@@ -110,7 +110,7 @@ export function registerChatHandlers(bot: Bot) {
         const res = await agents.chat({
           user_id: userStableId,
           conversation_id: conversationStableId,
-          prompt: text,
+          message: text,
           chain_id: String(env.DEFAULT_CHAIN_ID),
           wallet_address: walletAddress,
           metadata: {
