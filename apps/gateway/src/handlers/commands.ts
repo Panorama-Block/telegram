@@ -7,39 +7,26 @@ import { SwapClient } from '../clients/swapClient.js';
 import { getSwapState, setSwapState, clearSwapState, type SwapState } from '../repos/swapState.js';
 import { saveSession } from '../repos/sessions.js';
 import { decodeJwtExp } from '../clients/authClient.js';
+import { getHelpText, getLinkSuccessText, getTutorialMessages, getOnboardingPageById, buildOnboardingKeyboard } from '../utils/onboarding.js';
+import { parseEnv } from '../env.js';
 
 export function registerCommandHandlers(bot: Bot) {
   bot.command('help', async (ctx) => {
-    const helpText = `
-🤖 *Zico Agent — Comandos*
-
-/start — Menu inicial
-/help — Mostrar esta ajuda
-/settings — Configurações
-/status — Status da conexão
-/link — Vincular sua conta
-/unlink — Desvincular sua conta
-/swap — Iniciar cotação de swap (MVP)
-
-Você também pode conversar diretamente comigo enviando mensagens de texto!
-
-_Desenvolvido com ❤️ para a comunidade crypto_
-    `.trim();
-
-    await ctx.reply(helpText, { parse_mode: 'Markdown' });
+    await ctx.reply(getHelpText());
   });
 
   bot.command('settings', async (ctx) => {
-    const keyboard = new InlineKeyboard()
+    const env = parseEnv();
+    const kb = new InlineKeyboard()
       .text('📊 Status', 'status')
-      .text('ℹ️ Sobre', 'about')
+      .text('ℹ️ About', 'about')
       .row()
-      .text('🔗 Link', 'link')
       .text('❌ Unlink', 'unlink');
+    // If webapp configured, hint via help
+    if (!env.PUBLIC_WEBAPP_URL) kb.text('🔗 Link', 'link');
 
-    await ctx.reply('⚙️ *Configurações do Zico Agent*', {
-      parse_mode: 'Markdown',
-      reply_markup: keyboard,
+    await ctx.reply('⚙️ Zico Agent — Settings', {
+      reply_markup: kb,
     });
   });
 
@@ -47,53 +34,99 @@ _Desenvolvido com ❤️ para a comunidade crypto_
     const chatId = ctx.chat?.id;
     const userId = ctx.from?.id;
     const redis = getRedisClient();
-    let redisStatus = '❌ Desconectado';
+    let redisStatus = '❌ Disconnected';
     try { await redis.ping(); redisStatus = '✅ Conectado'; } catch {}
-    
-    const statusText = `
-📈 *Status da Conexão*
+    if (redisStatus === '✅ Conectado') redisStatus = '✅ Connected';
 
-Chat ID: \`${chatId}\`
-User ID: \`${userId}\`
+    const statusText = `
+📈 Status
+
+Chat ID: ${chatId}
+User ID: ${userId}
 Bot: ✅ Online
-Agents API: ${process.env['AGENTS_API_BASE'] ? '✅ Configurado' : '❌ Não configurado'}
+Agents API: ${process.env['AGENTS_API_BASE'] ? '✅ Configured' : '❌ Not configured'}
 Redis: ${redisStatus}
 
-_Última atualização: ${new Date().toLocaleString('pt-BR')}_
+Updated: ${new Date().toISOString()}
     `.trim();
 
-    await ctx.reply(statusText, { parse_mode: 'Markdown' });
+    await ctx.reply(statusText);
   });
 
   // Callback queries dos inline keyboards
   bot.callbackQuery('status', async (ctx) => {
-    await ctx.answerCallbackQuery('Verificando status...');
-    await ctx.reply('📊 Status atualizado!');
+    await ctx.answerCallbackQuery('Checking status...');
+    await ctx.api.sendMessage(ctx.chat!.id, '/status');
   });
 
   bot.callbackQuery('about', async (ctx) => {
     await ctx.answerCallbackQuery();
     const aboutText = `
-ℹ️ *Sobre o Zico Agent*
+ℹ️ About Zico Agent
 
-Versão: 1.0.0
+Version: 1.0.0
 Telegram Gateway + Mini App
-Integração com Agents API
+Agents API integration
 
-🔗 Links:
-• Documentação
-• Suporte
+Docs and support coming soon.
     `.trim();
 
-    await ctx.reply(aboutText, { 
-      parse_mode: 'Markdown',
-    });
+    await ctx.reply(aboutText);
+  });
+
+  bot.callbackQuery('help', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await ctx.reply(getHelpText());
+  });
+
+  bot.callbackQuery('start_chat', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await ctx.reply('💬 Just type your question to start chatting.');
+  });
+
+  bot.callbackQuery('portfolio', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await ctx.reply('📊 Portfolio is coming soon.');
+  });
+
+  // Onboarding pages (carousel)
+  bot.callbackQuery('onboard:learn', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const env = parseEnv();
+    const data = getOnboardingPageById(1)!;
+    try {
+      await ctx.editMessageText(`📘 ${data.page.title}\n\n${data.page.text}`, { reply_markup: buildOnboardingKeyboard(env, data.page.id) });
+    } catch {
+      await ctx.reply(`📘 ${data.page.title}\n\n${data.page.text}`, { reply_markup: buildOnboardingKeyboard(env, data.page.id) });
+    }
+  });
+  bot.callbackQuery(/onboard:page:(\d+)/, async (ctx) => {
+    const env = parseEnv();
+    const m = ctx.callbackQuery.data.match(/onboard:page:(\d+)/);
+    const id = m ? Number(m[1]) : 1;
+    const data = getOnboardingPageById(id);
+    await ctx.answerCallbackQuery();
+    if (!data) return;
+    try {
+      await ctx.editMessageText(`📘 ${data.page.title}\n\n${data.page.text}`, { reply_markup: buildOnboardingKeyboard(env, data.page.id) });
+    } catch {
+      await ctx.reply(`📘 ${data.page.title}\n\n${data.page.text}`, { reply_markup: buildOnboardingKeyboard(env, data.page.id) });
+    }
+  });
+  bot.callbackQuery('onboard:menu', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await ctx.api.sendMessage(ctx.chat!.id, '/start');
+  });
+
+  // Ignore no-op buttons (for disabled nav)
+  bot.callbackQuery('noop', async (ctx) => {
+    await ctx.answerCallbackQuery();
   });
 
   // --- Link/Unlink via chat-only ---
   bot.command('link', async (ctx) => {
     const from = ctx.from;
-    if (!from) return ctx.reply('Não consegui identificar o usuário.');
+    if (!from) return ctx.reply('Could not identify the user.');
     const chatId = ctx.chat?.id ?? 0;
     const redis = getRedisClient();
     const auth = new AuthClient();
@@ -129,20 +162,24 @@ Integração com Agents API
         jwt: res.jwt,
         expires_at: exp,
       });
-      await ctx.reply(`✅ Conta vinculada com sucesso! User: \`${res.userId}\``, { parse_mode: 'Markdown' });
+      await ctx.reply(getLinkSuccessText(res.userId), { parse_mode: 'Markdown' });
+      // Tutorial messages
+      for (const msg of getTutorialMessages()) {
+        await ctx.reply(msg);
+      }
     } catch (err) {
-      await ctx.reply('❌ Falha ao vincular conta. Tente novamente.');
+      await ctx.reply('❌ Failed to link account. Please try again.');
     }
   });
 
   bot.command('unlink', async (ctx) => {
     const from = ctx.from;
-    if (!from) return ctx.reply('Não consegui identificar o usuário.');
+    if (!from) return ctx.reply('Could not identify the user.');
     const redis = getRedisClient();
     const link = await getLink(redis, from.id);
-    if (!link) return ctx.reply('Nenhuma conta vinculada.');
+    if (!link) return ctx.reply('No linked account found.');
     await saveLink(redis, { ...link, status: 'unlinked', linked_at: Math.floor(Date.now() / 1000) });
-    await ctx.reply('✅ Conta desvinculada.');
+    await ctx.reply('✅ Account unlinked.');
   });
 
   // Atalhos pelos botões do /start e /settings
@@ -176,7 +213,7 @@ Integração com Agents API
     const chatId = ctx.chat?.id!;
     const redis = getRedisClient();
     await setSwapState(redis, chatId, { step: 'choose_chain' });
-    await ctx.reply('🔄 Vamos cotar um swap. Escolha a rede:', { reply_markup: chainKeyboard() });
+    await ctx.reply('🔄 Let’s get a swap quote. Choose the chain:', { reply_markup: chainKeyboard() });
   });
 
   bot.callbackQuery('swap:start', async (ctx) => {
@@ -184,7 +221,7 @@ Integração com Agents API
     const chatId = ctx.chat?.id!;
     const redis = getRedisClient();
     await setSwapState(redis, chatId, { step: 'choose_chain' });
-    await ctx.reply('🔄 Vamos cotar um swap. Escolha a rede:', { reply_markup: chainKeyboard() });
+    await ctx.reply('🔄 Let’s get a swap quote. Choose the chain:', { reply_markup: chainKeyboard() });
   });
 
   // Interceptar mensagem de amount quando aguardando
@@ -196,7 +233,7 @@ Integração com Agents API
     const text = (ctx.message?.text ?? '').trim();
     const amount = Number(text.replace(',', '.'));
     if (!Number.isFinite(amount) || amount <= 0) {
-      await ctx.reply('Informe um valor numérico positivo para a quantia.');
+      await ctx.reply('Please enter a positive numeric amount.');
       return; // não chama next() para evitar envio ao agente
     }
     const newState: SwapState = { ...state, step: 'confirm_quote', amount } as SwapState;
@@ -212,20 +249,20 @@ Integração com Agents API
         toToken: newState.token_out!,
         amount: newState.amount!,
       });
-      summary = `Preço estimado: ${q?.price ?? '—'}\nTaxa: ${q?.fee ?? '—'}`;
+      summary = `Estimated price: ${q?.price ?? '—'}\nFee: ${q?.fee ?? '—'}`;
     } catch (e) {
-      summary = 'Não foi possível obter a cotação agora. (verifique SWAP_API_BASE)';
+      summary = 'Could not fetch quote now. (check SWAP_API_BASE)';
     }
 
     const kb = new InlineKeyboard()
       .text('✅ Confirmar', 'swap:confirm')
       .text('❌ Cancelar', 'swap:cancel');
     await ctx.reply(
-      `Resumo do swap:\n` +
-      `• Rede: ${newState.chain}\n` +
-      `• De: ${newState.token_in}\n` +
-      `• Para: ${newState.token_out}\n` +
-      `• Quantia: ${newState.amount}\n` +
+      `Swap summary:\n` +
+      `• Chain: ${newState.chain}\n` +
+      `• From: ${newState.token_in}\n` +
+      `• To: ${newState.token_out}\n` +
+      `• Amount: ${newState.amount}\n` +
       `${summary ? `\n${summary}` : ''}`,
       { reply_markup: kb },
     );
@@ -241,9 +278,9 @@ Integração com Agents API
 
     if (action === 'cancel') {
       await clearSwapState(redis, chatId);
-      await ctx.answerCallbackQuery('Cancelado.');
+      await ctx.answerCallbackQuery('Canceled.');
       await ctx.editMessageReplyMarkup();
-      await ctx.reply('Operação cancelada.');
+      await ctx.reply('Operation canceled.');
       return;
     }
 
@@ -251,27 +288,27 @@ Integração com Agents API
       await ctx.answerCallbackQuery();
       const nextState: SwapState = { ...state, step: 'choose_token_in', chain: value } as SwapState;
       await setSwapState(redis, chatId, nextState);
-      await ctx.reply(`Rede selecionada: ${value}. Escolha o token de entrada:`, { reply_markup: tokenKeyboard('in') });
+      await ctx.reply(`Selected chain: ${value}. Choose the input token:`, { reply_markup: tokenKeyboard('in') });
       return;
     }
     if (action === 'token_in') {
       await ctx.answerCallbackQuery();
       const nextState: SwapState = { ...state, step: 'choose_token_out', token_in: value } as SwapState;
       await setSwapState(redis, chatId, nextState);
-      await ctx.reply(`Token de entrada: ${value}. Agora selecione o token de saída:`, { reply_markup: tokenKeyboard('out') });
+      await ctx.reply(`Input token: ${value}. Now choose the output token:`, { reply_markup: tokenKeyboard('out') });
       return;
     }
     if (action === 'token_out') {
       await ctx.answerCallbackQuery();
       const nextState: SwapState = { ...state, step: 'enter_amount', token_out: value } as SwapState;
       await setSwapState(redis, chatId, nextState);
-      await ctx.reply(`Token de saída: ${value}. Informe a quantia a trocar (ex.: 0.1):`);
+      await ctx.reply(`Output token: ${value}. Enter the amount to swap (e.g., 0.1):`);
       return;
     }
     if (action === 'confirm') {
-      await ctx.answerCallbackQuery('Cotação confirmada.');
-      // MVP: só confirma; execução virá depois.
-      await ctx.reply('✅ Cotação confirmada! Execução será adicionada em breve.');
+      await ctx.answerCallbackQuery('Quote confirmed.');
+      // MVP: confirm only; execution to be added later.
+      await ctx.reply('✅ Quote confirmed! Execution will be added soon.');
       await clearSwapState(redis, chatId);
       return;
     }

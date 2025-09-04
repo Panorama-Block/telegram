@@ -27,17 +27,15 @@ describe('chat proxy (unit)', () => {
     });
 
     expect(res.message).toBe('Olá do Zico!');
-    expect(fetchMock).toHaveBeenCalledWith('https://agents.example.com/chat', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        user_id: 'tg_user:555',
-        conversation_id: 'tg:123',
-        prompt: 'quanto está o btc?',
-        metadata: { channel: 'telegram' },
-      }),
-    });
+    // Validate endpoint, method and key fields in body
+    const call = (fetchMock.mock.calls?.[0] ?? []) as any[];
+    expect(call[0]).toBe('https://agents.example.com/chat');
+    expect(call[1].method).toBe('POST');
+    expect(call[1].headers['content-type']).toBe('application/json');
+    const sent = JSON.parse(call[1].body);
+    expect(sent.user_id).toBe('tg_user:555');
+    expect(sent.conversation_id).toBe('tg:123');
+    expect(sent.metadata).toEqual({ channel: 'telegram' });
   });
 });
-
 

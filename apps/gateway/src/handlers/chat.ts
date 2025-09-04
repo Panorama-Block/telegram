@@ -11,6 +11,7 @@ import { getLink } from '../repos/links.js';
 import { getSession, saveSession } from '../repos/sessions.js';
 import { AuthClient, decodeJwtExp } from '../clients/authClient.js';
 import { parseEnv } from '../env.js';
+import { saveLastChat } from '../repos/lastChat.js';
 
 export function registerChatHandlers(bot: Bot) {
   bot.on('message:text', async (ctx) => {
@@ -99,6 +100,12 @@ export function registerChatHandlers(bot: Bot) {
           await setConversationId(redis, chatId, conversationStableId);
         }
 
+        // Remember last chat for post-link notifications
+        try {
+          const redis = getRedisClient();
+          await saveLastChat(redis, telegramUserId, chatId);
+        } catch {}
+
         await ctx.api.sendChatAction(chatId, 'typing');
 
         // Incrementar métrica de chamada API
@@ -137,7 +144,7 @@ export function registerChatHandlers(bot: Bot) {
             if (index % 2 === 1) keyboard.row(); // Nova linha a cada 2 botões
           });
           
-          const sent = await ctx.reply(safeMsg || 'Selecione uma opção abaixo:', { reply_markup: keyboard });
+          const sent = await ctx.reply(safeMsg || 'Select an option below:', { reply_markup: keyboard });
           new StructuredLogger().info('reply_sent', { ...loggerMeta, message_id: sent.message_id, chatId });
         } else {
           const sent = await ctx.reply(safeMsg || '…');
@@ -161,14 +168,14 @@ export function registerChatHandlers(bot: Bot) {
           conversationId: conversationStableId,
           error: err as Error,
         });
-        await ctx.reply('Desculpe, ocorreu um erro ao processar sua mensagem.');
+        await ctx.reply('Sorry, an error occurred while processing your message.');
         return false;
       }
     });
 
     // Se lock não foi adquirido, mensagem já está sendo processada
     if (result === null) {
-      await ctx.reply('⏳ Processando mensagem anterior...');
+      await ctx.reply('⏳ Still processing the previous message...');
     }
   });
 
@@ -180,11 +187,11 @@ export function registerChatHandlers(bot: Bot) {
     if (data.startsWith('action:')) {
       const [, actionType, actionIndex, timestamp] = data.split(':');
       
-      await ctx.answerCallbackQuery(`Executando ${actionType}...`);
+      await ctx.answerCallbackQuery(`Running ${actionType}...`);
       
       // TODO: Implementar lógica específica por tipo de ação
       // Por enquanto, apenas confirma a ação
-      await ctx.reply(`✅ Ação "${actionType}" executada com sucesso!`);
+      await ctx.reply(`✅ Action "${actionType}" executed successfully!`);
       
       // Log da ação
       incrementMetric('totalActions');

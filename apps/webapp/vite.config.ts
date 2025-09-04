@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
     define: {
       // Passar env vars para o cliente
       'import.meta.env.VITE_GATEWAY_BASE': JSON.stringify(
-        env.PUBLIC_GATEWAY_URL || 'http://localhost:7777'
+        env.PUBLIC_GATEWAY_URL 
       ),
     },
   };
