@@ -12,6 +12,9 @@ import {
   parseInitDataString,
   validateInitDataBody,
 } from '../utils/telegramInitData.js';
+import { getLastChat } from '../repos/lastChat.js';
+import { Api } from 'grammy';
+import { getLinkSuccessText, getTutorialMessages } from '../utils/onboarding.js';
 
 export async function registerAuthRoutes(app: FastifyInstance) {
   const env = parseEnv();
@@ -65,6 +68,20 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       });
       // chat_id não é conhecido neste endpoint do Mini App; salvar sessão só com user escopo é opcional
 
+      // Try to notify user in their last chat with the bot
+      try {
+        const lastChatId = await getLastChat(getRedisClient(), result.id);
+        if (lastChatId) {
+          const api = new Api(env.TELEGRAM_BOT_TOKEN);
+          await api.sendMessage(lastChatId, getLinkSuccessText(auth.userId), { parse_mode: 'Markdown' });
+          for (const msg of getTutorialMessages()) {
+            await api.sendMessage(lastChatId, msg);
+          }
+        }
+      } catch (e) {
+        req.log.warn({ err: e }, 'failed to send link notification');
+      }
+
       return reply.send({
         telegram_user_id: result.id,
         username: result.username ?? null,
@@ -79,5 +96,4 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     }
   });
 }
-
 

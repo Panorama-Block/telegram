@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { Bot, InlineKeyboard, webhookCallback } from 'grammy';
+import { Bot, webhookCallback } from 'grammy';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,9 @@ import { registerMetricsRoutes } from './routes/metrics.js';
 import { registerChatHandlers } from './handlers/chat.js';
 import { registerCommandHandlers } from './handlers/commands.js';
 import { registerErrorHandler } from './middleware/errorHandler.js';
+// start onboarding now handled inside command handlers to avoid middleware ordering issues
+import { getRedisClient } from './redis/client.js';
+import { saveLastChat } from './repos/lastChat.js';
 
 export async function createServer(): Promise<FastifyInstance> {
   const env = parseEnv();
@@ -50,18 +53,6 @@ export async function createServer(): Promise<FastifyInstance> {
   const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
   registerCommandHandlers(bot);
   registerChatHandlers(bot);
-  bot.command('start', async (ctx) => {
-    const kb = new InlineKeyboard()
-      .text('🆘 Ajuda', 'about')
-      .row()
-      .text('📊 Status', 'status')
-      .row()
-      .text('🔗 Link', 'link')
-      .text('❌ Unlink', 'unlink')
-      .row()
-      .text('🔄 Swap', 'swap:start');
-    await ctx.reply('Zico Agent no Telegram — tudo via chat. Escolha abaixo:', { reply_markup: kb });
-  });
 
   const callback = webhookCallback(bot, 'fastify', 'return', 10000, env.TELEGRAM_WEBHOOK_SECRET);
 
