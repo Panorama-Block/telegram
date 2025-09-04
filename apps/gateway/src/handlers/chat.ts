@@ -38,47 +38,13 @@ export function registerChatHandlers(bot: Bot) {
         incrementMetric('totalUsers', telegramUserId);
         incrementMetric('totalChats', chatId);
 
-        // Determinar identidade e sessão (auto-link via Auth se possível)
+        // Determinar identidade e sessão
         let link = await getLink(redis, telegramUserId);
         const now = Math.floor(Date.now() / 1000);
         let jwt: string | undefined;
-        if (!link && process.env['AUTH_API_BASE']) {
-          try {
-            const auth = new AuthClient();
-            // tenta exchange; se não existir, registra
-            let ex;
-            try {
-              ex = await auth.exchangeTelegram({ telegramUserId });
-            } catch {
-              ex = await auth.registerTelegram({
-                telegramUserId,
-                profile: {
-                  username: ctx.from?.username ?? null,
-                  language_code: (ctx.from as any)?.language_code ?? null,
-                  first_name: ctx.from?.first_name ?? null,
-                  last_name: ctx.from?.last_name ?? null,
-                },
-              });
-            }
-            // salvar link e sessão
-            link = {
-              telegram_user_id: telegramUserId,
-              zico_user_id: ex.userId,
-              username: ctx.from?.username ?? null,
-              language_code: (ctx.from as any)?.language_code ?? null,
-              linked_at: now,
-              status: 'linked',
-            };
-            await saveSession(redis, {
-              zico_user_id: ex.userId,
-              channel: 'telegram',
-              chat_id: chatId,
-              jwt: ex.jwt,
-              expires_at: decodeJwtExp(ex.jwt) ?? now + 3600,
-            });
-          } catch {
-            // ok, segue como anônimo
-          }
+        if (!link || link.status !== 'linked') {
+          await ctx.reply('🔐 Please link your account first: tap "Link Account" or send /link');
+          return false;
         }
 
         // resolver userStableId e JWT a partir do link/sessão

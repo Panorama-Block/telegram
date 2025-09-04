@@ -5,6 +5,7 @@ const EnvSchema = z.object({
   TELEGRAM_WEBHOOK_SECRET: z.string().min(1),
   PUBLIC_GATEWAY_URL: z.string().url().optional(),
   PUBLIC_WEBAPP_URL: z.string().url().optional(),
+  WEBSITE_URL: z.string().url().optional(),
   PORT: z.string().default('7778'),
   TELEGRAM_INITDATA_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(600),
   REDIS_URL: z.string().default(''),

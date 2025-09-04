@@ -1,20 +1,13 @@
 import type { InlineKeyboardMarkup } from 'grammy/types';
 import type { Env } from '../env.js';
 
-export function buildStartMenu(env: Env): InlineKeyboardMarkup {
-  const webAppUrl = env.PUBLIC_WEBAPP_URL;
+export function buildStartMenu(_env: Env): InlineKeyboardMarkup {
   const rows: InlineKeyboardMarkup['inline_keyboard'] = [];
 
-  // Row 1: Link account via Mini App (if available)
-  if (webAppUrl) {
-    rows.push([
-      { text: '🔗 Link Account', web_app: { url: webAppUrl } },
-    ]);
-  } else {
-    rows.push([
-      { text: '🔗 Link Account', callback_data: 'link' },
-    ]);
-  }
+  // Row 1: Link account via chat-only
+  rows.push([
+    { text: '🔗 Link Account', callback_data: 'link' },
+  ]);
 
   // Row 2: Start chat
   rows.push([
@@ -26,9 +19,9 @@ export function buildStartMenu(env: Env): InlineKeyboardMarkup {
     { text: '🔄 Do a Swap', callback_data: 'swap:start' },
   ]);
 
-  // Row 4: Portfolio (placeholder)
+  // Row 4: Wallet tracking shortcut
   rows.push([
-    { text: '📊 My Portfolio', callback_data: 'portfolio' },
+    { text: '👛 Track a Wallet', callback_data: 'feature:track' },
   ]);
 
   // Row 5: Help
@@ -37,6 +30,42 @@ export function buildStartMenu(env: Env): InlineKeyboardMarkup {
     { text: '❓ Help', callback_data: 'help' },
   ]);
 
+  return { inline_keyboard: rows };
+}
+
+export function buildPreLoginMenu(env: Env): InlineKeyboardMarkup {
+  const site = env.WEBSITE_URL ?? 'https://panoramablock.com/';
+  const rows: InlineKeyboardMarkup['inline_keyboard'] = [];
+  rows.push([{ text: '▶️ Start Now', callback_data: 'start_now' }]);
+  rows.push([{ text: '📘 Learn More', callback_data: 'onboard:learn' }]);
+  rows.push([{ text: '🌐 Go Website', url: site }]);
+  return { inline_keyboard: rows };
+}
+
+export function buildFeaturesMenu(): InlineKeyboardMarkup {
+  const rows: InlineKeyboardMarkup['inline_keyboard'] = [];
+  rows.push([
+    { text: '💬 Start a Chat', callback_data: 'feature:chat' },
+    { text: '🔄 Liquid Swap', callback_data: 'feature:swap' },
+  ]);
+  rows.push([
+    { text: '📈 Start Staking (soon)', callback_data: 'feature:staking' },
+    { text: '🏦 Start Lending (soon)', callback_data: 'feature:lending' },
+  ]);
+  rows.push([
+    { text: '🧮 Yield Aggregator (soon)', callback_data: 'feature:yield' },
+  ]);
+  rows.push([
+    { text: '👛 Track a Wallet', callback_data: 'feature:track' },
+  ]);
+  rows.push([
+    { text: 'ℹ️ Introduction', callback_data: 'feature:intro' },
+    { text: '❓ Help', callback_data: 'help' },
+  ]);
+  rows.push([
+    { text: '🚪 Logout', callback_data: 'feature:logout' },
+    { text: '🏠 Back to Menu', callback_data: 'feature:menu' },
+  ]);
   return { inline_keyboard: rows };
 }
 
@@ -52,6 +81,10 @@ export function getHelpText(): string {
 /link — Link your account
 /unlink — Unlink your account
 
+/track <address> — Start tracking a wallet
+/untrack [address] — Stop tracking one/all
+/tracked — List tracked wallets
+
 You can also just chat — type a message!
 `.trim();
 }
@@ -64,7 +97,7 @@ export function getTutorialMessages(): string[] {
   return [
     '💬 Chat with me: just ask a question.\nEx.: What’s the AVAX price now?',
     '🔄 Swap tokens: send /swap and follow the steps.',
-    '📊 Portfolio: soon you’ll see your connected positions here.',
+    '👛 Track wallets: use /track <address> and /tracked to list.',
   ];
 }
 
@@ -75,10 +108,10 @@ export function getLongWelcomeText(): string {
     '',
     'What you can do:',
     '• Chat: Ask about prices, gas, protocols, and more. Zico will fetch and summarize information.',
-    '• Swap: Get a quote and confirm with one tap. We will soon support execution via Mini App and relayers.',
-    '• Portfolio: A consolidated view of your connected wallets (coming soon).',
+    '• Swap: Get a quote and confirm with one tap. Execution flow via chat is coming soon.',
+    '• Tracking: Follow wallet balances and activity (preview).',
     '',
-    'To unlock all features, Link your account using the Mini App.',
+    'To unlock all features, link your account directly via chat using /link or the button below.',
   ].join('\n');
 }
 
@@ -88,59 +121,66 @@ export function getOnboardingPages(): OnboardPage[] {
   const pages: OnboardPage[] = [
     {
       id: 1,
-      title: 'What is Zico Agent',
+      title: 'Our Vision (Panorama Block)',
       text: [
-        'Zico Agent is a chat-first crypto assistant in Telegram.',
-        'It connects to an Agents API for intelligence and to on-chain services for actions.',
-        '',
-        'Core pillars:',
-        '• Conversational UX: Ask questions in plain English.',
-        '• Execution: Quote and (soon) execute swaps directly from chat.',
-        '• Context: Persistent conversations per chat, with user linking for personalization.',
+        'We enable AI agents to automate DeFi strategies (the “money legos”).',
+        'Agents operate across protocols/chains prioritizing risk mitigation while seeking alpha.',
+        'Users can deploy pre-built agents or create custom ones; developers can monetize bots.',
       ].join('\n'),
     },
     {
       id: 2,
-      title: 'How It Works',
+      title: 'Who It’s For',
       text: [
-        'Architecture overview:',
-        '• Telegram Bot: Receives messages and renders inline keyboards.',
-        '• Mini App: Handles secure account linking and advanced interactions.',
-        '• Gateway API: Validates Telegram initData and proxies chat to the Agents API.',
-        '• Agents API: Generates responses and suggests actions (like “Quote Swap”).',
+        '• Developers: build and monetize AI DeFi agents with on-chain data access.',
+        '• Enterprises: analytics + AI tools for risk and portfolio optimization.',
+        '• Retail: automate strategies, execute swaps, track yields, and monitor markets.',
       ].join('\n'),
     },
     {
       id: 3,
-      title: 'Linking & Identity',
+      title: 'The Problem (Summary)',
       text: [
-        'Link your Telegram to a Zico user to enable personalized chat and actions.',
-        'Steps:',
-        '1) Tap “Link Account” (opens the Mini App).',
-        '2) We verify Telegram initData signature server-side.',
-        '3) Your session (JWT) is stored for authenticated calls.',
+        '• Data fragmentation across chains; hard to interpret + correlate.',
+        '• AI integration is complex and costly; limited infra standards.',
+        '• DeFi strategies are fragmented; multi-protocol execution is hard.',
       ].join('\n'),
     },
     {
       id: 4,
-      title: 'Security & Privacy',
+      title: 'Our Solutions (Highlights)',
       text: [
-        'We validate Telegram WebApp initData with HMAC (per Telegram’s spec).',
-        'Sensitive keys stay on the server — never in chat.',
-        'We store minimal data needed for functionality (links, sessions, and chat state).',
-        'Always verify transaction details when executing on-chain actions.',
+        '• Proprietary scanners + cross-chain aggregation and normalization.',
+        '• Unified data layer with standardized interfaces.',
+        '• AI-driven analytics for actionable insights.',
+        '• Reputation scoring and resource optimization marketplace.',
       ].join('\n'),
     },
     {
       id: 5,
-      title: 'Roadmap & Support',
+      title: 'ZICO Agent (At a Glance)',
       text: [
-        'Coming soon:',
-        '• Swap execution (Mini App + relayer).',
+        '• Conversational AI for DeFi: chat, analyze, automate.',
+        '• Actions: swaps, tracking, DCA, staking, lending (progressively).',
+        '• Works with multi-source data (CoinGecko, news, on-chain).',
+      ].join('\n'),
+    },
+    {
+      id: 6,
+      title: 'Security & Privacy',
+      text: [
+        'We store minimal data (links, sessions, state) and prioritize safety.',
+        'Always verify details before on-chain execution.',
+      ].join('\n'),
+    },
+    {
+      id: 7,
+      title: 'Roadmap',
+      text: [
+        '• Swap execution via chat + relayer.',
         '• Portfolio insights and risk checks.',
-        '• Better prompts, memory, and localization (pt/en).',
-        '',
-        'Need help? Tap Help for commands or contact support.',
+        '• More strategies (staking, lending, yield).',
+        '• Localization (pt/en), better prompts and memory.',
       ].join('\n'),
     },
   ];
@@ -154,7 +194,7 @@ export function getOnboardingPageById(id: number): { page: OnboardPage; total: n
   return { page, total: pages.length };
 }
 
-export function buildOnboardingKeyboard(env: Env, id: number): InlineKeyboardMarkup {
+export function buildOnboardingKeyboard(_env: Env, id: number): InlineKeyboardMarkup {
   const data = getOnboardingPageById(id);
   const total = data?.total ?? 1;
   const isFirst = id <= 1;
@@ -166,15 +206,49 @@ export function buildOnboardingKeyboard(env: Env, id: number): InlineKeyboardMar
     { text: `${id}/${total}`, callback_data: 'noop' },
     { text: isLast ? '⏹' : '➡️ Next', callback_data: isLast ? 'noop' : `onboard:page:${id + 1}` },
   ]);
-  // Primary actions
-  if (env.PUBLIC_WEBAPP_URL) {
-    rows.push([{ text: '🔗 Link Account', web_app: { url: env.PUBLIC_WEBAPP_URL } }]);
-  } else {
-    rows.push([{ text: '🔗 Link Account', callback_data: 'link' }]);
-  }
+  // Primary actions (chat-only)
+  rows.push([{ text: '🔗 Link Account', callback_data: 'link' }]);
   rows.push([{ text: '💬 Start Chat', callback_data: 'start_chat' }]);
   rows.push([{ text: '🔄 Do a Swap', callback_data: 'swap:start' }]);
   // Back to menu
   rows.push([{ text: '🏠 Back to Menu', callback_data: 'onboard:menu' }]);
   return { inline_keyboard: rows };
+}
+
+export function getFeatureIntroText(key: string): string {
+  switch (key) {
+    case 'intro':
+      return [
+        'Welcome! You’re linked and ready to explore features:',
+        '• Start a Chat: ask questions, analyze markets, get insights.',
+        '• Liquid Swap: get quotes and (soon) execute via chat.',
+        '• Track a Wallet: follow balances and activity (preview).',
+        '• Staking / Lending / Yield: coming soon with guided flows.',
+      ].join('\n');
+    case 'chat':
+      return [
+        'Start a Chat: just type your question.',
+        'Examples: “What is AVAX price now?”, “Summarize today’s XRP news.”',
+        'Tips: be specific for better answers; you can ask follow-ups!',
+      ].join('\n');
+    case 'swap':
+      return [
+        'Liquid Swap: we’ll guide you to choose a chain, tokens, and amount.',
+        'You’ll see a quote summary and can confirm (execution soon).',
+        'Try the button below to begin.',
+      ].join('\n');
+    case 'staking':
+      return 'Staking is coming soon. You’ll be able to earn yield with guided flows and safety checks.';
+    case 'lending':
+      return 'Lending is coming soon. Borrow or supply with smart risk hints and position health tracking.';
+    case 'yield':
+      return 'Yield Aggregator is coming soon. We’ll help compose strategies across protocols.';
+    case 'track':
+      return [
+        'Track a Wallet: send an EVM address to watch balances and activity (preview).',
+        'You can remove tracking anytime with /untrack.',
+      ].join('\n');
+    default:
+      return 'Feature coming soon.';
+  }
 }

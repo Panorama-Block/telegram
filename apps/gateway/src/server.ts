@@ -12,7 +12,7 @@ import { registerMetricsRoutes } from './routes/metrics.js';
 import { registerChatHandlers } from './handlers/chat.js';
 import { registerCommandHandlers } from './handlers/commands.js';
 import { registerErrorHandler } from './middleware/errorHandler.js';
-import { buildStartMenu, getLongWelcomeText } from './utils/onboarding.js';
+// start onboarding now handled inside command handlers to avoid middleware ordering issues
 import { getRedisClient } from './redis/client.js';
 import { saveLastChat } from './repos/lastChat.js';
 
@@ -53,18 +53,6 @@ export async function createServer(): Promise<FastifyInstance> {
   const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
   registerCommandHandlers(bot);
   registerChatHandlers(bot);
-  bot.command('start', async (ctx) => {
-    const env = parseEnv();
-    // Persist the last chat to enable post-link notifications
-    const fromId = ctx.from?.id;
-    const chatId = ctx.chat?.id;
-    if (fromId && chatId) {
-      const redis = getRedisClient();
-      await saveLastChat(redis, fromId, chatId);
-    }
-
-    await ctx.reply(getLongWelcomeText(), { reply_markup: buildStartMenu(env) });
-  });
 
   const callback = webhookCallback(bot, 'fastify', 'return', 10000, env.TELEGRAM_WEBHOOK_SECRET);
 
