@@ -1,7 +1,7 @@
 import { parseEnv } from '../env.js';
 
-export interface ChatPrompt {
-  // Generic prompt object to satisfy API model
+export interface ChatMessage {
+  // Generic message object to satisfy API model
   type?: string;
   content?: string;
   text?: string;
@@ -11,7 +11,7 @@ export interface ChatPrompt {
 export interface ChatRequest {
   user_id: string;
   conversation_id: string;
-  prompt: string | ChatPrompt;
+  message: string | ChatMessage;
   chain_id?: string;
   wallet_address?: string;
   metadata?: Record<string, unknown>;
@@ -136,12 +136,12 @@ export class AgentsClient {
     this.ensureConfigured();
     const headers: Record<string, string> = { 'content-type': 'application/json', ...(opts.headers ?? {}) };
     if (opts.jwt) headers['authorization'] = `Bearer ${opts.jwt}`;
-    const prompt = typeof req.prompt === 'string'
-      ? { role: 'user', content: req.prompt }
-      : req.prompt.role
-      ? req.prompt
-      : { role: 'user', ...req.prompt };
-    const body = { ...req, prompt } as any;
+    const outgoingMessage = typeof req.message === 'string'
+      ? { role: 'user', content: req.message }
+      : req.message.role
+      ? req.message
+      : { role: 'user', ...req.message };
+    const body = { ...req, message: outgoingMessage } as any;
     // Apply a timeout to avoid long hangs
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 15000);
@@ -158,14 +158,14 @@ export class AgentsClient {
     }
     const data = await res.json();
     // Preferred extraction via path if configured
-    let message: string | undefined;
+    let extractedMessage: string | undefined;
     if (this.messagePath) {
       const byPath = this.extractByPath(data, this.messagePath);
-      message = AgentsClient.joinContent(byPath);
+      extractedMessage = AgentsClient.joinContent(byPath);
     }
     const coerced = AgentsClient.coerceResponse(data);
     const final: ChatResponse = {
-      message: (message && message.trim()) ? message : coerced.message,
+      message: (extractedMessage && extractedMessage.trim()) ? extractedMessage : coerced.message,
       requires_action: coerced.requires_action,
       actions: coerced.actions,
     };
