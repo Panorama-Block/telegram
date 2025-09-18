@@ -1,10 +1,13 @@
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import fastifyStatic from '@fastify/static';
 import { Bot, webhookCallback } from 'grammy';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
+import { existsSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 
 import { parseEnv } from './env.js';
 import { registerAuthRoutes } from './routes/auth.js';
@@ -39,7 +42,74 @@ export async function createServer(): Promise<FastifyInstance> {
     redis: null, // usar in-memory para dev, Redis para prod
   });
 
-  // WebApp desativado no modo chat-only.
+  // Serve Miniapp (if built dist exists) at /miniapp/
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const candidates = [
+      join(__dirname, '../../miniapp/dist'),       // tsx dev (src -> apps/miniapp/dist)
+      join(__dirname, '../../../miniapp/dist'),     // compiled (dist/src -> apps/miniapp/dist)
+      join(process.cwd(), '../miniapp/dist'),       // cwd = apps/gateway
+      join(process.cwd(), '../../apps/miniapp/dist')// cwd = repo root
+    ];
+    const miniappDist = candidates.find((p) => existsSync(p));
+    if (miniappDist) {
+      // Serve under /miniapp/ (preferred)
+      await app.register(fastifyStatic, {
+        root: miniappDist,
+        prefix: '/miniapp/',
+        index: 'index.html',
+        decorateReply: true,
+      });
+      // Note: fastify-static already registers GET /miniapp/* to serve files.
+      // Do not add another GET /miniapp/* here to avoid FST_ERR_DUPLICATED_ROUTE.
+      try {
+        const files = await readdir(miniappDist);
+        app.log.info({ miniappDist, files }, 'Miniapp dist mounted');
+      } catch {}
+      // Backward-compat: redirect /webapp/* to /miniapp/*
+      app.get('/webapp', async (_req, reply) => {
+        reply.redirect(302, '/miniapp/');
+      });
+      app.get('/webapp/*', async (req, reply) => {
+        const rest = (req.params as any)['*'] ?? '';
+        const target = `/miniapp/${rest}`.replace(/\/+/g, '/');
+        reply.redirect(302, target);
+      });
+      app.log.info({ miniappDist }, 'Miniapp static serving enabled at /miniapp/ (with /webapp redirect)');
+    } else {
+      app.log.info({ candidates }, 'Miniapp dist not found; static serving disabled');
+    }
+  } catch (e) {
+    app.log.warn({ err: e }, 'Failed to enable miniapp static serving');
+  }
+
+  // Debug: log miniapp requests and expose a probe
+  app.addHook('onRequest', async (req) => {
+    if (req.url.startsWith('/miniapp') || req.url.startsWith('/webapp')) {
+      req.log.info({ url: req.url, ua: req.headers['user-agent'] }, 'miniapp request');
+    }
+  });
+  app.get('/__miniapp_debug', async () => {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const paths = [
+      join(__dirname, '../../miniapp/dist'),
+      join(__dirname, '../../../miniapp/dist'),
+      join(process.cwd(), '../miniapp/dist'),
+      join(process.cwd(), '../../apps/miniapp/dist'),
+    ];
+    const report = paths.map((p) => ({ path: p, exists: existsSync(p) }));
+    return {
+      ok: true,
+      report,
+      env: {
+        PUBLIC_WEBAPP_URL: process.env['PUBLIC_WEBAPP_URL'] ?? null,
+        PUBLIC_GATEWAY_URL: process.env['PUBLIC_GATEWAY_URL'] ?? null,
+        NODE_ENV: process.env['NODE_ENV'] ?? null,
+      },
+    };
+  });
 
   // Error handling
   await registerErrorHandler(app);

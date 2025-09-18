@@ -42,25 +42,36 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         .object({ id: z.number(), username: z.string().optional(), language_code: z.string().optional() })
         .parse(user);
 
-      // Integração com Auth: register/exchange e persistência de sessão/link
-      const client = new AuthClient();
-      let auth;
+      // Integração com Auth: se indisponível, fazer fallback local para liberar o Miniapp
+      let zicoUserId: string;
       try {
-        auth = await client.exchangeTelegram({ telegramUserId: result.id });
-      } catch {
-        auth = await client.registerTelegram({
-          telegramUserId: result.id,
-          profile: { username: result.username ?? null, language_code: result.language_code ?? null },
-        });
+        if (parseEnv().AUTH_API_BASE) {
+          const client = new AuthClient();
+          let auth = await client
+            .exchangeTelegram({ telegramUserId: result.id })
+            .catch(async () =>
+              client.registerTelegram({
+                telegramUserId: result.id,
+                profile: { username: result.username ?? null, language_code: result.language_code ?? null },
+              }),
+            );
+          // Se chegou aqui, Auth respondeu OK
+          const _exp = decodeJwtExp(auth.jwt); // atualmente não usado neste endpoint
+          zicoUserId = auth.userId;
+        } else {
+          // Auth não configurado: fallback local
+          zicoUserId = `local:tg:${result.id}`;
+        }
+      } catch (e) {
+        // Auth falhou (timeout/erro): fallback local para não bloquear a UI
+        req.log.warn({ err: e }, 'Auth unavailable, using local fallback for miniapp verify');
+        zicoUserId = `local:tg:${result.id}`;
       }
-
-      const exp = decodeJwtExp(auth.jwt);
-      const expiresAt = exp ?? Math.floor(Date.now() / 1000) + 3600;
 
       const redis = getRedisClient();
       await saveLink(redis, {
         telegram_user_id: result.id,
-        zico_user_id: auth.userId,
+        zico_user_id: zicoUserId,
         username: result.username ?? null,
         language_code: result.language_code ?? null,
         linked_at: Math.floor(Date.now() / 1000),
@@ -73,7 +84,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         const lastChatId = await getLastChat(getRedisClient(), result.id);
         if (lastChatId) {
           const api = new Api(env.TELEGRAM_BOT_TOKEN);
-          await api.sendMessage(lastChatId, getLinkSuccessText(auth.userId), { parse_mode: 'Markdown' });
+          await api.sendMessage(lastChatId, getLinkSuccessText(zicoUserId), { parse_mode: 'Markdown' });
           for (const msg of getTutorialMessages()) {
             await api.sendMessage(lastChatId, msg);
           }
@@ -88,7 +99,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         language_code: result.language_code ?? null,
         auth_date: authDate,
         valid: true,
-        zico_user_id: auth.userId,
+        zico_user_id: zicoUserId,
       });
     } catch (err) {
       req.log.error({ err }, 'falha em /auth/telegram/verify');
@@ -96,4 +107,3 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     }
   });
 }
-
