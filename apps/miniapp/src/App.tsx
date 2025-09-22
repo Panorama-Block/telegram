@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import React, { Suspense } from 'react';
+const TonBalanceCardLazy = React.lazy(() => import('./ton/Balance').then(m => ({ default: m.TonBalanceCard })));
+const EvmConnectButton = React.lazy(() => import('./web3/EvmConnectButton').then(m => ({ default: m.EvmConnectButton })));
+const SwapCard = React.lazy(() => import('./swap/SwapCard').then(m => ({ default: m.SwapCard })));
 
 type UserData = {
   telegram_user_id: number;
@@ -35,8 +39,11 @@ export default function App() {
     async function run() {
       try {
         if (!initData) throw new Error('initData não encontrado');
-        const base = 'https://t25mjk3s-7777.brs.devtunnels.ms'
-        const res = await fetch(`${base}/auth/telegram/verify`, {
+        const baseEnv = (import.meta as any)?.env?.VITE_GATEWAY_BASE as string | undefined;
+        const origin = window.location.origin;
+        const base = (baseEnv && baseEnv.length > 0 ? baseEnv : origin).replace(/\/+$/,'');
+        const url = `${base}/auth/telegram/verify`;
+        const res = await fetch(url, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ initData }),
@@ -91,6 +98,15 @@ VITE_GATEWAY_BASE: ${(import.meta as any).env?.VITE_GATEWAY_BASE ?? 'unset'}
       <p style={{ color: 'var(--tg-theme-hint-color, #666)' }}>
         Telegram ID: {user?.telegram_user_id}
       </p>
+      <Suspense fallback={<div style={{marginTop:12}}>Loading TON widget…</div>}>
+        <TonBalanceCardLazy />
+      </Suspense>
+      <Suspense fallback={<div style={{marginTop:12}}>Loading EVM wallet…</div>}>
+        <EvmConnectButton />
+      </Suspense>
+      <Suspense fallback={<div style={{marginTop:12}}>Loading Swap…</div>}>
+        <SwapCard />
+      </Suspense>
     </div>
   );
 }

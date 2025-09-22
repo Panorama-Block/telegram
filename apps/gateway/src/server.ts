@@ -42,6 +42,39 @@ export async function createServer(): Promise<FastifyInstance> {
     redis: null, // usar in-memory para dev, Redis para prod
   });
 
+  // Dynamic tonconnect manifest that always matches the external public origin
+  app.get('/miniapp/manifest.json', async (req, reply) => {
+    // Prefer configured PUBLIC_GATEWAY_URL if available to avoid proxy header ambiguities
+    let publicOrigin: string | null = null;
+    try {
+      const env = parseEnv();
+      if (env.PUBLIC_GATEWAY_URL) {
+        publicOrigin = new URL(env.PUBLIC_GATEWAY_URL).origin;
+      }
+    } catch {}
+
+    if (!publicOrigin) {
+      // Fallback to forwarded headers, then request host
+      const xfProto = (req.headers['x-forwarded-proto'] as string | undefined)?.split(',')[0];
+      const xfHost = (req.headers['x-forwarded-host'] as string | undefined)?.split(',')[0]
+        || (req.headers['x-original-host'] as string | undefined)?.split(',')[0];
+      const host = xfHost || (req.headers['host'] as string | undefined);
+      const proto = xfProto || (req.protocol as string) || 'https';
+      publicOrigin = host ? `${proto}://${host}` : `${proto}://localhost:${process.env['PORT'] ?? '7777'}`;
+    }
+
+    const origin = publicOrigin.replace(/\/$/, '');
+    const body = {
+      url: `${origin}/miniapp/`,
+      name: 'Zico MiniApp — TON Wallet',
+      iconUrl: `${origin}/miniapp/telegram_img.png`,
+      termsOfUseUrl: '',
+      privacyPolicyUrl: '',
+    };
+    reply.header('cache-control', 'no-store');
+    return reply.send(body);
+  });
+
   // Serve Miniapp (if built dist exists) at /miniapp/
   try {
     const __filename = fileURLToPath(import.meta.url);
@@ -60,6 +93,20 @@ export async function createServer(): Promise<FastifyInstance> {
         prefix: '/miniapp/',
         index: 'index.html',
         decorateReply: true,
+        // During debugging, avoid stale caches entirely
+        cacheControl: false,
+        etag: false,
+        lastModified: false,
+        setHeaders(res, path) {
+          // Aggressive no-store to defeat intermediary caches while we debug
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+          // Keep correct types for JS modules
+          if (path.endsWith('.js')) {
+            res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+          }
+        },
       });
       // Note: fastify-static already registers GET /miniapp/* to serve files.
       // Do not add another GET /miniapp/* here to avoid FST_ERR_DUPLICATED_ROUTE.
