@@ -1,12 +1,12 @@
 import Fastify from 'fastify';
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest, FastifyServerOptions } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { Bot, webhookCallback } from 'grammy';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 
 import { parseEnv } from './env.js';
@@ -21,7 +21,21 @@ import { saveLastChat } from './repos/lastChat.js';
 
 export async function createServer(): Promise<FastifyInstance> {
   const env = parseEnv();
-  const app = Fastify({
+
+  let httpsOptions: { key: Buffer; cert: Buffer; ca?: Buffer } | undefined;
+  if (env.HTTPS_KEY_PATH && env.HTTPS_CERT_PATH) {
+    try {
+      const key = readFileSync(env.HTTPS_KEY_PATH);
+      const cert = readFileSync(env.HTTPS_CERT_PATH);
+      const ca = env.HTTPS_CA_PATH ? readFileSync(env.HTTPS_CA_PATH) : undefined;
+      httpsOptions = { key, cert, ca };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('Failed to load HTTPS certificates, falling back to HTTP', err);
+    }
+  }
+
+  const serverOptions: FastifyServerOptions = {
     logger: {
       level: 'info',
       transport: process.env['NODE_ENV'] === 'production' ? undefined : {
@@ -29,7 +43,13 @@ export async function createServer(): Promise<FastifyInstance> {
         options: { translateTime: 'SYS:standard' },
       },
     },
-  });
+  };
+
+  if (httpsOptions) {
+    (serverOptions as any).https = httpsOptions;
+  }
+
+  const app = Fastify(serverOptions);
 
   await app.register(cors, {
     origin: true,
