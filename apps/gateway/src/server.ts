@@ -23,11 +23,11 @@ export async function createServer(): Promise<FastifyInstance> {
   const env = parseEnv();
 
   let httpsOptions: { key: Buffer; cert: Buffer; ca?: Buffer } | undefined;
-  if (env.HTTPS_KEY_PATH && env.HTTPS_CERT_PATH) {
+  if (env.PRIVKEY && env.FULLCHAIN) {
     try {
-      const key = readFileSync(env.HTTPS_KEY_PATH);
-      const cert = readFileSync(env.HTTPS_CERT_PATH);
-      const ca = env.HTTPS_CA_PATH ? readFileSync(env.HTTPS_CA_PATH) : undefined;
+      const key = readFileSync(env.PRIVKEY);
+      const cert = readFileSync(env.FULLCHAIN);
+      const ca = undefined;
       httpsOptions = { key, cert, ca };
     } catch (err) {
       // eslint-disable-next-line no-console
