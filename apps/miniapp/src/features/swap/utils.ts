@@ -15,7 +15,7 @@ export function isNative(addr: string): boolean {
 export function normalizeToApi(addr: string): string {
   // Prefer 0xeeee... for native when talking to API
   if (isNative(addr)) return '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
-  return addr;
+  return addr.toLowerCase();
 }
 
 export function formatAmountHuman(wei: bigint, decimals: number, maxFrac = 6): string {
