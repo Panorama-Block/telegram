@@ -1,0 +1,35 @@
+version: '3.9'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        THIRDWEB_CLIENT_ID: ${THIRDWEB_CLIENT_ID}
+        VITE_GATEWAY_BASE: ${PUBLIC_GATEWAY_URL:-http://localhost:7777}
+    env_file:
+      - .env
+    environment:
+      PORT: "7777"
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "7777:7777"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "20", "1", "--loglevel", "warning"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis-data:
+    driver: local

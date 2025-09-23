@@ -1,0 +1,30 @@
+{
+  "name": "miniapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 5173",
+    "test": "vitest --run"
+  },
+  "dependencies": {
+    "@orbs-network/ton-access": "^2.2.2",
+    "@ton/core": "^0.56.3",
+    "@ton/ton": "^13.11.2",
+    "@tonconnect/ui-react": "^2.0.9",
+    "@twa-dev/sdk": "^8.0.2",
+    "buffer": "^6.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "thirdweb": "^5.106.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.9.2",
+    "vite": "^5.3.1",
+    "vitest": "^2.0.5"
+  }
+}

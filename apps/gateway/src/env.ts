@@ -7,6 +7,8 @@ const EnvSchema = z.object({
   PUBLIC_WEBAPP_URL: z.string().url().optional(),
   WEBSITE_URL: z.string().url().optional(),
   PORT: z.string().default('7778'),
+  PRIVKEY: z.string().optional(),
+  FULLCHAIN: z.string().optional(),
   TELEGRAM_INITDATA_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(600),
   REDIS_URL: z.string().default(''),
   AUTH_API_BASE: z.string().url().optional(),

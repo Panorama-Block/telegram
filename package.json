@@ -6,6 +6,7 @@
     "dev": "pnpm -C apps/gateway dev",
     "dev:gateway": "pnpm -C apps/gateway dev",
     "dev:webapp": "pnpm -C apps/webapp dev",
+    "dev:miniapp": "pnpm -C apps/miniapp dev",
     "build": "pnpm -r run build",
     "test": "pnpm -r test",
     "lint": "eslint .",

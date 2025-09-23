@@ -418,18 +418,37 @@ Docs and support coming soon.
   }
 
   bot.command('swap', async (ctx) => {
-    const chatId = ctx.chat?.id!;
-    const fromId = ctx.from?.id;
-    const redis = getRedisClient();
-    if (fromId) {
-      const link = await getLink(redis, fromId);
-      if (!link || link.status !== 'linked') {
-        await ctx.reply('🔐 Please link your account first: tap "Link Account" or send /link');
-        return;
+    try {
+      const chatId = ctx.chat?.id!;
+      const fromId = ctx.from?.id;
+      const redis = getRedisClient();
+      const env = parseEnv();
+      if (fromId) {
+        const link = await getLink(redis, fromId);
+        if (!link || link.status !== 'linked') {
+          await ctx.reply('🔐 Please link your account first: tap "Link Account" or send /link');
+          return;
+        }
       }
+      await setSwapState(redis, chatId, { step: 'choose_chain' });
+      await ctx.reply('🔄 Let’s get a swap quote. Choose the chain:', { reply_markup: chainKeyboard() });
+
+      // Offer opening the Miniapp (if configured)
+      if (env.PUBLIC_WEBAPP_URL) {
+        const baseUrl = env.PUBLIC_WEBAPP_URL;
+        const debugUrl = baseUrl.includes('?') ? `${baseUrl}&debug=1` : `${baseUrl}?debug=1`;
+        await ctx.reply('🧩 Prefer UI? Open the miniapp for Swap:', {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: 'Open Miniapp', web_app: { url: baseUrl } },
+              { text: 'Open Miniapp (debug)', web_app: { url: debugUrl } },
+            ]],
+          },
+        });
+      }
+    } catch (err) {
+      await ctx.reply('❌ Failed to start swap. Send /status and try again.');
     }
-    await setSwapState(redis, chatId, { step: 'choose_chain' });
-    await ctx.reply('🔄 Let’s get a swap quote. Choose the chain:', { reply_markup: chainKeyboard() });
   });
 
   bot.callbackQuery('swap:start', async (ctx) => {
@@ -453,8 +472,11 @@ Docs and support coming soon.
     const chatId = ctx.chat?.id!;
     const redis = getRedisClient();
     const state = await getSwapState(redis, chatId);
+    // Allow commands to bypass amount capture
+    const txt = (ctx.message?.text ?? '').trim();
+    if (txt.startsWith('/')) return next();
     if (!state || state.step !== 'enter_amount') return next();
-    const text = (ctx.message?.text ?? '').trim();
+    const text = txt;
     const amount = Number(text.replace(',', '.'));
     if (!Number.isFinite(amount) || amount <= 0) {
       await ctx.reply('Please enter a positive numeric amount.');
