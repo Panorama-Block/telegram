@@ -40,5 +40,5 @@ RUN npm install --omit=dev --prefix apps/gateway
 COPY --from=build-gateway /app/apps/gateway/dist apps/gateway/dist
 COPY --from=build-miniapp /app/apps/miniapp/dist apps/miniapp/dist
 
-EXPOSE 7777
+EXPOSE 8443
 CMD ["node", "apps/gateway/dist/index.js"]
