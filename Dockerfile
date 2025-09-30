@@ -12,8 +12,8 @@ COPY tsconfig.base.json ./
 COPY apps/gateway/package*.json apps/gateway/
 COPY apps/miniapp/package*.json apps/miniapp/
 
-RUN npm ci --prefix apps/gateway \
- && npm ci --prefix apps/miniapp
+RUN npm install --prefix apps/gateway \
+ && npm install --prefix apps/miniapp
 
 FROM deps AS build-miniapp
 ARG THIRDWEB_CLIENT_ID
@@ -23,6 +23,10 @@ ENV THIRDWEB_CLIENT_ID=${THIRDWEB_CLIENT_ID}
 ENV VITE_THIRDWEB_CLIENT_ID=${THIRDWEB_CLIENT_ID}
 ENV VITE_GATEWAY_BASE=${VITE_GATEWAY_BASE}
 ENV SWAP_API_BASE=${SWAP_API_BASE}
+
+ENV PRIVKEY=${PRIVKEY}
+ENV FULLCHAIN=${FULLCHAIN}
+
 COPY apps/miniapp/ apps/miniapp/
 RUN npm run build --prefix apps/miniapp
 
@@ -35,10 +39,10 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 COPY apps/gateway/package*.json apps/gateway/
-RUN npm ci --omit=dev --prefix apps/gateway
+RUN npm install --omit=dev --prefix apps/gateway
 
 COPY --from=build-gateway /app/apps/gateway/dist apps/gateway/dist
 COPY --from=build-miniapp /app/apps/miniapp/dist apps/miniapp/dist
 
-EXPOSE 7777
+EXPOSE 8443
 CMD ["node", "apps/gateway/dist/index.js"]
