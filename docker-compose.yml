@@ -8,6 +8,7 @@ services:
       args:
         THIRDWEB_CLIENT_ID: ${THIRDWEB_CLIENT_ID}
         VITE_GATEWAY_BASE: ${PUBLIC_GATEWAY_URL:-http://localhost:7777}
+        SWAP_API_BASE: ${SWAP_API_BASE}
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
     env_file:
