@@ -85,13 +85,13 @@ async function getJson<T>(path: string): Promise<T> {
 
 export const swapApi = {
   quote(body: QuoteRequest) {
-    return postJson<QuoteResponse>('/quote', body);
+    return postJson<QuoteResponse>('/swap/quote', body);
   },
   prepare(body: PrepareRequest) {
-    return postJson<PrepareResponse>('/tx', body);
+    return postJson<PrepareResponse>('/swap/tx', body);
   },
   status(hash: string, chainId: number) {
     const qs = new URLSearchParams({ chainId: String(chainId) }).toString();
-    return getJson<StatusResponse>(`/status/${hash}?${qs}`);
+    return getJson<StatusResponse>(`/swap/status/${hash}?${qs}`);
   },
 };
