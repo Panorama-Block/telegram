@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ConnectButton, useActiveAccount, useActiveWallet, useDisconnect } from 'thirdweb/react';
 import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
+import { signLoginPayload } from 'thirdweb/auth';
 
 import { Button, Card } from '../../../shared/ui';
 
@@ -37,11 +38,61 @@ function shortAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
+async function notifyGatewayOfAuthentication(address: string, sessionId: string, authToken: string) {
+  try {
+    console.log('📤 [GATEWAY] Notifying Gateway of authentication...');
+    
+    // Get telegram_user_id from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const telegramUserId = urlParams.get('telegram_user_id');
+    
+    if (!telegramUserId) {
+      console.warn('⚠️ [GATEWAY] No telegram_user_id found in URL parameters');
+      return;
+    }
+    
+    // Get gateway base URL
+    const gatewayBase = window.location.origin.replace(/\/+$/, '');
+    const gatewayUrl = `${gatewayBase}/auth/telegram/verify`;
+    
+    console.log('🌐 [GATEWAY] Gateway URL:', gatewayUrl);
+    console.log('👤 [GATEWAY] Telegram User ID:', telegramUserId);
+    
+    const response = await fetch(gatewayUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        address,
+        sessionKeyAddress: address, // Using same address for session key
+        loginPayload: JSON.stringify({ type: 'evm', domain: 'panoramablock.com', address, statement: 'Login to Panorama Block platform', version: '1' }),
+        signature: '0x' + '0'.repeat(130), // Mock signature for now
+        telegram_user_id: telegramUserId,
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [GATEWAY] Gateway notification failed:', response.status, errorText);
+      return;
+    }
+    
+    const result = await response.json();
+    console.log('✅ [GATEWAY] Gateway notification successful:', result);
+    
+  } catch (err) {
+    console.error('❌ [GATEWAY] Failed to notify Gateway:', err);
+  }
+}
+
 export function WalletConnectPanel() {
   const account = useActiveAccount();
   const activeWallet = useActiveWallet();
-  const { disconnect, isDisconnecting } = useDisconnect();
+  const { disconnect } = useDisconnect();
   const [error, setError] = useState<string | null>(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const client = useMemo(() => {
     const clientId = (import.meta as any).env?.VITE_THIRDWEB_CLIENT_ID as string | undefined;
@@ -64,13 +115,143 @@ export function WalletConnectPanel() {
     [],
   );
 
+  // Remover autenticação automática - só autenticar quando clicar no botão
+
+  async function authenticateWithBackend() {
+    console.log('🔐 [AUTH DEBUG] authenticateWithBackend called');
+    
+    if (!account || !client) {
+      console.log('❌ [AUTH DEBUG] Missing account or client:', { account: !!account, client: !!client });
+      return;
+    }
+
+    try {
+      console.log('🔄 [AUTH DEBUG] Setting isAuthenticating to true');
+      setIsAuthenticating(true);
+      setError(null);
+
+      // 1. Obter payload do backend (exatamente como na página wallet)
+      const normalizedAddress = account.address;
+      console.log('📤 [AUTH DEBUG] Enviando endereço para backend:', normalizedAddress);
+      console.log('🌐 [AUTH DEBUG] Auth API URL:', (import.meta as any).env?.VITE_AUTH_API_BASE);
+      
+      const loginResponse = await fetch(`http://localhost:3001/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: normalizedAddress })
+      });
+
+      console.log('📡 [AUTH DEBUG] Login response status:', loginResponse.status);
+      console.log('📡 [AUTH DEBUG] Login response headers:', Object.fromEntries(loginResponse.headers.entries()));
+
+      if (!loginResponse.ok) {
+        const errorText = await loginResponse.text();
+        console.log('❌ [AUTH DEBUG] Login error response:', errorText);
+        let error;
+        try {
+          error = JSON.parse(errorText);
+        } catch {
+          error = { error: errorText };
+        }
+        throw new Error(error.error || 'Erro ao gerar payload');
+      }
+
+      const { payload } = await loginResponse.json();
+      console.log('✅ [AUTH DEBUG] Payload recebido:', payload);
+      console.log('🔍 [AUTH DEBUG] Account address:', account.address);
+      console.log('🔍 [AUTH DEBUG] Payload address:', payload.address);
+
+      // Verificar se os endereços batem
+      if (account.address.toLowerCase() !== payload.address.toLowerCase()) {
+        throw new Error(`Endereço da wallet (${account.address}) não confere com o payload (${payload.address})`);
+      }
+
+      // 2. Assinar a mensagem com a wallet usando signLoginPayload (exatamente como na página wallet)
+      let signature;
+      
+      console.log('✍️ [AUTH DEBUG] Account address para assinatura:', account.address);
+      console.log('✍️ [AUTH DEBUG] Payload address:', payload.address);
+
+      try {
+        // Usar signLoginPayload do Thirdweb v5 (mais confiável)
+        console.log('🔐 [AUTH DEBUG] Usando signLoginPayload do Thirdweb v5...');
+        const signResult = await signLoginPayload({
+          account: account,
+          payload: payload
+        });
+        console.log('✅ [AUTH DEBUG] Resultado da assinatura:', signResult);
+        
+        // signLoginPayload retorna um objeto, precisamos extrair a signature
+        if (typeof signResult === 'string') {
+          signature = signResult;
+          console.log('📝 [AUTH DEBUG] Assinatura é string:', signature);
+        } else if (signResult && signResult.signature) {
+          signature = signResult.signature;
+          console.log('📝 [AUTH DEBUG] Assinatura extraída do objeto:', signature);
+        } else {
+          console.log('❌ [AUTH DEBUG] Formato de assinatura inválido:', signResult);
+          throw new Error('Formato de assinatura inválido');
+        }
+        
+        console.log('✅ [AUTH DEBUG] Assinatura final:', signature);
+      } catch (error) {
+        console.error('❌ [AUTH DEBUG] Erro na assinatura com signLoginPayload:', error);
+        throw new Error(`Erro na assinatura: ${error}`);
+      }
+
+      // 3. Verificar assinatura no backend (exatamente como na página wallet)
+      console.log('🔍 [AUTH DEBUG] Enviando para verificação...');
+      const verifyResponse = await fetch(`http://localhost:3001/auth/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payload, signature })
+      });
+
+      console.log('📡 [AUTH DEBUG] Verify response status:', verifyResponse.status);
+
+      if (!verifyResponse.ok) {
+        const errorText = await verifyResponse.text();
+        console.log('❌ [AUTH DEBUG] Verify error response:', errorText);
+        let error;
+        try {
+          error = JSON.parse(errorText);
+        } catch {
+          error = { error: errorText };
+        }
+        throw new Error(error.error || 'Erro na verificação');
+      }
+
+      const { token: authToken, address, sessionId } = await verifyResponse.json();
+      console.log('✅ [AUTH DEBUG] Token recebido:', authToken ? 'SIM' : 'NÃO');
+      console.log('✅ [AUTH DEBUG] Address:', address);
+      console.log('✅ [AUTH DEBUG] SessionId:', sessionId);
+      
+      // 4. Salvar token no localStorage (exatamente como na página wallet)
+      localStorage.setItem('authToken', authToken);
+      console.log('💾 [AUTH DEBUG] Token salvo no localStorage');
+      setIsAuthenticated(true);
+      console.log(`✅ [AUTH DEBUG] Autenticado! Endereço: ${address.slice(0, 6)}...${address.slice(-4)}`);
+
+      // 5. Notificar o Gateway sobre a autenticação bem-sucedida
+      await notifyGatewayOfAuthentication(address, sessionId, authToken);
+
+      // 6. Autenticação concluída com sucesso
+      console.log('🎉 [AUTH DEBUG] Autenticação concluída! JWT salvo e pronto para uso.');
+
+    } catch (err: any) {
+      console.error('❌ [AUTH DEBUG] Authentication failed:', err);
+      setError(err?.message || 'Falha na autenticação');
+    } finally {
+      console.log('🏁 [AUTH DEBUG] Setting isAuthenticating to false');
+      setIsAuthenticating(false);
+    }
+  }
+
   async function handleDisconnect() {
     setError(null);
     try {
       if (activeWallet) {
         await disconnect(activeWallet);
-      } else {
-        await disconnect();
       }
     } catch (err: any) {
       console.error('wallet disconnect failed', err);
@@ -92,7 +273,6 @@ export function WalletConnectPanel() {
             <ConnectButton
               client={client}
               wallets={wallets}
-              accountStatus="none"
               connectModal={{ size: 'compact' }}
               connectButton={{
                 label: 'Connect Wallet',
@@ -142,9 +322,19 @@ export function WalletConnectPanel() {
               size="sm"
               block
               onClick={handleDisconnect}
-              disabled={isDisconnecting}
+              disabled={disconnect}
             >
-              {isDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+              {disconnect ? 'Disconnecting…' : 'Disconnect'}
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              block
+              onClick={authenticateWithBackend}
+              disabled={!account || !client}
+              style={{ marginTop: 8 }}
+            >
+              🔐 Autenticar
             </Button>
           </div>
         )}

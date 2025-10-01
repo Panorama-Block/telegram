@@ -2,14 +2,12 @@ import type { Bot } from 'grammy';
 import { InlineKeyboard } from 'grammy';
 import { getRedisClient } from '../redis/client.js';
 import { saveLink, getLink } from '../repos/links.js';
-import { AuthClient } from '../clients/authClient.js';
-import { SwapClient } from '../clients/swapClient.js';
 import { getSwapState, setSwapState, clearSwapState, type SwapState } from '../repos/swapState.js';
-import { saveSession } from '../repos/sessions.js';
-import { decodeJwtExp } from '../clients/authClient.js';
+import { getSession, saveSession } from '../repos/sessions.js';
 import { getHelpText, getLinkSuccessText, getTutorialMessages, getOnboardingPageById, buildOnboardingKeyboard, buildStartMenu, getLongWelcomeText, buildPreLoginMenu, buildFeaturesMenu, getFeatureIntroText } from '../utils/onboarding.js';
 import { parseEnv } from '../env.js';
 import { addTracked, removeTracked, listTracked } from '../repos/tracking.js';
+import { quoteService } from '../services/quoteService.js';
 
 export function registerCommandHandlers(bot: Bot) {
   async function showStart(ctx: any) {
@@ -24,10 +22,13 @@ export function registerCommandHandlers(bot: Bot) {
         await saveLastChat(redis, fromId, chatId);
       } catch {}
       const link = await getLink(redis, fromId);
+      console.log('🔍 [START] Checking link for user:', fromId, 'Link found:', link);
       if (link && link.status === 'linked') {
+        console.log('✅ [START] User is already linked, showing features menu');
         await ctx.reply('👋 Welcome back! Choose a feature to begin:', { reply_markup: buildFeaturesMenu() });
         return;
       }
+      console.log('❌ [START] User not linked, showing pre-login menu');
     }
     await ctx.reply(getLongWelcomeText(), { reply_markup: buildPreLoginMenu(env) });
   }
@@ -60,59 +61,31 @@ export function registerCommandHandlers(bot: Bot) {
         });
         await ctx.reply(getLinkSuccessText(userIdStable), { parse_mode: 'Markdown' });
       } else {
-        try {
-          const auth = new AuthClient();
-          let res;
-          try {
-            res = await auth.exchangeTelegram({ telegramUserId: from.id });
-          } catch {
-            res = await auth.registerTelegram({
-              telegramUserId: from.id,
-              profile: {
-                username: from.username ?? null,
-                language_code: (from as any).language_code ?? null,
-                first_name: from.first_name ?? null,
-                last_name: from.last_name ?? null,
-              },
-            });
+        // Para autenticação real, redirecionar para o miniapp
+        // Em desenvolvimento, usar localhost; em produção, usar PUBLIC_GATEWAY_URL
+        const baseUrl = process.env.NODE_ENV === 'development' 
+          ? 'http://localhost:7778' 
+          : env.PUBLIC_GATEWAY_URL; 
+        const miniappUrl = `${baseUrl}miniapp/?telegram_user_id=${from.id}&page=auth`;
+        await ctx.reply(
+          `🔐 Para conectar sua carteira e autenticar:\n\n` +
+          `1. Clique no botão abaixo para abrir o miniapp\n` +
+          `2. Conecte sua MetaMask no miniapp\n` +
+          `3. Faça a autenticação\n` +
+          `4. Volte para o bot\n\n` +
+          `O miniapp será aberto automaticamente!`,
+          { 
+            reply_markup: {
+              inline_keyboard: [[
+                {
+                  text: "🔗 Abrir Miniapp",
+                  web_app: { url: miniappUrl }
+                }
+              ]]
+            }
           }
-          await saveLink(redis, {
-            telegram_user_id: from.id,
-            zico_user_id: res.userId,
-            username: from.username ?? null,
-            language_code: (from as any).language_code ?? null,
-            linked_at: Math.floor(Date.now() / 1000),
-            status: 'linked',
-          });
-          const exp = decodeJwtExp(res.jwt) ?? Math.floor(Date.now() / 1000) + 3600;
-          await saveSession(redis, {
-            zico_user_id: res.userId,
-            channel: 'telegram',
-            chat_id: chatId,
-            jwt: res.jwt,
-            expires_at: exp,
-          });
-          await ctx.reply(getLinkSuccessText(res.userId), { parse_mode: 'Markdown' });
-        } catch (e) {
-          // Fallback to local linking if remote Auth fails for any reason
-          const userIdStable = `local:tg:${from.id}`;
-          await saveLink(redis, {
-            telegram_user_id: from.id,
-            zico_user_id: userIdStable,
-            username: from.username ?? null,
-            language_code: (from as any).language_code ?? null,
-            linked_at: Math.floor(Date.now() / 1000),
-            status: 'linked',
-          });
-          await saveSession(redis, {
-            zico_user_id: userIdStable,
-            channel: 'telegram',
-            chat_id: chatId,
-            jwt: 'local',
-            expires_at: Math.floor(Date.now() / 1000) + 365 * 24 * 3600,
-          });
-          await ctx.reply(getLinkSuccessText(userIdStable), { parse_mode: 'Markdown' });
-        }
+        );
+        return false;
       }
       if (opts.sendTutorial) {
         for (const msg of getTutorialMessages()) {
@@ -425,10 +398,13 @@ Docs and support coming soon.
       const env = parseEnv();
       if (fromId) {
         const link = await getLink(redis, fromId);
+        console.log('🔍 [SWAP] Checking link for user:', fromId, 'Link found:', link);
         if (!link || link.status !== 'linked') {
+          console.log('❌ [SWAP] User not linked, asking to link account');
           await ctx.reply('🔐 Please link your account first: tap "Link Account" or send /link');
           return;
         }
+        console.log('✅ [SWAP] User is linked, proceeding with swap');
       }
       await setSwapState(redis, chatId, { step: 'choose_chain' });
       await ctx.reply('🔄 Let’s get a swap quote. Choose the chain:', { reply_markup: chainKeyboard() });
@@ -436,11 +412,12 @@ Docs and support coming soon.
       // Offer opening the Miniapp (if configured)
       if (env.PUBLIC_WEBAPP_URL) {
         const baseUrl = env.PUBLIC_WEBAPP_URL;
-        const debugUrl = baseUrl.includes('?') ? `${baseUrl}&debug=1` : `${baseUrl}?debug=1`;
+        const swapUrl = baseUrl.includes('?') ? `${baseUrl}&page=swap` : `${baseUrl}?page=swap`;
+        const debugUrl = baseUrl.includes('?') ? `${baseUrl}&page=swap&debug=1` : `${baseUrl}?page=swap&debug=1`;
         await ctx.reply('🧩 Prefer UI? Open the miniapp for Swap:', {
           reply_markup: {
             inline_keyboard: [[
-              { text: 'Open Miniapp', web_app: { url: baseUrl } },
+              { text: 'Open Miniapp', web_app: { url: swapUrl } },
               { text: 'Open Miniapp (debug)', web_app: { url: debugUrl } },
             ]],
           },
@@ -458,10 +435,13 @@ Docs and support coming soon.
     const fromId = ctx.from?.id;
     if (fromId) {
       const link = await getLink(redis, fromId);
+      console.log('🔍 [SWAP:START] Checking link for user:', fromId, 'Link found:', link);
       if (!link || link.status !== 'linked') {
+        console.log('❌ [SWAP:START] User not linked, asking to link account');
         await ctx.reply('🔐 Please link your account first: tap "Link Account" or send /link');
         return;
       }
+      console.log('✅ [SWAP:START] User is linked, proceeding with swap');
     }
     await setSwapState(redis, chatId, { step: 'choose_chain' });
     await ctx.reply('🔄 Let’s get a swap quote. Choose the chain:', { reply_markup: chainKeyboard() });
@@ -485,19 +465,61 @@ Docs and support coming soon.
     const newState: SwapState = { ...state, step: 'confirm_quote', amount } as SwapState;
     await setSwapState(redis, chatId, newState);
 
-    // Tentar pedir quote (se configurado)
     let summary = '';
     try {
-      const swap = new SwapClient();
-      const q = await swap.quote({
-        chain: newState.chain!,
-        fromToken: newState.token_in!,
-        toToken: newState.token_out!,
-        amount: newState.amount!,
-      });
-      summary = `Estimated price: ${q?.price ?? '—'}\nFee: ${q?.fee ?? '—'}`;
+      const redis = getRedisClient();
+      const link = await getLink(redis, ctx.from.id);
+      if (!link || link.status !== 'linked') {
+        summary = 'Please link your account first';
+      } else {
+        // Get JWT
+        const session = await getSession(redis, link.zico_user_id, ctx.chat.id);
+        if (!session?.jwt) {
+          summary = 'Please authenticate first';
+        } else {
+          // Map chain names to IDs
+          const chainMap: { [key: string]: number } = {
+            'ethereum': 1,
+            'polygon': 137,
+            'base': 8453
+          };
+          
+          const fromChainId = chainMap[newState.chain!] || 1;
+          const toChainId = fromChainId; // Same chain for now
+          
+          console.log('📊 [SWAP] Getting quote with new implementation...', {
+            fromChainId,
+            toChainId,
+            fromToken: newState.token_in,
+            toToken: newState.token_out,
+            amount: newState.amount
+          });
+          
+          const quote = await quoteService.getQuote(
+            fromChainId,
+            toChainId,
+            newState.token_in!,
+            newState.token_out!,
+            newState.amount!.toString(),
+            session.jwt
+          );
+          
+          if (quote && typeof quote === 'object' && 'quote' in quote) {
+            const quoteData = quote as any;
+            const estimatedReceive = quoteData.quote?.estimatedReceiveAmount ? 
+              (parseFloat(quoteData.quote.estimatedReceiveAmount) / 1e18).toFixed(6) : 'N/A';
+            const totalFeeUsd = quoteData.quote?.fees?.totalFeeUsd ? 
+              parseFloat(quoteData.quote.fees.totalFeeUsd).toFixed(2) : 'N/A';
+            
+            summary = `Estimated receive: ${estimatedReceive} ${newState.token_out}\nFee: ${totalFeeUsd} USD`;
+          } else {
+            summary = 'Quote data not available';
+          }
+        }
+      }
     } catch (e) {
-      summary = 'Could not fetch quote now. (check SWAP_API_BASE)';
+      console.error('[SWAP] Quote error:', e);
+      summary = `Could not fetch quote: ${e instanceof Error ? e.message : String(e)}`;
     }
 
     const kb = new InlineKeyboard()

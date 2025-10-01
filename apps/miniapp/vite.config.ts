@@ -3,8 +3,13 @@ import { defineConfig, loadEnv } from 'vite';
 // import nodePolyfills from 'vite-plugin-node-polyfills';
 
 export default defineConfig(({ mode }) => {
-  // Carregar .env da raiz do projeto
+  // Carregar .env da raiz do projeto, mas excluir as variáveis que queremos sobrescrever
   const env = loadEnv(mode, '../../', '');
+  
+  // Remover as variáveis que queremos sobrescrever
+  delete env.VITE_GATEWAY_BASE;
+  delete env.VITE_AUTH_API_BASE;
+  delete env.VITE_SWAP_API_BASE;
   
   return {
     base: '/miniapp/',        // Alinhado ao novo prefixo do servidor

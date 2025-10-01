@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autenticação - Panorama Block</title>
+    <script src="https://unpkg.com/thirdweb@5"></script>
+    <link rel="stylesheet" href="/static/auth.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="logo">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                        <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                        <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <h1>Conectar Carteira</h1>
+                <p class="subtitle">Autentique-se para usar o bot Telegram</p>
+            </div>
+
+            <div class="auth-content">
+                <div id="status" class="status status-info">
+                    <div class="status-icon">ℹ️</div>
+                    <div class="status-text">Clique em "Conectar Carteira" para começar</div>
+                </div>
+
+                <div class="wallet-options">
+                    <button id="connectBtn" class="btn btn-primary" onclick="connectWallet()">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2"/>
+                            <path d="M9 12L11 14L15 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Conectar Carteira
+                    </button>
+
+                    <div class="supported-wallets">
+                        <span class="wallet-label">Suportado:</span>
+                        <div class="wallet-badges">
+                            <span class="wallet-badge">MetaMask</span>
+                            <span class="wallet-badge">WalletConnect</span>
+                            <span class="wallet-badge">Coinbase</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="auth-footer">
+                    <button class="btn btn-secondary" onclick="window.close()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Fechar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/auth.js"></script>
+</body>
+</html>

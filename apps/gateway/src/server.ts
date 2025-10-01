@@ -15,9 +15,6 @@ import { registerMetricsRoutes } from './routes/metrics.js';
 import { registerChatHandlers } from './handlers/chat.js';
 import { registerCommandHandlers } from './handlers/commands.js';
 import { registerErrorHandler } from './middleware/errorHandler.js';
-// start onboarding now handled inside command handlers to avoid middleware ordering issues
-import { getRedisClient } from './redis/client.js';
-import { saveLastChat } from './repos/lastChat.js';
 
 export async function createServer(): Promise<FastifyInstance> {
   const env = parseEnv();
@@ -106,10 +103,9 @@ export async function createServer(): Promise<FastifyInstance> {
       join(process.cwd(), '../../apps/miniapp/dist')// cwd = repo root
     ];
     const miniappDist = candidates.find((p) => existsSync(p));
-    if (miniappDist) {
       // Serve under /miniapp/ (preferred)
       await app.register(fastifyStatic, {
-        root: miniappDist,
+        root: miniappDist || '',
         prefix: '/miniapp/',
         index: 'index.html',
         decorateReply: true,
@@ -130,10 +126,14 @@ export async function createServer(): Promise<FastifyInstance> {
       });
       // Note: fastify-static already registers GET /miniapp/* to serve files.
       // Do not add another GET /miniapp/* here to avoid FST_ERR_DUPLICATED_ROUTE.
-      try {
-        const files = await readdir(miniappDist);
-        app.log.info({ miniappDist, files }, 'Miniapp dist mounted');
-      } catch {}
+      const files = await readdir(miniappDist || '');
+      app.log.info({ miniappDist, files }, 'Miniapp dist mounted');
+      // Redirect /miniapp to /miniapp/ to ensure proper static file serving
+      app.get('/miniapp', async (req, reply) => {
+        const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+        reply.redirect(302, `/miniapp/${query}`);
+      });
+      
       // Backward-compat: redirect /webapp/* to /miniapp/*
       app.get('/webapp', async (_req, reply) => {
         reply.redirect(302, '/miniapp/');
@@ -144,9 +144,7 @@ export async function createServer(): Promise<FastifyInstance> {
         reply.redirect(302, target);
       });
       app.log.info({ miniappDist }, 'Miniapp static serving enabled at /miniapp/ (with /webapp redirect)');
-    } else {
-      app.log.info({ candidates }, 'Miniapp dist not found; static serving disabled');
-    }
+    
   } catch (e) {
     app.log.warn({ err: e }, 'Failed to enable miniapp static serving');
   }
@@ -191,13 +189,73 @@ export async function createServer(): Promise<FastifyInstance> {
   registerCommandHandlers(bot);
   registerChatHandlers(bot);
 
-  const callback = webhookCallback(bot, 'fastify', 'return', 10000, env.TELEGRAM_WEBHOOK_SECRET);
+  // Inicializar o bot
+  await bot.init();
+  console.log('🤖 Bot initialized successfully!');
 
-  app.post('/telegram/webhook', async (req: FastifyRequest, reply: FastifyReply) => {
-    // Verificação do header secreto é feita pelo grammY ao validar a requisição
-    return callback(req, reply);
-  });
+  // Handler customizado que ignora verificação de secret
+  const handleWebhookCustom = async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      // Processar a mensagem diretamente sem verificação de secret
+      const body = req.body as any;
+      
+      console.log('🎯 [CUSTOM WEBHOOK] Processing message directly...');
+      console.log('📨 Message:', body.message?.text);
+      console.log('👤 From:', body.message?.from?.username);
+      
+      // Processar o update diretamente
+      await bot.handleUpdate(body);
+      
+      reply.status(200).send({ ok: true });
+    } catch (error) {
+      console.error('❌ [CUSTOM WEBHOOK] Error:', error);
+      reply.status(500).send({ error: 'Internal server error' });
+    }
+  };
 
+  // Função para processar o webhook
+  const handleWebhook = async (req: FastifyRequest, reply: FastifyReply) => {
+    const reqId = `req-${Math.random().toString(36).substr(2, 9)}`;
+    
+    console.log('🚀 [WEBHOOK] Request received!');
+    console.log('📡 URL:', req.url);
+    console.log('📡 Method:', req.method);
+    console.log('📡 Headers:', JSON.stringify(req.headers, null, 2));
+
+
+    try {
+
+      app.log.info({ reqId }, 'calling webhook callback...');
+      const result = await webhookCallback(bot, 'fastify')(req, reply);
+      
+      app.log.info({
+        reqId,
+        res: {
+          statusCode: reply.statusCode,
+        },
+        responseTime: reply.getResponseTime()
+      }, 'request completed');
+      
+      return result;
+    } catch (error: any) {
+      app.log.error({
+        reqId,
+        error: {
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+          code: error.code,
+          statusCode: error.statusCode,
+        }
+      }, 'webhook error');
+      
+
+      reply.status(500).send({ error: 'Internal server error' });
+    }
+  };
+
+  app.post('/telegram/webhook', handleWebhookCustom);
+  
   return app;
 }
 

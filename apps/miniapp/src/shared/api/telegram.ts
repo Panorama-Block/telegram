@@ -14,7 +14,7 @@ export async function verifyTelegramSession(initData: string): Promise<TelegramU
   }
 
   const base = resolveGatewayBase();
-  const url = `${base}/auth/telegram/verify`;
+  const url = `${base}/auth/telegram/init-data`;
 
   const res = await fetch(url, {
     method: 'POST',

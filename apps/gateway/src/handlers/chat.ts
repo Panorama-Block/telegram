@@ -9,7 +9,6 @@ import { StructuredLogger, measureTime } from '../utils/logger.js';
 import { incrementMetric, incrementApiCall } from '../routes/metrics.js';
 import { getLink } from '../repos/links.js';
 import { getSession, saveSession } from '../repos/sessions.js';
-import { AuthClient, decodeJwtExp } from '../clients/authClient.js';
 import { parseEnv } from '../env.js';
 import { saveLastChat } from '../repos/lastChat.js';
 
