@@ -54,57 +54,6 @@ function getAddressFromToken(): string | null {
   }
 }
 
-async function notifyGatewayOfAuthentication(address: string, sessionId: string, authToken: string) {
-  try {
-    console.log('📤 [GATEWAY] Notifying Gateway of authentication...');
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    const telegramUserId = urlParams.get('telegram_user_id');
-    
-    if (!telegramUserId) {
-      console.warn('⚠️ [GATEWAY] No telegram_user_id found in URL parameters');
-      return;
-    }
-    
-    const gatewayBase = window.location.origin.replace(/\/+$/, '');
-    const gatewayUrl = `${gatewayBase}/auth/telegram/verify`;
-    
-    console.log('🌐 [GATEWAY] Gateway URL:', gatewayUrl);
-    console.log('👤 [GATEWAY] Telegram User ID:', telegramUserId);
-    
-    const response = await fetch(gatewayUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        address,
-        sessionKeyAddress: address,
-        loginPayload: JSON.stringify({ 
-          type: 'evm', 
-          domain: 'panoramablock.com', 
-          address, 
-          statement: 'Login to Panorama Block platform', 
-          version: '1' 
-        }),
-        signature: '0x' + '0'.repeat(130),
-        telegram_user_id: telegramUserId,
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ [GATEWAY] Gateway notification failed:', response.status, errorText);
-      return;
-    }
-    
-    const result = await response.json();
-    console.log('✅ [GATEWAY] Gateway notification successful:', result);
-    
-  } catch (err) {
-    console.error('❌ [GATEWAY] Failed to notify Gateway:', err);
-  }
-}
 
 export function SmartWalletConnectPanel() {
   const account = useActiveAccount();
@@ -164,7 +113,7 @@ export function SmartWalletConnectPanel() {
   if (account) {
     return (
       <Card style={{ padding: 16, marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <WalletIcon size={24} />
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>
@@ -186,6 +135,30 @@ export function SmartWalletConnectPanel() {
             Desconectar
           </Button>
         </div>
+        
+        {/* Botão para ir para o swap */}
+        <Button
+          variant="default"
+          size="lg"
+          onClick={() => {
+            // Navegar para a página de swap
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('page', 'swap');
+            window.location.href = currentUrl.toString();
+          }}
+          style={{ 
+            width: '100%', 
+            padding: '12px 20px', 
+            fontSize: 16, 
+            fontWeight: 600,
+            backgroundColor: 'var(--tg-theme-button-color, #2481cc)',
+            color: 'var(--tg-theme-button-text-color, #ffffff)',
+            border: 'none',
+            borderRadius: 12,
+          }}
+        >
+          🚀 Ir para Swap
+        </Button>
       </Card>
     );
   }

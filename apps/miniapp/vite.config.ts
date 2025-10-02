@@ -33,6 +33,13 @@ export default defineConfig(({ mode }) => {
       'process.env': {},
       'import.meta.env.VITE_THIRDWEB_CLIENT_ID': JSON.stringify(env.THIRDWEB_CLIENT_ID || ''),
       'import.meta.env.VITE_EVM_CHAIN_ID': JSON.stringify(env.DEFAULT_CHAIN_ID || '8453'),
+      'import.meta.env.VITE_AI_API_URL': JSON.stringify(env.AI_API_URL),
+      'import.meta.env.VITE_AGENTS_API_BASE': JSON.stringify(env.AGENTS_API_BASE || ''),
+      'window.__ENV__': JSON.stringify({
+        AGENTS_API_BASE: env.AGENTS_API_BASE || '',
+        AGENTS_RESPONSE_MESSAGE_PATH: env.AGENTS_RESPONSE_MESSAGE_PATH || '',
+        AGENTS_DEBUG_SHAPE: env.AGENTS_DEBUG_SHAPE || false,
+      }),
     },
     optimizeDeps: { include: ['buffer'] },
     // plugins: [nodePolyfills()],

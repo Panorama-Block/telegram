@@ -3,6 +3,7 @@ import React from 'react';
 import { DashboardPage } from '../pages/dashboard/Dashboard.page';
 import { AuthPage } from '../pages/auth/AuthPage';
 import { SwapPage } from '../pages/swap/SwapPage';
+import ChatPage from '../pages/chat/ChatPage';
 
 export function App() {
   // Determinar qual página mostrar baseado nos parâmetros da URL
@@ -14,6 +15,8 @@ export function App() {
       return <AuthPage />;
     case 'swap':
       return <SwapPage />;
+    case 'chat':
+      return <ChatPage />;
     case 'dashboard':
     default:
       return <DashboardPage />;

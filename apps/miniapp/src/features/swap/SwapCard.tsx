@@ -572,6 +572,75 @@ export function SwapCard() {
         </div>
       </div>
 
+      {/* Quote Details Section */}
+      {quote && (
+        <div style={{ ...panelStyle, marginTop: 16 }}>
+          <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 600, color: 'var(--tg-theme-text-color, #111)' }}>
+            📊 Quote Details
+          </h3>
+          <div style={{ display: 'grid', gap: 8, fontSize: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--tg-theme-hint-color, #687280)' }}>From Amount:</span>
+              <span style={{ fontWeight: 600 }}>{amount} {fromNet?.tokens.find(t => t.address === fromToken)?.symbol || 'Token'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--tg-theme-hint-color, #687280)' }}>To Amount:</span>
+              <span style={{ fontWeight: 600 }}>{receivePreview}</span>
+            </div>
+            {quote.estimatedReceiveAmount && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--tg-theme-hint-color, #687280)' }}>Estimated Receive:</span>
+                <span style={{ fontWeight: 600 }}>{formatAmountHuman(BigInt(quote.estimatedReceiveAmount), toTokenDecimals)} {toNet?.tokens.find(t => t.address === toToken)?.symbol || toNet?.nativeCurrency?.symbol || 'Token'}</span>
+              </div>
+            )}
+            {quote.originAmount && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--tg-theme-hint-color, #687280)' }}>Origin Amount:</span>
+                <span style={{ fontWeight: 600 }}>{formatAmountHuman(BigInt(quote.originAmount), 18)}</span>
+              </div>
+            )}
+            {quote.destinationAmount && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--tg-theme-hint-color, #687280)' }}>Destination Amount:</span>
+                <span style={{ fontWeight: 600 }}>{formatAmountHuman(BigInt(quote.destinationAmount), toTokenDecimals)}</span>
+              </div>
+            )}
+            {quote.estimatedExecutionTimeMs && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--tg-theme-hint-color, #687280)' }}>Est. Time:</span>
+                <span style={{ fontWeight: 600 }}>{(quote.estimatedExecutionTimeMs / 1000).toFixed(1)}s</span>
+              </div>
+            )}
+            <div style={{ marginTop: 8, padding: 8, background: 'rgba(34, 197, 94, 0.1)', borderRadius: 8, border: '1px solid rgba(34, 197, 94, 0.2)' }}>
+              <p style={{ margin: 0, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+                ✅ Quote válida - Pronto para executar
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Raw Quote Debug (only in debug mode) */}
+      {quote && new URLSearchParams(window.location.search).get('debug') === '1' && (
+        <details style={{ marginTop: 16, fontSize: 13 }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>🔍 Raw Quote Data</summary>
+          <pre
+            style={{
+              marginTop: 8,
+              whiteSpace: 'pre-wrap',
+              background: '#111',
+              color: '#0f0',
+              padding: 8,
+              borderRadius: 8,
+              fontSize: 11,
+              overflow: 'auto',
+            }}
+          >
+            {JSON.stringify(quote, null, 2)}
+          </pre>
+        </details>
+        )}
+
       <div style={{ marginTop: 20 }}>
         <Button
           onClick={handlePrimaryAction}

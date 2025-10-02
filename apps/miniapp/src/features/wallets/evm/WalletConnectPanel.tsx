@@ -38,53 +38,6 @@ function shortAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-async function notifyGatewayOfAuthentication(address: string, sessionId: string, authToken: string) {
-  try {
-    console.log('📤 [GATEWAY] Notifying Gateway of authentication...');
-    
-    // Get telegram_user_id from URL parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    const telegramUserId = urlParams.get('telegram_user_id');
-    
-    if (!telegramUserId) {
-      console.warn('⚠️ [GATEWAY] No telegram_user_id found in URL parameters');
-      return;
-    }
-    
-    // Get gateway base URL
-    const gatewayBase = window.location.origin.replace(/\/+$/, '');
-    const gatewayUrl = `${gatewayBase}/auth/telegram/verify`;
-    
-    console.log('🌐 [GATEWAY] Gateway URL:', gatewayUrl);
-    console.log('👤 [GATEWAY] Telegram User ID:', telegramUserId);
-    
-    const response = await fetch(gatewayUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        address,
-        sessionKeyAddress: address, // Using same address for session key
-        loginPayload: JSON.stringify({ type: 'evm', domain: 'panoramablock.com', address, statement: 'Login to Panorama Block platform', version: '1' }),
-        signature: '0x' + '0'.repeat(130), // Mock signature for now
-        telegram_user_id: telegramUserId,
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ [GATEWAY] Gateway notification failed:', response.status, errorText);
-      return;
-    }
-    
-    const result = await response.json();
-    console.log('✅ [GATEWAY] Gateway notification successful:', result);
-    
-  } catch (err) {
-    console.error('❌ [GATEWAY] Failed to notify Gateway:', err);
-  }
-}
 
 export function WalletConnectPanel() {
   const account = useActiveAccount();
@@ -135,10 +88,13 @@ export function WalletConnectPanel() {
       console.log('📤 [AUTH DEBUG] Enviando endereço para backend:', normalizedAddress);
       console.log('🌐 [AUTH DEBUG] Auth API URL:', (import.meta as any).env?.VITE_AUTH_API_BASE);
       
+      const loginPayload = { address: normalizedAddress };
+      console.log('📤 [AUTH DEBUG] Login payload:', loginPayload);
+      
       const loginResponse = await fetch(`http://localhost:3001/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: normalizedAddress })
+        body: JSON.stringify(loginPayload)
       });
 
       console.log('📡 [AUTH DEBUG] Login response status:', loginResponse.status);
@@ -201,10 +157,17 @@ export function WalletConnectPanel() {
 
       // 3. Verificar assinatura no backend (exatamente como na página wallet)
       console.log('🔍 [AUTH DEBUG] Enviando para verificação...');
+      const verifyPayload = { payload, signature };
+      console.log('📤 [AUTH DEBUG] Verify payload:', {
+        payloadKeys: Object.keys(payload),
+        signatureLength: signature.length,
+        signaturePreview: signature.substring(0, 20) + '...'
+      });
+      
       const verifyResponse = await fetch(`http://localhost:3001/auth/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payload, signature })
+        body: JSON.stringify(verifyPayload)
       });
 
       console.log('📡 [AUTH DEBUG] Verify response status:', verifyResponse.status);
@@ -221,19 +184,27 @@ export function WalletConnectPanel() {
         throw new Error(error.error || 'Erro na verificação');
       }
 
-      const { token: authToken, address, sessionId } = await verifyResponse.json();
+      const verifyResult = await verifyResponse.json();
+      console.log('✅ [AUTH DEBUG] Verify response received:', verifyResult);
+      
+      const { token: authToken, address, sessionId } = verifyResult;
       console.log('✅ [AUTH DEBUG] Token recebido:', authToken ? 'SIM' : 'NÃO');
+      console.log('✅ [AUTH DEBUG] Token preview:', authToken ? authToken.substring(0, 50) + '...' : 'NONE');
       console.log('✅ [AUTH DEBUG] Address:', address);
       console.log('✅ [AUTH DEBUG] SessionId:', sessionId);
       
-      // 4. Salvar token no localStorage (exatamente como na página wallet)
+      // 4. Salvar payload e assinatura no localStorage para uso no Gateway
+      localStorage.setItem('authPayload', JSON.stringify(payload));
+      localStorage.setItem('authSignature', signature);
+      console.log('💾 [AUTH DEBUG] Payload e assinatura salvos no localStorage');
+      
+      // 5. Salvar token no localStorage (exatamente como na página wallet)
       localStorage.setItem('authToken', authToken);
       console.log('💾 [AUTH DEBUG] Token salvo no localStorage');
       setIsAuthenticated(true);
       console.log(`✅ [AUTH DEBUG] Autenticado! Endereço: ${address.slice(0, 6)}...${address.slice(-4)}`);
 
-      // 5. Notificar o Gateway sobre a autenticação bem-sucedida
-      await notifyGatewayOfAuthentication(address, sessionId, authToken);
+      // 5. Autenticação concluída - não precisa notificar Gateway
 
       // 6. Autenticação concluída com sucesso
       console.log('🎉 [AUTH DEBUG] Autenticação concluída! JWT salvo e pronto para uso.');
@@ -327,7 +298,7 @@ export function WalletConnectPanel() {
               {disconnect ? 'Disconnecting…' : 'Disconnect'}
             </Button>
             <Button
-              variant="default"
+              variant="outline"
               size="sm"
               block
               onClick={authenticateWithBackend}
@@ -335,6 +306,29 @@ export function WalletConnectPanel() {
               style={{ marginTop: 8 }}
             >
               🔐 Autenticar
+            </Button>
+            <Button
+              variant="default"
+              size="lg"
+              block
+              onClick={() => {
+                // Navegar para a página de swap
+                const currentUrl = new URL(window.location.href);
+                currentUrl.searchParams.set('page', 'swap');
+                window.location.href = currentUrl.toString();
+              }}
+              style={{ 
+                marginTop: 12,
+                padding: '12px 20px', 
+                fontSize: 16, 
+                fontWeight: 600,
+                backgroundColor: 'var(--tg-theme-button-color, #2481cc)',
+                color: 'var(--tg-theme-button-text-color, #ffffff)',
+                border: 'none',
+                borderRadius: 12,
+              }}
+            >
+              🚀 Ir para Swap
             </Button>
           </div>
         )}

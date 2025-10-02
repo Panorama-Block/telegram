@@ -12,7 +12,6 @@ import { readdir } from 'node:fs/promises';
 import { parseEnv } from './env.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
-import { registerChatHandlers } from './handlers/chat.js';
 import { registerCommandHandlers } from './handlers/commands.js';
 import { registerErrorHandler } from './middleware/errorHandler.js';
 
@@ -187,7 +186,6 @@ export async function createServer(): Promise<FastifyInstance> {
   // Telegram Bot via webhook
   const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
   registerCommandHandlers(bot);
-  registerChatHandlers(bot);
 
   // Inicializar o bot
   await bot.init();
