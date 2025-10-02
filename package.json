@@ -1,14 +1,17 @@
 {
   "name": "telegram-gateway-monorepo",
   "private": true,
-  "packageManager": "pnpm@9.6.0",
+  "packageManager": "npm@10.8.2",
+  "workspaces": [
+    "apps/gateway",
+    "apps/miniapp"
+  ],
   "scripts": {
-    "dev": "pnpm -C apps/gateway dev",
-    "dev:gateway": "pnpm -C apps/gateway dev",
-    "dev:webapp": "pnpm -C apps/webapp dev",
-    "dev:miniapp": "pnpm -C apps/miniapp dev",
-    "build": "pnpm -r run build",
-    "test": "pnpm -r test",
+    "dev": "npm run dev --workspace @zico/telegram-gateway",
+    "dev:gateway": "npm run dev --workspace @zico/telegram-gateway",
+    "dev:miniapp": "npm run dev --workspace miniapp",
+    "build": "npm run --workspaces --if-present build",
+    "test": "npm run --workspaces --if-present test",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -24,4 +27,3 @@
     "vitest": "^2.0.5"
   }
 }
-
