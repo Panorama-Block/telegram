@@ -14,9 +14,7 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@gateway/*": ["apps/gateway/src/*"],
-      "@webapp/*": ["apps/webapp/src/*"]
+      "@gateway/*": ["apps/gateway/src/*"]
     }
   }
 }
-
