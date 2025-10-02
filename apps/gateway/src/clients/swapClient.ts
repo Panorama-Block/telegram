@@ -5,6 +5,7 @@ export interface QuoteRequest {
   fromToken: string;
   toToken: string;
   amount: number;
+  jwtToken?: string;
 }
 
 export interface QuoteResponse {
@@ -25,9 +26,17 @@ export class SwapClient {
   }
   async quote(req: QuoteRequest): Promise<QuoteResponse> {
     this.ensureConfigured();
+    
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    
+    // Add JWT token if provided
+    if (req.jwtToken) {
+      headers['Authorization'] = `Bearer ${req.jwtToken}`;
+    }
+    
     const res = await fetch(`${this.baseUrl}/swap/quote`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify(req),
     });
     if (!res.ok) {

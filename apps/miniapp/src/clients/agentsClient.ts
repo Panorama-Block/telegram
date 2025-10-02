@@ -1,5 +1,3 @@
-import { parseEnv } from '../env.js';
-
 export interface ChatMessage {
   // Generic message object to satisfy API model
   type?: string;
@@ -32,15 +30,19 @@ export class AgentsClient {
   private baseUrl?: string;
   private messagePath?: string;
   private debugShape: boolean = false;
+
   constructor() {
-    const env = parseEnv();
+    // Usar variáveis de ambiente do Gateway via window
+    const env = (window as any).__ENV__ || {};
     this.baseUrl = env.AGENTS_API_BASE;
     this.messagePath = env.AGENTS_RESPONSE_MESSAGE_PATH;
     this.debugShape = !!env.AGENTS_DEBUG_SHAPE;
   }
+
   private ensureConfigured() {
     if (!this.baseUrl) throw new Error('AGENTS_API_BASE não configurado');
   }
+
   private extractByPath(obj: any, path?: string): unknown {
     if (!obj || !path) return undefined;
     // supports dot notation and [index], with [-1] as last element
@@ -63,9 +65,11 @@ export class AgentsClient {
     }
     return cur;
   }
+
   private static isString(x: unknown): x is string {
     return typeof x === 'string';
   }
+
   private static joinContent(content: unknown): string {
     // content pode ser string, array de blocos, objetos etc.
     if (typeof content === 'string') return content;
@@ -91,6 +95,7 @@ export class AgentsClient {
     }
     return '';
   }
+
   private static coerceResponse(data: any): ChatResponse {
     // Tenta diversas formas comuns de retorno
     let message = '';
@@ -132,43 +137,68 @@ export class AgentsClient {
 
     return { message: message ?? '', requires_action, actions } as ChatResponse;
   }
+
   async chat(req: ChatRequest, opts: ChatOptions = {}): Promise<ChatResponse> {
     this.ensureConfigured();
     const headers: Record<string, string> = { 'content-type': 'application/json', ...(opts.headers ?? {}) };
     if (opts.jwt) headers['authorization'] = `Bearer ${opts.jwt}`;
+    
     const outgoingMessage = typeof req.message === 'string'
       ? { role: 'user', content: req.message }
       : req.message.role
       ? req.message
       : { role: 'user', ...req.message };
-    const body = { ...req, message: outgoingMessage } as any;
+    
+    // Estrutura exata esperada pelo backend zico_agents
+    const body = {
+      message: outgoingMessage,
+      prompt: outgoingMessage, // Usar o mesmo objeto message como prompt
+      chain_id: req.chain_id || 'default',
+      wallet_address: req.wallet_address || 'default',
+      conversation_id: req.conversation_id || 'default',
+      user_id: req.user_id || 'anonymous'
+    };
+
+    console.log('🤖 [AGENTS CLIENT] Sending request:', {
+      url: `${this.baseUrl}/chat`,
+      body: JSON.stringify(body, null, 2),
+      headers: Object.keys(headers)
+    });
+    
     // Apply a timeout to avoid long hangs
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 15000);
+    
     const res = await fetch(`${this.baseUrl}/chat`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+    
     clearTimeout(t);
+    
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`Agents chat falhou: ${res.status} ${text}`);
     }
+    
     const data = await res.json();
+    
     // Preferred extraction via path if configured
     let extractedMessage: string | undefined;
     if (this.messagePath) {
       const byPath = this.extractByPath(data, this.messagePath);
       extractedMessage = AgentsClient.joinContent(byPath);
     }
+    
     const coerced = AgentsClient.coerceResponse(data);
     const final: ChatResponse = {
       message: (extractedMessage && extractedMessage.trim()) ? extractedMessage : coerced.message,
       requires_action: coerced.requires_action,
       actions: coerced.actions,
     };
+    
     if (this.debugShape && !final.message) {
       // Log leve de formato para diagnóstico (sem conteúdo)
       const root: any = data || {};
@@ -178,6 +208,7 @@ export class AgentsClient {
       // eslint-disable-next-line no-console
       console.info(JSON.stringify({ level: 'info', message: 'agents_response_shape', keys, hasMessages, choicesLen }));
     }
+    
     return final;
   }
 }

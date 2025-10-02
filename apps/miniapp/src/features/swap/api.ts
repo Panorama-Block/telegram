@@ -35,10 +35,18 @@ function baseUrl(): string {
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const url = `${baseUrl()}${path}`;
+  
+  const authToken = localStorage.getItem('authToken');
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     });
     if (!res.ok) {

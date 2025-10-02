@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 
 function pickReadableColor(theme: any): string {
@@ -11,7 +12,7 @@ function pickReadableColor(theme: any): string {
 import { WalletConnectPanel } from '../../features/wallets/evm/WalletConnectPanel';
 import { AppContainer, Spinner } from '../../shared/ui';
 
-export function DashboardPage() {
+export function AuthPage() {
   const debugMode = useMemo(() => {
     if (typeof window === 'undefined') return false;
     return new URLSearchParams(window.location.search).get('debug') === 'true';
@@ -26,10 +27,38 @@ export function DashboardPage() {
     <AppContainer>
       <div style={{ padding: 16 }}>
         <h1 style={{ color: headingColor, marginBottom: 24, fontSize: 24, fontWeight: 600 }}>
-          Dashboard
+          Connect Wallet
         </h1>
         
         <WalletConnectPanel />
+
+        {/* Chat Button */}
+        <div style={{ marginTop: 24 }}>
+          <button
+            onClick={() => {
+              const url = new URL(window.location.href);
+              url.searchParams.set('page', 'chat');
+              window.location.href = url.toString();
+            }}
+            style={{
+              width: '100%',
+              padding: '16px',
+              backgroundColor: 'var(--tg-theme-button-color, #007aff)',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '12px',
+              fontSize: 16,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
+          >
+            🤖 Chat com IA
+          </button>
+        </div>
 
         {debugMode && (
           <div style={{ marginTop: 24, padding: 16, backgroundColor: '#f3f4f6', borderRadius: 8 }}>

@@ -8,6 +8,7 @@ import {
   type Address,
   type Hex,
 } from 'thirdweb';
+import { ConnectButton } from 'thirdweb/react';
 
 import { Button, Card, Input, Label, Select } from '../../shared/ui';
 import { networks, type Network } from './tokens';
@@ -91,7 +92,7 @@ function formatForDebug(value: unknown): string {
   }
 }
 
-function resolveUserFacingError(err: unknown): string {
+function resolveUserFacingError(err: unknown, setShowFundWallet?: (show: boolean) => void): string {
   const message = (() => {
     if (!err) return 'Erro desconhecido';
     if (err instanceof Error) return err.message;
@@ -105,10 +106,16 @@ function resolveUserFacingError(err: unknown): string {
 
   const lower = message.toLowerCase();
   if (lower.includes('insufficient funds') || lower.includes('have 0 want')) {
-    return 'Saldo insuficiente para cobrir o valor da transação e as taxas de rede. Ajuste o montante ou adicione fundos.';
+    if (setShowFundWallet) {
+      setShowFundWallet(true);
+    }
+    return 'Saldo insuficiente para cobrir o valor da transação e as taxas de rede.';
   }
   if (lower.includes('gas required exceeds allowance')) {
-    return 'A transação exige mais gas do que está disponível. Tente reduzir o valor ou aumente seu saldo.';
+    if (setShowFundWallet) {
+      setShowFundWallet(true);
+    }
+    return 'A transação exige mais gas do que está disponível.';
   }
   if (lower.includes('user rejected') || lower.includes('user denied')) {
     return 'Assinatura recusada pelo usuário.';
@@ -130,11 +137,33 @@ const selectGrid: React.CSSProperties = {
   gap: 12,
 };
 
+// Função para extrair endereço do JWT
+function getAddressFromToken(): string | null {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) return null;
+    
+    // JWT tem formato: header.payload.signature
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    
+    // Decodificar o payload (base64url)
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.address || null;
+  } catch {
+    return null;
+  }
+}
+
 export function SwapCard() {
   const account = useActiveAccount();
   const clientId = (import.meta as any).env?.VITE_THIRDWEB_CLIENT_ID as string | undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
   const supportedChains = useMemo(() => networks.map((n) => n.chainId), []);
+  
+  // Obter endereço do token JWT se não houver conta ativa
+  const addressFromToken = useMemo(() => getAddressFromToken(), []);
+  const effectiveAddress = account?.address || addressFromToken;
 
   const defaultFromChain = 8453; // Base
   const defaultToChain = 8453;
@@ -158,6 +187,7 @@ export function SwapCard() {
   const [executing, setExecuting] = useState(false);
   const [txHashes, setTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showFundWallet, setShowFundWallet] = useState(false);
   const [debugInfo, setDebugInfo] = useState<{
     context: 'quote' | 'prepare';
     url?: string;
@@ -241,7 +271,7 @@ export function SwapCard() {
     return () => {
       clearTimeout(timer);
     };
-  }, [canSubmit, fromChainId, toChainId, fromToken, toToken, amount, account?.address]);
+  }, [canSubmit, fromChainId, toChainId, fromToken, toToken, amount, effectiveAddress]);
 
   async function performQuote(requestId: number) {
     if (!canSubmit) return;
@@ -255,7 +285,7 @@ export function SwapCard() {
         fromToken: normalizeToApi(fromToken),
         toToken: normalizeToApi(toToken),
         amount: amount.trim(),
-        smartAccountAddress: account?.address,
+        smartAccountAddress: effectiveAddress,
       };
       const res = await swapApi.quote(body);
       if (quoteRequestRef.current !== requestId) {
@@ -277,7 +307,7 @@ export function SwapCard() {
           causeMessage: e.cause instanceof Error ? e.cause.message : undefined,
         });
       }
-      setError(resolveUserFacingError(e));
+      setError(resolveUserFacingError(e, setShowFundWallet));
     } finally {
       if (quoteRequestRef.current === requestId) {
         setQuoting(false);
@@ -300,7 +330,7 @@ export function SwapCard() {
   async function onSwap() {
     setError(null);
     setTxHashes([]);
-    if (!account?.address) {
+    if (!effectiveAddress) {
       setError('Connect a wallet first.');
       return;
     }
@@ -321,7 +351,7 @@ export function SwapCard() {
         fromToken: normalizeToApi(fromToken),
         toToken: normalizeToApi(toToken),
         amount: wei.toString(),
-        sender: account.address,
+        sender: effectiveAddress,
       });
       const seq = flattenPrepared(prep.prepared);
       if (!seq.length) throw new Error('No transactions returned by prepare');
@@ -340,6 +370,11 @@ export function SwapCard() {
           data: t.data as Hex,
           value: t.value ? BigInt(t.value as any) : 0n,
         });
+        // Para a página de swap, precisamos de uma conta ativa do Thirdweb
+        // Se não houver conta ativa, mostrar erro
+        if (!account) {
+          throw new Error('Wallet connection required for transaction execution. Please connect your wallet first.');
+        }
         const sent = await sendTransaction({ account, transaction: tx });
         hashes.push({ hash: sent.transactionHash, chainId: t.chainId });
       }
@@ -355,7 +390,7 @@ export function SwapCard() {
           causeMessage: e.cause instanceof Error ? e.cause.message : undefined,
         });
       }
-      setError(resolveUserFacingError(e));
+      setError(resolveUserFacingError(e, setShowFundWallet));
     } finally {
       setPreparing(false);
       setExecuting(false);
@@ -537,6 +572,75 @@ export function SwapCard() {
         </div>
       </div>
 
+      {/* Quote Details Section */}
+      {quote && (
+        <div style={{ ...panelStyle, marginTop: 16 }}>
+          <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 600, color: 'var(--tg-theme-text-color, #111)' }}>
+            📊 Quote Details
+          </h3>
+          <div style={{ display: 'grid', gap: 8, fontSize: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--tg-theme-hint-color, #687280)' }}>From Amount:</span>
+              <span style={{ fontWeight: 600 }}>{amount} {fromNet?.tokens.find(t => t.address === fromToken)?.symbol || 'Token'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--tg-theme-hint-color, #687280)' }}>To Amount:</span>
+              <span style={{ fontWeight: 600 }}>{receivePreview}</span>
+            </div>
+            {quote.estimatedReceiveAmount && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--tg-theme-hint-color, #687280)' }}>Estimated Receive:</span>
+                <span style={{ fontWeight: 600 }}>{formatAmountHuman(BigInt(quote.estimatedReceiveAmount), toTokenDecimals)} {toNet?.tokens.find(t => t.address === toToken)?.symbol || toNet?.nativeCurrency?.symbol || 'Token'}</span>
+              </div>
+            )}
+            {quote.originAmount && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--tg-theme-hint-color, #687280)' }}>Origin Amount:</span>
+                <span style={{ fontWeight: 600 }}>{formatAmountHuman(BigInt(quote.originAmount), 18)}</span>
+              </div>
+            )}
+            {quote.destinationAmount && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--tg-theme-hint-color, #687280)' }}>Destination Amount:</span>
+                <span style={{ fontWeight: 600 }}>{formatAmountHuman(BigInt(quote.destinationAmount), toTokenDecimals)}</span>
+              </div>
+            )}
+            {quote.estimatedExecutionTimeMs && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--tg-theme-hint-color, #687280)' }}>Est. Time:</span>
+                <span style={{ fontWeight: 600 }}>{(quote.estimatedExecutionTimeMs / 1000).toFixed(1)}s</span>
+              </div>
+            )}
+            <div style={{ marginTop: 8, padding: 8, background: 'rgba(34, 197, 94, 0.1)', borderRadius: 8, border: '1px solid rgba(34, 197, 94, 0.2)' }}>
+              <p style={{ margin: 0, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+                ✅ Quote válida - Pronto para executar
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Raw Quote Debug (only in debug mode) */}
+      {quote && new URLSearchParams(window.location.search).get('debug') === '1' && (
+        <details style={{ marginTop: 16, fontSize: 13 }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>🔍 Raw Quote Data</summary>
+          <pre
+            style={{
+              marginTop: 8,
+              whiteSpace: 'pre-wrap',
+              background: '#111',
+              color: '#0f0',
+              padding: 8,
+              borderRadius: 8,
+              fontSize: 11,
+              overflow: 'auto',
+            }}
+          >
+            {JSON.stringify(quote, null, 2)}
+          </pre>
+        </details>
+        )}
+
       <div style={{ marginTop: 20 }}>
         <Button
           onClick={handlePrimaryAction}
@@ -602,7 +706,7 @@ export function SwapCard() {
             {txHashes.map(({ hash, chainId }) => (
               <a
                 key={hash}
-                href={explorerTxUrl(chainId, hash)}
+                href={explorerTxUrl(chainId, hash) || ''}
                 target="_blank"
                 rel="noreferrer"
                 style={{
@@ -614,6 +718,47 @@ export function SwapCard() {
                 {hash}
               </a>
             ))}
+          </div>
+        </div>
+      )}
+
+      {showFundWallet && (
+        <div style={{ marginTop: 16, padding: 16, background: 'rgba(255, 193, 7, 0.1)', borderRadius: 12, border: '1px solid rgba(255, 193, 7, 0.3)' }}>
+          <h4 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 600, color: '#ff6b35' }}>
+            💰 Adicionar Fundos
+          </h4>
+          <p style={{ margin: '0 0 12px', fontSize: 14, color: 'var(--tg-theme-text-color, #333)' }}>
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <ConnectButton
+              client={client!}
+              connectModal={{
+                size: 'compact',
+                title: 'Adicionar Fundos',
+                showThirdwebBranding: false,
+              }}
+              connectButton={{
+                label: '💰 Adicionar ETH',
+                style: {
+                  width: '100%',
+                  padding: '12px 20px',
+                  borderRadius: 12,
+                  fontWeight: 600,
+                  fontSize: 14,
+                  background: '#ff6b35',
+                  color: '#fff',
+                },
+              }}
+              theme="dark"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowFundWallet(false)}
+              style={{ width: '100%' }}
+            >
+              Fechar
+            </Button>
           </div>
         </div>
       )}
