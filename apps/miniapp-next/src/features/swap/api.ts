@@ -25,9 +25,9 @@ export class SwapApiError extends Error {
 const UNKNOWN_ERROR = 'Swap API error';
 
 function baseUrl(): string {
-  const direct = (import.meta as any).env?.VITE_SWAP_API_BASE as string | undefined;
+  const direct = process.env.VITE_SWAP_API_BASE as string | undefined;
   if (direct && direct.length > 0) return direct.replace(/\/+$/, '');
-  const gw = (import.meta as any).env?.VITE_GATEWAY_BASE as string | undefined;
+  const gw = process.env.VITE_GATEWAY_BASE as string | undefined;
   if (gw && gw.length > 0) return `${gw.replace(/\/+$/, '')}/swap`;
   // fallback to same-origin /swap
   return '/swap';
