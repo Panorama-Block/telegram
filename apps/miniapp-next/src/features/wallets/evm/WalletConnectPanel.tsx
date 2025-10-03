@@ -87,7 +87,7 @@ export function WalletConnectPanel() {
       // 1. Obter payload do backend (exatamente como na página wallet)
       const normalizedAddress = account.address;
       console.log('📤 [AUTH DEBUG] Enviando endereço para backend:', normalizedAddress);
-      console.log('🌐 [AUTH DEBUG] Auth API URL:', (import.meta as any).env?.VITE_AUTH_API_BASE);
+      console.log('🌐 [AUTH DEBUG] Auth API URL:', process.env.VITE_AUTH_API_BASE);
       
       const loginPayload = { address: normalizedAddress };
       console.log('📤 [AUTH DEBUG] Login payload:', loginPayload);
