@@ -63,7 +63,7 @@ export function SmartWalletConnectPanel() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const clientId = (import.meta as any).env?.VITE_THIRDWEB_CLIENT_ID as string | undefined;
+  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID as string | undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
   // Verificar se já está autenticado via JWT

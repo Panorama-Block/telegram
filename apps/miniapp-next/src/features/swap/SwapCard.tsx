@@ -157,7 +157,7 @@ function getAddressFromToken(): string | null {
 
 export function SwapCard() {
   const account = useActiveAccount();
-  const clientId = (import.meta as any).env?.VITE_THIRDWEB_CLIENT_ID as string | undefined;
+  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID as string | undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
   const supportedChains = useMemo(() => networks.map((n) => n.chainId), []);
   
