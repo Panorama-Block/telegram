@@ -49,7 +49,7 @@ export function WalletConnectPanel() {
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
   const client = useMemo(() => {
-    const clientId = (import.meta as any).env?.VITE_THIRDWEB_CLIENT_ID as string | undefined;
+    const clientId = process.env.VITE_THIRDWEB_CLIENT_ID as string | undefined;
     if (!clientId) {
       return null;
     }

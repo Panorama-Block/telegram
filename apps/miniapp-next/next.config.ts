@@ -1,4 +1,8 @@
 import type { NextConfig } from "next";
+import { config } from 'dotenv';
+
+// Carregar variáveis de ambiente do arquivo .env
+config();
 
 const nextConfig: NextConfig = {
   basePath: '/miniapp',
