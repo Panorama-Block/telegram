@@ -91,62 +91,37 @@ export async function createServer(): Promise<FastifyInstance> {
     return reply.send(body);
   });
 
-  // Serve Miniapp (if built dist exists) at /miniapp/
-  try {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-    const candidates = [
-      join(__dirname, '../../miniapp/dist'),       // tsx dev (src -> apps/miniapp/dist)
-      join(__dirname, '../../../miniapp/dist'),     // compiled (dist/src -> apps/miniapp/dist)
-      join(process.cwd(), '../miniapp/dist'),       // cwd = apps/gateway
-      join(process.cwd(), '../../apps/miniapp/dist')// cwd = repo root
-    ];
-    const miniappDist = candidates.find((p) => existsSync(p));
-      // Serve under /miniapp/ (preferred)
-      await app.register(fastifyStatic, {
-        root: miniappDist || '',
-        prefix: '/miniapp/',
-        index: 'index.html',
-        decorateReply: true,
-        // During debugging, avoid stale caches entirely
-        cacheControl: false,
-        etag: false,
-        lastModified: false,
-        setHeaders(res, path) {
-          // Aggressive no-store to defeat intermediary caches while we debug
-          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-          res.setHeader('Pragma', 'no-cache');
-          res.setHeader('Expires', '0');
-          // Keep correct types for JS modules
-          if (path.endsWith('.js')) {
-            res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
-          }
-        },
+  // Proxy to Next.js miniapp server
+  const NEXTJS_PORT = process.env.NEXTJS_PORT || '3000';
+  const NEXTJS_URL = `http://localhost:${NEXTJS_PORT}`;
+
+  app.all('/miniapp', async (req, reply) => {
+    return reply.redirect(302, '/miniapp/');
+  });
+
+  app.all('/miniapp/*', async (req, reply) => {
+    try {
+      const targetUrl = `${NEXTJS_URL}${req.url}`;
+      const response = await fetch(targetUrl, {
+        method: req.method,
+        headers: req.headers as any,
+        body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
       });
-      // Note: fastify-static already registers GET /miniapp/* to serve files.
-      // Do not add another GET /miniapp/* here to avoid FST_ERR_DUPLICATED_ROUTE.
-      const files = await readdir(miniappDist || '');
-      app.log.info({ miniappDist, files }, 'Miniapp dist mounted');
-      // Redirect /miniapp to /miniapp/ to ensure proper static file serving
-      app.get('/miniapp', async (req, reply) => {
-        const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-        reply.redirect(302, `/miniapp/${query}`);
-      });
-      
-      // Backward-compat: redirect /webapp/* to /miniapp/*
-      app.get('/webapp', async (_req, reply) => {
-        reply.redirect(302, '/miniapp/');
-      });
-      app.get('/webapp/*', async (req, reply) => {
-        const rest = (req.params as any)['*'] ?? '';
-        const target = `/miniapp/${rest}`.replace(/\/+/g, '/');
-        reply.redirect(302, target);
-      });
-      app.log.info({ miniappDist }, 'Miniapp static serving enabled at /miniapp/ (with /webapp redirect)');
-    
-  } catch (e) {
-    app.log.warn({ err: e }, 'Failed to enable miniapp static serving');
-  }
+
+      const contentType = response.headers.get('content-type');
+      if (contentType) {
+        reply.header('content-type', contentType);
+      }
+
+      reply.code(response.status);
+      return reply.send(await response.text());
+    } catch (err) {
+      app.log.error({ err, url: req.url }, 'Failed to proxy to Next.js');
+      return reply.code(502).send({ error: 'Failed to connect to miniapp' });
+    }
+  });
+
+  app.log.info({ NEXTJS_URL }, 'Miniapp proxying to Next.js server');
 
   // Debug: log miniapp requests and expose a probe
   app.addHook('onRequest', async (req) => {
@@ -158,10 +133,10 @@ export async function createServer(): Promise<FastifyInstance> {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
     const paths = [
-      join(__dirname, '../../miniapp/dist'),
-      join(__dirname, '../../../miniapp/dist'),
-      join(process.cwd(), '../miniapp/dist'),
-      join(process.cwd(), '../../apps/miniapp/dist'),
+      join(__dirname, '../../miniapp-next/.next/static'),
+      join(__dirname, '../../../miniapp-next/.next/static'),
+      join(process.cwd(), '../miniapp-next/.next/static'),
+      join(process.cwd(), '../../apps/miniapp-next/.next/static'),
     ];
     const report = paths.map((p) => ({ path: p, exists: existsSync(p) }));
     return {

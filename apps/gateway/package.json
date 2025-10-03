@@ -23,10 +23,10 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.2",
-    "ioredis-mock": "^8.9.0",
+    "ioredis-mock": "^4.7.0",
     "pino-pretty": "^11.3.0",
+    "tsx": "^4.15.7",
     "typescript": "^5.5.2",
-    "vitest": "^2.0.5",
-    "tsx": "^4.15.7"
+    "vitest": "^3.2.4"
   }
 }
