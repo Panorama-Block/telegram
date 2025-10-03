@@ -9,7 +9,7 @@ function pickReadableColor(theme: any): string {
   return '#0f172a';
 }
 
-import { SmartWalletConnectPanel } from '../../features/wallets/evm/SmartWalletConnectPanel';
+import { AuthGuard } from '../../features/wallets/evm/AuthGuard';
 import { AppContainer, Spinner } from '../../shared/ui';
 
 const SwapCardLazy = React.lazy(() =>
@@ -56,7 +56,7 @@ export default function SwapPage() {
           </button>
         </div>
 
-        <SmartWalletConnectPanel />
+        <AuthGuard />
 
         <React.Suspense
           fallback={

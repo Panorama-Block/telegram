@@ -39,8 +39,10 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   const authToken = localStorage.getItem('authToken');
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   
+  
   if (authToken) {
     headers['Authorization'] = `Bearer ${authToken}`;
+  } else {
   }
   
   try {
@@ -55,7 +57,8 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
       try {
         parsed = await res.json();
         msg = (parsed as any)?.message || (parsed as any)?.error || msg;
-      } catch {}
+      } catch (e) {
+      }
       throw new SwapApiError(`${UNKNOWN_ERROR}: ${msg}`, {
         url,
         payload: body,

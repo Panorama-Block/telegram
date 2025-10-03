@@ -143,14 +143,14 @@ function getAddressFromToken(): string | null {
     const token = localStorage.getItem('authToken');
     if (!token) return null;
     
-    // JWT tem formato: header.payload.signature
     const parts = token.split('.');
     if (parts.length !== 3) return null;
     
-    // Decodificar o payload (base64url)
     const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return payload.address || null;
-  } catch {
+    
+    return payload.sub || payload.address || null;
+  } catch (error) {
+    console.error('🔍 [JWT DEBUG] Error parsing JWT:', error);
     return null;
   }
 }
@@ -161,9 +161,10 @@ export function SwapCard() {
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
   const supportedChains = useMemo(() => networks.map((n) => n.chainId), []);
   
-  // Obter endereço do token JWT se não houver conta ativa
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
-  const effectiveAddress = account?.address || addressFromToken;
+  const userAddress = localStorage.getItem('userAddress');
+  const effectiveAddress = account?.address || addressFromToken || userAddress;
+  
 
   const defaultFromChain = 8453; // Base
   const defaultToChain = 8453;
@@ -279,13 +280,17 @@ export function SwapCard() {
     setDebugInfo(null);
     try {
       setQuoting(true);
+      
+      const userAddress = localStorage.getItem('userAddress');
+      const smartAccountAddress = effectiveAddress || userAddress || '';
+      
       const body = {
         fromChainId,
         toChainId,
         fromToken: normalizeToApi(fromToken),
         toToken: normalizeToApi(toToken),
         amount: amount.trim(),
-        smartAccountAddress: effectiveAddress,
+        smartAccountAddress,
       };
       const res = await swapApi.quote(body);
       if (quoteRequestRef.current !== requestId) {
@@ -331,7 +336,7 @@ export function SwapCard() {
     setError(null);
     setTxHashes([]);
     if (!effectiveAddress) {
-      setError('Connect a wallet first.');
+      setError('Authentication required. Please ensure you are logged in.');
       return;
     }
     if (!clientId || !client) {
@@ -370,10 +375,9 @@ export function SwapCard() {
           data: t.data as Hex,
           value: t.value ? BigInt(t.value as any) : 0n,
         });
-        // Para a página de swap, precisamos de uma conta ativa do Thirdweb
-        // Se não houver conta ativa, mostrar erro
+        
         if (!account) {
-          throw new Error('Wallet connection required for transaction execution. Please connect your wallet first.');
+          throw new Error('To execute the swap, you need to connect your wallet. Please go to the dashboard and connect your wallet first.');
         }
         const sent = await sendTransaction({ account, transaction: tx });
         hashes.push({ hash: sent.transactionHash, chainId: t.chainId });
@@ -430,15 +434,24 @@ export function SwapCard() {
 
   async function handlePrimaryAction() {
     if (!quote) return;
+    
+    if (needsWalletConnection) {
+      return;
+    }
+    
     await onSwap();
   }
 
+  const needsWalletConnection = quote && !account;
+  
   const primaryLabel = quote
     ? executing
       ? 'Executing swap…'
       : preparing
         ? 'Preparing transactions…'
-        : 'Swap Tokens'
+        : needsWalletConnection
+          ? 'Connect Wallet to Swap'
+          : 'Swap Tokens'
     : quoting
       ? 'Calculando cotação…'
       : 'Aguardando cotação…';
@@ -642,18 +655,29 @@ export function SwapCard() {
         )}
 
       <div style={{ marginTop: 20 }}>
-        <Button
-          onClick={handlePrimaryAction}
-          variant={primaryVariant}
-          size="lg"
-          block
-          disabled={!canSubmit || quoting || preparing || executing}
-        >
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <ArrowDownIcon />
-            {primaryLabel}
-          </span>
-        </Button>
+        {needsWalletConnection ? (
+          <ConnectButton
+            client={client!}
+            connectModal={{
+              size: 'compact',
+              title: 'Connect Wallet to Execute Swap',
+              showThirdwebBranding: false,
+            }}
+          />
+        ) : (
+          <Button
+            onClick={handlePrimaryAction}
+            variant={primaryVariant}
+            size="lg"
+            block
+            disabled={!canSubmit || quoting || preparing || executing}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <ArrowDownIcon />
+              {primaryLabel}
+            </span>
+          </Button>
+        )}
       </div>
 
       {error && (
