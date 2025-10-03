@@ -39,7 +39,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
         // Create providers component
         const ProvidersComponent = ({ children }: { children: React.ReactNode }) => (
           <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
-            <thirdwebReact.ThirdwebProvider clientId={thirdwebClientId}>
+            <thirdwebReact.ThirdwebProvider>
               {children}
             </thirdwebReact.ThirdwebProvider>
           </tonConnect.TonConnectUIProvider>

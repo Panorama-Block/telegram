@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AgentsClient, ChatRequest, ChatResponse } from '../../clients/agentsClient';
+import { AuthGuard } from '../../features/wallets/evm/AuthGuard';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -169,6 +170,7 @@ export default function ChatPage() {
         color: pickReadableColor(theme),
       }}
     >
+      <AuthGuard />
       {/* Header */}
       <div
         style={{

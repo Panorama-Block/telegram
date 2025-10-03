@@ -32,11 +32,10 @@ export class AgentsClient {
   private debugShape: boolean = false;
 
   constructor() {
-    // Usar variáveis de ambiente do Gateway via window
-    const env = (window as any).__ENV__ || {};
-    this.baseUrl = env.AGENTS_API_BASE;
-    this.messagePath = env.AGENTS_RESPONSE_MESSAGE_PATH;
-    this.debugShape = !!env.AGENTS_DEBUG_SHAPE;
+    // Usar variáveis de ambiente do Next.js
+    this.baseUrl = process.env.AGENTS_API_BASE;
+    this.messagePath = process.env.AGENTS_RESPONSE_MESSAGE_PATH;
+    this.debugShape = !!process.env.AGENTS_DEBUG_SHAPE;
   }
 
   private ensureConfigured() {
@@ -158,12 +157,6 @@ export class AgentsClient {
       conversation_id: req.conversation_id || 'default',
       user_id: req.user_id || 'anonymous'
     };
-
-    console.log('🤖 [AGENTS CLIENT] Sending request:', {
-      url: `${this.baseUrl}/chat`,
-      body: JSON.stringify(body, null, 2),
-      headers: Object.keys(headers)
-    });
     
     // Apply a timeout to avoid long hangs
     const controller = new AbortController();

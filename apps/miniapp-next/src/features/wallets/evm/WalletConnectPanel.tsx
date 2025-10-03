@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { ConnectButton, useActiveAccount, useActiveWallet, useDisconnect } from 'thirdweb/react';
 import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
@@ -47,6 +47,8 @@ export function WalletConnectPanel() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [authMessage, setAuthMessage] = useState('');
+  const [jwtToken, setJwtToken] = useState('');
 
   const client = useMemo(() => {
     const clientId = process.env.VITE_THIRDWEB_CLIENT_ID as string | undefined;
@@ -69,28 +71,27 @@ export function WalletConnectPanel() {
     [],
   );
 
-  // Remover autenticação automática - só autenticar quando clicar no botão
+  // Autenticação automática quando a conta estiver conectada
+  useEffect(() => {
+    if (account && client && !isAuthenticated && !isAuthenticating) {
+      authenticateWithBackend();
+    }
+  }, [account, client, isAuthenticated, isAuthenticating, authenticateWithBackend]);
 
   async function authenticateWithBackend() {
-    console.log('🔐 [AUTH DEBUG] authenticateWithBackend called');
     
     if (!account || !client) {
-      console.log('❌ [AUTH DEBUG] Missing account or client:', { account: !!account, client: !!client });
       return;
     }
 
     try {
-      console.log('🔄 [AUTH DEBUG] Setting isAuthenticating to true');
       setIsAuthenticating(true);
       setError(null);
 
       // 1. Obter payload do backend (exatamente como na página wallet)
       const normalizedAddress = account.address;
-      console.log('📤 [AUTH DEBUG] Enviando endereço para backend:', normalizedAddress);
-      console.log('🌐 [AUTH DEBUG] Auth API URL:', process.env.VITE_AUTH_API_BASE);
       
       const loginPayload = { address: normalizedAddress };
-      console.log('📤 [AUTH DEBUG] Login payload:', loginPayload);
       
       const loginResponse = await fetch(`http://localhost:3001/auth/login`, {
         method: 'POST',
@@ -98,12 +99,9 @@ export function WalletConnectPanel() {
         body: JSON.stringify(loginPayload)
       });
 
-      console.log('📡 [AUTH DEBUG] Login response status:', loginResponse.status);
-      console.log('📡 [AUTH DEBUG] Login response headers:', Object.fromEntries(loginResponse.headers.entries()));
 
       if (!loginResponse.ok) {
         const errorText = await loginResponse.text();
-        console.log('❌ [AUTH DEBUG] Login error response:', errorText);
         let error;
         try {
           error = JSON.parse(errorText);
@@ -114,56 +112,61 @@ export function WalletConnectPanel() {
       }
 
       const { payload } = await loginResponse.json();
-      console.log('✅ [AUTH DEBUG] Payload recebido:', payload);
-      console.log('🔍 [AUTH DEBUG] Account address:', account.address);
-      console.log('🔍 [AUTH DEBUG] Payload address:', payload.address);
 
       // Verificar se os endereços batem
       if (account.address.toLowerCase() !== payload.address.toLowerCase()) {
         throw new Error(`Endereço da wallet (${account.address}) não confere com o payload (${payload.address})`);
       }
 
-      // 2. Assinar a mensagem com a wallet usando signLoginPayload (exatamente como na página wallet)
+      // 2. Assinar payload usando Thirdweb como intermediário (como no swap)
       let signature;
       
-      console.log('✍️ [AUTH DEBUG] Account address para assinatura:', account.address);
-      console.log('✍️ [AUTH DEBUG] Payload address:', payload.address);
 
       try {
-        // Usar signLoginPayload do Thirdweb v5 (mais confiável)
-        console.log('🔐 [AUTH DEBUG] Usando signLoginPayload do Thirdweb v5...');
+        // Usar signLoginPayload da Thirdweb (método correto para autenticação)
         const signResult = await signLoginPayload({
           account: account,
           payload: payload
         });
-        console.log('✅ [AUTH DEBUG] Resultado da assinatura:', signResult);
         
-        // signLoginPayload retorna um objeto, precisamos extrair a signature
+        // Extrair signature do resultado
         if (typeof signResult === 'string') {
           signature = signResult;
-          console.log('📝 [AUTH DEBUG] Assinatura é string:', signature);
         } else if (signResult && signResult.signature) {
           signature = signResult.signature;
-          console.log('📝 [AUTH DEBUG] Assinatura extraída do objeto:', signature);
+        } else if (signResult && typeof signResult === 'object') {
+          // Tentar diferentes propriedades possíveis
+          const possibleSignature = signResult.signature || (signResult as any).sig || (signResult as any).signatureHex;
+          if (possibleSignature) {
+            signature = possibleSignature;
+          } else {
+            throw new Error('Formato de assinatura inválido - nenhuma assinatura encontrada');
+          }
         } else {
-          console.log('❌ [AUTH DEBUG] Formato de assinatura inválido:', signResult);
           throw new Error('Formato de assinatura inválido');
         }
         
-        console.log('✅ [AUTH DEBUG] Assinatura final:', signature);
       } catch (error) {
-        console.error('❌ [AUTH DEBUG] Erro na assinatura com signLoginPayload:', error);
-        throw new Error(`Erro na assinatura: ${error}`);
+        console.error('❌ [AUTH DEBUG] Erro na assinatura via Thirdweb:', error);
+        
+        // Fallback para método direto se signLoginPayload falhar
+        try {
+          
+          // Para In-App Wallet, pode ser necessário usar o método de assinatura direto
+          if (activeWallet && typeof (activeWallet as any).signMessage === 'function') {
+            const messageToSign = JSON.stringify(payload);
+            signature = await (activeWallet as any).signMessage({ message: messageToSign });
+          } else {
+            throw new Error('Método de assinatura não disponível');
+          }
+        } catch (fallbackError) {
+          console.error('❌ [AUTH DEBUG] Fallback também falhou:', fallbackError);
+          throw new Error(`Erro na assinatura: ${error}. Fallback: ${fallbackError}`);
+        }
       }
 
       // 3. Verificar assinatura no backend (exatamente como na página wallet)
-      console.log('🔍 [AUTH DEBUG] Enviando para verificação...');
       const verifyPayload = { payload, signature };
-      console.log('📤 [AUTH DEBUG] Verify payload:', {
-        payloadKeys: Object.keys(payload),
-        signatureLength: signature.length,
-        signaturePreview: signature.substring(0, 20) + '...'
-      });
       
       const verifyResponse = await fetch(`http://localhost:3001/auth/verify`, {
         method: 'POST',
@@ -171,11 +174,9 @@ export function WalletConnectPanel() {
         body: JSON.stringify(verifyPayload)
       });
 
-      console.log('📡 [AUTH DEBUG] Verify response status:', verifyResponse.status);
 
       if (!verifyResponse.ok) {
         const errorText = await verifyResponse.text();
-        console.log('❌ [AUTH DEBUG] Verify error response:', errorText);
         let error;
         try {
           error = JSON.parse(errorText);
@@ -186,35 +187,29 @@ export function WalletConnectPanel() {
       }
 
       const verifyResult = await verifyResponse.json();
-      console.log('✅ [AUTH DEBUG] Verify response received:', verifyResult);
       
       const { token: authToken, address, sessionId } = verifyResult;
-      console.log('✅ [AUTH DEBUG] Token recebido:', authToken ? 'SIM' : 'NÃO');
-      console.log('✅ [AUTH DEBUG] Token preview:', authToken ? authToken.substring(0, 50) + '...' : 'NONE');
-      console.log('✅ [AUTH DEBUG] Address:', address);
-      console.log('✅ [AUTH DEBUG] SessionId:', sessionId);
       
       // 4. Salvar payload e assinatura no localStorage para uso no Gateway
       localStorage.setItem('authPayload', JSON.stringify(payload));
       localStorage.setItem('authSignature', signature);
-      console.log('💾 [AUTH DEBUG] Payload e assinatura salvos no localStorage');
       
       // 5. Salvar token no localStorage (exatamente como na página wallet)
       localStorage.setItem('authToken', authToken);
-      console.log('💾 [AUTH DEBUG] Token salvo no localStorage');
       setIsAuthenticated(true);
-      console.log(`✅ [AUTH DEBUG] Autenticado! Endereço: ${address.slice(0, 6)}...${address.slice(-4)}`);
+      setJwtToken(authToken);
+      setAuthMessage('✅ Autenticado com sucesso!');
 
       // 5. Autenticação concluída - não precisa notificar Gateway
 
       // 6. Autenticação concluída com sucesso
-      console.log('🎉 [AUTH DEBUG] Autenticação concluída! JWT salvo e pronto para uso.');
 
     } catch (err: any) {
       console.error('❌ [AUTH DEBUG] Authentication failed:', err);
       setError(err?.message || 'Falha na autenticação');
+      setAuthMessage(`❌ Erro: ${err?.message || 'Falha na autenticação'}`);
+      setIsAuthenticated(false);
     } finally {
-      console.log('🏁 [AUTH DEBUG] Setting isAuthenticating to false');
       setIsAuthenticating(false);
     }
   }
@@ -225,6 +220,13 @@ export function WalletConnectPanel() {
       if (activeWallet) {
         await disconnect(activeWallet);
       }
+      // Limpar estado de autenticação
+      setIsAuthenticated(false);
+      setAuthMessage('');
+      setJwtToken('');
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('authPayload');
+      localStorage.removeItem('authSignature');
     } catch (err: any) {
       console.error('wallet disconnect failed', err);
       setError(err?.message || 'Failed to disconnect');
@@ -288,6 +290,22 @@ export function WalletConnectPanel() {
               >
                 {shortAddress(account!.address)}
               </p>
+              <div style={{ fontSize: 12, color: 'var(--tg-theme-hint-color, #687280)', marginTop: 4 }}>
+                {isAuthenticating ? 'Autenticando...' : isAuthenticated ? 'Autenticado com sucesso!' : 'Conecte para autenticar'}
+              </div>
+              {authMessage && (
+                <div style={{ fontSize: 12, color: authMessage.includes('✅') ? '#10b981' : '#ef4444', marginTop: 4 }}>
+                  {authMessage}
+                </div>
+              )}
+              {jwtToken && (
+                <div style={{ marginTop: 8, padding: 8, backgroundColor: '#f3f4f6', borderRadius: 4, fontSize: 10 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>JWT Token:</div>
+                  <div style={{ wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                    {jwtToken.slice(0, 50)}...
+                  </div>
+                </div>
+              )}
             </div>
             <Button
               variant="outline"
@@ -299,24 +317,12 @@ export function WalletConnectPanel() {
               {isDisconnecting ? 'Disconnecting…' : 'Disconnect'}
             </Button>
             <Button
-              variant="outline"
-              size="sm"
-              block
-              onClick={authenticateWithBackend}
-              disabled={!account || !client}
-              style={{ marginTop: 8 }}
-            >
-              🔐 Autenticar
-            </Button>
-            <Button
               variant="primary"
               size="lg"
               block
               onClick={() => {
                 // Navegar para a página de swap
-                const currentUrl = new URL(window.location.href);
-                currentUrl.searchParams.set('page', 'swap');
-                window.location.href = currentUrl.toString();
+                window.location.href = '/miniapp/swap';
               }}
               style={{ 
                 marginTop: 12,
