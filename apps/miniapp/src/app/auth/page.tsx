@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 
 function pickReadableColor(theme: any): string {
   if (!theme) return '#0f172a';
@@ -13,15 +15,39 @@ import { WalletConnectPanel } from '../../features/wallets/evm/WalletConnectPane
 import { AppContainer, Spinner } from '../../shared/ui';
 
 export default function AuthPage() {
+  const router = useRouter();
+  const { login, isAuthenticated } = useAuth();
+
   const debugMode = useMemo(() => {
     if (typeof window === 'undefined') return false;
     return new URLSearchParams(window.location.search).get('debug') === 'true';
   }, []);
+
   const headingColor = useMemo(() => {
     if (typeof window === 'undefined') return '#0f172a';
     const theme = (window as any)?.Telegram?.WebApp?.themeParams;
     return pickReadableColor(theme);
   }, []);
+
+  useEffect(() => {
+    const authenticateUser = async () => {
+      try {
+        await login();
+      } catch (error) {
+        console.error('Authentication failed:', error);
+      }
+    };
+
+    if (!isAuthenticated) {
+      authenticateUser();
+    }
+  }, [login, isAuthenticated]);
+
+  const handleContinue = () => {
+    if (isAuthenticated) {
+      router.push('/dashboard');
+    }
+  };
 
   return (
     <AppContainer>
@@ -32,31 +58,58 @@ export default function AuthPage() {
 
         <WalletConnectPanel />
 
-        {/* Chat Button */}
+        {/* Continue Button */}
         <div style={{ marginTop: 24 }}>
           <button
-            onClick={() => {
-              window.location.href = '/miniapp/chat';
-            }}
+            onClick={handleContinue}
+            disabled={!isAuthenticated}
             style={{
               width: '100%',
               padding: '16px',
-              backgroundColor: 'var(--tg-theme-button-color, #007aff)',
+              backgroundColor: isAuthenticated ? 'var(--tg-theme-button-color, #007aff)' : '#cccccc',
               color: '#ffffff',
               border: 'none',
               borderRadius: '12px',
               fontSize: 16,
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: isAuthenticated ? 'pointer' : 'not-allowed',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
             }}
           >
-            🤖 Chat com IA
+            {isAuthenticated ? '✓ Continue to Dashboard' : 'Authenticating...'}
           </button>
         </div>
+
+        {/* Chat Button */}
+        {isAuthenticated && (
+          <div style={{ marginTop: 12 }}>
+            <button
+              onClick={() => {
+                router.push('/chat');
+              }}
+              style={{
+                width: '100%',
+                padding: '16px',
+                backgroundColor: 'transparent',
+                color: 'var(--tg-theme-button-color, #007aff)',
+                border: '2px solid var(--tg-theme-button-color, #007aff)',
+                borderRadius: '12px',
+                fontSize: 16,
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
+            >
+              🤖 Chat com IA
+            </button>
+          </div>
+        )}
 
         {debugMode && (
           <div style={{ marginTop: 24, padding: 16, backgroundColor: '#f3f4f6', borderRadius: 8 }}>
@@ -67,6 +120,7 @@ export default function AuthPage() {
                   url: window.location.href,
                   userAgent: navigator.userAgent,
                   theme: (window as any)?.Telegram?.WebApp?.themeParams,
+                  isAuthenticated,
                 },
                 null,
                 2,

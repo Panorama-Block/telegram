@@ -7,7 +7,7 @@ import { Card } from '../../../shared/ui';
 
 export function EvmConnectButton() {
   const client = useMemo(() => {
-    const clientId = (import.meta as any).env?.VITE_THIRDWEB_CLIENT_ID || '';
+    const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
     try {
       return createThirdwebClient({ clientId });
     } catch (e) {

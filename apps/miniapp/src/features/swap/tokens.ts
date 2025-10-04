@@ -1,6 +1,6 @@
 export type Token = { symbol: string; address: string; icon?: string };
 export type Network = {
-  nativeCurrency: any; chainId: number; name: string; tokens: Token[] 
+  nativeCurrency?: any; chainId: number; name: string; tokens: Token[]
 };
 
 export const networks: Network[] = [

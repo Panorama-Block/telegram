@@ -4,7 +4,7 @@ export type QuoteRequest = {
   fromToken: string; // "native" or ERC-20 address
   toToken: string;   // "native" or ERC-20 address
   amount: string;    // token units (human-readable decimal string)
-  smartAccountAddress?: string;
+  smartAccountAddress?: string | null;
 };
 
 export type QuoteResponse = {

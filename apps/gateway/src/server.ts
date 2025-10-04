@@ -92,7 +92,7 @@ export async function createServer(): Promise<FastifyInstance> {
   });
 
   // Proxy to Next.js miniapp server
-  const NEXTJS_PORT = process.env.NEXTJS_PORT || '3000';
+  const NEXTJS_PORT = process.env.NEXTJS_PORT || '3003';
   const NEXTJS_URL = `http://localhost:${NEXTJS_PORT}`;
 
   app.all('/miniapp', async (req, reply) => {

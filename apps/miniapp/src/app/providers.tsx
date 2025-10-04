@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthGuard } from '@/components/AuthGuard';
 
 interface ClientProvidersProps {
   children: React.ReactNode;
@@ -38,11 +40,15 @@ export function ClientProviders({ children }: ClientProvidersProps) {
 
         // Create providers component
         const ProvidersComponent = ({ children }: { children: React.ReactNode }) => (
-          <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
-            <thirdwebReact.ThirdwebProvider>
-              {children}
-            </thirdwebReact.ThirdwebProvider>
-          </tonConnect.TonConnectUIProvider>
+          <AuthProvider>
+            <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
+              <thirdwebReact.ThirdwebProvider>
+                <AuthGuard>
+                  {children}
+                </AuthGuard>
+              </thirdwebReact.ThirdwebProvider>
+            </tonConnect.TonConnectUIProvider>
+          </AuthProvider>
         );
 
         setProviders(() => ProvidersComponent);

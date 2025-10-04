@@ -25,9 +25,9 @@ export class SwapApiError extends Error {
 const UNKNOWN_ERROR = 'Swap API error';
 
 function baseUrl(): string {
-  const direct = (import.meta as any).env?.VITE_SWAP_API_BASE as string | undefined;
+  const direct = process.env.VITE_SWAP_API_BASE as string | undefined;
   if (direct && direct.length > 0) return direct.replace(/\/+$/, '');
-  const gw = (import.meta as any).env?.VITE_GATEWAY_BASE as string | undefined;
+  const gw = process.env.VITE_GATEWAY_BASE as string | undefined;
   if (gw && gw.length > 0) return `${gw.replace(/\/+$/, '')}/swap`;
   // fallback to same-origin /swap
   return '/swap';
@@ -39,8 +39,10 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   const authToken = localStorage.getItem('authToken');
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   
+  
   if (authToken) {
     headers['Authorization'] = `Bearer ${authToken}`;
+  } else {
   }
   
   try {
@@ -55,7 +57,8 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
       try {
         parsed = await res.json();
         msg = (parsed as any)?.message || (parsed as any)?.error || msg;
-      } catch {}
+      } catch (e) {
+      }
       throw new SwapApiError(`${UNKNOWN_ERROR}: ${msg}`, {
         url,
         payload: body,

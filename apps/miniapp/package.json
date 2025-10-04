@@ -1,13 +1,12 @@
 {
-  "name": "miniapp",
+  "name": "miniapp-next",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview --port 5173",
-    "test": "vitest --run"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
   },
   "dependencies": {
     "@orbs-network/ton-access": "^2.2.2",
@@ -16,15 +15,21 @@
     "@tonconnect/ui-react": "^2.0.9",
     "@twa-dev/sdk": "^8.0.2",
     "buffer": "^6.0.3",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "thirdweb": "^5.106.0"
+    "dotenv": "^17.2.3",
+    "next": "15.5.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "thirdweb": "^5.105.7"
   },
   "devDependencies": {
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.8",
-    "vitest": "^3.2.4"
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.4",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }
