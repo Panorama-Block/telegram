@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AuthProvider } from '@/contexts/AuthContext';
-import { AuthGuard } from '@/components/AuthGuard';
+import { AuthProvider } from '@/shared/contexts/AuthContext';
+import { AuthGuard } from '@/shared/ui/AuthGuard';
 
 interface ClientProvidersProps {
   children: React.ReactNode;

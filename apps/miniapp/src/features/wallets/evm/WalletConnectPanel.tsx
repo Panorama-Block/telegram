@@ -204,7 +204,7 @@ export function WalletConnectPanel() {
       localStorage.setItem('authToken', authToken);
       setIsAuthenticated(true);
       setJwtToken(authToken);
-      setAuthMessage('✅ Autenticado com sucesso!');
+      setAuthMessage('Autenticado com sucesso!');
 
       // 5. Autenticação concluída - não precisa notificar Gateway
 
@@ -252,116 +252,97 @@ export function WalletConnectPanel() {
   const connected = Boolean(account?.address);
 
   return (
-    <Card tone="muted" padding={20} style={{ marginTop: 0 }}>
-      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <WalletIcon size={22} />
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Wallet</h2>
-        </div>
-        {!connected ? (
-          client ? (
-            <ConnectButton
-              client={client}
-              wallets={wallets}
-              connectModal={{ size: 'compact' }}
-              connectButton={{
-                label: 'Connect Wallet',
-                style: {
-                  width: '100%',
-                  padding: '14px 20px',
-                  borderRadius: 12,
-                  fontWeight: 700,
-                  fontSize: 16,
-                  background: '#7c5cff',
-                  color: '#fff',
-                },
-              }}
-              theme="dark"
-            />
-          ) : (
-            <div style={{ color: '#ef4444', fontSize: 13 }}>
-              Missing THIRDWEB client configuration.
-            </div>
-          )
-        ) : (
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div
-              style={{
-                border: '1px solid rgba(15,23,42,0.12)',
-                background: 'var(--tg-theme-bg-color, #fff)',
-                borderRadius: 12,
-                padding: 12,
-                textAlign: 'left',
-              }}
-            >
-              <p style={{ margin: 0, fontSize: 13, color: 'var(--tg-theme-hint-color, #687280)' }}>Connected wallet</p>
-              <p
-                style={{
-                  margin: '6px 0 0',
-                  fontFamily: 'monospace',
-                  fontSize: 14,
-                  color: 'var(--tg-theme-text-color, #111)',
-                  wordBreak: 'break-all',
-                }}
-              >
-                {shortAddress(account!.address)}
-              </p>
-              <div style={{ fontSize: 12, color: 'var(--tg-theme-hint-color, #687280)', marginTop: 4 }}>
-                {isAuthenticating ? 'Autenticando...' : isAuthenticated ? 'Autenticado com sucesso!' : 'Conecte para autenticar'}
-              </div>
-              {authMessage && (
-                <div style={{ fontSize: 12, color: authMessage.includes('✅') ? '#10b981' : '#ef4444', marginTop: 4 }}>
-                  {authMessage}
-                </div>
-              )}
-              {jwtToken && (
-                <div style={{ marginTop: 8, padding: 8, backgroundColor: '#f3f4f6', borderRadius: 4, fontSize: 10 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>JWT Token:</div>
-                  <div style={{ wordBreak: 'break-all', fontFamily: 'monospace' }}>
-                    {jwtToken.slice(0, 50)}...
-                  </div>
-                </div>
-              )}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              block
-              onClick={handleDisconnect}
-              disabled={isDisconnecting}
-            >
-              {isDisconnecting ? 'Disconnecting…' : 'Disconnect'}
-            </Button>
-            <Button
-              variant="primary"
-              size="lg"
-              block
-              onClick={() => {
-                // Navegar para a página de swap
-                window.location.href = '/miniapp/swap';
-              }}
-              style={{ 
-                marginTop: 12,
-                padding: '12px 20px', 
-                fontSize: 16, 
-                fontWeight: 600,
-                backgroundColor: 'var(--tg-theme-button-color, #2481cc)',
-                color: 'var(--tg-theme-button-text-color, #ffffff)',
-                border: 'none',
-                borderRadius: 12,
-              }}
-            >
-              🚀 Ir para Swap
-            </Button>
-          </div>
-        )}
-        {error && (
-          <div style={{ color: '#ef4444', fontSize: 13 }}>
-            {error}
-          </div>
-        )}
+    <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        <WalletIcon size={24} />
+        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#fff' }}>Wallet</h2>
       </div>
-    </Card>
+      {!connected ? (
+        client ? (
+          <ConnectButton
+            client={client}
+            wallets={wallets}
+            connectModal={{ size: 'compact' }}
+            connectButton={{
+              label: 'Connect Wallet',
+              style: {
+                width: '100%',
+                padding: '16px 24px',
+                borderRadius: 12,
+                fontWeight: 600,
+                fontSize: 16,
+                background: '#06b6d4',
+                color: '#fff',
+                border: 'none',
+                cursor: 'pointer',
+              },
+            }}
+            theme="dark"
+          />
+        ) : (
+          <div style={{ color: '#ef4444', fontSize: 14, padding: '12px', background: '#1a1a1a', borderRadius: 8 }}>
+            Missing THIRDWEB client configuration.
+          </div>
+        )
+      ) : (
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div
+            style={{
+              border: '1px solid rgba(6, 182, 212, 0.3)',
+              background: '#0d1117',
+              borderRadius: 12,
+              padding: 16,
+              textAlign: 'left',
+            }}
+          >
+            <p style={{ margin: 0, fontSize: 13, color: '#9ca3af' }}>Connected wallet</p>
+            <p
+              style={{
+                margin: '8px 0 0',
+                fontFamily: 'monospace',
+                fontSize: 15,
+                color: '#06b6d4',
+                wordBreak: 'break-all',
+                fontWeight: 600,
+              }}
+            >
+              {shortAddress(account!.address)}
+            </p>
+            <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 8 }}>
+              {isAuthenticating ? 'Autenticando...' : !isAuthenticated && 'Conecte para autenticar'}
+            </div>
+            {authMessage && (
+              <div style={{ fontSize: 13, color: authMessage.includes('✅') ? '#10b981' : '#ef4444', marginTop: 6 }}>
+                {authMessage}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleDisconnect}
+            disabled={isDisconnecting}
+            style={{
+              width: '100%',
+              padding: '12px 20px',
+              borderRadius: 10,
+              fontWeight: 600,
+              fontSize: 14,
+              background: 'transparent',
+              color: '#ef4444',
+              border: '1px solid #ef4444',
+              cursor: isDisconnecting ? 'not-allowed' : 'pointer',
+              opacity: isDisconnecting ? 0.6 : 1,
+            }}
+          >
+            {isDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+          </button>
+        </div>
+      )}
+      {error && (
+        <div style={{ color: '#ef4444', fontSize: 14, padding: '12px', background: '#1a1a1a', borderRadius: 8 }}>
+          {error}
+        </div>
+      )}
+    </div>
   );
 }
 

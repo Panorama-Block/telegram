@@ -1,134 +1,88 @@
 'use client';
 
-import React, { useMemo, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
-
-function pickReadableColor(theme: any): string {
-  if (!theme) return '#0f172a';
-  const text = theme.text_color;
-  if (text) return text.hex;
-  return '#0f172a';
-}
-
+import Image from 'next/image';
 import { WalletConnectPanel } from '../../features/wallets/evm/WalletConnectPanel';
-import { AppContainer, Spinner } from '../../shared/ui';
+import pblokNav from '../../../public/logos/pblok_nav.svg';
+import zicoBlue from '../../../public/icons/zico_blue.svg';
 
 export default function AuthPage() {
   const router = useRouter();
-  const { login, isAuthenticated } = useAuth();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const debugMode = useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    return new URLSearchParams(window.location.search).get('debug') === 'true';
-  }, []);
-
-  const headingColor = useMemo(() => {
-    if (typeof window === 'undefined') return '#0f172a';
-    const theme = (window as any)?.Telegram?.WebApp?.themeParams;
-    return pickReadableColor(theme);
-  }, []);
-
+  // Check wallet authentication (not Telegram auth)
   useEffect(() => {
-    const authenticateUser = async () => {
-      try {
-        await login();
-      } catch (error) {
-        console.error('Authentication failed:', error);
+    const checkAuth = () => {
+      const authToken = localStorage.getItem('authToken');
+      const wasAuthenticated = isAuthenticated;
+      const isNowAuthenticated = !!authToken;
+
+      setIsAuthenticated(isNowAuthenticated);
+
+      // Auto-redirect to chat when authentication happens
+      if (!wasAuthenticated && isNowAuthenticated) {
+        router.push('/chat');
       }
     };
 
-    if (!isAuthenticated) {
-      authenticateUser();
-    }
-  }, [login, isAuthenticated]);
+    checkAuth();
+
+    // Listen for storage changes (when wallet authenticates)
+    const interval = setInterval(checkAuth, 1000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, router]);
 
   const handleContinue = () => {
     if (isAuthenticated) {
-      router.push('/dashboard');
+      router.push('/chat');
     }
   };
 
   return (
-    <AppContainer>
-      <div style={{ padding: 16 }}>
-        <h1 style={{ color: headingColor, marginBottom: 24, fontSize: 24, fontWeight: 600 }}>
-          Connect Wallet
-        </h1>
+    <div className="min-h-screen bg-[#0d1117] text-white relative overflow-hidden">
 
-        <WalletConnectPanel />
-
-        {/* Continue Button */}
-        <div style={{ marginTop: 24 }}>
-          <button
-            onClick={handleContinue}
-            disabled={!isAuthenticated}
-            style={{
-              width: '100%',
-              padding: '16px',
-              backgroundColor: isAuthenticated ? 'var(--tg-theme-button-color, #007aff)' : '#cccccc',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '12px',
-              fontSize: 16,
-              fontWeight: 600,
-              cursor: isAuthenticated ? 'pointer' : 'not-allowed',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-            }}
-          >
-            {isAuthenticated ? '✓ Continue to Dashboard' : 'Authenticating...'}
-          </button>
+      {/* Navbar */}
+      <nav className="relative z-10 px-4 sm:px-6 lg:px-8 py-4 border-b border-cyan-500/20">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center cursor-pointer" onClick={() => router.push('/')}>
+            <Image
+              src={pblokNav}
+              alt="Panorama Block"
+              width={140}
+              height={40}
+              className="h-8 sm:h-10 w-auto"
+            />
+          </div>
         </div>
+      </nav>
 
-        {/* Chat Button */}
-        {isAuthenticated && (
-          <div style={{ marginTop: 12 }}>
-            <button
-              onClick={() => {
-                router.push('/chat');
-              }}
-              style={{
-                width: '100%',
-                padding: '16px',
-                backgroundColor: 'transparent',
-                color: 'var(--tg-theme-button-color, #007aff)',
-                border: '2px solid var(--tg-theme-button-color, #007aff)',
-                borderRadius: '12px',
-                fontSize: 16,
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-              }}
-            >
-              🤖 Chat com IA
-            </button>
+      {/* Main Content */}
+      <main className="relative z-10 px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+        <div className="max-w-2xl mx-auto">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="flex justify-center mb-6">
+              <Image
+                src={zicoBlue}
+                alt="Zico"
+                width={120}
+                height={120}
+                className="w-24 h-24 sm:w-32 sm:h-32"
+              />
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold mb-3">Connect Your Wallet</h1>
+            <p className="text-gray-400 text-sm sm:text-base">
+              Get started by connecting your wallet to access AI-powered DeFi tools
+            </p>
           </div>
-        )}
 
-        {debugMode && (
-          <div style={{ marginTop: 24, padding: 16, backgroundColor: '#f3f4f6', borderRadius: 8 }}>
-            <h3 style={{ marginBottom: 8, fontSize: 14, fontWeight: 600 }}>Debug Info</h3>
-            <pre style={{ fontSize: 12, overflow: 'auto' }}>
-              {JSON.stringify(
-                {
-                  url: window.location.href,
-                  userAgent: navigator.userAgent,
-                  theme: (window as any)?.Telegram?.WebApp?.themeParams,
-                  isAuthenticated,
-                },
-                null,
-                2,
-              )}
-            </pre>
+          {/* Wallet Connect Panel */}
+          <div className="bg-[#1a1a1a]/80 backdrop-blur-lg border border-cyan-500/30 rounded-2xl p-6 sm:p-8 shadow-xl shadow-cyan-500/10">
+            <WalletConnectPanel />
           </div>
-        )}
-      </div>
-    </AppContainer>
+        </div>
+      </main>
+    </div>
   );
 }
