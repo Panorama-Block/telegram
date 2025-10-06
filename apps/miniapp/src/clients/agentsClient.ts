@@ -1,15 +1,12 @@
 export interface ChatMessage {
-  // Generic message object to satisfy API model
-  type?: string;
-  content?: string;
-  text?: string;
-  role?: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
 }
 
 export interface ChatRequest {
-  user_id: string;
-  conversation_id: string;
-  message: string | ChatMessage;
+  message: ChatMessage;
+  user_id?: string;
+  conversation_id?: string;
   chain_id?: string;
   wallet_address?: string;
   metadata?: Record<string, unknown>;
@@ -19,6 +16,9 @@ export interface ChatResponse {
   message: string;
   requires_action?: boolean;
   actions?: Array<{ type: string; label: string; payload?: unknown }>;
+  agent_name?: string | null;
+  agent_type?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface ChatOptions {
@@ -26,16 +26,43 @@ export interface ChatOptions {
   headers?: Record<string, string>;
 }
 
+export interface ConversationListResponse {
+  conversation_ids: string[];
+}
+
+export interface ConversationCreateResponse {
+  conversation_id: string;
+}
+
+export interface BackendChatMessage {
+  role: string;
+  content: string;
+  agent_name?: string | null;
+  agent_type?: string | null;
+  metadata?: Record<string, unknown> | null;
+  timestamp?: string;
+  conversation_id?: string;
+  user_id?: string;
+}
+
+export interface FetchMessagesResponse {
+  messages: BackendChatMessage[];
+}
+
 export class AgentsClient {
   private baseUrl?: string;
   private messagePath?: string;
   private debugShape: boolean = false;
+  private timeoutMs: number;
 
   constructor() {
     // Usar variáveis de ambiente do Next.js
     this.baseUrl = process.env.AGENTS_API_BASE;
     this.messagePath = process.env.AGENTS_RESPONSE_MESSAGE_PATH;
-    this.debugShape = !!process.env.AGENTS_DEBUG_SHAPE;
+    const debugFlag = process.env.AGENTS_DEBUG_SHAPE;
+    this.debugShape = typeof debugFlag === 'string' ? ['1', 'true', 'on', 'yes'].includes(debugFlag.toLowerCase()) : Boolean(debugFlag);
+    const fromEnv = Number(process.env.AGENTS_REQUEST_TIMEOUT_MS ?? process.env.NEXT_PUBLIC_AGENTS_REQUEST_TIMEOUT_MS);
+    this.timeoutMs = Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 45000;
   }
 
   private ensureConfigured() {
@@ -137,30 +164,36 @@ export class AgentsClient {
     return { message: message ?? '', requires_action, actions } as ChatResponse;
   }
 
-  async chat(req: ChatRequest, opts: ChatOptions = {}): Promise<ChatResponse> {
-    this.ensureConfigured();
+  private buildHeaders(opts: ChatOptions = {}): Record<string, string> {
     const headers: Record<string, string> = { 'content-type': 'application/json', ...(opts.headers ?? {}) };
     if (opts.jwt) headers['authorization'] = `Bearer ${opts.jwt}`;
+    return headers;
+  }
+
+  async chat(req: ChatRequest, opts: ChatOptions = {}): Promise<ChatResponse> {
+    this.ensureConfigured();
+    const headers = this.buildHeaders(opts);
     
-    const outgoingMessage = typeof req.message === 'string'
-      ? { role: 'user', content: req.message }
-      : req.message.role
-      ? req.message
-      : { role: 'user', ...req.message };
-    
-    // Estrutura exata esperada pelo backend zico_agents
-    const body = {
-      message: outgoingMessage,
-      prompt: outgoingMessage, // Usar o mesmo objeto message como prompt
-      chain_id: req.chain_id || 'default',
-      wallet_address: req.wallet_address || 'default',
-      conversation_id: req.conversation_id || 'default',
-      user_id: req.user_id || 'anonymous'
+    const outgoingMessage = {
+      role: req.message.role ?? 'user',
+      content: req.message.content,
     };
+
+    // Estrutura exata esperada pelo backend zico_agents
+    const body: Record<string, unknown> = {
+      message: outgoingMessage,
+    };
+
+    if (req.user_id) body.user_id = req.user_id;
+    if (req.conversation_id) body.conversation_id = req.conversation_id;
+
+    if (req.chain_id) body.chain_id = req.chain_id;
+    if (req.wallet_address) body.wallet_address = req.wallet_address;
+    if (req.metadata) body.metadata = req.metadata;
     
     // Apply a timeout to avoid long hangs
     const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = this.timeoutMs > 0 ? setTimeout(() => controller.abort(), this.timeoutMs) : null;
     
     const res = await fetch(`${this.baseUrl}/chat`, {
       method: 'POST',
@@ -168,8 +201,8 @@ export class AgentsClient {
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    
-    clearTimeout(t);
+
+    if (timeoutId !== null) clearTimeout(timeoutId);
     
     if (!res.ok) {
       const text = await res.text();
@@ -190,6 +223,9 @@ export class AgentsClient {
       message: (extractedMessage && extractedMessage.trim()) ? extractedMessage : coerced.message,
       requires_action: coerced.requires_action,
       actions: coerced.actions,
+      agent_name: data?.agentName ?? data?.agent_name ?? null,
+      agent_type: data?.agentType ?? data?.agent_type ?? null,
+      metadata: typeof data?.metadata === 'object' && data?.metadata !== null ? data.metadata as Record<string, unknown> : null,
     };
     
     if (this.debugShape && !final.message) {
@@ -203,5 +239,76 @@ export class AgentsClient {
     }
     
     return final;
+  }
+
+  async listConversations(userId?: string, opts: ChatOptions = {}): Promise<string[]> {
+    this.ensureConfigured();
+    const headers = this.buildHeaders(opts);
+
+    const params = new URLSearchParams();
+    if (userId) params.set('user_id', userId);
+
+    const url = `${this.baseUrl}/chat/conversations${params.toString() ? `?${params.toString()}` : ''}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Agents list conversations failed: ${res.status} ${text}`);
+    }
+
+    const data = (await res.json()) as ConversationListResponse;
+    return Array.isArray(data.conversation_ids) ? data.conversation_ids : [];
+  }
+
+  async createConversation(userId?: string, opts: ChatOptions = {}): Promise<string> {
+    this.ensureConfigured();
+    const headers = this.buildHeaders(opts);
+
+    const body: Record<string, unknown> = {};
+    if (userId) body.user_id = userId;
+
+    const res = await fetch(`${this.baseUrl}/chat/conversations`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Agents create conversation failed: ${res.status} ${text}`);
+    }
+
+    const data = (await res.json()) as ConversationCreateResponse;
+    if (!data?.conversation_id) {
+      throw new Error('Agents create conversation failed: missing conversation_id');
+    }
+    return data.conversation_id;
+  }
+
+  async fetchMessages(userId: string | undefined, conversationId: string | undefined, opts: ChatOptions = {}): Promise<BackendChatMessage[]> {
+    this.ensureConfigured();
+    const headers = this.buildHeaders(opts);
+
+    const params = new URLSearchParams();
+    if (userId) params.set('user_id', userId);
+    if (conversationId) params.set('conversation_id', conversationId);
+
+    const url = `${this.baseUrl}/chat/messages${params.toString() ? `?${params.toString()}` : ''}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Agents fetch messages failed: ${res.status} ${text}`);
+    }
+
+    const data = (await res.json()) as FetchMessagesResponse;
+    if (!data?.messages || !Array.isArray(data.messages)) return [];
+    return data.messages;
   }
 }

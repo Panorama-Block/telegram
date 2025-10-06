@@ -3,11 +3,13 @@ import { ConnectButton } from 'thirdweb/react';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
 import { createThirdwebClient } from 'thirdweb';
 
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+
 import { Card } from '../../../shared/ui';
 
 export function EvmConnectButton() {
   const client = useMemo(() => {
-    const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+    const clientId = THIRDWEB_CLIENT_ID;
     try {
       return createThirdwebClient({ clientId });
     } catch (e) {

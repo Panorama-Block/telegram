@@ -10,6 +10,26 @@ interface AuthGuardProps {
 
 const publicRoutes = ['/', '/auth'];
 
+function normalizePathname(pathname: string) {
+  if (!pathname) return pathname;
+
+  if (pathname === '/') {
+    return pathname;
+  }
+
+  const basePath =
+    typeof window !== 'undefined'
+      ? (window as any)?.__NEXT_DATA__?.runtimeConfig?.basePath ?? ''
+      : '';
+
+  if (basePath && pathname.startsWith(basePath)) {
+    const stripped = pathname.slice(basePath.length);
+    return stripped || '/';
+  }
+
+  return pathname;
+}
+
 export function AuthGuard({ children }: AuthGuardProps) {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
@@ -18,9 +38,12 @@ export function AuthGuard({ children }: AuthGuardProps) {
   useEffect(() => {
     const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     const hasWalletAuth = !!authToken;
+    const normalizedPath = normalizePathname(pathname);
+    const isPublicRoute = publicRoutes.includes(normalizedPath);
+    const canAccessProtectedRoute = isAuthenticated || hasWalletAuth;
 
     console.log('🛡️ [AUTHGUARD DEBUG]', {
-      pathname,
+      pathname: normalizedPath,
       isAuthenticated,
       isLoading,
       hasWalletAuth,
@@ -29,11 +52,9 @@ export function AuthGuard({ children }: AuthGuardProps) {
     });
 
     if (!isLoading) {
-      const isPublicRoute = publicRoutes.includes(pathname);
-
-      // For protected routes, check wallet authentication (authToken)
-      if (!hasWalletAuth && !isPublicRoute) {
-        console.log('🔒 [AUTHGUARD] Redirecting to /auth - no wallet auth');
+      // For protected routes, ensure wallet or Telegram authentication is present
+      if (!canAccessProtectedRoute && !isPublicRoute) {
+        console.log('🔒 [AUTHGUARD] Redirecting to /auth - missing authentication credentials');
         router.push('/auth');
       }
       // Don't redirect from /auth - let user connect wallet first
@@ -61,8 +82,13 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }
 
   // Show nothing while redirecting
-  const isPublicRoute = publicRoutes.includes(pathname);
-  if (!isAuthenticated && !isPublicRoute) {
+  const normalizedPath = normalizePathname(pathname);
+  const isPublicRoute = publicRoutes.includes(normalizedPath);
+  const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+  const hasWalletAuth = !!authToken;
+  const canAccessProtectedRoute = isAuthenticated || hasWalletAuth;
+
+  if (!canAccessProtectedRoute && !isPublicRoute) {
     return null;
   }
 

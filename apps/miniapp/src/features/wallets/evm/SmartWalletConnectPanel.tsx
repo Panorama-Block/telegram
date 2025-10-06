@@ -3,6 +3,7 @@ import { useActiveAccount, useActiveWallet, useDisconnect, ConnectButton } from 
 import { createThirdwebClient } from 'thirdweb';
 import { signLoginPayload } from 'thirdweb/auth';
 import { Card, Button } from '@/shared/ui';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
 
 function WalletIcon({ size = 20, style }: { size?: number; style?: React.CSSProperties }) {
@@ -64,7 +65,7 @@ export function SmartWalletConnectPanel() {
   const [authMessage, setAuthMessage] = useState('');
   const [jwtToken, setJwtToken] = useState('');
 
-  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID as string | undefined;
+  const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
