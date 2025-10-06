@@ -91,7 +91,7 @@ export default function ChatPage() {
   const agentsClient = useMemo(() => new AgentsClient(), []);
   const { user, isLoading: authLoading } = useAuth();
   const isMountedRef = useRef(true);
-  const bootstrapKeyRef = useRef<string | undefined>();
+  const bootstrapKeyRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     return () => {
@@ -128,7 +128,7 @@ export default function ChatPage() {
             role: msg.role === 'assistant' ? 'assistant' : 'user',
             content,
             timestamp,
-            agentName: msg.agent_name ?? msg.agentName ?? null,
+            agentName: msg.agent_name ?? null,
           } satisfies Message;
         });
 

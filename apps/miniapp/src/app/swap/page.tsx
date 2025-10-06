@@ -1,20 +1,27 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Sidebar } from '@/shared/ui/Sidebar';
 import Image from 'next/image';
 import { networks, Token } from '@/features/swap/tokens';
+import { swapApi, SwapApiError } from '@/features/swap/api';
+import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative } from '@/features/swap/utils';
+import { useActiveAccount, PayEmbed } from 'thirdweb/react';
+import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import type { PreparedTx } from '@/features/swap/types';
 
 interface TokenSelectorProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (token: Token) => void;
+  onSelect: (token: Token, chainId: number) => void;
   title: string;
+  currentChainId: number;
 }
 
-function TokenSelector({ isOpen, onClose, onSelect, title }: TokenSelectorProps) {
+function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: TokenSelectorProps) {
   const [search, setSearch] = useState('');
-  const [selectedChain, setSelectedChain] = useState<number | null>(null);
+  const [selectedChain, setSelectedChain] = useState<number | null>(currentChainId);
 
   if (!isOpen) return null;
 
@@ -137,7 +144,7 @@ function TokenSelector({ isOpen, onClose, onSelect, title }: TokenSelectorProps)
                     onClick={() => {
                       const fullToken = allTokens.find(t => t.symbol === token.symbol);
                       if (fullToken) {
-                        onSelect(fullToken);
+                        onSelect(fullToken, selectedChain || currentChainId);
                         onClose();
                       }
                     }}
@@ -172,13 +179,13 @@ function TokenSelector({ isOpen, onClose, onSelect, title }: TokenSelectorProps)
                 <button
                   key={`${token.symbol}-${token.address}-${idx}`}
                   onClick={() => {
-                    onSelect(token);
+                    onSelect(token, selectedChain || currentChainId);
                     onClose();
                   }}
                   className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-gray-800/50 transition-colors text-left min-w-0"
                 >
                   <Image
-                    src={token.icon || '/swap/default.png'}
+                    src={token.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
                     alt={token.symbol}
                     width={32}
                     height={32}
@@ -200,11 +207,38 @@ function TokenSelector({ isOpen, onClose, onSelect, title }: TokenSelectorProps)
   );
 }
 
+function getAddressFromToken(): string | null {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) return null;
+
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+
+    return payload.sub || payload.address || null;
+  } catch (error) {
+    console.error('Error parsing JWT:', error);
+    return null;
+  }
+}
+
 export default function SwapPage() {
+  const account = useActiveAccount();
+  const clientId = THIRDWEB_CLIENT_ID || undefined;
+  const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
+
+  const addressFromToken = useMemo(() => getAddressFromToken(), []);
+  const userAddress = localStorage.getItem('userAddress');
+  const effectiveAddress = account?.address || addressFromToken || userAddress;
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [fromChainId, setFromChainId] = useState(8453); // Base
+  const [toChainId, setToChainId] = useState(42161); // Arbitrum
   const [sellToken, setSellToken] = useState<Token>({
     symbol: 'ETH',
-    address: '0x0000000000000000000000000000000000000000',
+    address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
     icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png'
   });
   const [buyToken, setBuyToken] = useState<Token | null>(null);
@@ -212,6 +246,198 @@ export default function SwapPage() {
   const [buyAmount, setBuyAmount] = useState('');
   const [showSellSelector, setShowSellSelector] = useState(false);
   const [showBuySelector, setShowBuySelector] = useState(false);
+
+  // Quote and swap states
+  const [quote, setQuote] = useState<any | null>(null);
+  const [quoting, setQuoting] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [showFundWallet, setShowFundWallet] = useState(false);
+  const quoteRequestRef = useRef(0);
+
+  // Check if we can request quote
+  const canQuote = useMemo(() => {
+    return Boolean(sellToken && buyToken && sellAmount && Number(sellAmount) > 0);
+  }, [sellToken, buyToken, sellAmount]);
+
+  // Auto-quote effect
+  useEffect(() => {
+    const requestId = ++quoteRequestRef.current;
+
+    if (!canQuote) {
+      setQuote(null);
+      setQuoting(false);
+      setBuyAmount('');
+      return undefined;
+    }
+
+    setQuote(null);
+    setError(null);
+    setSuccess(false);
+
+    const timer = window.setTimeout(() => {
+      void performQuote(requestId);
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [canQuote, sellToken, buyToken, sellAmount, effectiveAddress]);
+
+  async function performQuote(requestId: number) {
+    if (!canQuote || !buyToken) return;
+
+    setError(null);
+    try {
+      setQuoting(true);
+
+      const smartAccountAddress = effectiveAddress || '';
+
+      const body = {
+        fromChainId,
+        toChainId,
+        fromToken: normalizeToApi(sellToken.address),
+        toToken: normalizeToApi(buyToken.address),
+        amount: sellAmount.trim(),
+        smartAccountAddress,
+      };
+
+      const res = await swapApi.quote(body);
+
+      if (quoteRequestRef.current !== requestId) {
+        return;
+      }
+
+      if (!res.success || !res.quote) {
+        throw new Error(res.message || 'Failed to get quote');
+      }
+
+      setQuote(res.quote);
+
+      // Update buy amount from quote
+      if (res.quote.estimatedReceiveAmount) {
+        const decimals = 18; // You can fetch this from token metadata
+        const formatted = formatAmountHuman(BigInt(res.quote.estimatedReceiveAmount), decimals);
+        setBuyAmount(formatted);
+      }
+    } catch (e: any) {
+      if (quoteRequestRef.current !== requestId) {
+        return;
+      }
+      setError(e.message || 'Failed to get quote');
+    } finally {
+      if (quoteRequestRef.current === requestId) {
+        setQuoting(false);
+      }
+    }
+  }
+
+  function flattenPrepared(prepared: any): PreparedTx[] {
+    const out: PreparedTx[] = [];
+    if (!prepared) return out;
+    if (Array.isArray(prepared.transactions)) out.push(...prepared.transactions);
+    if (Array.isArray(prepared.steps)) {
+      for (const s of prepared.steps) {
+        if (Array.isArray(s.transactions)) out.push(...s.transactions);
+      }
+    }
+    return out;
+  }
+
+  async function handleStartSwap() {
+    if (!quote) {
+      setError('Aguarde a cotação ser calculada');
+      return;
+    }
+
+    if (!effectiveAddress) {
+      setError('Authentication required. Please ensure you are logged in.');
+      return;
+    }
+
+    if (!clientId || !client) {
+      setError('Missing THIRDWEB client configuration.');
+      return;
+    }
+
+    setError(null);
+    setSuccess(false);
+
+    try {
+      setPreparing(true);
+
+      const decimals = await getTokenDecimals({
+        client,
+        chainId: fromChainId,
+        token: sellToken.address
+      });
+
+      const wei = parseAmountToWei(sellAmount, decimals);
+      if (wei <= 0n) throw new Error('Invalid amount');
+
+      if (!buyToken) {
+        throw new Error('Please select a token to buy');
+      }
+
+      const prep = await swapApi.prepare({
+        fromChainId,
+        toChainId,
+        fromToken: normalizeToApi(sellToken.address),
+        toToken: normalizeToApi(buyToken.address),
+        amount: wei.toString(),
+        sender: effectiveAddress,
+      });
+
+      const seq = flattenPrepared(prep.prepared);
+      if (!seq.length) throw new Error('No transactions returned by prepare');
+
+      setPreparing(false);
+      setExecuting(true);
+
+      for (const t of seq) {
+        if (t.chainId !== fromChainId) {
+          throw new Error(`Wallet chain mismatch. Switch to chain ${t.chainId} and retry.`);
+        }
+
+        const tx = prepareTransaction({
+          to: t.to as Address,
+          chain: defineChain(t.chainId),
+          client,
+          data: t.data as Hex,
+          value: t.value ? BigInt(t.value as any) : 0n,
+        });
+
+        if (!account) {
+          throw new Error('To execute the swap, you need to connect your wallet. Please go to the dashboard and connect your wallet first.');
+        }
+
+        await sendTransaction({ account, transaction: tx });
+      }
+
+      setSuccess(true);
+      setSellAmount('');
+      setBuyAmount('');
+      setQuote(null);
+    } catch (e: any) {
+      const errorMessage = e.message || 'Failed to execute swap';
+      const lowerError = errorMessage.toLowerCase();
+
+      // Check if it's an insufficient funds error
+      if (lowerError.includes('insufficient funds') ||
+          lowerError.includes('have 0 want') ||
+          lowerError.includes('32003') ||
+          lowerError.includes('gas required exceeds allowance')) {
+        setShowFundWallet(true);
+      }
+
+      setError(errorMessage);
+    } finally {
+      setPreparing(false);
+      setExecuting(false);
+    }
+  }
 
   const handleSwapTokens = () => {
     if (buyToken) {
@@ -251,7 +477,12 @@ export default function SwapPage() {
             <div className="bg-[#1a1a1a] border border-gray-800 rounded-2xl p-5 sm:p-6 shadow-xl">
               {/* Sell Section */}
               <div className="mb-3">
-                <label className="text-xs text-gray-500 mb-3 block uppercase tracking-wide">Sell</label>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-xs text-gray-500 uppercase tracking-wide">Sell</label>
+                  <div className="text-xs text-gray-400">
+                    {networks.find(n => n.chainId === fromChainId)?.name || 'Base'}
+                  </div>
+                </div>
                 <div className="space-y-3">
                   <input
                     type="text"
@@ -267,7 +498,7 @@ export default function SwapPage() {
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#2a2a2a] hover:bg-[#333] transition-colors flex-shrink-0"
                     >
                       <Image
-                        src={sellToken.icon || '/swap/default.png'}
+                        src={sellToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
                         alt={sellToken.symbol}
                         width={18}
                         height={18}
@@ -296,7 +527,12 @@ export default function SwapPage() {
 
               {/* Buy Section */}
               <div className="mb-5">
-                <label className="text-xs text-gray-500 mb-3 block uppercase tracking-wide">Buy</label>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-xs text-gray-500 uppercase tracking-wide">Buy</label>
+                  <div className="text-xs text-gray-400">
+                    {networks.find(n => n.chainId === toChainId)?.name || 'Arbitrum'}
+                  </div>
+                </div>
                 <div className="space-y-3">
                   <input
                     type="text"
@@ -304,6 +540,7 @@ export default function SwapPage() {
                     onChange={(e) => setBuyAmount(e.target.value)}
                     placeholder="0"
                     className="bg-transparent text-3xl sm:text-4xl font-light text-white outline-none w-full"
+                    readOnly
                   />
                   <div className="flex items-center justify-end">
                     <button
@@ -316,7 +553,7 @@ export default function SwapPage() {
                       {buyToken ? (
                         <>
                           <Image
-                            src={buyToken.icon || '/swap/default.png'}
+                            src={buyToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
                             alt={buyToken.symbol}
                             width={18}
                             height={18}
@@ -335,16 +572,118 @@ export default function SwapPage() {
                 </div>
               </div>
 
-              {/* Get Started Button */}
+              {/* Start Button */}
               <button
-                className="w-full py-4 rounded-xl font-semibold text-base transition-all hover:opacity-90"
+                onClick={handleStartSwap}
+                disabled={!quote || quoting || preparing || executing}
+                className="w-full py-4 rounded-xl font-semibold text-base transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  background: '#4a7c7e',
-                  color: 'white',
+                  background: quote ? '#00d9ff' : '#4a7c7e',
+                  color: quote ? '#000' : 'white',
                 }}
               >
-                Start
+                {executing
+                  ? 'Executando swap...'
+                  : preparing
+                    ? 'Preparando transação...'
+                    : quoting
+                      ? 'Calculando cotação...'
+                      : quote
+                        ? 'Start Swap'
+                        : 'Aguardando cotação...'}
               </button>
+
+              {/* Quote Info */}
+              {quote && (
+                <div className="mt-4 p-3 rounded-lg bg-[#2a2a2a] border border-cyan-500/30">
+                  <div className="text-xs text-gray-400 mb-2">📊 Informações da Cotação</div>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Taxa de câmbio:</span>
+                      <span className="text-white font-medium">
+                        1 {sellToken.symbol} ≈ {quote.exchangeRate || 'N/A'} {buyToken?.symbol}
+                      </span>
+                    </div>
+                    {quote.estimatedDuration && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Tempo estimado:</span>
+                        <span className="text-white font-medium">{quote.estimatedDuration}s</span>
+                      </div>
+                    )}
+                    {quote.fees?.totalFeeUsd && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Taxa total:</span>
+                        <span className="text-white font-medium">${quote.fees.totalFeeUsd}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Error Message */}
+              {error && (
+                <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                  <div className="text-sm text-red-400">{error}</div>
+                </div>
+              )}
+
+              {/* Success Message */}
+              {success && (
+                <div className="mt-4 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
+                  <div className="text-sm text-green-400">✅ Swap executado com sucesso!</div>
+                </div>
+              )}
+
+              {/* Fund Wallet Modal */}
+              {showFundWallet && client && (
+                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                  <div className="bg-[#1a1a1a] border border-cyan-500/30 rounded-2xl max-w-md w-full p-6 relative">
+                    <button
+                      onClick={() => setShowFundWallet(false)}
+                      className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+                    >
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+
+                    <h3 className="text-xl font-bold text-white mb-2">💰 Adicionar Fundos</h3>
+                    <p className="text-gray-400 text-sm mb-4">
+                      Seu saldo é insuficiente para executar esta transação. Adicione fundos à sua carteira.
+                    </p>
+
+                    <div className="mb-4">
+                      <PayEmbed
+                        client={client}
+                        theme="dark"
+                        payOptions={{
+                          mode: 'fund_wallet',
+                          metadata: {
+                            name: 'Adicionar fundos para swap',
+                          },
+                          prefillBuy: {
+                            chain: defineChain(fromChainId),
+                            token: sellToken.address === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+                              ? undefined
+                              : {
+                                  address: sellToken.address as Address,
+                                  name: sellToken.symbol,
+                                  symbol: sellToken.symbol,
+                                }
+                          }
+                        }}
+                      />
+                    </div>
+
+                    <button
+                      onClick={() => setShowFundWallet(false)}
+                      className="w-full py-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-medium transition-colors"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -354,14 +693,22 @@ export default function SwapPage() {
       <TokenSelector
         isOpen={showSellSelector}
         onClose={() => setShowSellSelector(false)}
-        onSelect={setSellToken}
-        title="Select a token"
+        onSelect={(token, chainId) => {
+          setSellToken(token);
+          setFromChainId(chainId);
+        }}
+        title="Select a token to sell"
+        currentChainId={fromChainId}
       />
       <TokenSelector
         isOpen={showBuySelector}
         onClose={() => setShowBuySelector(false)}
-        onSelect={setBuyToken}
-        title="Select a token"
+        onSelect={(token, chainId) => {
+          setBuyToken(token);
+          setToChainId(chainId);
+        }}
+        title="Select a token to buy"
+        currentChainId={toChainId}
       />
     </div>
   );
