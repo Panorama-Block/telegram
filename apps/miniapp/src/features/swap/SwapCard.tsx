@@ -377,12 +377,24 @@ export function SwapCard() {
           data: t.data as Hex,
           value: t.value ? BigInt(t.value as any) : 0n,
         });
-        
+
         if (!account) {
           throw new Error('To execute the swap, you need to connect your wallet. Please go to the dashboard and connect your wallet first.');
         }
-        const sent = await sendTransaction({ account, transaction: tx });
-        hashes.push({ hash: sent.transactionHash, chainId: t.chainId });
+
+        try {
+          const sent = await sendTransaction({ account, transaction: tx });
+
+          if (!sent.transactionHash) {
+            console.error('Transaction result:', sent);
+            throw new Error('Transaction failed: no transaction hash returned. The transaction may have been rejected or failed.');
+          }
+
+          hashes.push({ hash: sent.transactionHash, chainId: t.chainId });
+        } catch (txError: any) {
+          console.error('Transaction error details:', txError);
+          throw new Error(`Transaction failed: ${txError.message || 'Unknown error'}`);
+        }
       }
       setTxHashes(hashes);
     } catch (e: any) {

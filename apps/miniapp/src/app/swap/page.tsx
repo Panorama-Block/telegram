@@ -413,7 +413,11 @@ export default function SwapPage() {
           throw new Error('To execute the swap, you need to connect your wallet. Please go to the dashboard and connect your wallet first.');
         }
 
-        await sendTransaction({ account, transaction: tx });
+        const sent = await sendTransaction({ account, transaction: tx });
+
+        if (!sent.transactionHash) {
+          throw new Error('Transaction failed: no transaction hash returned. The transaction may have been rejected or failed.');
+        }
       }
 
       setSuccess(true);
