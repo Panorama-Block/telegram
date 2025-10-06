@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AuthProvider } from '@/contexts/AuthContext';
-import { AuthGuard } from '@/components/AuthGuard';
+import { AuthProvider } from '@/shared/contexts/AuthContext';
+import { AuthGuard } from '@/shared/ui/AuthGuard';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
 interface ClientProvidersProps {
   children: React.ReactNode;
@@ -36,13 +37,13 @@ export function ClientProviders({ children }: ClientProvidersProps) {
         WebApp?.ready?.();
 
         const manifestUrl = `${window.location.origin}/miniapp/manifest.json`;
-        const thirdwebClientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+        const thirdwebClientId = THIRDWEB_CLIENT_ID || '';
 
         // Create providers component
         const ProvidersComponent = ({ children }: { children: React.ReactNode }) => (
           <AuthProvider>
             <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
-              <thirdwebReact.ThirdwebProvider>
+              <thirdwebReact.ThirdwebProvider clientId={thirdwebClientId || undefined}>
                 <AuthGuard>
                   {children}
                 </AuthGuard>

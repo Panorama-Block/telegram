@@ -1,145 +1,229 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
-export default function Home() {
+// Import images
+import pblokNav from '../../public/logos/pblok_nav.svg';
+import zicoBlue from '../../public/icons/zico_blue.svg';
+import zicoWhite from '../../public/icons/zico_white.svg';
+import bgHome from '../../public/images/bg_home.svg';
+
+const PROMPTS = [
+  "What's the best DeFi strategy for yield farming?",
+  "How do I bridge tokens between chains safely?",
+  "Explain liquidity pools and impermanent loss",
+  "What are the best web3 wallets for multi-chain?",
+  "How to analyze smart contract risks?",
+  "What's the difference between Layer 1 and Layer 2?",
+];
+
+export default function LandingPage() {
   const router = useRouter();
+  const [currentPrompt, setCurrentPrompt] = useState('');
+  const [promptIndex, setPromptIndex] = useState(0);
+  const [charIndex, setCharIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const handleLaunchApp = () => {
-    router.push('/auth');
-  };
+  useEffect(() => {
+    const currentText = PROMPTS[promptIndex];
+    let timeout: NodeJS.Timeout;
+
+    if (!isDeleting && charIndex < currentText.length) {
+      timeout = setTimeout(() => {
+        setCurrentPrompt(currentText.slice(0, charIndex + 1));
+        setCharIndex(charIndex + 1);
+      }, 80); // Slower typing for better performance
+    } else if (!isDeleting && charIndex === currentText.length) {
+      timeout = setTimeout(() => {
+        setIsDeleting(true);
+      }, 3000); // Longer pause
+    } else if (isDeleting && charIndex > 0) {
+      timeout = setTimeout(() => {
+        setCurrentPrompt(currentText.slice(0, charIndex - 1));
+        setCharIndex(charIndex - 1);
+      }, 50); // Faster deleting
+    } else if (isDeleting && charIndex === 0) {
+      setIsDeleting(false);
+      setPromptIndex((promptIndex + 1) % PROMPTS.length);
+    }
+
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [charIndex, isDeleting, promptIndex]);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white overflow-hidden relative">
-      {/* Background pattern */}
-      <div className="absolute inset-0 opacity-20">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `repeating-linear-gradient(
-            90deg,
-            #1a4d4d 0px,
-            #1a4d4d 1px,
-            transparent 1px,
-            transparent 60px
-          ),
-          repeating-linear-gradient(
-            0deg,
-            #1a4d4d 0px,
-            #1a4d4d 1px,
-            transparent 1px,
-            transparent 60px
-          )`
-        }} />
+    <div className="min-h-screen bg-[#0d1117] text-white relative overflow-hidden">
+      {/* Background Image */}
+      <div className="absolute inset-0 md:top-20">
+        <Image
+          src={bgHome}
+          alt="Background"
+          fill
+          className="object-contain object-center"
+          priority
+          quality={100}
+        />
       </div>
 
-      {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-2">
-          <div className="text-cyan-400 text-2xl font-bold">PANORAMA BLOCK</div>
-        </div>
-        <nav className="hidden md:flex gap-8 text-gray-400">
-          <a href="#vision" className="hover:text-white transition">Vision</a>
-          <a href="#about" className="hover:text-white transition">About</a>
-          <a href="#roadmap" className="hover:text-white transition">Roadmap</a>
-          <a href="#resources" className="hover:text-white transition">Resources</a>
-        </nav>
-      </header>
+      {/* Navbar */}
+      <nav className="relative z-10 px-4 sm:px-6 lg:px-8 py-4 border-b border-cyan-500/20">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center">
+            <Image
+              src={pblokNav}
+              alt="Panorama Block"
+              width={140}
+              height={40}
+              className="h-8 sm:h-10 w-auto"
+            />
+          </div>
 
-      {/* Hero Section */}
-      <main className="relative z-10 flex flex-col items-center justify-center px-6 pt-20 pb-12">
-        <h1 className="text-5xl md:text-7xl font-bold text-center mb-4">
-          A Panoramic View of
-        </h1>
-        <h2 className="text-5xl md:text-7xl font-bold text-center mb-6 text-cyan-400">
-          AI Agents
-        </h2>
-        <p className="text-gray-400 text-center max-w-2xl mb-8">
-          Fusing multi-chain data pipelines with AI reasoning frameworks to empower
-          decentralized composable financial automation.
-        </p>
-        <button
-          onClick={handleLaunchApp}
-          className="bg-white text-black px-8 py-3 rounded-full font-semibold hover:bg-gray-200 transition"
-        >
-          Launch App
-        </button>
+          {/* Desktop Menu */}
+          <div className="hidden md:flex items-center space-x-8 text-sm lg:text-base">
+            <a href="#vision" className="text-gray-300 hover:text-cyan-400 transition-colors">Vision</a>
+            <a href="#about" className="text-gray-300 hover:text-cyan-400 transition-colors">About</a>
+            <a href="#roadmap" className="text-gray-300 hover:text-cyan-400 transition-colors">Roadmap</a>
+            <a href="#resources" className="text-gray-300 hover:text-cyan-400 transition-colors">Resources</a>
+          </div>
 
-        {/* Search Bar */}
-        <div className="mt-12 w-full max-w-2xl bg-gray-900/50 backdrop-blur-sm rounded-lg border border-gray-800 flex items-center px-4 py-3">
-          <svg className="w-5 h-5 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Lorem Ipsum is simply dummy text of the printing and typesetting industry"
-            className="flex-1 bg-transparent outline-none text-gray-300 placeholder-gray-600"
-          />
-          <svg className="w-5 h-5 text-gray-400 ml-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+          {/* Mobile Menu Button */}
+          <button
+            className="md:hidden text-gray-300 hover:text-cyan-400 transition-colors"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {mobileMenuOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
         </div>
 
-        {/* Knight Chess Icon */}
-        <div className="mt-20 mb-12">
-          <div className="w-32 h-32 relative">
-            <svg viewBox="0 0 100 100" className="w-full h-full text-cyan-400 fill-current">
-              <path d="M50,10 L60,30 L70,20 L65,40 L80,50 L65,60 L70,80 L50,90 L30,80 L35,60 L20,50 L35,40 L30,20 L40,30 Z" />
-            </svg>
+        {/* Mobile Menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden mt-4 pb-4 space-y-3">
+            <a
+              href="#vision"
+              className="block text-gray-300 hover:text-cyan-400 transition-colors py-2"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Vision
+            </a>
+            <a
+              href="#about"
+              className="block text-gray-300 hover:text-cyan-400 transition-colors py-2"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              About
+            </a>
+            <a
+              href="#roadmap"
+              className="block text-gray-300 hover:text-cyan-400 transition-colors py-2"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Roadmap
+            </a>
+            <a
+              href="#resources"
+              className="block text-gray-300 hover:text-cyan-400 transition-colors py-2"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Resources
+            </a>
           </div>
-        </div>
+        )}
+      </nav>
 
-        {/* Vision Section */}
-        <div id="vision" className="mt-12 max-w-md bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800 p-8 text-center">
-          <h3 className="text-2xl font-bold mb-4">Vision</h3>
-          <p className="text-gray-400 text-sm">
-            Laying the foundation for intelligent automation across blockchain ecosystems.
-          </p>
-        </div>
+      {/* Main Content */}
+      <main className="relative z-10 px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20">
+        <div className="max-w-7xl mx-auto">
+          {/* Hero Section */}
+          <div className="text-center mb-8 sm:mb-12">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 sm:mb-6">
+              A Panoramic View of
+              <br />
+              <span className="text-cyan-400">AI Agents</span>
+            </h1>
+            <p className="text-gray-400 text-sm sm:text-base lg:text-lg max-w-2xl mx-auto mb-6 sm:mb-8 px-4">
+              Fusing multi-chain data pipelines with AI reasoning frameworks to empower
+              decentralized, composable financial automation.
+            </p>
+            <button
+              onClick={() => router.push('/auth')}
+              className="bg-white text-slate-900 px-6 sm:px-8 py-2.5 sm:py-3 rounded-full font-medium hover:bg-gray-100 transition-all transform hover:scale-105"
+            >
+              Launch App
+            </button>
+          </div>
 
-        {/* Feature Icons */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-12 max-w-4xl w-full">
-          <div className="bg-gray-900/30 backdrop-blur-sm rounded-xl border border-gray-800 p-6 flex items-center justify-center">
-            <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+          {/* Chat Bar */}
+          <div className="max-w-3xl mx-auto mb-12 sm:mb-16 lg:mb-20">
+            <div className="bg-[#1a1a1a] rounded-lg px-4 py-2.5 flex items-center gap-3">
+              <Image
+                src={zicoWhite}
+                alt="Zico"
+                width={20}
+                height={20}
+                className="h-5 w-5"
+              />
+              <div className="flex-1 text-gray-400 text-sm">
+                {currentPrompt}
+                <span className="animate-pulse">|</span>
+              </div>
+              <svg
+                className="h-5 w-5 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
           </div>
-          <div className="bg-gray-900/30 backdrop-blur-sm rounded-xl border border-gray-800 p-6 flex items-center justify-center">
-            <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          </div>
-          <div className="bg-gray-900/30 backdrop-blur-sm rounded-xl border border-gray-800 p-6 flex items-center justify-center">
-            <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-          </div>
-          <div className="bg-gray-900/30 backdrop-blur-sm rounded-xl border border-gray-800 p-6 flex items-center justify-center">
-            <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-            </svg>
-          </div>
-        </div>
 
-        {/* Bottom Feature Icons */}
-        <div className="grid grid-cols-3 gap-4 mt-4 max-w-md w-full">
-          <div className="bg-gray-900/30 backdrop-blur-sm rounded-xl border border-gray-800 p-6 flex items-center justify-center">
-            <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+          {/* Central Logo */}
+          <div className="flex justify-center mb-12 sm:mb-16 lg:mb-20">
+            <div className="relative">
+              {/* Glow Effect */}
+              <div className="absolute inset-0 bg-cyan-400/20 blur-3xl rounded-full" />
+              <Image
+                src={zicoBlue}
+                alt="Zico Blue"
+                width={200}
+                height={200}
+                className="relative h-32 w-32 sm:h-40 sm:w-40 lg:h-48 lg:w-48"
+              />
+            </div>
           </div>
-          <div className="bg-gray-900/30 backdrop-blur-sm rounded-xl border border-gray-800 p-6 flex items-center justify-center">
-            <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
+
+          {/* Vision Section */}
+          <div className="max-w-2xl mx-auto">
+            <div className="p-6 sm:p-8 lg:p-10 text-center">
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 text-white">Vision</h2>
+              <p className="text-gray-300 text-sm sm:text-base lg:text-lg leading-relaxed">
+                Laying the foundation for intelligent
+                <br />
+                automation across blockchain ecosystems.
+              </p>
+            </div>
           </div>
-          <div className="bg-gray-900/30 backdrop-blur-sm rounded-xl border border-gray-800 p-6 flex items-center justify-center">
-            <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
+
         </div>
       </main>
+
+      {/* Footer Spacer */}
+      <div className="h-20" />
     </div>
   );
 }

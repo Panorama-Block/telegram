@@ -1,7 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useActiveAccount, useActiveWallet, useDisconnect } from 'thirdweb/react';
+import { useActiveAccount, useActiveWallet, useDisconnect, ConnectButton } from 'thirdweb/react';
 import { createThirdwebClient } from 'thirdweb';
 import { signLoginPayload } from 'thirdweb/auth';
+import { Card, Button } from '@/shared/ui';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
 
 function WalletIcon({ size = 20, style }: { size?: number; style?: React.CSSProperties }) {
@@ -63,19 +65,13 @@ export function SmartWalletConnectPanel() {
   const [authMessage, setAuthMessage] = useState('');
   const [jwtToken, setJwtToken] = useState('');
 
-  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID as string | undefined;
+  const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const isAlreadyAuthenticated = !!addressFromToken;
 
   useEffect(() => {
-      hasAccount: !!account,
-      hasClient: !!client,
-      isAuthenticated,
-      isAuthenticating
-    });
-    
     if (account && client && !isAuthenticated && !isAuthenticating) {
       authenticateWithBackend();
     }
@@ -177,7 +173,7 @@ export function SmartWalletConnectPanel() {
       localStorage.setItem('authToken', authToken);
       setIsAuthenticated(true);
       setJwtToken(authToken);
-      setAuthMessage('✅ Autenticado com sucesso!');
+      setAuthMessage('Autenticado com sucesso!');
 
     } catch (err: any) {
       console.error('❌ [AUTH AUTO] Authentication failed:', err);
@@ -247,7 +243,7 @@ export function SmartWalletConnectPanel() {
               {isAuthenticating ? 'Autenticando...' : isAuthenticated ? 'Autenticado com sucesso!' : 'Conecte para autenticar'}
             </div>
             {authMessage && (
-              <div style={{ fontSize: 12, color: authMessage.includes('✅') ? '#10b981' : '#ef4444', marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: authMessage.includes('Autenticado com sucesso!') ? '#10b981' : '#ef4444', marginTop: 4 }}>
                 {authMessage}
               </div>
             )}

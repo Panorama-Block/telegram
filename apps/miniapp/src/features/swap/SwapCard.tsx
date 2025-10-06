@@ -10,6 +10,8 @@ import {
 } from 'thirdweb';
 import { ConnectButton } from 'thirdweb/react';
 
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+
 import { Button, Card, Input, Label, Select } from '../../shared/ui';
 import { networks, type Network } from './tokens';
 import {
@@ -157,7 +159,7 @@ function getAddressFromToken(): string | null {
 
 export function SwapCard() {
   const account = useActiveAccount();
-  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID as string | undefined;
+  const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
   const supportedChains = useMemo(() => networks.map((n) => n.chainId), []);
   

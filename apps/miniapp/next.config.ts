@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from 'path';
 import { config } from 'dotenv';
 
 // Carregar variáveis de ambiente do arquivo .env
@@ -6,6 +7,15 @@ config();
 
 const nextConfig: NextConfig = {
   basePath: '/miniapp',
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'assets.coingecko.com',
+        pathname: '/coins/images/**',
+      },
+    ],
+  },
   env: {
     VITE_GATEWAY_BASE: process.env.PUBLIC_GATEWAY_URL || '',
     VITE_SWAP_API_BASE: process.env.SWAP_API_BASE || '',
@@ -22,6 +32,14 @@ const nextConfig: NextConfig = {
     config.resolve.fallback = {
       ...config.resolve.fallback,
       buffer: require.resolve('buffer/'),
+    };
+
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'thirdweb/dist/esm/react/web/wallets/shared/locale/getConnectLocale.js': path.resolve(
+        __dirname,
+        './src/shared/thirdweb/getConnectLocale.ts',
+      ),
     };
     return config;
   },
