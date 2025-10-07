@@ -4,16 +4,26 @@ import React, { useState } from 'react';
 
 interface SignatureApprovalButtonProps {
   onApprove: () => void;
+  onReject: () => void;
   disabled?: boolean;
 }
 
-export function SignatureApprovalButton({ onApprove, disabled = false }: SignatureApprovalButtonProps) {
+export function SignatureApprovalButton({ onApprove, onReject, disabled = false }: SignatureApprovalButtonProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const handleApprove = async () => {
     setIsProcessing(true);
     try {
       await onApprove();
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleReject = async () => {
+    setIsProcessing(true);
+    try {
+      await onReject();
     } finally {
       setIsProcessing(false);
     }
@@ -28,22 +38,38 @@ export function SignatureApprovalButton({ onApprove, disabled = false }: Signatu
         <span className="text-sm font-medium text-cyan-300">Signature Required</span>
       </div>
       <p className="text-xs text-gray-400 mb-3">
-        Click approve to execute this swap
+        Please approve or reject this transaction signature
       </p>
-      <button
-        onClick={handleApprove}
-        disabled={disabled || isProcessing}
-        className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 text-white text-sm font-medium rounded-lg transition-all disabled:cursor-not-allowed"
-      >
-        {isProcessing ? (
-          <div className="flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            Executing Swap...
-          </div>
-        ) : (
-          'Approve Swap'
-        )}
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={handleApprove}
+          disabled={disabled || isProcessing}
+          className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 text-white text-sm font-medium rounded-lg transition-all disabled:cursor-not-allowed"
+        >
+          {isProcessing ? (
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Approving...
+            </div>
+          ) : (
+            'Approve'
+          )}
+        </button>
+        <button
+          onClick={handleReject}
+          disabled={disabled || isProcessing}
+          className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 text-white text-sm font-medium rounded-lg transition-all disabled:cursor-not-allowed"
+        >
+          {isProcessing ? (
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Rejecting...
+            </div>
+          ) : (
+            'Reject'
+          )}
+        </button>
+      </div>
     </div>
   );
 }
