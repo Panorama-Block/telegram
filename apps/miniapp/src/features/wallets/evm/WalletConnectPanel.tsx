@@ -307,14 +307,9 @@ export function WalletConnectPanel() {
             >
               {shortAddress(account!.address)}
             </p>
-            <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 8 }}>
-              {isAuthenticating ? 'Autenticando...' : !isAuthenticated && 'Conecte para autenticar'}
+            <div style={{ fontSize: 13, color: isAuthenticating ? '#9ca3af' : isAuthenticated ? '#10b981' : '#9ca3af', marginTop: 8 }}>
+              {isAuthenticating ? 'Autenticando...' : isAuthenticated ? 'Autenticado com sucesso!' : 'Conecte para autenticar'}
             </div>
-            {authMessage && (
-              <div style={{ fontSize: 13, color: authMessage.includes('✅') ? '#10b981' : '#ef4444', marginTop: 6 }}>
-                {authMessage}
-              </div>
-            )}
           </div>
           <button
             onClick={handleDisconnect}
