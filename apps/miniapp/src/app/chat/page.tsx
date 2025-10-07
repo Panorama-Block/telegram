@@ -1,10 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { Sidebar, SignatureApprovalButton } from '@/shared/ui';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
-
 import XIcon from '../../../public/icons/X.svg';
 import BlockchainTechnology from '../../../public/icons/BlockchainTechnology.svg';
 import Briefcase from '../../../public/icons/Briefcase.svg';
@@ -478,6 +477,14 @@ export default function ChatPage() {
     debug('conversation:select', { conversationId });
   };
 
+  const handleSignatureApproval = useCallback(async () => {
+    console.log('✅ Signature approved');
+  }, []);
+
+  const handleSignatureRejection = useCallback(async () => {
+    console.log('❌ Signature rejected');
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#0d1117] text-white flex">
       {/* Left Sidebar with Chat Conversations */}
@@ -746,6 +753,13 @@ export default function ChatPage() {
                         <p className="text-xs font-semibold text-cyan-300 mb-1">{message.agentName}</p>
                       ) : null}
                       <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      {message.content.toLowerCase().includes('swapped') && message.role === 'assistant' && (
+                        <SignatureApprovalButton
+                          onApprove={handleSignatureApproval}
+                          onReject={handleSignatureRejection}
+                          disabled={isSending}
+                        />
+                      )}
                       {timeLabel ? (
                         <p className="text-xs opacity-60 mt-1">{timeLabel}</p>
                       ) : null}
