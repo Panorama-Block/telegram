@@ -4,5 +4,6 @@ export * from './Card';
 export * from './Input';
 export * from './Label';
 export * from './Select';
+export * from './SignatureApprovalButton';
 export * from './Spinner';
 export * from './Sidebar';

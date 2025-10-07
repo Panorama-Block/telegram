@@ -4,10 +4,6 @@ import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
 
-import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
-
-import { Button, Card } from '../../../shared/ui';
-
 function WalletIcon({ size = 20 }: { size?: number }) {
   return (
     <svg
@@ -53,7 +49,7 @@ export function WalletConnectPanel() {
   const [jwtToken, setJwtToken] = useState('');
 
   const client = useMemo(() => {
-    const clientId = THIRDWEB_CLIENT_ID || undefined;
+    const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
     if (!clientId) {
       console.warn('No THIRDWEB_CLIENT_ID found')
       return null;
@@ -311,14 +307,9 @@ export function WalletConnectPanel() {
             >
               {shortAddress(account!.address)}
             </p>
-            <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 8 }}>
-              {isAuthenticating ? 'Autenticando...' : !isAuthenticated && 'Conecte para autenticar'}
+            <div style={{ fontSize: 13, color: isAuthenticating ? '#9ca3af' : isAuthenticated ? '#10b981' : '#9ca3af', marginTop: 8 }}>
+              {isAuthenticating ? 'Autenticando...' : isAuthenticated ? 'Autenticado com sucesso!' : 'Conecte para autenticar'}
             </div>
-            {authMessage && (
-              <div style={{ fontSize: 13, color: authMessage.includes('✅') ? '#10b981' : '#ef4444', marginTop: 6 }}>
-                {authMessage}
-              </div>
-            )}
           </div>
           <button
             onClick={handleDisconnect}

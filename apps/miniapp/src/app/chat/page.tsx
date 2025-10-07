@@ -1,10 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Sidebar } from '@/shared/ui/Sidebar';
+import { Sidebar, SignatureApprovalButton } from '@/shared/ui';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
-
 import XIcon from '../../../public/icons/X.svg';
 import BlockchainTechnology from '../../../public/icons/BlockchainTechnology.svg';
 import Briefcase from '../../../public/icons/Briefcase.svg';
@@ -34,12 +33,12 @@ const TRENDING_PROMPTS = [
 ];
 
 const FEATURE_CARDS = [
-  { name: 'Wallet Tracking', icon: WalletIcon },
-  { name: 'AI Agents on X', icon: XIcon },
-  { name: 'Liquid Swap', icon: SwapIcon },
-  { name: 'Pano View', icon: BlockchainTechnology },
-  { name: 'AI MarketPulse', icon: ComboChart },
-  { name: 'Portfolio', icon: Briefcase },
+  { name: 'Wallet Tracking', icon: WalletIcon, path: null },
+  { name: 'AI Agents on X', icon: XIcon, path: null },
+  { name: 'Liquid Swap', icon: SwapIcon, path: '/swap' },
+  { name: 'Pano View', icon: BlockchainTechnology, path: null },
+  { name: 'AI MarketPulse', icon: ComboChart, path: null },
+  { name: 'Portfolio', icon: Briefcase, path: null },
 ];
 
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
@@ -79,8 +78,8 @@ function deriveConversationTitle(fallbackTitle: string, messages: Message[]): st
 }
 
 export default function ChatPage() {
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -121,9 +120,31 @@ export default function ChatPage() {
     };
   }, [debug]);
 
-  const userId = user?.id ? String(user.id) : undefined;
+  // Use wallet address as userId instead of Telegram user ID
+  const getWalletAddress = useCallback(() => {
+    if (typeof window === 'undefined') return undefined;
+    const authPayload = localStorage.getItem('authPayload');
+    if (authPayload) {
+      try {
+        const payload = JSON.parse(authPayload);
+        return payload.address?.toLowerCase();
+      } catch (error) {
+        console.error('Error parsing authPayload:', error);
+      }
+    }
+    return undefined;
+  }, []);
+
+  const userId = getWalletAddress() || (user?.id ? String(user.id) : undefined);
   const activeMessages = activeConversationId ? (messagesByConversation[activeConversationId] ?? []) : [];
   const isHistoryLoading = loadingConversationId === activeConversationId;
+
+  // Debug userId
+  useEffect(() => {
+    if (userId) {
+      debug('userId:resolved', { userId, source: getWalletAddress() ? 'wallet' : 'telegram' });
+    }
+  }, [userId, getWalletAddress, debug]);
 
   const getAuthOptions = useCallback(() => {
     if (typeof window === 'undefined') return undefined;
@@ -338,7 +359,6 @@ export default function ChatPage() {
 
     setInputMessage('');
     setIsSending(true);
-    setMenuOpen(false);
 
     try {
       debug('chat:send', { conversationId, hasMetadata: Boolean(userId) });
@@ -445,7 +465,6 @@ export default function ChatPage() {
     } finally {
       if (isMountedRef.current) {
         setIsCreatingConversation(false);
-        setMenuOpen(false);
         debug('conversation:create:complete');
       }
     }
@@ -454,64 +473,78 @@ export default function ChatPage() {
   const handleSelectConversation = (conversationId: string) => {
     setActiveConversationId(conversationId);
     setInitializationError(null);
-    setMenuOpen(false);
+    setSidebarOpen(false);
     debug('conversation:select', { conversationId });
   };
 
+  const handleSignatureApproval = useCallback(async () => {
+    console.log('✅ Signature approved');
+  }, []);
+
+  const handleSignatureRejection = useCallback(async () => {
+    console.log('❌ Signature rejected');
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#0d1117] text-white flex">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      {/* Left Sidebar with Chat Conversations */}
+      {sidebarOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <div className="fixed top-0 left-0 h-screen w-80 bg-[#0d1117] border-r border-cyan-500/20 z-50 overflow-y-auto flex flex-col">
+            {/* Header with logo - Fixed */}
+            <div className="flex-shrink-0 p-4 border-b border-cyan-500/20 flex items-center justify-between">
+              <Image
+                src={zicoBlue}
+                alt="Zico"
+                width={32}
+                height={32}
+              />
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col md:ml-64">
-        {/* Top Bar */}
-        <div className="border-b border-cyan-500/20 px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="md:hidden text-gray-400 hover:text-white"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-
-          <div className="flex items-center gap-2">
-            <Image src={zicoBlue} alt="Zico" width={32} height={32} />
-            <span className="font-semibold">Zico AI</span>
-          </div>
-
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="text-gray-400 hover:text-white"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Side Menu Overlay */}
-        {menuOpen && (
-          <>
-            <div
-              className="fixed inset-0 bg-black/50 z-40"
-              onClick={() => setMenuOpen(false)}
-            />
-            <div className="fixed top-0 right-0 h-full w-80 bg-[#0d1117] border-l border-cyan-500/20 z-50 overflow-y-auto">
-              {/* Close button */}
-              <div className="p-4 flex justify-end">
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {/* Navigation Menu */}
+              <nav className="p-4 space-y-2 border-b border-cyan-500/20">
                 <button
-                  onClick={() => setMenuOpen(false)}
-                  className="text-gray-400 hover:text-white"
+                  onClick={() => {
+                    router.push('/chat');
+                    setSidebarOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/50"
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
+                  <span className="font-medium">Chat</span>
                 </button>
-              </div>
+                <button
+                  onClick={() => {
+                    router.push('/swap');
+                    setSidebarOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-all"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                  </svg>
+                  <span className="font-medium">Swap</span>
+                </button>
+              </nav>
 
               {/* New Chat Button */}
-              <div className="px-4 mb-6">
+              <div className="px-4 mt-4 mb-6">
                 <button
                   onClick={createNewChat}
                   disabled={isCreatingConversation}
@@ -521,9 +554,10 @@ export default function ChatPage() {
                 </button>
               </div>
 
-              {/* Past Conversations */}
+              {/* Past Conversations (Last 5) */}
               <div className="px-4 mb-6">
-                {conversations.map((conv) => (
+                <h3 className="text-gray-400 text-sm font-semibold mb-2">Recent Conversations</h3>
+                {conversations.slice(0, 5).map((conv) => (
                   <button
                     key={conv.id}
                     onClick={() => handleSelectConversation(conv.id)}
@@ -561,25 +595,63 @@ export default function ChatPage() {
                 ))}
               </div>
 
-              {/* Settings & API Key */}
-              <div className="px-4 space-y-3">
-                <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition-all font-medium">
+              {/* Disconnect Button */}
+              <div className="px-4 pb-6">
+                <button
+                  onClick={async () => {
+                    try {
+                      // Clear all auth data
+                      localStorage.removeItem('authToken');
+                      localStorage.removeItem('authPayload');
+                      localStorage.removeItem('authSignature');
+                      localStorage.removeItem('telegram_user');
+
+                      // Close sidebar
+                      setSidebarOpen(false);
+
+                      // Small delay to ensure localStorage is cleared
+                      await new Promise(resolve => setTimeout(resolve, 100));
+
+                      // Force page reload to clear all state (basePath is /miniapp)
+                      window.location.href = '/miniapp';
+                    } catch (error) {
+                      console.error('Error disconnecting:', error);
+                      // Force redirect anyway
+                      window.location.href = '/miniapp';
+                    }
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-all border border-red-500/20 hover:border-red-500/50"
+                >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                   </svg>
-                  Settings
-                </button>
-                <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition-all font-medium">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                  API Key
+                  <span className="font-medium">Disconnect</span>
                 </button>
               </div>
             </div>
-          </>
-        )}
+          </div>
+        </>
+      )}
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Top Bar - Fixed */}
+        <div className="sticky top-0 z-30 bg-[#0d1117] border-b border-cyan-500/20 px-4 py-3 flex items-center justify-between">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="text-gray-400 hover:text-white"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+
+          <div className="flex items-center gap-2">
+            <Image src={zicoBlue} alt="Zico" width={32} height={32} />
+          </div>
+
+          <div className="w-6"></div>
+        </div>
 
         {/* Messages or Empty State */}
         <div className="flex-1 overflow-y-auto">
@@ -628,7 +700,15 @@ export default function ChatPage() {
                 {FEATURE_CARDS.map((feature, idx) => (
                   <button
                     key={idx}
-                    className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-gray-800/30 backdrop-blur-md hover:bg-gray-800/50 border border-cyan-500/20 hover:border-cyan-500/50 transition-all shadow-lg hover:shadow-cyan-500/20"
+                    onClick={() => {
+                      if (feature.path) {
+                        router.push(feature.path);
+                      }
+                    }}
+                    disabled={!feature.path}
+                    className={`flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-gray-800/30 backdrop-blur-md hover:bg-gray-800/50 border border-cyan-500/20 hover:border-cyan-500/50 transition-all shadow-lg hover:shadow-cyan-500/20 ${
+                      !feature.path ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                    }`}
                   >
                     <Image
                       src={feature.icon}
@@ -673,6 +753,13 @@ export default function ChatPage() {
                         <p className="text-xs font-semibold text-cyan-300 mb-1">{message.agentName}</p>
                       ) : null}
                       <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      {message.content.toLowerCase().includes('swapped') && message.role === 'assistant' && (
+                        <SignatureApprovalButton
+                          onApprove={handleSignatureApproval}
+                          onReject={handleSignatureRejection}
+                          disabled={isSending}
+                        />
+                      )}
                       {timeLabel ? (
                         <p className="text-xs opacity-60 mt-1">{timeLabel}</p>
                       ) : null}
@@ -698,8 +785,8 @@ export default function ChatPage() {
           )}
         </div>
 
-        {/* Input Area */}
-        <div className="border-t border-cyan-500/20 p-4">
+        {/* Input Area - Fixed */}
+        <div className="sticky bottom-0 z-30 bg-[#0d1117] border-t border-cyan-500/20 p-4">
           <div className="flex items-center gap-2 max-w-4xl mx-auto">
             <input
               type="text"
