@@ -8,7 +8,6 @@ import { swapApi, SwapApiError } from '@/features/swap/api';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative } from '@/features/swap/utils';
 import { useActiveAccount, PayEmbed } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
-import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import type { PreparedTx } from '@/features/swap/types';
 
 interface TokenSelectorProps {
@@ -226,7 +225,7 @@ function getAddressFromToken(): string | null {
 
 export default function SwapPage() {
   const account = useActiveAccount();
-  const clientId = THIRDWEB_CLIENT_ID || undefined;
+  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
