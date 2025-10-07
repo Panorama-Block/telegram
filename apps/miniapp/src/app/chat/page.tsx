@@ -121,9 +121,31 @@ export default function ChatPage() {
     };
   }, [debug]);
 
-  const userId = user?.id ? String(user.id) : undefined;
+  // Use wallet address as userId instead of Telegram user ID
+  const getWalletAddress = useCallback(() => {
+    if (typeof window === 'undefined') return undefined;
+    const authPayload = localStorage.getItem('authPayload');
+    if (authPayload) {
+      try {
+        const payload = JSON.parse(authPayload);
+        return payload.address?.toLowerCase();
+      } catch (error) {
+        console.error('Error parsing authPayload:', error);
+      }
+    }
+    return undefined;
+  }, []);
+
+  const userId = getWalletAddress() || (user?.id ? String(user.id) : undefined);
   const activeMessages = activeConversationId ? (messagesByConversation[activeConversationId] ?? []) : [];
   const isHistoryLoading = loadingConversationId === activeConversationId;
+
+  // Debug userId
+  useEffect(() => {
+    if (userId) {
+      debug('userId:resolved', { userId, source: getWalletAddress() ? 'wallet' : 'telegram' });
+    }
+  }, [userId, getWalletAddress, debug]);
 
   const getAuthOptions = useCallback(() => {
     if (typeof window === 'undefined') return undefined;
@@ -569,12 +591,27 @@ export default function ChatPage() {
               {/* Disconnect Button */}
               <div className="px-4 pb-6">
                 <button
-                  onClick={() => {
-                    localStorage.removeItem('authToken');
-                    localStorage.removeItem('authPayload');
-                    localStorage.removeItem('authSignature');
-                    localStorage.removeItem('telegram_user');
-                    router.push('/auth');
+                  onClick={async () => {
+                    try {
+                      // Clear all auth data
+                      localStorage.removeItem('authToken');
+                      localStorage.removeItem('authPayload');
+                      localStorage.removeItem('authSignature');
+                      localStorage.removeItem('telegram_user');
+
+                      // Close sidebar
+                      setSidebarOpen(false);
+
+                      // Small delay to ensure localStorage is cleared
+                      await new Promise(resolve => setTimeout(resolve, 100));
+
+                      // Force page reload to clear all state (basePath is /miniapp)
+                      window.location.href = '/miniapp';
+                    } catch (error) {
+                      console.error('Error disconnecting:', error);
+                      // Force redirect anyway
+                      window.location.href = '/miniapp';
+                    }
                   }}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-all border border-red-500/20 hover:border-red-500/50"
                 >
