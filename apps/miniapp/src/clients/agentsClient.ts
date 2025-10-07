@@ -54,6 +54,7 @@ export class AgentsClient {
   private messagePath?: string;
   private debugShape: boolean = false;
   private timeoutMs: number;
+  private debugEnabled: boolean;
 
   constructor() {
     // Usar variáveis de ambiente do Next.js
@@ -63,10 +64,24 @@ export class AgentsClient {
     this.debugShape = typeof debugFlag === 'string' ? ['1', 'true', 'on', 'yes'].includes(debugFlag.toLowerCase()) : Boolean(debugFlag);
     const fromEnv = Number(process.env.AGENTS_REQUEST_TIMEOUT_MS ?? process.env.NEXT_PUBLIC_AGENTS_REQUEST_TIMEOUT_MS);
     this.timeoutMs = Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 45000;
+    const chatDebug = process.env.NEXT_PUBLIC_MINIAPP_DEBUG_CHAT ?? process.env.MINIAPP_DEBUG_CHAT;
+    this.debugEnabled = typeof chatDebug === 'string' ? ['1', 'true', 'on', 'yes'].includes(chatDebug.toLowerCase()) : Boolean(chatDebug);
   }
 
   private ensureConfigured() {
     if (!this.baseUrl) throw new Error('AGENTS_API_BASE não configurado');
+  }
+
+  private logDebug(event: string, payload?: Record<string, unknown>) {
+    if (!this.debugEnabled) return;
+    const entry = {
+      scope: 'AgentsClient',
+      event,
+      timestamp: new Date().toISOString(),
+      ...(payload ?? {}),
+    } satisfies Record<string, unknown>;
+    // eslint-disable-next-line no-console
+    console.info('[miniapp-debug]', entry);
   }
 
   private extractByPath(obj: any, path?: string): unknown {
@@ -170,10 +185,25 @@ export class AgentsClient {
     return headers;
   }
 
+  private async fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = this.timeoutMs > 0 ? setTimeout(() => controller.abort(), this.timeoutMs) : null;
+
+    try {
+      this.logDebug('fetch:start', {
+        method: (init.method ?? 'GET').toUpperCase(),
+        url: typeof input === 'string' ? input : (input as URL).toString(),
+      });
+      return await fetch(input, { ...init, signal: controller.signal });
+    } finally {
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    }
+  }
+
   async chat(req: ChatRequest, opts: ChatOptions = {}): Promise<ChatResponse> {
     this.ensureConfigured();
     const headers = this.buildHeaders(opts);
-    
+
     const outgoingMessage = {
       role: req.message.role ?? 'user',
       content: req.message.content,
@@ -192,23 +222,21 @@ export class AgentsClient {
     if (req.metadata) body.metadata = req.metadata;
     
     // Apply a timeout to avoid long hangs
-    const controller = new AbortController();
-    const timeoutId = this.timeoutMs > 0 ? setTimeout(() => controller.abort(), this.timeoutMs) : null;
-    
-    const res = await fetch(`${this.baseUrl}/chat`, {
+    const requestUrl = `${this.baseUrl}/chat`;
+    const res = await this.fetchWithTimeout(requestUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
-      signal: controller.signal,
     });
 
-    if (timeoutId !== null) clearTimeout(timeoutId);
-    
     if (!res.ok) {
       const text = await res.text();
+      this.logDebug('chat:error', { status: res.status, body, response: text });
       throw new Error(`Agents chat falhou: ${res.status} ${text}`);
     }
-    
+
+    this.logDebug('chat:success', { conversationId: req.conversation_id, userId: req.user_id });
+
     const data = await res.json();
     
     // Preferred extraction via path if configured
@@ -249,17 +277,19 @@ export class AgentsClient {
     if (userId) params.set('user_id', userId);
 
     const url = `${this.baseUrl}/chat/conversations${params.toString() ? `?${params.toString()}` : ''}`;
-    const res = await fetch(url, {
+    const res = await this.fetchWithTimeout(url, {
       method: 'GET',
       headers,
     });
 
     if (!res.ok) {
       const text = await res.text();
+      this.logDebug('listConversations:error', { status: res.status, userId, response: text });
       throw new Error(`Agents list conversations failed: ${res.status} ${text}`);
     }
 
     const data = (await res.json()) as ConversationListResponse;
+    this.logDebug('listConversations:success', { userId, conversations: data.conversation_ids?.length ?? 0 });
     return Array.isArray(data.conversation_ids) ? data.conversation_ids : [];
   }
 
@@ -270,7 +300,8 @@ export class AgentsClient {
     const body: Record<string, unknown> = {};
     if (userId) body.user_id = userId;
 
-    const res = await fetch(`${this.baseUrl}/chat/conversations`, {
+    const url = `${this.baseUrl}/chat/conversations`;
+    const res = await this.fetchWithTimeout(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -278,13 +309,16 @@ export class AgentsClient {
 
     if (!res.ok) {
       const text = await res.text();
+      this.logDebug('createConversation:error', { status: res.status, userId, response: text });
       throw new Error(`Agents create conversation failed: ${res.status} ${text}`);
     }
 
     const data = (await res.json()) as ConversationCreateResponse;
     if (!data?.conversation_id) {
+      this.logDebug('createConversation:error', { status: res.status, userId, response: 'missing conversation_id' });
       throw new Error('Agents create conversation failed: missing conversation_id');
     }
+    this.logDebug('createConversation:success', { userId, conversationId: data.conversation_id });
     return data.conversation_id;
   }
 
@@ -297,17 +331,23 @@ export class AgentsClient {
     if (conversationId) params.set('conversation_id', conversationId);
 
     const url = `${this.baseUrl}/chat/messages${params.toString() ? `?${params.toString()}` : ''}`;
-    const res = await fetch(url, {
+    const res = await this.fetchWithTimeout(url, {
       method: 'GET',
       headers,
     });
 
     if (!res.ok) {
       const text = await res.text();
+      this.logDebug('fetchMessages:error', { status: res.status, userId, conversationId, response: text });
       throw new Error(`Agents fetch messages failed: ${res.status} ${text}`);
     }
 
     const data = (await res.json()) as FetchMessagesResponse;
+    this.logDebug('fetchMessages:success', {
+      userId,
+      conversationId,
+      messages: Array.isArray(data?.messages) ? data.messages.length : 0,
+    });
     if (!data?.messages || !Array.isArray(data.messages)) return [];
     return data.messages;
   }
