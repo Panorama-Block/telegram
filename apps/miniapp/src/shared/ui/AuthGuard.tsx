@@ -8,7 +8,7 @@ interface AuthGuardProps {
   children: React.ReactNode;
 }
 
-const publicRoutes = ['/', '/auth'];
+const publicRoutes = ['/', '/auth', '/miniapp'];
 
 function normalizePathname(pathname: string) {
   if (!pathname) return pathname;
