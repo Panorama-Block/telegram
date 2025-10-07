@@ -10,6 +10,8 @@ import {
 } from 'thirdweb';
 import { ConnectButton } from 'thirdweb/react';
 
+import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
+import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 
 import { Button, Card, Input, Label, Select } from '../../shared/ui';
 import { networks, type Network } from './tokens';
@@ -158,7 +160,7 @@ function getAddressFromToken(): string | null {
 
 export function SwapCard() {
   const account = useActiveAccount();
-  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
+  const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
   const supportedChains = useMemo(() => networks.map((n) => n.chainId), []);
   
@@ -381,19 +383,20 @@ export function SwapCard() {
           throw new Error('To execute the swap, you need to connect your wallet. Please go to the dashboard and connect your wallet first.');
         }
 
-        try {
-          const sent = await sendTransaction({ account, transaction: tx });
+        const result = await safeExecuteTransactionV2(async () => {
+          return await sendTransaction({ account, transaction: tx });
+        });
 
-          if (!sent.transactionHash) {
-            console.error('Transaction result:', sent);
-            throw new Error('Transaction failed: no transaction hash returned. The transaction may have been rejected or failed.');
-          }
-
-          hashes.push({ hash: sent.transactionHash, chainId: t.chainId });
-        } catch (txError: any) {
-          console.error('Transaction error details:', txError);
-          throw new Error(`Transaction failed: ${txError.message || 'Unknown error'}`);
+        if (!result.success) {
+          throw new Error(`Transaction failed: ${result.error}`);
         }
+
+        if (!result.transactionHash) {
+          throw new Error('Transaction failed: no transaction hash returned.');
+        }
+
+        console.log(`Transaction ${result.transactionHash} submitted on chain ${t.chainId}`);
+        hashes.push({ hash: result.transactionHash, chainId: t.chainId });
       }
       setTxHashes(hashes);
     } catch (e: any) {
