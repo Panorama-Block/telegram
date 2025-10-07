@@ -4,10 +4,6 @@ import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
 
-import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
-
-import { Button, Card } from '../../../shared/ui';
-
 function WalletIcon({ size = 20 }: { size?: number }) {
   return (
     <svg
@@ -53,7 +49,7 @@ export function WalletConnectPanel() {
   const [jwtToken, setJwtToken] = useState('');
 
   const client = useMemo(() => {
-    const clientId = THIRDWEB_CLIENT_ID || undefined;
+    const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
     if (!clientId) {
       console.warn('No THIRDWEB_CLIENT_ID found')
       return null;
