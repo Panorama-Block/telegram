@@ -6,8 +6,10 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --legacy-peer-deps
+# Install dependencies. We use `npm install` instead of `npm ci`
+# because the workspace intentionally does not track a package-lock.json.
+# This keeps the Docker build aligned with the local setup.
+RUN npm install --legacy-peer-deps
 
 # Copy source files
 COPY . .
@@ -24,7 +26,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install only production dependencies
-RUN npm ci --omit=dev --legacy-peer-deps
+RUN npm install --omit=dev --legacy-peer-deps
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
