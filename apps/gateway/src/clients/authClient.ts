@@ -19,6 +19,25 @@ export interface AuthResponse {
   userId: string;
 }
 
+export interface AuthLoginRequest {
+  address: string;
+}
+
+export interface AuthLoginResponse {
+  payload: any;
+}
+
+export interface AuthVerifyRequest {
+  payload: any;
+  signature: string;
+}
+
+export interface AuthVerifyResponse {
+  token: string;
+  address: string;
+  sessionId?: string;
+}
+
 export class AuthClient {
   private readonly baseUrl: string | undefined;
   private readonly timeoutMs: number;
@@ -34,39 +53,47 @@ export class AuthClient {
   }
 
   async registerTelegram(input: AuthRegisterTelegramRequest): Promise<AuthResponse> {
-    this.ensureConfigured();
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), this.timeoutMs);
-    const res = await fetch(`${this.baseUrl}/auth/register_telegram`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(input),
-      signal: controller.signal,
-    });
-    clearTimeout(t);
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`register_telegram falhou: ${res.status} ${text}`);
-    }
-    return (await res.json()) as AuthResponse;
+    throw new Error('Use a página web para autenticação: /auth');
   }
 
   async exchangeTelegram(input: AuthExchangeTelegramRequest): Promise<AuthResponse> {
+    throw new Error('Use a página web para autenticação: /auth');
+  }
+
+  async login(input: AuthLoginRequest): Promise<AuthLoginResponse> {
     this.ensureConfigured();
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), this.timeoutMs);
-    const res = await fetch(`${this.baseUrl}/auth/telegram/exchange`, {
+    
+    const response = await fetch(`${this.baseUrl}/auth/login`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
-      signal: controller.signal,
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
-    clearTimeout(t);
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`exchange falhou: ${res.status} ${text}`);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Erro desconhecido' })) as any;
+      throw new Error(error.error || 'Erro ao fazer login');
     }
-    return (await res.json()) as AuthResponse;
+
+    return response.json() as Promise<AuthLoginResponse>;
+  }
+
+  async verify(input: AuthVerifyRequest): Promise<AuthVerifyResponse> {
+    this.ensureConfigured();
+    
+    const response = await fetch(`${this.baseUrl}/auth/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Erro desconhecido' })) as any;
+      throw new Error(error.error || 'Erro na verificação');
+    }
+
+    return response.json() as Promise<AuthVerifyResponse>;
   }
 }
 

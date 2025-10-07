@@ -1,83 +1,61 @@
-import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
-
-import { parseEnv } from '../env.js';
-import { AuthClient, decodeJwtExp } from '../clients/authClient.js';
-import { getRedisClient } from '../redis/client.js';
-import { saveLink } from '../repos/links.js';
-import { saveSession } from '../repos/sessions.js';
-import {
-  computeHmacHex,
-  deriveSecretKey,
-  parseInitDataString,
-  validateInitDataBody,
-} from '../utils/telegramInitData.js';
+import { FastifyInstance } from 'fastify';
+import { verifyTelegramAuth } from '../services/authService.js';
 
 export async function registerAuthRoutes(app: FastifyInstance) {
-  const env = parseEnv();
+  const env = process.env;
+
+  // Static files are already registered in server.ts
 
   app.post('/auth/telegram/verify', async (req, reply) => {
     try {
-      const body = validateInitDataBody(req.body);
-      const { dataCheckString, hash, authDate, user } = parseInitDataString(body.initData);
+      const { address, sessionKeyAddress, loginPayload, signature, telegram_user_id } = req.body as {
+        address: string;
+        sessionKeyAddress: string;
+        loginPayload: any;
+        signature: string;
+        telegram_user_id: string;
+      };
 
-      // anti‑replay
-      const now = Math.floor(Date.now() / 1000);
-      const maxAge = env.TELEGRAM_INITDATA_MAX_AGE_SECONDS;
-      if (now - authDate > maxAge) {
-        return reply.code(401).send({ error: 'initData expirado' });
+      if (!address || !sessionKeyAddress || !loginPayload || !signature || !telegram_user_id) {
+        return reply.code(400).send({ error: 'Dados de autenticação incompletos' });
       }
 
-      // HMAC
-      const secretKey = deriveSecretKey(env.TELEGRAM_BOT_TOKEN);
-      const calc = computeHmacHex(secretKey, dataCheckString);
-      if (calc !== hash) {
-        return reply.code(401).send({ error: 'assinatura inválida' });
-      }
-
-      const result = z
-        .object({ id: z.number(), username: z.string().optional(), language_code: z.string().optional() })
-        .parse(user);
-
-      // Integração com Auth: register/exchange e persistência de sessão/link
-      const client = new AuthClient();
-      let auth;
-      try {
-        auth = await client.exchangeTelegram({ telegramUserId: result.id });
-      } catch {
-        auth = await client.registerTelegram({
-          telegramUserId: result.id,
-          profile: { username: result.username ?? null, language_code: result.language_code ?? null },
-        });
-      }
-
-      const exp = decodeJwtExp(auth.jwt);
-      const expiresAt = exp ?? Math.floor(Date.now() / 1000) + 3600;
-
-      const redis = getRedisClient();
-      await saveLink(redis, {
-        telegram_user_id: result.id,
-        zico_user_id: auth.userId,
-        username: result.username ?? null,
-        language_code: result.language_code ?? null,
-        linked_at: Math.floor(Date.now() / 1000),
-        status: 'linked',
+      console.log('🔐 [AUTH] Verifying authentication...', {
+        address,
+        sessionKeyAddress,
+        telegram_user_id,
+        loginPayload: loginPayload,
+        signature: signature ? signature.substring(0, 20) + '...' : 'NONE'
       });
-      // chat_id não é conhecido neste endpoint do Mini App; salvar sessão só com user escopo é opcional
+
+      // Verify the authentication
+      const result = await verifyTelegramAuth({
+        address,
+        sessionKeyAddress,
+        loginPayload,
+        signature,
+        telegram_user_id
+      });
+
+      if (!result.valid) {
+        return reply.code(401).send({ error: 'Autenticação inválida' });
+      }
+
+      console.log('✅ [AUTH] Authentication successful:', {
+        zico_user_id: result.zico_user_id,
+        telegram_user_id: result.id,
+        jwt_token: result.jwt_token ? 'Present' : 'Missing'
+      });
 
       return reply.send({
+        success: true,
+        zico_user_id: result.zico_user_id,
         telegram_user_id: result.id,
-        username: result.username ?? null,
-        language_code: result.language_code ?? null,
-        auth_date: authDate,
-        valid: true,
-        zico_user_id: auth.userId,
+        jwt_token: result.jwt_token
       });
     } catch (err) {
-      req.log.error({ err }, 'falha em /auth/telegram/verify');
-      return reply.code(400).send({ error: 'payload inválido' });
+      console.error('❌ [AUTH] Authentication error:', err);
+      return reply.code(500).send({ error: 'Erro interno do servidor' });
     }
   });
 }
-
-
