@@ -12,20 +12,13 @@ import SwapIcon from '../../../public/icons/Swap.svg';
 import WalletIcon from '../../../public/icons/Wallet.svg';
 import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
-import { useRouter } from 'next/navigation';
-import { swapApi, SwapApiError } from '@/features/swap/api';
-import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman } from '@/features/swap/utils';
-import { networks, Token } from '@/features/swap/tokens';
-import { useActiveAccount } from 'thirdweb/react';
-import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
-import type { PreparedTx, QuoteResponse } from '@/features/swap/types';
+
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
   agentName?: string | null;
-  metadata?: Record<string, unknown>;
 }
 
 interface Conversation {
@@ -51,29 +44,6 @@ const FEATURE_CARDS = [
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
 const DEBUG_CHAT_FLAG = (process.env.NEXT_PUBLIC_MINIAPP_DEBUG_CHAT ?? process.env.MINIAPP_DEBUG_CHAT ?? '').toLowerCase();
 const DEBUG_CHAT_ENABLED = ['1', 'true', 'on', 'yes'].includes(DEBUG_CHAT_FLAG);
-
-// Helper functions to map metadata to tokens and networks
-function getNetworkByName(networkName: string) {
-  const networkMap: Record<string, number> = {
-    'ethereum': 1,
-    'avalanche': 43114,
-    'base': 8453,
-    'arbitrum': 42161,
-    'polygon': 137,
-    'bsc': 56,
-    'optimism': 10,
-  };
-  
-  const chainId = networkMap[networkName.toLowerCase()];
-  return networks.find(n => n.chainId === chainId);
-}
-
-function getTokenBySymbol(symbol: string, chainId: number): Token | null {
-  const network = networks.find(n => n.chainId === chainId);
-  if (!network) return null;
-  
-  return network.tokens.find(t => t.symbol.toUpperCase() === symbol.toUpperCase()) || null;
-}
 
 function normalizeContent(content: unknown): string {
   if (!content) return '';
@@ -125,19 +95,6 @@ export default function ChatPage() {
   const { user, isLoading: authLoading } = useAuth();
   const isMountedRef = useRef(true);
   const bootstrapKeyRef = useRef<string | undefined>(undefined);
-
-  // Thirdweb setup
-  const account = useActiveAccount();
-  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
-  const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
-
-  // Swap states
-  const [swapQuote, setSwapQuote] = useState<QuoteResponse | null>(null);
-  const [swapLoading, setSwapLoading] = useState(false);
-  const [swapError, setSwapError] = useState<string | null>(null);
-  const [swapSuccess, setSwapSuccess] = useState(false);
-  const [executingSwap, setExecutingSwap] = useState(false);
-
   const debug = useCallback(
     (event: string, details?: Record<string, unknown>) => {
       if (!DEBUG_CHAT_ENABLED) return;
@@ -216,7 +173,6 @@ export default function ChatPage() {
             content,
             timestamp,
             agentName: msg.agent_name ?? null,
-            metadata: msg.metadata ?? undefined,
           } satisfies Message;
         });
 
@@ -421,20 +377,12 @@ export default function ChatPage() {
 
       if (!isMountedRef.current) return;
 
-      console.log('response: ', response);
-
       const assistantMessage: Message = {
         role: 'assistant',
         content: response.message || 'I was unable to process that request.',
         timestamp: new Date(),
         agentName: response.agent_name ?? null,
-        metadata: response.metadata ?? undefined,
       };
-
-      // Auto-fetch quote if it's a swap intent
-      if (response.metadata?.event === 'swap_intent_ready') {
-        getSwapQuote(response.metadata as Record<string, unknown>);
-      }
 
       setMessagesByConversation((prev) => {
         const prevMessages = prev[conversationId] ?? [];
@@ -529,186 +477,13 @@ export default function ChatPage() {
     debug('conversation:select', { conversationId });
   };
 
-  // Function to get quote based on message metadata
-  const getSwapQuote = useCallback(async (metadata: Record<string, unknown>) => {
-    if (!metadata || typeof metadata !== 'object') return;
-
-    const { amount, from_network, from_token, to_network, to_token } = metadata;
-    
-    if (!amount || !from_network || !from_token || !to_network || !to_token) {
-      setSwapError('Invalid swap metadata');
-      return;
-    }
-
-    // Get networks by name
-    const fromNetwork = getNetworkByName(from_network as string);
-    const toNetwork = getNetworkByName(to_network as string);
-
-    if (!fromNetwork || !toNetwork) {
-      setSwapError(`Unsupported network: ${from_network} or ${to_network}`);
-      return;
-    }
-
-    // Get tokens by symbol
-    const fromToken = getTokenBySymbol(from_token as string, fromNetwork.chainId);
-    const toToken = getTokenBySymbol(to_token as string, toNetwork.chainId);
-
-    if (!fromToken || !toToken) {
-      setSwapError(`Token not found: ${from_token} or ${to_token}`);
-      return;
-    }
-
-    try {
-      setSwapLoading(true);
-      setSwapError(null);
-
-      const addressFromToken = getWalletAddress();
-      const userAddress = localStorage.getItem('userAddress');
-      const effectiveAddress = account?.address || addressFromToken || userAddress;
-
-      const quoteResponse = await swapApi.quote({
-        fromChainId: fromNetwork.chainId,
-        toChainId: toNetwork.chainId,
-        fromToken: normalizeToApi(fromToken.address),
-        toToken: normalizeToApi(toToken.address),
-        amount: String(amount),
-        smartAccountAddress: effectiveAddress || undefined,
-      });
-
-      if (quoteResponse.success && quoteResponse.quote) {
-        setSwapQuote(quoteResponse);
-      } else {
-        setSwapError(quoteResponse.message || 'Failed to get quote');
-      }
-    } catch (error) {
-      console.error('Error getting swap quote:', error);
-      setSwapError(error instanceof Error ? error.message : 'Failed to get quote');
-    } finally {
-      setSwapLoading(false);
-    }
-  }, [account?.address, getWalletAddress]);
-
-  // Function to execute swap - following swap page pattern
-  const executeSwap = useCallback(async (metadata: Record<string, unknown>) => {
-    if (!swapQuote?.quote) {
-      setSwapError('Aguarde a cotação ser calculada');
-      return;
-    }
-
-    const addressFromToken = getWalletAddress();
-    const userAddress = localStorage.getItem('userAddress');
-    const effectiveAddress = account?.address || addressFromToken || userAddress;
-
-    if (!effectiveAddress) {
-      setSwapError('Authentication required. Please ensure you are logged in.');
-      return;
-    }
-
-    if (!clientId || !client) {
-      setSwapError('Missing THIRDWEB client configuration.');
-      return;
-    }
-
-    setSwapError(null);
-    setSwapSuccess(false);
-
-    try {
-      setExecutingSwap(true);
-
-      const { amount, from_network, from_token, to_network, to_token } = metadata;
-      
-      // Get networks by name
-      const fromNetwork = getNetworkByName(from_network as string);
-      const toNetwork = getNetworkByName(to_network as string);
-
-      if (!fromNetwork || !toNetwork) {
-        throw new Error(`Unsupported network: ${from_network} or ${to_network}`);
-      }
-
-      // Get tokens by symbol
-      const fromToken = getTokenBySymbol(from_token as string, fromNetwork.chainId);
-      const toToken = getTokenBySymbol(to_token as string, toNetwork.chainId);
-
-      if (!fromToken || !toToken) {
-        throw new Error(`Token not found: ${from_token} or ${to_token}`);
-      }
-
-      const decimals = await getTokenDecimals({
-        client,
-        chainId: fromNetwork.chainId,
-        token: fromToken.address
-      });
-
-      const wei = parseAmountToWei(String(amount), decimals);
-      if (wei <= 0n) throw new Error('Invalid amount');
-
-      const prep = await swapApi.prepare({
-        fromChainId: fromNetwork.chainId,
-        toChainId: toNetwork.chainId,
-        fromToken: normalizeToApi(fromToken.address),
-        toToken: normalizeToApi(toToken.address),
-        amount: wei.toString(),
-        sender: effectiveAddress,
-      });
-
-      const seq = flattenPrepared(prep.prepared);
-      if (!seq.length) throw new Error('No transactions returned by prepare');
-
-      for (const t of seq) {
-        if (t.chainId !== fromNetwork.chainId) {
-          throw new Error(`Wallet chain mismatch. Switch to chain ${t.chainId} and retry.`);
-        }
-
-        const tx = prepareTransaction({
-          to: t.to as Address,
-          chain: defineChain(t.chainId),
-          client,
-          data: t.data as Hex,
-          value: t.value ? BigInt(t.value as any) : 0n,
-        });
-
-        if (!account) {
-          throw new Error('To execute the swap, you need to connect your wallet. Please go to the dashboard and connect your wallet first.');
-        }
-
-        const sent = await sendTransaction({ account, transaction: tx });
-
-        if (!sent.transactionHash) {
-          throw new Error('Transaction failed: no transaction hash returned. The transaction may have been rejected or failed.');
-        }
-      }
-
-      setSwapSuccess(true);
-      setSwapQuote(null);
-    } catch (error) {
-      console.error('Error executing swap:', error);
-      setSwapError(error instanceof Error ? error.message : 'Failed to execute swap');
-    } finally {
-      setExecutingSwap(false);
-    }
-  }, [swapQuote, client, account, clientId, getWalletAddress]);
-
-  const handleSignatureApproval = useCallback(async (metadata: Record<string, unknown>) => {
+  const handleSignatureApproval = useCallback(async () => {
     console.log('✅ Signature approved');
-    await executeSwap(metadata);
-  }, [executeSwap]);
+  }, []);
 
-  // Helper function to flatten prepared transactions (from swap page)
-  function flattenPrepared(prepared: any): PreparedTx[] {
-    const out: PreparedTx[] = [];
-    if (prepared?.transactions) {
-      out.push(...prepared.transactions);
-    }
-    if (prepared?.steps) {
-      for (const step of prepared.steps) {
-        if (step.transactions) {
-          out.push(...step.transactions);
-        }
-      }
-    }
-    return out;
-  }
-
+  const handleSignatureRejection = useCallback(async () => {
+    console.log('❌ Signature rejected');
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-white flex">
@@ -978,51 +753,12 @@ export default function ChatPage() {
                         <p className="text-xs font-semibold text-cyan-300 mb-1">{message.agentName}</p>
                       ) : null}
                       <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                      {message.role === 'assistant' && 
-                       message.metadata?.event === 'swap_intent_ready' && (
-                        <div className="mt-4 space-y-3">
-                          {/* Quote Information */}
-                          {swapLoading && (
-                            <div className="flex items-center gap-2 text-cyan-400">
-                              <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                              <span className="text-sm">Getting quote...</span>
-                            </div>
-                          )}
-                          
-                          {swapQuote?.quote && (
-                            <div className="bg-gray-700/50 rounded-lg p-3 space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-300">You will receive:</span>
-                                <span className="text-sm font-medium text-white">
-                                  {formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)} {String(message.metadata?.to_token)}
-                                </span>
-                              </div>
-                              {swapQuote.quote.fees?.totalFeeUsd && (
-                                <div className="flex justify-between items-center">
-                                  <span className="text-sm text-gray-300">Total fees:</span>
-                                  <span className="text-sm text-gray-400">${swapQuote.quote.fees.totalFeeUsd}</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          
-                          {swapError && (
-                            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
-                              <p className="text-sm text-red-400">{swapError}</p>
-                            </div>
-                          )}
-                          
-                          {swapSuccess && (
-                            <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3">
-                              <p className="text-sm text-green-400">✅ Swap executed successfully!</p>
-                            </div>
-                          )}
-                          
-                          <SignatureApprovalButton
-                            onApprove={() => handleSignatureApproval(message.metadata as Record<string, unknown>)}
-                            disabled={isSending || swapLoading || executingSwap}
-                          />
-                        </div>
+                      {message.content.toLowerCase().includes('swapped') && message.role === 'assistant' && (
+                        <SignatureApprovalButton
+                          onApprove={handleSignatureApproval}
+                          onReject={handleSignatureRejection}
+                          disabled={isSending}
+                        />
                       )}
                       {timeLabel ? (
                         <p className="text-xs opacity-60 mt-1">{timeLabel}</p>
