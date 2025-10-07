@@ -96,13 +96,29 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Disconnect Button at bottom */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-cyan-500/20">
           <button
-            onClick={() => {
-              localStorage.removeItem('authToken');
-              localStorage.removeItem('authPayload');
-              localStorage.removeItem('authSignature');
-              router.push('/auth');
+            onClick={async () => {
+              try {
+                // Clear all auth data
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('authPayload');
+                localStorage.removeItem('authSignature');
+                localStorage.removeItem('telegram_user');
+
+                // Close sidebar
+                onClose();
+
+                // Small delay to ensure localStorage is cleared
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                // Force page reload and redirect (basePath is /miniapp)
+                window.location.href = '/miniapp';
+              } catch (error) {
+                console.error('Error disconnecting:', error);
+                // Force redirect anyway
+                window.location.href = '/miniapp';
+              }
             }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-all"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-all border border-red-500/20 hover:border-red-500/50"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
