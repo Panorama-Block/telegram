@@ -43,6 +43,8 @@ const FEATURE_CARDS = [
 ];
 
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
+const DEBUG_CHAT_FLAG = (process.env.NEXT_PUBLIC_MINIAPP_DEBUG_CHAT ?? process.env.MINIAPP_DEBUG_CHAT ?? '').toLowerCase();
+const DEBUG_CHAT_ENABLED = ['1', 'true', 'on', 'yes'].includes(DEBUG_CHAT_FLAG);
 
 function normalizeContent(content: unknown): string {
   if (!content) return '';
@@ -86,18 +88,38 @@ export default function ChatPage() {
   const [messagesByConversation, setMessagesByConversation] = useState<Record<string, Message[]>>({});
   const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(true);
+  const [initializationError, setInitializationError] = useState<string | null>(null);
+  const [bootstrapVersion, setBootstrapVersion] = useState(0);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
   const { user, isLoading: authLoading } = useAuth();
   const isMountedRef = useRef(true);
   const bootstrapKeyRef = useRef<string | undefined>(undefined);
+  const debug = useCallback(
+    (event: string, details?: Record<string, unknown>) => {
+      if (!DEBUG_CHAT_ENABLED) return;
+      const entry = {
+        scope: 'ChatPage',
+        event,
+        timestamp: new Date().toISOString(),
+        ...(details ?? {}),
+      } satisfies Record<string, unknown>;
+      // eslint-disable-next-line no-console
+      console.info('[miniapp-debug]', entry);
+    },
+    []
+  );
 
   useEffect(() => {
+    isMountedRef.current = true;
+    debug('component:mount');
+
     return () => {
       isMountedRef.current = false;
+      debug('component:unmount');
     };
-  }, []);
+  }, [debug]);
 
   const userId = user?.id ? String(user.id) : undefined;
   const activeMessages = activeConversationId ? (messagesByConversation[activeConversationId] ?? []) : [];
@@ -114,6 +136,7 @@ export default function ChatPage() {
       if (!conversationId) return;
       setLoadingConversationId(conversationId);
       const userKey = userId ?? '__anonymous__';
+      debug('messages:load:start', { conversationId, userId: userKey });
 
       try {
         const authOpts = getAuthOptions();
@@ -132,6 +155,8 @@ export default function ChatPage() {
           } satisfies Message;
         });
 
+        setInitializationError(null);
+        debug('messages:load:success', { conversationId, messages: mappedHistory.length });
         setMessagesByConversation((prev) => ({
           ...prev,
           [conversationId]: mappedHistory,
@@ -146,12 +171,20 @@ export default function ChatPage() {
         );
       } catch (error) {
         console.error('Error fetching conversation history:', error);
+        debug('messages:load:error', {
+          conversationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
+          setInitializationError('We could not load this conversation. Please try again.');
+        }
       } finally {
         if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) return;
         setLoadingConversationId((current) => (current === conversationId ? null : current));
+        debug('messages:load:complete', { conversationId });
       }
     },
-    [agentsClient, getAuthOptions, userId]
+    [agentsClient, debug, getAuthOptions, userId]
   );
 
   const scrollToBottom = () => {
@@ -165,8 +198,9 @@ export default function ChatPage() {
   useEffect(() => {
     if (!activeConversationId) return;
     if (messagesByConversation[activeConversationId]) return;
+    debug('messages:load:scheduled', { conversationId: activeConversationId });
     loadConversationMessages(activeConversationId);
-  }, [activeConversationId, loadConversationMessages, messagesByConversation]);
+  }, [activeConversationId, debug, loadConversationMessages, messagesByConversation]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -174,19 +208,42 @@ export default function ChatPage() {
     const userKey = userId ?? '__anonymous__';
     bootstrapKeyRef.current = userKey;
     setInitializing(true);
+    setInitializationError(null);
+    debug('bootstrap:start', { userId: userKey });
 
     const initialise = async () => {
       try {
         const authOpts = getAuthOptions();
         let conversationIds: string[] = [];
+        let conversationsRequestFailed = false;
 
         try {
           conversationIds = await agentsClient.listConversations(userId, authOpts);
+          debug('bootstrap:listConversations', { userId: userKey, received: conversationIds.length });
         } catch (error) {
           console.error('Error fetching chat conversations:', error);
+          conversationsRequestFailed = true;
+          debug('bootstrap:listConversations:error', {
+            userId: userKey,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
+            setInitializationError('Unable to reach the chat service. Please check your connection and try again.');
+          }
         }
 
-        if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) return;
+        if (!isMountedRef.current || bootstrapKeyRef.current !== userKey)  {
+          console.log("return early: ", isMountedRef.current, bootstrapKeyRef.current)
+          return;
+        }
+
+        if (conversationsRequestFailed) {
+          setConversations([]);
+          setMessagesByConversation({});
+          setActiveConversationId(null);
+          debug('bootstrap:abort', { reason: 'listConversationsFailed' });
+          return;
+        }
 
         let ensuredConversationId = conversationIds[0] ?? null;
 
@@ -196,8 +253,15 @@ export default function ChatPage() {
             if (ensuredConversationId) {
               conversationIds = [ensuredConversationId, ...conversationIds.filter((id) => id !== ensuredConversationId)];
             }
+            debug('bootstrap:createConversation', { ensuredConversationId });
           } catch (error) {
             console.error('Error creating initial conversation:', error);
+            debug('bootstrap:createConversation:error', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+            if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
+              setInitializationError('We could not start a conversation. Please try again.');
+            }
           }
         }
 
@@ -214,21 +278,32 @@ export default function ChatPage() {
 
         const targetId = ensuredConversationId ?? (conversationIds.length > 0 ? conversationIds[0] : null);
         setActiveConversationId(targetId ?? null);
+        debug('bootstrap:targetSelected', { targetId, totalConversations: mappedConversations.length });
 
         if (targetId) {
-          await loadConversationMessages(targetId);
+          loadConversationMessages(targetId);
         }
       } catch (error) {
         console.error('Error initialising chat:', error);
+        debug('bootstrap:error', { error: error instanceof Error ? error.message : String(error) });
+        if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
+          setInitializationError('Something went wrong while loading your chat. Please try again.');
+        }
       } finally {
         if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
           setInitializing(false);
+          debug('bootstrap:complete', { hasError: Boolean(initializationError) });
         }
       }
     };
 
     initialise();
-  }, [agentsClient, authLoading, getAuthOptions, loadConversationMessages, userId]);
+  }, [agentsClient, authLoading, bootstrapVersion, debug, getAuthOptions, loadConversationMessages, userId]);
+
+  const retryBootstrap = useCallback(() => {
+    debug('bootstrap:retry');
+    setBootstrapVersion((prev) => prev + 1);
+  }, [debug]);
 
   const sendMessage = async (content?: string) => {
     const messageContent = content ?? inputMessage.trim();
@@ -266,6 +341,7 @@ export default function ChatPage() {
     setMenuOpen(false);
 
     try {
+      debug('chat:send', { conversationId, hasMetadata: Boolean(userId) });
       const response = await agentsClient.chat(
         {
           message: { role: 'user', content: messageContent },
@@ -297,6 +373,10 @@ export default function ChatPage() {
       });
     } catch (error) {
       console.error('Error sending message:', error);
+      debug('chat:error', {
+        conversationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       const fallbackContent =
         error instanceof DOMException && error.name === 'AbortError'
           ? 'The agent is taking longer than expected. Please wait a moment and try again.'
@@ -321,6 +401,7 @@ export default function ChatPage() {
       if (isMountedRef.current) {
         setIsSending(false);
       }
+      debug('chat:complete', { conversationId });
     }
   };
 
@@ -350,20 +431,31 @@ export default function ChatPage() {
         ...prev,
         [newConversationId]: [],
       }));
+      setInitializationError(null);
       setActiveConversationId(newConversationId);
+      debug('conversation:create:success', { newConversationId });
     } catch (error) {
       console.error('Error creating chat conversation:', error);
+      debug('conversation:create:error', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (isMountedRef.current) {
+        setInitializationError('We could not create a new chat. Please try again.');
+      }
     } finally {
       if (isMountedRef.current) {
         setIsCreatingConversation(false);
         setMenuOpen(false);
+        debug('conversation:create:complete');
       }
     }
   };
 
   const handleSelectConversation = (conversationId: string) => {
     setActiveConversationId(conversationId);
+    setInitializationError(null);
     setMenuOpen(false);
+    debug('conversation:select', { conversationId });
   };
 
   return (
@@ -492,12 +584,34 @@ export default function ChatPage() {
         {/* Messages or Empty State */}
         <div className="flex-1 overflow-y-auto">
           {initializing ? (
-            <div className="h-full flex items-center justify-center px-4 py-12">
-              <p className="text-gray-400">Loading your conversations...</p>
+            <div className="h-full flex items-center justify-center px-4 py-12 text-center">
+              {initializationError ? (
+                <div className="space-y-4">
+                  <p className="text-gray-300">{initializationError}</p>
+                  <button
+                    onClick={retryBootstrap}
+                    className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-cyan-500 text-white hover:bg-cyan-600 transition-all"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : (
+                <p className="text-gray-400">Loading your conversations...</p>
+              )}
             </div>
           ) : !activeConversationId ? (
             <div className="h-full flex items-center justify-center px-4 py-12">
               <p className="text-gray-400">Create a new chat to get started.</p>
+            </div>
+          ) : initializationError && activeMessages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center px-4 py-12 text-center space-y-4">
+              <p className="text-gray-300">{initializationError}</p>
+              <button
+                onClick={retryBootstrap}
+                className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-cyan-500 text-white hover:bg-cyan-600 transition-all"
+              >
+                Try again
+              </button>
             </div>
           ) : isHistoryLoading && activeMessages.length === 0 ? (
             <div className="h-full flex items-center justify-center px-4 py-12">
