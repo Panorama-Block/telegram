@@ -2,15 +2,6 @@
 
 import React, { useState } from 'react';
 
-// Declaração de tipo para window.ethereum
-declare global {
-  interface Window {
-    ethereum?: {
-      request: (args: { method: string; params?: any[] }) => Promise<any>;
-    };
-  }
-}
-
 interface SignatureApprovalButtonProps {
   onApprove: () => void;
   onReject: () => void;
@@ -20,36 +11,9 @@ interface SignatureApprovalButtonProps {
 export function SignatureApprovalButton({ onApprove, onReject, disabled = false }: SignatureApprovalButtonProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const testTransactionPopup = async () => {
-    // Verificar se MetaMask está disponível
-    if (!window.ethereum) {
-      throw new Error('MetaMask não está instalado');
-    }
-
-    const [account] = await window.ethereum.request({ method: "eth_requestAccounts" });
-
-    const tx = {
-      from: account,
-      to: account, // envia para si mesmo
-      value: "0x0", // sem valor
-      data: "0x", // sem dados (void)
-    };
-
-    try {
-      const txHash = await window.ethereum.request({
-        method: "eth_sendTransaction",
-        params: [tx],
-      });
-      console.log("Hash da transação:", txHash);
-    } catch (error) {
-      console.log("Transação cancelada ou rejeitada:", error);
-    }
-  };
-
   const handleApprove = async () => {
     setIsProcessing(true);
     try {
-      await testTransactionPopup();
       await onApprove();
     } finally {
       setIsProcessing(false);

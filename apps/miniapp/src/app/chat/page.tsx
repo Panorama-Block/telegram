@@ -1,6 +1,15 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+
+// Declaração de tipo para window.ethereum
+declare global {
+  interface Window {
+    ethereum?: {
+      request: (args: { method: string; params?: any[] }) => Promise<any>;
+    };
+  }
+}
 import { Sidebar, SignatureApprovalButton } from '@/shared/ui';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
@@ -12,6 +21,14 @@ import SwapIcon from '../../../public/icons/Swap.svg';
 import WalletIcon from '../../../public/icons/Wallet.svg';
 import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
+import { swapApi, SwapApiError } from '@/features/swap/api';
+import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman } from '@/features/swap/utils';
+import { networks, Token } from '@/features/swap/tokens';
+import { useActiveAccount } from 'thirdweb/react';
+import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
+import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
+import type { PreparedTx, QuoteResponse } from '@/features/swap/types';
 
 
 interface Message {
@@ -19,6 +36,7 @@ interface Message {
   content: string;
   timestamp: Date;
   agentName?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface Conversation {
@@ -44,6 +62,29 @@ const FEATURE_CARDS = [
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
 const DEBUG_CHAT_FLAG = (process.env.NEXT_PUBLIC_MINIAPP_DEBUG_CHAT ?? process.env.MINIAPP_DEBUG_CHAT ?? '').toLowerCase();
 const DEBUG_CHAT_ENABLED = ['1', 'true', 'on', 'yes'].includes(DEBUG_CHAT_FLAG);
+
+// Helper functions to map metadata to tokens and networks
+function getNetworkByName(networkName: string) {
+  const networkMap: Record<string, number> = {
+    'ethereum': 1,
+    'avalanche': 43114,
+    'base': 8453,
+    'arbitrum': 42161,
+    'polygon': 137,
+    'bsc': 56,
+    'optimism': 10,
+  };
+  
+  const chainId = networkMap[networkName.toLowerCase()];
+  return networks.find(n => n.chainId === chainId);
+}
+
+function getTokenBySymbol(symbol: string, chainId: number): Token | null {
+  const network = networks.find(n => n.chainId === chainId);
+  if (!network) return null;
+  
+  return network.tokens.find(t => t.symbol.toUpperCase() === symbol.toUpperCase()) || null;
+}
 
 function normalizeContent(content: unknown): string {
   if (!content) return '';
@@ -95,6 +136,18 @@ export default function ChatPage() {
   const { user, isLoading: authLoading } = useAuth();
   const isMountedRef = useRef(true);
   const bootstrapKeyRef = useRef<string | undefined>(undefined);
+
+  // Thirdweb setup
+  const account = useActiveAccount();
+  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
+  const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
+
+  // Swap states
+  const [swapQuote, setSwapQuote] = useState<QuoteResponse | null>(null);
+  const [swapLoading, setSwapLoading] = useState(false);
+  const [swapError, setSwapError] = useState<string | null>(null);
+  const [swapSuccess, setSwapSuccess] = useState(false);
+  const [executingSwap, setExecutingSwap] = useState(false);
   const debug = useCallback(
     (event: string, details?: Record<string, unknown>) => {
       if (!DEBUG_CHAT_ENABLED) return;
@@ -109,6 +162,24 @@ export default function ChatPage() {
     },
     []
   );
+
+  // Function to force MetaMask window to open
+  const forceMetaMaskWindow = useCallback(async () => {
+    if (typeof window === 'undefined' || !window.ethereum) {
+      console.warn('MetaMask not available');
+      return false;
+    }
+
+    try {
+      console.log('🦊 Forcing MetaMask window to open...');
+      await window.ethereum.request({ method: 'eth_requestAccounts' });
+      console.log('✅ MetaMask window opened successfully');
+      return true;
+    } catch (error) {
+      console.log('⚠️ MetaMask window request failed:', error);
+      return false;
+    }
+  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -376,13 +447,22 @@ export default function ChatPage() {
       );
 
       if (!isMountedRef.current) return;
+      
+      console.log('response: ', response);
 
       const assistantMessage: Message = {
         role: 'assistant',
         content: response.message || 'I was unable to process that request.',
         timestamp: new Date(),
         agentName: response.agent_name ?? null,
+        metadata: response.metadata ?? undefined,
       };
+
+      // Auto-fetch quote if it's a swap intent
+      if (response.metadata?.event === 'swap_intent_ready') {
+        console.log('🔄 Swap intent detected, fetching quote...', response.metadata);
+        getSwapQuote(response.metadata as Record<string, unknown>);
+      }
 
       setMessagesByConversation((prev) => {
         const prevMessages = prev[conversationId] ?? [];
@@ -477,13 +557,243 @@ export default function ChatPage() {
     debug('conversation:select', { conversationId });
   };
 
-  const handleSignatureApproval = useCallback(async () => {
+  // Function to get quote based on message metadata
+  const getSwapQuote = useCallback(async (metadata: Record<string, unknown>) => {
+    if (!metadata || typeof metadata !== 'object') {
+      console.error('❌ Invalid metadata for swap quote');
+      return;
+    }
+
+    const { amount, from_network, from_token, to_network, to_token } = metadata;
+    
+    console.log('📊 Getting swap quote with metadata:', { amount, from_network, from_token, to_network, to_token });
+    
+    if (!amount || !from_network || !from_token || !to_network || !to_token) {
+      const errorMsg = 'Invalid swap metadata - missing required fields';
+      console.error('❌', errorMsg, { amount, from_network, from_token, to_network, to_token });
+      setSwapError(errorMsg);
+      return;
+    }
+
+    // Get networks by name
+    const fromNetwork = getNetworkByName(from_network as string);
+    const toNetwork = getNetworkByName(to_network as string);
+
+    if (!fromNetwork || !toNetwork) {
+      const errorMsg = `Unsupported network: ${from_network} or ${to_network}`;
+      console.error('❌', errorMsg);
+      setSwapError(errorMsg);
+      return;
+    }
+
+    // Get tokens by symbol
+    const fromToken = getTokenBySymbol(from_token as string, fromNetwork.chainId);
+    const toToken = getTokenBySymbol(to_token as string, toNetwork.chainId);
+
+    if (!fromToken || !toToken) {
+      const errorMsg = `Token not found: ${from_token} or ${to_token}`;
+      console.error('❌', errorMsg);
+      setSwapError(errorMsg);
+      return;
+    }
+
+    try {
+      setSwapLoading(true);
+      setSwapError(null);
+      console.log('🔄 Fetching quote...');
+
+      const addressFromToken = getWalletAddress();
+      const userAddress = localStorage.getItem('userAddress');
+      const effectiveAddress = account?.address || addressFromToken || userAddress;
+
+      console.log('📍 Using address:', effectiveAddress);
+
+      const quoteResponse = await swapApi.quote({
+        fromChainId: fromNetwork.chainId,
+        toChainId: toNetwork.chainId,
+        fromToken: normalizeToApi(fromToken.address),
+        toToken: normalizeToApi(toToken.address),
+        amount: String(amount),
+        smartAccountAddress: effectiveAddress || undefined,
+      });
+
+      console.log('📈 Quote response:', quoteResponse);
+
+      if (quoteResponse.success && quoteResponse.quote) {
+        setSwapQuote(quoteResponse);
+        console.log('✅ Quote received successfully');
+      } else {
+        const errorMsg = quoteResponse.message || 'Failed to get quote';
+        console.error('❌ Quote failed:', errorMsg);
+        setSwapError(errorMsg);
+      }
+    } catch (error) {
+      console.error('❌ Error getting swap quote:', error);
+      setSwapError(error instanceof Error ? error.message : 'Failed to get quote');
+    } finally {
+      setSwapLoading(false);
+    }
+  }, [account?.address, getWalletAddress]);
+
+  // Function to execute swap - following swap page pattern
+  const executeSwap = useCallback(async (metadata: Record<string, unknown>) => {
+    console.log('🚀 Starting swap execution with metadata:', metadata);
+    
+    if (!swapQuote?.quote) {
+      const errorMsg = 'Aguarde a cotação ser calculada';
+      console.error('❌', errorMsg);
+      setSwapError(errorMsg);
+      return;
+    }
+
+    const addressFromToken = getWalletAddress();
+    const userAddress = localStorage.getItem('userAddress');
+    const effectiveAddress = account?.address || addressFromToken || userAddress;
+
+    if (!effectiveAddress) {
+      const errorMsg = 'Authentication required. Please ensure you are logged in.';
+      console.error('❌', errorMsg);
+      setSwapError(errorMsg);
+      return;
+    }
+
+    if (!clientId || !client) {
+      const errorMsg = 'Missing THIRDWEB client configuration.';
+      console.error('❌', errorMsg);
+      setSwapError(errorMsg);
+      return;
+    }
+
+    setSwapError(null);
+    setSwapSuccess(false);
+
+    try {
+      setExecutingSwap(true);
+      console.log('🔄 Preparing swap transaction...');
+
+      const { amount, from_network, from_token, to_network, to_token } = metadata;
+      
+      // Get networks by name
+      const fromNetwork = getNetworkByName(from_network as string);
+      const toNetwork = getNetworkByName(to_network as string);
+
+      if (!fromNetwork || !toNetwork) {
+        throw new Error(`Unsupported network: ${from_network} or ${to_network}`);
+      }
+
+      // Get tokens by symbol
+      const fromToken = getTokenBySymbol(from_token as string, fromNetwork.chainId);
+      const toToken = getTokenBySymbol(to_token as string, toNetwork.chainId);
+
+      if (!fromToken || !toToken) {
+        throw new Error(`Token not found: ${from_token} or ${to_token}`);
+      }
+
+      console.log('📊 Token details:', { fromToken, toToken, fromNetwork, toNetwork });
+
+      const decimals = await getTokenDecimals({
+        client,
+        chainId: fromNetwork.chainId,
+        token: fromToken.address
+      });
+
+      const wei = parseAmountToWei(String(amount), decimals);
+      if (wei <= 0n) throw new Error('Invalid amount');
+
+      console.log('💰 Amount details:', { amount, decimals, wei: wei.toString() });
+
+      const prep = await swapApi.prepare({
+        fromChainId: fromNetwork.chainId,
+        toChainId: toNetwork.chainId,
+        fromToken: normalizeToApi(fromToken.address),
+        toToken: normalizeToApi(toToken.address),
+        amount: wei.toString(),
+        sender: effectiveAddress,
+      });
+
+      console.log('🔧 Prepared transaction:', prep);
+
+      const seq = flattenPrepared(prep.prepared);
+      if (!seq.length) throw new Error('No transactions returned by prepare');
+
+      console.log('📝 Transaction sequence:', seq);
+
+      for (const t of seq) {
+        if (t.chainId !== fromNetwork.chainId) {
+          throw new Error(`Wallet chain mismatch. Switch to chain ${t.chainId} and retry.`);
+        }
+
+        const tx = prepareTransaction({
+          to: t.to as Address,
+          chain: defineChain(t.chainId),
+          client,
+          data: t.data as Hex,
+          value: t.value ? BigInt(t.value as any) : 0n,
+        });
+
+        if (!account) {
+          throw new Error('To execute the swap, you need to connect your wallet. Please go to the dashboard and connect your wallet first.');
+        }
+
+        console.log('📤 Sending transaction...', { to: t.to, chainId: t.chainId });
+
+        // Force MetaMask window to open
+        await forceMetaMaskWindow();
+
+        const result = await safeExecuteTransactionV2(async () => {
+          return await sendTransaction({ account, transaction: tx });
+        });
+
+        if (!result.success) {
+          throw new Error(`Transaction failed: ${result.error}`);
+        }
+
+        if (!result.transactionHash) {
+          throw new Error('Transaction failed: no transaction hash returned.');
+        }
+
+        console.log(`✅ Transaction ${result.transactionHash} submitted on chain ${t.chainId}`);
+      }
+
+      setSwapSuccess(true);
+      setSwapQuote(null);
+      console.log('🎉 Swap executed successfully!');
+    } catch (error) {
+      console.error('❌ Error executing swap:', error);
+      setSwapError(error instanceof Error ? error.message : 'Failed to execute swap');
+    } finally {
+      setExecutingSwap(false);
+    }
+  }, [swapQuote, client, account, clientId, getWalletAddress]);
+
+  const handleSignatureApproval = useCallback(async (metadata: Record<string, unknown>) => {
     console.log('✅ Signature approved');
-  }, []);
+    
+    // Force MetaMask window to open before executing swap
+    await forceMetaMaskWindow();
+    
+    await executeSwap(metadata);
+  }, [executeSwap, forceMetaMaskWindow]);
 
   const handleSignatureRejection = useCallback(async () => {
     console.log('❌ Signature rejected');
   }, []);
+
+  // Helper function to flatten prepared transactions (from swap page)
+  function flattenPrepared(prepared: any): PreparedTx[] {
+    const out: PreparedTx[] = [];
+    if (prepared?.transactions) {
+      out.push(...prepared.transactions);
+    }
+    if (prepared?.steps) {
+      for (const step of prepared.steps) {
+        if (step.transactions) {
+          out.push(...step.transactions);
+        }
+      }
+    }
+    return out;
+  }
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-white flex">
@@ -753,12 +1063,65 @@ export default function ChatPage() {
                         <p className="text-xs font-semibold text-cyan-300 mb-1">{message.agentName}</p>
                       ) : null}
                       <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                      {message.content.toLowerCase().includes('swapped') && message.role === 'assistant' && (
-                        <SignatureApprovalButton
-                          onApprove={handleSignatureApproval}
-                          onReject={handleSignatureRejection}
-                          disabled={isSending}
-                        />
+                      
+                      {/* Swap Interface */}
+                      {message.role === 'assistant' && 
+                        message.metadata?.event === 'swap_intent_ready' && (
+                        <div className="mt-4 space-y-3">
+                          {/* Quote Information */}
+                          {swapLoading && (
+                            <div className="flex items-center gap-2 text-cyan-400">
+                              <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                              <span className="text-sm">Getting quote...</span>
+                            </div>
+                          )}
+                          
+                          {swapQuote?.quote && (
+                            <div className="bg-gray-700/50 rounded-lg p-3 space-y-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-300">You will receive:</span>
+                                <span className="text-sm font-medium text-white">
+                                  {formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)} {String(message.metadata?.to_token)}
+                                </span>
+                              </div>
+                              {swapQuote.quote.fees?.totalFeeUsd && (
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-300">Total fees:</span>
+                                  <span className="text-sm text-gray-400">${swapQuote.quote.fees.totalFeeUsd}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {swapError && (
+                            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
+                              <p className="text-sm text-red-400">{swapError}</p>
+                            </div>
+                          )}
+                          
+                          {swapSuccess && (
+                            <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3">
+                              <p className="text-sm text-green-400">✅ Swap executed successfully!</p>
+                            </div>
+                          )}
+                          
+                          {swapLoading && !swapQuote?.quote && (
+                            <div className="mt-3 p-3 bg-gray-700/50 rounded-lg border border-cyan-500/30">
+                              <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                                <span className="text-sm text-cyan-400">Preparing swap transaction...</span>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {swapQuote?.quote && (
+                            <SignatureApprovalButton
+                              onApprove={() => handleSignatureApproval(message.metadata as Record<string, unknown>)}
+                              onReject={handleSignatureRejection}
+                              disabled={isSending || swapLoading || executingSwap}
+                            />
+                          )}
+                        </div>
                       )}
                       {timeLabel ? (
                         <p className="text-xs opacity-60 mt-1">{timeLabel}</p>

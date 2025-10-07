@@ -8,7 +8,8 @@ import { swapApi, SwapApiError } from '@/features/swap/api';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative } from '@/features/swap/utils';
 import { useActiveAccount, PayEmbed } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
-import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
+import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx } from '@/features/swap/types';
 
 interface TokenSelectorProps {
@@ -413,11 +414,19 @@ export default function SwapPage() {
           throw new Error('To execute the swap, you need to connect your wallet. Please go to the dashboard and connect your wallet first.');
         }
 
-        const sent = await sendTransaction({ account, transaction: tx });
+        const result = await safeExecuteTransactionV2(async () => {
+          return await sendTransaction({ account, transaction: tx });
+        });
 
-        if (!sent.transactionHash) {
-          throw new Error('Transaction failed: no transaction hash returned. The transaction may have been rejected or failed.');
+        if (!result.success) {
+          throw new Error(`Transaction failed: ${result.error}`);
         }
+
+        if (!result.transactionHash) {
+          throw new Error('Transaction failed: no transaction hash returned.');
+        }
+
+        console.log(`Transaction ${result.transactionHash} submitted on chain ${t.chainId}`);
       }
 
       setSuccess(true);

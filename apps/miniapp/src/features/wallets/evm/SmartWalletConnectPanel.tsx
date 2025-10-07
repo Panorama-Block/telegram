@@ -3,7 +3,7 @@ import { useActiveAccount, useActiveWallet, useDisconnect, ConnectButton } from 
 import { createThirdwebClient } from 'thirdweb';
 import { signLoginPayload } from 'thirdweb/auth';
 import { Card, Button } from '@/shared/ui';
-import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import { THIRDWEB_CLIENT_ID } from '../../../shared/config/thirdweb';
 
 
 function WalletIcon({ size = 20, style }: { size?: number; style?: React.CSSProperties }) {
