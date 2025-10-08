@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 
@@ -80,6 +80,7 @@ function deriveConversationTitle(fallbackTitle: string, messages: Message[]): st
 
 export default function ChatPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLargeScreen, setIsLargeScreen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
@@ -286,13 +287,22 @@ export default function ChatPage() {
 
         let ensuredConversationId = conversationIds[0] ?? null;
 
-        if (!ensuredConversationId) {
+        // Check if we should force create a new conversation (from landing page redirect)
+        const shouldCreateNew = searchParams.get('new') === 'true';
+
+        // Se não há conversas, é um usuário recém-autenticado, ou foi solicitado criar novo chat
+        if (!ensuredConversationId || conversationIds.length === 0 || shouldCreateNew) {
           try {
             ensuredConversationId = await agentsClient.createConversation(userId, authOpts);
             if (ensuredConversationId) {
               conversationIds = [ensuredConversationId, ...conversationIds.filter((id) => id !== ensuredConversationId)];
             }
-            debug('bootstrap:createConversation', { ensuredConversationId });
+            debug('bootstrap:createConversation', { ensuredConversationId, forcedNew: shouldCreateNew });
+
+            // Clear the 'new' parameter from URL after creating the conversation
+            if (shouldCreateNew) {
+              router.replace('/chat');
+            }
           } catch (error) {
             console.error('Error creating initial conversation:', error);
             debug('bootstrap:createConversation:error', {
@@ -319,8 +329,15 @@ export default function ChatPage() {
         setActiveConversationId(targetId ?? null);
         debug('bootstrap:targetSelected', { targetId, totalConversations: mappedConversations.length });
 
-        if (targetId) {
+        // Don't load messages for new conversations from landing page to show feature selection screen
+        if (targetId && !shouldCreateNew) {
           loadConversationMessages(targetId);
+        } else if (targetId && shouldCreateNew) {
+          // For new conversations from landing page, ensure empty message state to show feature selection
+          setMessagesByConversation((prev) => ({
+            ...prev,
+            [targetId]: [],
+          }));
         }
       } catch (error) {
         console.error('Error initialising chat:', error);
@@ -443,7 +460,7 @@ export default function ChatPage() {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
@@ -852,7 +869,7 @@ export default function ChatPage() {
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyDown}
               placeholder="Type your message..."
               disabled={isSending || !activeConversationId || initializing}
               className="flex-1 px-4 py-3 rounded-full bg-gray-800 border border-cyan-500/30 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
