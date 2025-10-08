@@ -1,35 +1,70 @@
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyReply, FastifyRequest, FastifyServerOptions } from 'fastify';
-import fastifyStatic from '@fastify/static';
 import { Bot, webhookCallback } from 'grammy';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
-import { readdir } from 'node:fs/promises';
 
-import { parseEnv } from './env.js';
+import { parseEnv, type Env } from './env.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
 import { registerCommandHandlers } from './handlers/commands.js';
 import { registerErrorHandler } from './middleware/errorHandler.js';
 
+type HttpsConfig = {
+  options: {
+    key: Buffer;
+    cert: Buffer;
+    ca?: Buffer;
+  };
+  paths: {
+    certPath: string;
+    keyPath: string;
+  };
+};
+
+const GATEWAY_LOG_PREFIX = '[Gateway Service]';
+
+function loadHttpsConfig(env: Env): HttpsConfig | null {
+  try {
+    const certPath = env.FULLCHAIN || '/etc/letsencrypt/live/api.panoramablock.com/fullchain.pem';
+    const keyPath = env.PRIVKEY || '/etc/letsencrypt/live/api.panoramablock.com/privkey.pem';
+
+    console.log(`${GATEWAY_LOG_PREFIX} Checking SSL certificates at: ${certPath} and ${keyPath}`);
+
+    const certExists = existsSync(certPath);
+    const keyExists = existsSync(keyPath);
+
+    if (certExists && keyExists) {
+      console.log(`${GATEWAY_LOG_PREFIX} ✅ SSL certificates found!`);
+      return {
+        options: {
+          key: readFileSync(keyPath),
+          cert: readFileSync(certPath),
+        },
+        paths: {
+          certPath,
+          keyPath,
+        },
+      };
+    }
+
+    console.warn(`${GATEWAY_LOG_PREFIX} ⚠️ SSL certificates not found at provided paths:`);
+    console.warn(`- Cert: ${certPath} (${certExists ? 'exists' : 'missing'})`);
+    console.warn(`- Key: ${keyPath} (${keyExists ? 'exists' : 'missing'})`);
+    console.warn(`${GATEWAY_LOG_PREFIX} Running in HTTP mode.`);
+    return null;
+  } catch (error) {
+    console.warn(`${GATEWAY_LOG_PREFIX} ❌ Error while loading SSL certificates:`, error);
+    return null;
+  }
+}
+
 export async function createServer(): Promise<FastifyInstance> {
   const env = parseEnv();
-
-  let httpsOptions: { key: Buffer; cert: Buffer; ca?: Buffer } | undefined;
-  if (env.PRIVKEY && env.FULLCHAIN) {
-    try {
-      const key = readFileSync(env.PRIVKEY);
-      const cert = readFileSync(env.FULLCHAIN);
-      const ca = undefined;
-      httpsOptions = { key, cert, ca };
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('Failed to load HTTPS certificates, falling back to HTTP', err);
-    }
-  }
+  const httpsConfig = loadHttpsConfig(env);
 
   const serverOptions: FastifyServerOptions = {
     logger: {
@@ -41,11 +76,12 @@ export async function createServer(): Promise<FastifyInstance> {
     },
   };
 
-  if (httpsOptions) {
-    (serverOptions as any).https = httpsOptions;
+  if (httpsConfig) {
+    (serverOptions as any).https = httpsConfig.options;
   }
 
-  const app = Fastify(serverOptions);
+  const app = Fastify(serverOptions) as FastifyInstance & { httpsConfig?: HttpsConfig | null };
+  app.httpsConfig = httpsConfig;
 
   await app.register(cors, {
     origin: true,
@@ -235,6 +271,44 @@ export async function createServer(): Promise<FastifyInstance> {
 export async function start() {
   const env = parseEnv();
   const app = await createServer();
+  const httpsConfig = (app as FastifyInstance & { httpsConfig?: HttpsConfig | null }).httpsConfig ?? null;
   const port = Number(env.PORT);
-  await app.listen({ port, host: '0.0.0.0' });
+
+  try {
+    await app.listen({ port, host: '0.0.0.0' });
+
+    const protocol = httpsConfig ? 'HTTPS' : 'HTTP';
+    const originPrefix = httpsConfig ? 'https' : 'http';
+
+    console.log(`\n🎉 ${GATEWAY_LOG_PREFIX} ${protocol} Server running successfully!`);
+    console.log(`📊 Port: ${port}`);
+    console.log(`🔒 Protocol: ${protocol}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`📋 Health check: ${originPrefix}://localhost:${port}/healthz`);
+    console.log(`📖 Documentation: ${originPrefix}://localhost:${port}/`);
+    console.log('');
+
+    if (!httpsConfig && process.env.NODE_ENV === 'production') {
+      console.warn(`${GATEWAY_LOG_PREFIX} WARNING: Running in HTTP mode in production. SSL certificates not found.`);
+    }
+  } catch (error) {
+    const err = error as Error;
+    console.error(`${GATEWAY_LOG_PREFIX} 💥 Fatal error initializing service:`, err.message);
+    if (process.env.DEBUG === 'true') {
+      console.error(`${GATEWAY_LOG_PREFIX} Stack trace:`, err.stack);
+    }
+    process.exit(1);
+  }
+
+  process.once('SIGTERM', async () => {
+    console.log(`${GATEWAY_LOG_PREFIX} SIGTERM received, shutting down gracefully...`);
+    try {
+      await app.close();
+      console.log(`${GATEWAY_LOG_PREFIX} Server closed`);
+      process.exit(0);
+    } catch (shutdownError) {
+      console.error(`${GATEWAY_LOG_PREFIX} Error while shutting down:`, shutdownError);
+      process.exit(1);
+    }
+  });
 }
