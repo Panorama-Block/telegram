@@ -38,13 +38,13 @@ export function SignatureApprovalButton({ onApprove, onReject, disabled = false 
         <span className="text-sm font-medium text-cyan-300">Signature Required</span>
       </div>
       <p className="text-xs text-gray-400 mb-3">
-        Please approve or reject this transaction signature
+        Please approve this transaction signature
       </p>
-      <div className="flex gap-2">
+      <div className="flex justify-center">
         <button
           onClick={handleApprove}
           disabled={disabled || isProcessing}
-          className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 text-white text-sm font-medium rounded-lg transition-all disabled:cursor-not-allowed"
+          className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 text-white text-sm font-medium rounded-lg transition-all disabled:cursor-not-allowed"
         >
           {isProcessing ? (
             <div className="flex items-center justify-center gap-2">
@@ -53,20 +53,6 @@ export function SignatureApprovalButton({ onApprove, onReject, disabled = false 
             </div>
           ) : (
             'Approve'
-          )}
-        </button>
-        <button
-          onClick={handleReject}
-          disabled={disabled || isProcessing}
-          className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 text-white text-sm font-medium rounded-lg transition-all disabled:cursor-not-allowed"
-        >
-          {isProcessing ? (
-            <div className="flex items-center justify-center gap-2">
-              <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Rejecting...
-            </div>
-          ) : (
-            'Reject'
           )}
         </button>
       </div>
