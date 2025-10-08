@@ -40,7 +40,7 @@ const Hero = () => {
       </span>
 
       <div className="flex flex-col items-center mx-auto w-fit mt-8 gap-8 z-50">
-        <a href="https://t.me/PanoramaBlockBot" target="_blank" rel="noopener noreferrer">
+        <a href="/miniapp/auth">
           <Button className="min-w-[180px] h-14 rounded-[30px] hover:bg-gray-100">Launch App</Button>
         </a>
 

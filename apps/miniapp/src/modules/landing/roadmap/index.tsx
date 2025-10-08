@@ -4,27 +4,25 @@ const data = [
   {
     title: 'Phase 1',
     items: [
-      'Build a multi-chain data pipeline with scanners that structure on-chain data, enabling agents to reason beyond deterministic systems.',
-      'Develop specialized toolkits with UCLA MQE students to deploy agents across on-chain applications.',
+      'Deploy first DeFi-focused AI agents on Telegram, enabling swaps, staking, lending, and multi-chain operations through simple prompts, establishing a modular multi-agent infrastructure supporting composable money legos strategies.',
     ],
   },
   {
     title: 'Phase 2',
     items: [
-      'Deploy foundational agents with low autonomy to simplify multi-protocol DeFi activities, abstracting complex on-chain actions into intuitive commands.',
-      'Launch a decentralized marketplace for deploying, selling, and monetizing AI agents, models, and tools.',
+      'Expand agents to additional networks and integrate a broader set of DeFi yield protocols. Implement flexible composability layers that adjust strategy parameters according to varying user risk profiles and optimization objectives.',
     ],
   },
   {
     title: 'Phase 3',
     items: [
-      'Launch hybrid agents combining autonomous and manual capabilities, collaborating on complex DeFi operations while offering modular frameworks for users to build and customize their own agent teams.',
+      'Enhance multi-agent orchestration with advanced reasoning modules coordinating complex multi-step workflows across protocols and chains while dynamically adjusting allocations, leverage, and portfolio distribution based on predefined strategy templates, evolving from simple prompt-driven commands to fully adaptive, multi-chain strategy execution.',
     ],
   },
   {
     title: 'Phase 4',
     items: [
-      'Introduce fully composable, DeFi strategist agents with advanced reasoning, capable of autonomously making critical decisions across multi-chain environments, enabling sophisticated, high-utility automation at scale.',
+      'Activate enterprise-grade multi-agent framework for institutional applications, including corporate liquidity management, institutional staking, micropayments, insurance and lending. Expand accessibility through familiar messaging and mobile interfaces and launch a fully featured mobile super app for high-utility DeFi management.',
     ],
   },
 ]
