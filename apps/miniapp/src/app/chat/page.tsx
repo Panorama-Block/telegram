@@ -34,11 +34,11 @@ const TRENDING_PROMPTS = [
 ];
 
 const FEATURE_CARDS = [
-  { name: 'Wallet Tracking', icon: WalletIcon, path: null },
+  { name: 'Liquidity Provisioning', icon: WalletIcon, path: null },
   { name: 'AI Agents on X', icon: XIcon, path: null },
   { name: 'Liquid Swap', icon: SwapIcon, path: '/swap' },
-  { name: 'Pano View', icon: BlockchainTechnology, path: null },
-  { name: 'AI MarketPulse', icon: ComboChart, path: null },
+  { name: 'Lending', icon: BlockchainTechnology, path: null },
+  { name: 'Liquid Staking', icon: ComboChart, path: null },
   { name: 'Portfolio', icon: Briefcase, path: null },
 ];
 
@@ -736,7 +736,7 @@ export default function ChatPage() {
               </h2>
 
               {/* Feature Cards Grid */}
-              <div className="grid grid-cols-3 gap-4 max-w-md mb-8">
+              <div className="grid grid-cols-3 gap-6 max-w-4xl mb-8">
                 {FEATURE_CARDS.map((feature, idx) => (
                   <button
                     key={idx}
@@ -746,18 +746,18 @@ export default function ChatPage() {
                       }
                     }}
                     disabled={!feature.path}
-                    className={`flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-gray-800/30 backdrop-blur-md hover:bg-gray-800/50 border border-cyan-500/20 hover:border-cyan-500/50 transition-all shadow-lg hover:shadow-cyan-500/20 ${
+                    className={`flex flex-col items-center justify-center gap-4 p-8 rounded-xl bg-gray-800/30 backdrop-blur-md hover:bg-gray-800/50 border border-cyan-500/20 hover:border-cyan-500/50 transition-all shadow-lg hover:shadow-cyan-500/20 min-h-[140px] ${
                       !feature.path ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
                     }`}
                   >
                     <Image
                       src={feature.icon}
                       alt={feature.name}
-                      width={32}
-                      height={32}
-                      className="w-8 h-8"
+                      width={48}
+                      height={48}
+                      className="w-12 h-12"
                     />
-                    <span className="text-xs text-gray-400 text-center">{feature.name}</span>
+                    <span className="text-sm text-gray-400 text-center font-medium">{feature.name}</span>
                   </button>
                 ))}
               </div>
