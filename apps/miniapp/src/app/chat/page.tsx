@@ -13,6 +13,7 @@ import SwapIcon from '../../../public/icons/Swap.svg';
 import WalletIcon from '../../../public/icons/Wallet.svg';
 import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
+import { FormattedMessage } from '@/shared/ui/FormattedMessage';
 
 
 interface Message {
@@ -742,7 +743,18 @@ export default function ChatPage() {
                     key={idx}
                     onClick={() => {
                       if (feature.path) {
-                        router.push(feature.path);
+                        try {
+                          // Ensure we're in a client environment
+                          if (typeof window !== 'undefined') {
+                            router.push(feature.path);
+                          }
+                        } catch (error) {
+                          console.error('Navigation error:', error);
+                          // Fallback: try window.location
+                          if (typeof window !== 'undefined') {
+                            window.location.href = feature.path;
+                          }
+                        }
                       }
                     }}
                     disabled={!feature.path}
@@ -822,7 +834,10 @@ export default function ChatPage() {
                           <div className={`text-[15px] text-gray-200 break-words leading-relaxed ${
                             message.role === 'user' ? 'text-right' : ''
                           }`}>
-                            {message.content}
+                            <FormattedMessage
+                              content={message.content}
+                              isAgent={message.role === 'assistant'}
+                            />
                           </div>
                         </div>
                       </div>

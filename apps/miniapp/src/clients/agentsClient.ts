@@ -113,7 +113,7 @@ export class AgentsClient {
 
   private static joinContent(content: unknown): string {
     // content pode ser string, array de blocos, objetos etc.
-    if (typeof content === 'string') return content;
+    if (typeof content === 'string') return AgentsClient.formatMessage(content);
     if (Array.isArray(content)) {
       return content
         .map((part) => {
@@ -135,6 +135,33 @@ export class AgentsClient {
       if (AgentsClient.isString(anyObj.content)) return anyObj.content;
     }
     return '';
+  }
+
+  private static formatMessage(message: string): string {
+    if (!message) return message;
+
+    // Enhanced formatting for GPT-like responses
+    let formatted = message;
+
+    // Fix common formatting issues
+    formatted = formatted
+      // Ensure proper line breaks before numbered lists
+      .replace(/(\w)\s*(\d+\.\s+)/g, '$1\n\n$2')
+      // Ensure proper spacing after periods in lists
+      .replace(/(\d+\.\s+)([A-Z])/g, '$1**$2')
+      // Fix bold formatting around list items
+      .replace(/(\d+\.\s+)\*\*([^*]+)\*\*/g, '**$1$2**')
+      // Ensure proper paragraph breaks
+      .replace(/\.\s+([A-Z][^.]*:)/g, '.\n\n$1')
+      // Fix platform name formatting
+      .replace(/\b(DefiLlama|DeFi Llama|Uniswap|Yield Samurai)\b/g, '**$1**')
+      // Add proper spacing around headers
+      .replace(/(\w)(\#\#?\s)/g, '$1\n\n$2')
+      // Clean up extra whitespace
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    return formatted;
   }
 
   private static coerceResponse(data: any): ChatResponse {
@@ -247,8 +274,10 @@ export class AgentsClient {
     }
     
     const coerced = AgentsClient.coerceResponse(data);
+    const finalMessage = (extractedMessage && extractedMessage.trim()) ? extractedMessage : coerced.message;
+
     const final: ChatResponse = {
-      message: (extractedMessage && extractedMessage.trim()) ? extractedMessage : coerced.message,
+      message: AgentsClient.formatMessage(finalMessage),
       requires_action: coerced.requires_action,
       actions: coerced.actions,
       agent_name: data?.agentName ?? data?.agent_name ?? null,
