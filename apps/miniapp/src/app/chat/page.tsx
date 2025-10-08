@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 
@@ -13,6 +13,7 @@ import SwapIcon from '../../../public/icons/Swap.svg';
 import WalletIcon from '../../../public/icons/Wallet.svg';
 import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
+import { FormattedMessage } from '@/shared/ui/FormattedMessage';
 
 
 interface Message {
@@ -34,11 +35,11 @@ const TRENDING_PROMPTS = [
 ];
 
 const FEATURE_CARDS = [
-  { name: 'Wallet Tracking', icon: WalletIcon, path: null },
+  { name: 'Liquidity Provisioning', icon: WalletIcon, path: null },
   { name: 'AI Agents on X', icon: XIcon, path: null },
   { name: 'Liquid Swap', icon: SwapIcon, path: '/swap' },
-  { name: 'Pano View', icon: BlockchainTechnology, path: null },
-  { name: 'AI MarketPulse', icon: ComboChart, path: null },
+  { name: 'Lending', icon: BlockchainTechnology, path: null },
+  { name: 'Liquid Staking', icon: ComboChart, path: null },
   { name: 'Portfolio', icon: Briefcase, path: null },
 ];
 
@@ -80,6 +81,7 @@ function deriveConversationTitle(fallbackTitle: string, messages: Message[]): st
 
 export default function ChatPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLargeScreen, setIsLargeScreen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
@@ -286,13 +288,22 @@ export default function ChatPage() {
 
         let ensuredConversationId = conversationIds[0] ?? null;
 
-        if (!ensuredConversationId) {
+        // Check if we should force create a new conversation (from landing page redirect)
+        const shouldCreateNew = searchParams.get('new') === 'true';
+
+        // Se não há conversas, é um usuário recém-autenticado, ou foi solicitado criar novo chat
+        if (!ensuredConversationId || conversationIds.length === 0 || shouldCreateNew) {
           try {
             ensuredConversationId = await agentsClient.createConversation(userId, authOpts);
             if (ensuredConversationId) {
               conversationIds = [ensuredConversationId, ...conversationIds.filter((id) => id !== ensuredConversationId)];
             }
-            debug('bootstrap:createConversation', { ensuredConversationId });
+            debug('bootstrap:createConversation', { ensuredConversationId, forcedNew: shouldCreateNew });
+
+            // Clear the 'new' parameter from URL after creating the conversation
+            if (shouldCreateNew) {
+              router.replace('/chat');
+            }
           } catch (error) {
             console.error('Error creating initial conversation:', error);
             debug('bootstrap:createConversation:error', {
@@ -319,8 +330,15 @@ export default function ChatPage() {
         setActiveConversationId(targetId ?? null);
         debug('bootstrap:targetSelected', { targetId, totalConversations: mappedConversations.length });
 
-        if (targetId) {
+        // Don't load messages for new conversations from landing page to show feature selection screen
+        if (targetId && !shouldCreateNew) {
           loadConversationMessages(targetId);
+        } else if (targetId && shouldCreateNew) {
+          // For new conversations from landing page, ensure empty message state to show feature selection
+          setMessagesByConversation((prev) => ({
+            ...prev,
+            [targetId]: [],
+          }));
         }
       } catch (error) {
         console.error('Error initialising chat:', error);
@@ -443,7 +461,7 @@ export default function ChatPage() {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
@@ -719,28 +737,39 @@ export default function ChatPage() {
               </h2>
 
               {/* Feature Cards Grid */}
-              <div className="grid grid-cols-3 gap-4 max-w-md mb-8">
+              <div className="grid grid-cols-3 gap-6 max-w-4xl mb-8">
                 {FEATURE_CARDS.map((feature, idx) => (
                   <button
                     key={idx}
                     onClick={() => {
                       if (feature.path) {
-                        router.push(feature.path);
+                        try {
+                          // Ensure we're in a client environment
+                          if (typeof window !== 'undefined') {
+                            router.push(feature.path);
+                          }
+                        } catch (error) {
+                          console.error('Navigation error:', error);
+                          // Fallback: try window.location
+                          if (typeof window !== 'undefined') {
+                            window.location.href = feature.path;
+                          }
+                        }
                       }
                     }}
                     disabled={!feature.path}
-                    className={`flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-gray-800/30 backdrop-blur-md hover:bg-gray-800/50 border border-cyan-500/20 hover:border-cyan-500/50 transition-all shadow-lg hover:shadow-cyan-500/20 ${
+                    className={`flex flex-col items-center justify-center gap-4 p-8 rounded-xl bg-gray-800/30 backdrop-blur-md hover:bg-gray-800/50 border border-cyan-500/20 hover:border-cyan-500/50 transition-all shadow-lg hover:shadow-cyan-500/20 min-h-[140px] ${
                       !feature.path ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
                     }`}
                   >
                     <Image
                       src={feature.icon}
                       alt={feature.name}
-                      width={32}
-                      height={32}
-                      className="w-8 h-8"
+                      width={48}
+                      height={48}
+                      className="w-12 h-12"
                     />
-                    <span className="text-xs text-gray-400 text-center">{feature.name}</span>
+                    <span className="text-sm text-gray-400 text-center font-medium">{feature.name}</span>
                   </button>
                 ))}
               </div>
@@ -805,7 +834,10 @@ export default function ChatPage() {
                           <div className={`text-[15px] text-gray-200 break-words leading-relaxed ${
                             message.role === 'user' ? 'text-right' : ''
                           }`}>
-                            {message.content}
+                            <FormattedMessage
+                              content={message.content}
+                              isAgent={message.role === 'assistant'}
+                            />
                           </div>
                         </div>
                       </div>
@@ -852,7 +884,7 @@ export default function ChatPage() {
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyDown}
               placeholder="Type your message..."
               disabled={isSending || !activeConversationId || initializing}
               className="flex-1 px-4 py-3 rounded-full bg-gray-800 border border-cyan-500/30 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
