@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8443:8443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     env_file:
       - .env
     environment:
