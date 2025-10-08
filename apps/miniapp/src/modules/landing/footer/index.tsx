@@ -1,5 +1,5 @@
 import Image from 'next/image'
-import logo from '../../../../public/new-logo.png'
+import logo from '../../../../public/panorama_block.svg'
 
 const Footer = () => {
   return (

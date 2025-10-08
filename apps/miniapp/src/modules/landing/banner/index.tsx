@@ -7,7 +7,7 @@ import { useAgentsStore } from '@/shared/store/agents'
 import blurLeft from '../../../../public/landing/blur-left.svg'
 import blurRight from '../../../../public/landing/blur-right.svg'
 import blurMobile from '../../../../public/landing/blur-mobile.svg'
-import inputHorse from '../../../../public/landing/input-horse.png'
+import inputHorse from '../../../../public/icons/zico_white.svg'
 
 interface Agent {
   [key: string]: {
