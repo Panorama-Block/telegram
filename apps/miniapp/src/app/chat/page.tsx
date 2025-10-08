@@ -23,7 +23,7 @@ import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { swapApi, SwapApiError } from '@/features/swap/api';
-import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman } from '@/features/swap/utils';
+import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, explorerTxUrl } from '@/features/swap/utils';
 import { networks, Token } from '@/features/swap/tokens';
 import { useActiveAccount } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
@@ -148,6 +148,7 @@ export default function ChatPage() {
   const [swapError, setSwapError] = useState<string | null>(null);
   const [swapSuccess, setSwapSuccess] = useState(false);
   const [executingSwap, setExecutingSwap] = useState(false);
+  const [swapTxHashes, setSwapTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
   const debug = useCallback(
     (event: string, details?: Record<string, unknown>) => {
       if (!DEBUG_CHAT_ENABLED) return;
@@ -711,12 +712,11 @@ export default function ChatPage() {
         sender: effectiveAddress,
       });
 
-      console.log('🔧 Prepared transaction:', prep);
-
       const seq = flattenPrepared(prep.prepared);
+      
       if (!seq.length) throw new Error('No transactions returned by prepare');
 
-      console.log('📝 Transaction sequence:', seq);
+      setSwapTxHashes([]); // Reset transaction hashes
 
       for (const t of seq) {
         if (t.chainId !== fromNetwork.chainId) {
@@ -752,12 +752,12 @@ export default function ChatPage() {
           throw new Error('Transaction failed: no transaction hash returned.');
         }
 
-        console.log(`✅ Transaction ${result.transactionHash} submitted on chain ${t.chainId}`);
+        // Store transaction hash
+        setSwapTxHashes(prev => [...prev, { hash: result.transactionHash!, chainId: t.chainId }]);
       }
 
       setSwapSuccess(true);
       setSwapQuote(null);
-      console.log('🎉 Swap executed successfully!');
     } catch (error) {
       console.error('❌ Error executing swap:', error);
       setSwapError(error instanceof Error ? error.message : 'Failed to execute swap');
@@ -1101,7 +1101,39 @@ export default function ChatPage() {
                           
                           {swapSuccess && (
                             <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3">
-                              <p className="text-sm text-green-400">✅ Swap executed successfully!</p>
+                              <p className="text-sm text-green-400 mb-3">✅ Swap executed successfully!</p>
+                              
+                              {/* Transaction Hashes */}
+                              {swapTxHashes.length > 0 && (
+                                <div className="space-y-2">
+                                  <div className="text-xs text-gray-400">Transaction Hashes:</div>
+                                  {swapTxHashes.map((tx, index) => {
+                                    const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
+                                    return (
+                                      <div key={index} className="flex items-center justify-between bg-gray-800/50 rounded p-2">
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-xs text-gray-300 font-mono truncate">
+                                            {tx.hash}
+                                          </div>
+                                          <div className="text-xs text-gray-500">
+                                            Chain ID: {tx.chainId}
+                                          </div>
+                                        </div>
+                                        {explorerUrl && (
+                                          <a
+                                            href={explorerUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors"
+                                          >
+                                            View
+                                          </a>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           )}
                           
