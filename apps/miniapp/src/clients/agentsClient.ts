@@ -140,28 +140,46 @@ export class AgentsClient {
   private static formatMessage(message: string): string {
     if (!message) return message;
 
-    // Enhanced formatting for GPT-like responses
     let formatted = message;
 
-    // Fix common formatting issues
-    formatted = formatted
-      // Ensure proper line breaks before numbered lists
-      .replace(/(\w)\s*(\d+\.\s+)/g, '$1\n\n$2')
-      // Ensure proper spacing after periods in lists
-      .replace(/(\d+\.\s+)([A-Z])/g, '$1**$2')
-      // Fix bold formatting around list items
-      .replace(/(\d+\.\s+)\*\*([^*]+)\*\*/g, '**$1$2**')
-      // Ensure proper paragraph breaks
-      .replace(/\.\s+([A-Z][^.]*:)/g, '.\n\n$1')
-      // Fix platform name formatting
-      .replace(/\b(DefiLlama|DeFi Llama|Uniswap|Yield Samurai)\b/g, '**$1**')
-      // Add proper spacing around headers
-      .replace(/(\w)(\#\#?\s)/g, '$1\n\n$2')
-      // Clean up extra whitespace
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+    // First, handle specific patterns from your example
+    // Convert section headers with --- before them
+    formatted = formatted.replace(/---\s*\n\s*###\s+(.+?):\s*\n/g, '\n\n### $1\n\n');
+    formatted = formatted.replace(/---\s*\n\s*##\s+(.+?):\s*\n/g, '\n\n## $1\n\n');
+    formatted = formatted.replace(/---\s*\n\s*#\s+(.+?):\s*\n/g, '\n\n# $1\n\n');
 
-    return formatted;
+    // Convert standalone --- to horizontal rules
+    formatted = formatted.replace(/^\s*---\s*$/gm, '\n\n---\n\n');
+
+    // Handle numbered sections with bold headers like "**1. Risk Tolerance:**"
+    formatted = formatted.replace(/\*\*(\d+)\.\s*([^*]+?):\*\*/g, '\n\n### $1. $2\n\n');
+
+    // Handle bold headers without numbers like "**Capital Available:**"
+    formatted = formatted.replace(/\*\*([^*\d][^*]*?):\*\*/g, '\n\n### $1\n\n');
+
+    // Handle bullet points with asterisks
+    formatted = formatted.replace(/^\s*\*\s+(.+?)$/gm, '- $1');
+
+    // Handle sub-bullet points (indented)
+    formatted = formatted.replace(/^\s{2,}\*\s+(.+?)$/gm, '  - $1');
+
+    // Convert "Pros:" and "Cons:" patterns
+    formatted = formatted.replace(/\*\s+(Pros|Cons):\s*/g, '\n\n**$1:**\n');
+    formatted = formatted.replace(/^\s*(Pros|Cons):\s*/gm, '\n\n**$1:**\n');
+
+    // Handle nested structure better - detect indented content after headers
+    formatted = formatted.replace(/^(\s*)(\d+)\.\s*\*\*([^*]+?)\*\*:\s*$/gm, '$1\n\n### $2. $3\n\n');
+
+    // Ensure proper spacing around sections
+    formatted = formatted.replace(/([.!?])\s+([A-Z][^.]*?:)\s*/g, '$1\n\n**$2**\n\n');
+
+    // Clean up multiple line breaks
+    formatted = formatted.replace(/\n{3,}/g, '\n\n');
+
+    // Clean up spaces at start of lines (but preserve intentional indentation for lists)
+    formatted = formatted.replace(/^[ \t]+(?![-*])/gm, '');
+
+    return formatted.trim();
   }
 
   private static coerceResponse(data: any): ChatResponse {

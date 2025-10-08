@@ -7,6 +7,8 @@ config();
 
 const nextConfig: NextConfig = {
   basePath: '/miniapp',
+  output: 'standalone',
+  outputFileTracingRoot: path.join(__dirname, '../..'),
   images: {
     remotePatterns: [
       {
@@ -32,6 +34,7 @@ const nextConfig: NextConfig = {
     config.resolve.fallback = {
       ...config.resolve.fallback,
       buffer: require.resolve('buffer/'),
+      process: require.resolve('process/browser'),
     };
 
     config.resolve.alias = {
@@ -41,6 +44,28 @@ const nextConfig: NextConfig = {
         './src/shared/thirdweb/getConnectLocale.ts',
       ),
     };
+
+    // Ignore problematic packages
+    config.externals = config.externals || [];
+    config.externals.push({
+      'pino-pretty': 'pino-pretty',
+    });
+
+    // Optimize chunks to prevent build issues
+    config.optimization = {
+      ...config.optimization,
+      splitChunks: {
+        chunks: 'all',
+        cacheGroups: {
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors',
+            chunks: 'all',
+          },
+        },
+      },
+    };
+
     return config;
   },
 };

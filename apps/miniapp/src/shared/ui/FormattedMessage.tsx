@@ -18,22 +18,26 @@ export function FormattedMessage({ content, isAgent = false }: FormattedMessageP
   const formatContent = (text: string): string => {
     let formatted = text;
 
-    // Convert numbered lists to proper markdown format
-    formatted = formatted.replace(/^(\d+\.\s+)(.+)$/gm, '$1$2');
+    // Step 1: Handle section breaks and headers
+    formatted = formatted.replace(/\*\*([^*]+?):\*\*/g, '\n\n### $1\n\n');
 
-    // Ensure proper paragraph breaks before numbered lists
-    formatted = formatted.replace(/([.!?])\s*(\d+\.\s+)/g, '$1\n\n$2');
+    // Step 2: Convert numbered list items
+    formatted = formatted.replace(/^(\d+)\.\s*\*\*([^*]+?)\*\*:\s*/gm, '\n\n**$1. $2:**\n');
 
-    // Convert bullet points to proper markdown
-    formatted = formatted.replace(/\n\s*[-•]\s+/g, '\n- ');
+    // Step 3: Handle bullet points with proper spacing
+    formatted = formatted.replace(/^\s*\*\s+(.+?)$/gm, '- $1');
 
-    // Ensure proper spacing after headers
-    formatted = formatted.replace(/(\#{1,6}.*)\n([^\n])/g, '$1\n\n$2');
+    // Step 4: Handle nested structure like "Pros:" and "Cons:"
+    formatted = formatted.replace(/\*\s+(Pros|Cons):\s*/g, '\n\n**$1:**\n');
 
-    // Clean up extra whitespace but preserve intentional breaks
+    // Step 5: Ensure proper spacing around sections
+    formatted = formatted.replace(/([.!?])\s*([A-Z][^.]*?:)\s*/g, '$1\n\n**$2**\n\n');
+
+    // Step 6: Fix line breaks and spacing
     formatted = formatted.replace(/\n{3,}/g, '\n\n');
+    formatted = formatted.replace(/^\s+/gm, '');
 
-    return formatted;
+    return formatted.trim();
   };
 
   const formattedContent = formatContent(content);
@@ -58,12 +62,12 @@ export function FormattedMessage({ content, isAgent = false }: FormattedMessageP
           ),
 
           ol: ({ children }) => (
-            <ol className="mb-4 space-y-1 pl-0">{children}</ol>
+            <ol className="mb-4 space-y-1 pl-0 list-none">{children}</ol>
           ),
 
           li: ({ children, ...props }) => {
             return (
-              <li className="text-gray-200 leading-relaxed flex items-start" {...props}>
+              <li className="text-gray-200 leading-relaxed flex items-start my-1" {...props}>
                 <span className="text-cyan-400 mr-3 mt-1 flex-shrink-0 text-lg leading-none">•</span>
                 <span className="flex-1">{children}</span>
               </li>
@@ -124,6 +128,16 @@ export function FormattedMessage({ content, isAgent = false }: FormattedMessageP
             <blockquote className="border-l-4 border-cyan-500 pl-4 py-2 my-4 bg-gray-800/30 italic text-gray-300">
               {children}
             </blockquote>
+          ),
+
+          // Style horizontal rules
+          hr: () => (
+            <hr className="my-6 border-0 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
+          ),
+
+          // Style emphasized text
+          em: ({ children }) => (
+            <em className="italic text-cyan-300">{children}</em>
           ),
         }}
       >
