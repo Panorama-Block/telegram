@@ -5,7 +5,7 @@ import { Sidebar } from '@/shared/ui/Sidebar';
 import Image from 'next/image';
 import { networks, Token } from '@/features/swap/tokens';
 import { swapApi, SwapApiError } from '@/features/swap/api';
-import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative } from '@/features/swap/utils';
+import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl } from '@/features/swap/utils';
 import { useActiveAccount, PayEmbed } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
@@ -256,6 +256,7 @@ export default function SwapPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [showFundWallet, setShowFundWallet] = useState(false);
+  const [txHashes, setTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
   const quoteRequestRef = useRef(0);
 
   // Check if we can request quote
@@ -337,11 +338,14 @@ export default function SwapPage() {
 
   function flattenPrepared(prepared: any): PreparedTx[] {
     const out: PreparedTx[] = [];
-    if (!prepared) return out;
-    if (Array.isArray(prepared.transactions)) out.push(...prepared.transactions);
-    if (Array.isArray(prepared.steps)) {
-      for (const s of prepared.steps) {
-        if (Array.isArray(s.transactions)) out.push(...s.transactions);
+    if (prepared?.transactions) {
+      out.push(...prepared.transactions);
+    }
+    if (prepared?.steps) {
+      for (const step of prepared.steps) {
+        if (step.transactions) {
+          out.push(...step.transactions);
+        }
       }
     }
     return out;
@@ -349,7 +353,7 @@ export default function SwapPage() {
 
   async function handleStartSwap() {
     if (!quote) {
-      setError('Aguarde a cotação ser calculada');
+      setError('Please wait for the quote to be calculated');
       return;
     }
 
@@ -392,10 +396,12 @@ export default function SwapPage() {
       });
 
       const seq = flattenPrepared(prep.prepared);
+      
       if (!seq.length) throw new Error('No transactions returned by prepare');
 
       setPreparing(false);
       setExecuting(true);
+      setTxHashes([]); // Reset transaction hashes
 
       for (const t of seq) {
         if (t.chainId !== fromChainId) {
@@ -426,6 +432,8 @@ export default function SwapPage() {
           throw new Error('Transaction failed: no transaction hash returned.');
         }
 
+        // Store transaction hash
+        setTxHashes(prev => [...prev, { hash: result.transactionHash!, chainId: t.chainId }]);
         console.log(`Transaction ${result.transactionHash} submitted on chain ${t.chainId}`);
       }
 
@@ -643,7 +651,39 @@ export default function SwapPage() {
               {/* Success Message */}
               {success && (
                 <div className="mt-4 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
-                  <div className="text-sm text-green-400">✅ Swap executado com sucesso!</div>
+                  <div className="text-sm text-green-400 mb-3">✅ Swap executed successfully!</div>
+                  
+                  {/* Transaction Hashes */}
+                  {txHashes.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs text-gray-400">Transaction Hashes:</div>
+                      {txHashes.map((tx, index) => {
+                        const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
+                        return (
+                          <div key={index} className="flex items-center justify-between bg-gray-800/50 rounded p-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs text-gray-300 font-mono truncate">
+                                {tx.hash}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                Chain ID: {tx.chainId}
+                              </div>
+                            </div>
+                            {explorerUrl && (
+                              <a
+                                href={explorerUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors"
+                              >
+                                View
+                              </a>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
