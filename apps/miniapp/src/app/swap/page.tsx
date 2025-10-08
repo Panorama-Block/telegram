@@ -28,13 +28,132 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
   // Popular tokens (using token logos from public CDN)
   const getTokenIcon = (symbol: string) => {
     const iconMap: Record<string, string> = {
-      'ETH': 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
-      'USDC': 'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
-      'USDT': 'https://assets.coingecko.com/coins/images/325/small/Tether.png',
-      'WBTC': 'https://assets.coingecko.com/coins/images/7598/small/wrapped_bitcoin_wbtc.png',
-      'WETH': 'https://assets.coingecko.com/coins/images/2518/small/weth.png',
+      // Ethereum tokens
+      'ETH': 'https://cryptologos.cc/logos/ethereum-eth-logo.svg',
+      'USDC': 'https://cryptologos.cc/logos/usd-coin-usdc-logo.svg',
+      'USDT': 'https://cryptologos.cc/logos/tether-usdt-logo.svg',
+      'WBTC': 'https://cryptologos.cc/logos/wrapped-bitcoin-wbtc-logo.svg',
+      'WETH': 'https://cryptologos.cc/logos/ethereum-eth-logo.svg',
+      'AAVE': 'https://cryptologos.cc/logos/aave-aave-logo.svg',
+      'UNI': 'https://cryptologos.cc/logos/uniswap-uni-logo.svg',
+      'LINK': 'https://cryptologos.cc/logos/chainlink-link-logo.svg',
+      'LDO': 'https://cryptologos.cc/logos/lido-dao-ldo-logo.svg',
+      'USDe': 'https://cryptologos.cc/logos/usd-coin-usdc-logo.svg',
+      
+      // Avalanche tokens
+      'AVAX': 'https://cryptologos.cc/logos/avalanche-avax-logo.svg',
+      'WAVAX': 'https://cryptologos.cc/logos/avalanche-avax-logo.svg',
+      'BTC.b': 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg',
+      'JOE': 'https://cryptologos.cc/logos/trader-joe-joe-logo.svg',
+      'MIM': 'https://cryptologos.cc/logos/magic-internet-money-mim-logo.svg',
+      
+      // Binance Smart Chain tokens
+      'CAKE': 'https://cryptologos.cc/logos/pancakeswap-cake-logo.svg',
+      'ADA': 'https://cryptologos.cc/logos/cardano-ada-logo.svg',
+      'DOGE': 'https://cryptologos.cc/logos/dogecoin-doge-logo.svg',
+      'XRP': 'https://cryptologos.cc/logos/xrp-xrp-logo.svg',
+      'DOT': 'https://cryptologos.cc/logos/polkadot-new-dot-logo.svg',
+      'TUSD': 'https://cryptologos.cc/logos/trueusd-tusd-logo.svg',
+      
+      // Polygon tokens
+      'DAI': 'https://cryptologos.cc/logos/multi-collateral-dai-dai-logo.svg',
+      'QUICK': 'https://cryptologos.cc/logos/quickswap-quick-logo.svg',
+      'SAND': 'https://cryptologos.cc/logos/the-sandbox-sand-logo.svg',
+      
+      // Arbitrum tokens
+      'ARB': 'https://cryptologos.cc/logos/arbitrum-arb-logo.svg',
+      'GMX': 'https://cryptologos.cc/logos/gmx-gmx-logo.svg',
+      
+      // Base tokens
+      'cbBTC': 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg',
+      'AERO': 'https://cryptologos.cc/logos/aerodrome-finance-aero-logo.svg',
+      
+      // Optimism tokens
+      'OP': 'https://cryptologos.cc/logos/optimism-ethereum-op-logo.svg',
+      
+      // Additional popular tokens
+      'MATIC': 'https://cryptologos.cc/logos/polygon-matic-logo.svg',
+      'BNB': 'https://cryptologos.cc/logos/bnb-bnb-logo.svg',
+      'SOL': 'https://cryptologos.cc/logos/solana-sol-logo.svg',
+      'ATOM': 'https://cryptologos.cc/logos/cosmos-atom-logo.svg',
+      'NEAR': 'https://cryptologos.cc/logos/near-protocol-near-logo.svg',
+      'FTM': 'https://cryptologos.cc/logos/fantom-ftm-logo.svg',
+      'ALGO': 'https://cryptologos.cc/logos/algorand-algo-logo.svg',
+      'ICP': 'https://cryptologos.cc/logos/internet-computer-icp-logo.svg',
+      'FLOW': 'https://cryptologos.cc/logos/flow-flow-logo.svg',
+      'SAND': 'https://cryptologos.cc/logos/the-sandbox-sand-logo.svg',
+      'MANA': 'https://cryptologos.cc/logos/decentraland-mana-logo.svg',
+      'AXS': 'https://cryptologos.cc/logos/axie-infinity-axs-logo.svg',
+      'CHZ': 'https://cryptologos.cc/logos/chiliz-chz-logo.svg',
+      'ENJ': 'https://cryptologos.cc/logos/enjin-coin-enj-logo.svg',
+      'BAT': 'https://cryptologos.cc/logos/basic-attention-token-bat-logo.svg',
+      'ZRX': 'https://cryptologos.cc/logos/0x-zrx-logo.svg',
+      'KNC': 'https://cryptologos.cc/logos/kyber-network-crystal-knc-logo.svg',
+      'COMP': 'https://cryptologos.cc/logos/compound-comp-logo.svg',
+      'MKR': 'https://cryptologos.cc/logos/maker-mkr-logo.svg',
+      'SNX': 'https://cryptologos.cc/logos/synthetix-network-token-snx-logo.svg',
+      'YFI': 'https://cryptologos.cc/logos/yearn-finance-yfi-logo.svg',
+      'CRV': 'https://cryptologos.cc/logos/curve-dao-token-crv-logo.svg',
+      '1INCH': 'https://cryptologos.cc/logos/1inch-1inch-logo.svg',
+      'SUSHI': 'https://cryptologos.cc/logos/sushiswap-sushi-logo.svg',
+      'BAL': 'https://cryptologos.cc/logos/balancer-bal-logo.svg',
+      'LRC': 'https://cryptologos.cc/logos/loopring-lrc-logo.svg',
+      'REN': 'https://cryptologos.cc/logos/ren-ren-logo.svg',
+      'STORJ': 'https://cryptologos.cc/logos/storj-storj-logo.svg',
+      'REP': 'https://cryptologos.cc/logos/augur-rep-logo.svg',
+      'ZEC': 'https://cryptologos.cc/logos/zcash-zec-logo.svg',
+      'DASH': 'https://cryptologos.cc/logos/dash-dash-logo.svg',
+      'LTC': 'https://cryptologos.cc/logos/litecoin-ltc-logo.svg',
+      'BCH': 'https://cryptologos.cc/logos/bitcoin-cash-bch-logo.svg',
+      'ETC': 'https://cryptologos.cc/logos/ethereum-classic-etc-logo.svg',
+      'XLM': 'https://cryptologos.cc/logos/stellar-xlm-logo.svg',
+      'EOS': 'https://cryptologos.cc/logos/eos-eos-logo.svg',
+      'TRX': 'https://cryptologos.cc/logos/tron-trx-logo.svg',
+      'NEO': 'https://cryptologos.cc/logos/neo-neo-logo.svg',
+      'VET': 'https://cryptologos.cc/logos/vechain-vet-logo.svg',
+      'THETA': 'https://cryptologos.cc/logos/theta-network-theta-logo.svg',
+      'FIL': 'https://cryptologos.cc/logos/filecoin-fil-logo.svg',
+      'GRT': 'https://cryptologos.cc/logos/the-graph-grt-logo.svg',
+      'UMA': 'https://cryptologos.cc/logos/uma-uma-logo.svg',
+      'BAND': 'https://cryptologos.cc/logos/band-protocol-band-logo.svg',
+      'NMR': 'https://cryptologos.cc/logos/numeraire-nmr-logo.svg',
+      'RLC': 'https://cryptologos.cc/logos/iexec-rlc-logo.svg',
+      'GNO': 'https://cryptologos.cc/logos/gnosis-gno-logo.svg',
+      'ANT': 'https://cryptologos.cc/logos/aragon-ant-logo.svg',
+      'REQ': 'https://cryptologos.cc/logos/request-req-logo.svg',
+      'OMG': 'https://cryptologos.cc/logos/omg-omg-logo.svg',
+      'ZIL': 'https://cryptologos.cc/logos/zilliqa-zil-logo.svg',
+      'IOTA': 'https://cryptologos.cc/logos/iota-miota-logo.svg',
+      'QTUM': 'https://cryptologos.cc/logos/qtum-qtum-logo.svg',
+      'WAVES': 'https://cryptologos.cc/logos/waves-waves-logo.svg',
+      'NANO': 'https://cryptologos.cc/logos/nano-nano-logo.svg',
+      'DGB': 'https://cryptologos.cc/logos/digibyte-dgb-logo.svg',
+      'SC': 'https://cryptologos.cc/logos/siacoin-sc-logo.svg',
+      'DCR': 'https://cryptologos.cc/logos/decred-dcr-logo.svg',
+      'LSK': 'https://cryptologos.cc/logos/lisk-lsk-logo.svg',
+      'ARK': 'https://cryptologos.cc/logos/ark-ark-logo.svg',
+      'FCT': 'https://cryptologos.cc/logos/factom-fct-logo.svg',
+      'GNT': 'https://cryptologos.cc/logos/golem-gnt-logo.svg',
+      'ICX': 'https://cryptologos.cc/logos/icon-icx-logo.svg',
+      'ONT': 'https://cryptologos.cc/logos/ontology-ont-logo.svg',
+      'NULS': 'https://cryptologos.cc/logos/nuls-nuls-logo.svg',
+      'WAN': 'https://cryptologos.cc/logos/wanchain-wan-logo.svg',
+      'RVN': 'https://cryptologos.cc/logos/ravencoin-rvn-logo.svg',
+      'XVG': 'https://cryptologos.cc/logos/verge-xvg-logo.svg',
+      'DENT': 'https://cryptologos.cc/logos/dent-dent-logo.svg',
+      'HOT': 'https://cryptologos.cc/logos/holochain-hot-logo.svg',
+      'WIN': 'https://cryptologos.cc/logos/wink-wink-logo.svg',
+      'BTT': 'https://cryptologos.cc/logos/bittorrent-btt-logo.svg',
+      'CELR': 'https://cryptologos.cc/logos/celer-network-celr-logo.svg',
+      'COTI': 'https://cryptologos.cc/logos/coti-coti-logo.svg',
+      'FET': 'https://cryptologos.cc/logos/fetch-ai-fet-logo.svg',
+      'ONE': 'https://cryptologos.cc/logos/harmony-one-logo.svg',
+      'HARMONY': 'https://cryptologos.cc/logos/harmony-one-logo.svg',
+      'CELO': 'https://cryptologos.cc/logos/celo-celo-logo.svg',
+      'KAVA': 'https://cryptologos.cc/logos/kava-kava-logo.svg',
+      'KSM': 'https://cryptologos.cc/logos/kusama-ksm-logo.svg',
     };
-    return iconMap[symbol] || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
+    return iconMap[symbol] || 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg';
   };
 
   const popularTokens = [
@@ -43,6 +162,95 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
     { symbol: 'USDT', icon: getTokenIcon('USDT') },
     { symbol: 'WBTC', icon: getTokenIcon('WBTC') },
     { symbol: 'WETH', icon: getTokenIcon('WETH') },
+    { symbol: 'AVAX', icon: getTokenIcon('AVAX') },
+    { symbol: 'AAVE', icon: getTokenIcon('AAVE') },
+    { symbol: 'UNI', icon: getTokenIcon('UNI') },
+    { symbol: 'LINK', icon: getTokenIcon('LINK') },
+    { symbol: 'ARB', icon: getTokenIcon('ARB') },
+    { symbol: 'OP', icon: getTokenIcon('OP') },
+    { symbol: 'DAI', icon: getTokenIcon('DAI') },
+    { symbol: 'SOL', icon: getTokenIcon('SOL') },
+    { symbol: 'MATIC', icon: getTokenIcon('MATIC') },
+    { symbol: 'BNB', icon: getTokenIcon('BNB') },
+    { symbol: 'ATOM', icon: getTokenIcon('ATOM') },
+    { symbol: 'NEAR', icon: getTokenIcon('NEAR') },
+    { symbol: 'FTM', icon: getTokenIcon('FTM') },
+    { symbol: 'ALGO', icon: getTokenIcon('ALGO') },
+    { symbol: 'ICP', icon: getTokenIcon('ICP') },
+    { symbol: 'FLOW', icon: getTokenIcon('FLOW') },
+    { symbol: 'DOT', icon: getTokenIcon('DOT') },
+    { symbol: 'ADA', icon: getTokenIcon('ADA') },
+    { symbol: 'VET', icon: getTokenIcon('VET') },
+    { symbol: 'THETA', icon: getTokenIcon('THETA') },
+    { symbol: 'FIL', icon: getTokenIcon('FIL') },
+    { symbol: 'SAND', icon: getTokenIcon('SAND') },
+    { symbol: 'MANA', icon: getTokenIcon('MANA') },
+    { symbol: 'AXS', icon: getTokenIcon('AXS') },
+    { symbol: 'CHZ', icon: getTokenIcon('CHZ') },
+    { symbol: 'ENJ', icon: getTokenIcon('ENJ') },
+    { symbol: 'BAT', icon: getTokenIcon('BAT') },
+    { symbol: 'ZRX', icon: getTokenIcon('ZRX') },
+    { symbol: 'KNC', icon: getTokenIcon('KNC') },
+    { symbol: 'COMP', icon: getTokenIcon('COMP') },
+    { symbol: 'MKR', icon: getTokenIcon('MKR') },
+    { symbol: 'SNX', icon: getTokenIcon('SNX') },
+    { symbol: 'YFI', icon: getTokenIcon('YFI') },
+    { symbol: 'CRV', icon: getTokenIcon('CRV') },
+    { symbol: '1INCH', icon: getTokenIcon('1INCH') },
+    { symbol: 'SUSHI', icon: getTokenIcon('SUSHI') },
+    { symbol: 'BAL', icon: getTokenIcon('BAL') },
+    { symbol: 'LRC', icon: getTokenIcon('LRC') },
+    { symbol: 'REN', icon: getTokenIcon('REN') },
+    { symbol: 'STORJ', icon: getTokenIcon('STORJ') },
+    { symbol: 'REP', icon: getTokenIcon('REP') },
+    { symbol: 'ZEC', icon: getTokenIcon('ZEC') },
+    { symbol: 'DASH', icon: getTokenIcon('DASH') },
+    { symbol: 'LTC', icon: getTokenIcon('LTC') },
+    { symbol: 'BCH', icon: getTokenIcon('BCH') },
+    { symbol: 'ETC', icon: getTokenIcon('ETC') },
+    { symbol: 'XLM', icon: getTokenIcon('XLM') },
+    { symbol: 'EOS', icon: getTokenIcon('EOS') },
+    { symbol: 'TRX', icon: getTokenIcon('TRX') },
+    { symbol: 'NEO', icon: getTokenIcon('NEO') },
+    { symbol: 'GRT', icon: getTokenIcon('GRT') },
+    { symbol: 'UMA', icon: getTokenIcon('UMA') },
+    { symbol: 'BAND', icon: getTokenIcon('BAND') },
+    { symbol: 'NMR', icon: getTokenIcon('NMR') },
+    { symbol: 'RLC', icon: getTokenIcon('RLC') },
+    { symbol: 'GNO', icon: getTokenIcon('GNO') },
+    { symbol: 'ANT', icon: getTokenIcon('ANT') },
+    { symbol: 'REQ', icon: getTokenIcon('REQ') },
+    { symbol: 'OMG', icon: getTokenIcon('OMG') },
+    { symbol: 'ZIL', icon: getTokenIcon('ZIL') },
+    { symbol: 'IOTA', icon: getTokenIcon('IOTA') },
+    { symbol: 'QTUM', icon: getTokenIcon('QTUM') },
+    { symbol: 'WAVES', icon: getTokenIcon('WAVES') },
+    { symbol: 'NANO', icon: getTokenIcon('NANO') },
+    { symbol: 'DGB', icon: getTokenIcon('DGB') },
+    { symbol: 'SC', icon: getTokenIcon('SC') },
+    { symbol: 'DCR', icon: getTokenIcon('DCR') },
+    { symbol: 'LSK', icon: getTokenIcon('LSK') },
+    { symbol: 'ARK', icon: getTokenIcon('ARK') },
+    { symbol: 'FCT', icon: getTokenIcon('FCT') },
+    { symbol: 'GNT', icon: getTokenIcon('GNT') },
+    { symbol: 'ICX', icon: getTokenIcon('ICX') },
+    { symbol: 'ONT', icon: getTokenIcon('ONT') },
+    { symbol: 'NULS', icon: getTokenIcon('NULS') },
+    { symbol: 'WAN', icon: getTokenIcon('WAN') },
+    { symbol: 'RVN', icon: getTokenIcon('RVN') },
+    { symbol: 'XVG', icon: getTokenIcon('XVG') },
+    { symbol: 'DENT', icon: getTokenIcon('DENT') },
+    { symbol: 'HOT', icon: getTokenIcon('HOT') },
+    { symbol: 'WIN', icon: getTokenIcon('WIN') },
+    { symbol: 'BTT', icon: getTokenIcon('BTT') },
+    { symbol: 'CELR', icon: getTokenIcon('CELR') },
+    { symbol: 'COTI', icon: getTokenIcon('COTI') },
+    { symbol: 'FET', icon: getTokenIcon('FET') },
+    { symbol: 'ONE', icon: getTokenIcon('ONE') },
+    { symbol: 'HARMONY', icon: getTokenIcon('HARMONY') },
+    { symbol: 'CELO', icon: getTokenIcon('CELO') },
+    { symbol: 'KAVA', icon: getTokenIcon('KAVA') },
+    { symbol: 'KSM', icon: getTokenIcon('KSM') },
   ];
 
   // Get all tokens from selected chain or all chains
@@ -184,13 +392,13 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
                   }}
                   className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-gray-800/50 transition-colors text-left min-w-0"
                 >
-                  <Image
-                    src={token.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
-                    alt={token.symbol}
-                    width={32}
-                    height={32}
-                    className="w-8 h-8 rounded-full flex-shrink-0"
-                  />
+                    <Image
+                      src={token.icon || 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg'}
+                      alt={token.symbol}
+                      width={32}
+                      height={32}
+                      className="w-8 h-8 rounded-full flex-shrink-0"
+                    />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-white truncate">{token.symbol}</div>
                     <div className="text-xs text-gray-500 truncate">
@@ -502,7 +710,7 @@ export default function SwapPage() {
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#2a2a2a] hover:bg-[#333] transition-colors flex-shrink-0"
                     >
                       <Image
-                        src={sellToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
+                        src={sellToken.icon || 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg'}
                         alt={sellToken.symbol}
                         width={18}
                         height={18}
@@ -557,7 +765,7 @@ export default function SwapPage() {
                       {buyToken ? (
                         <>
                           <Image
-                            src={buyToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
+                            src={buyToken.icon || 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg'}
                             alt={buyToken.symbol}
                             width={18}
                             height={18}
