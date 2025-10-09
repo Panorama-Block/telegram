@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { ConnectButton, useActiveAccount, useActiveWallet, useDisconnect } from 'thirdweb/react';
 import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
@@ -70,14 +70,7 @@ export function WalletConnectPanel() {
     [],
   );
 
-  // Autenticação automática quando a conta estiver conectada
-  useEffect(() => {
-    if (account && client && !isAuthenticated && !isAuthenticating) {
-      authenticateWithBackend();
-    }
-  }, [account, client, isAuthenticated, isAuthenticating, authenticateWithBackend]);
-
-  async function authenticateWithBackend() {
+  const authenticateWithBackend = useCallback(async () => {
 
     if (!account || !client) {
       return;
@@ -227,7 +220,14 @@ export function WalletConnectPanel() {
     } finally {
       setIsAuthenticating(false);
     }
-  }
+  }, [account, client, activeWallet]);
+
+  // Autenticação automática quando a conta estiver conectada
+  useEffect(() => {
+    if (account && client && !isAuthenticated && !isAuthenticating) {
+      authenticateWithBackend();
+    }
+  }, [account, client, isAuthenticated, isAuthenticating, authenticateWithBackend]);
 
   async function handleDisconnect() {
     setError(null);

@@ -224,16 +224,35 @@ export default function ChatPage() {
     return undefined;
   }, []);
 
-  const userId = getWalletAddress() || (user?.id ? String(user.id) : undefined);
+  // CRITICAL: Use the currently connected wallet address as the primary userId
+  // This ensures each user sees only their own chats, even on shared devices
+  const userId = account?.address?.toLowerCase() || getWalletAddress() || (user?.id ? String(user.id) : undefined);
   const activeMessages = activeConversationId ? (messagesByConversation[activeConversationId] ?? []) : [];
   const isHistoryLoading = loadingConversationId === activeConversationId;
 
   // Debug userId
   useEffect(() => {
     if (userId) {
-      debug('userId:resolved', { userId, source: getWalletAddress() ? 'wallet' : 'telegram' });
+      const source = account?.address ? 'connected-wallet' : getWalletAddress() ? 'localStorage-wallet' : 'telegram';
+      debug('userId:resolved', { userId, source, connectedWallet: account?.address });
+      console.log('🔐 [CHAT] Using userId:', userId, '| Source:', source);
+    } else {
+      console.warn('⚠️ [CHAT] No userId available - chat will not load');
     }
-  }, [userId, getWalletAddress, debug]);
+  }, [userId, account?.address, getWalletAddress, debug]);
+
+  // Clear chat state when wallet changes to prevent showing previous user's data
+  useEffect(() => {
+    const currentUserId = account?.address?.toLowerCase() || getWalletAddress();
+    if (currentUserId && bootstrapKeyRef.current && bootstrapKeyRef.current !== currentUserId && bootstrapKeyRef.current !== '__anonymous__') {
+      console.log('🔄 [CHAT] Wallet changed, clearing previous user data');
+      setConversations([]);
+      setMessagesByConversation({});
+      setActiveConversationId(null);
+      setInitializationError(null);
+      // Bootstrap will be triggered by the useEffect below
+    }
+  }, [account?.address, getWalletAddress]);
 
   const getAuthOptions = useCallback(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1082,114 +1101,6 @@ export default function ChatPage() {
                     key={messageKey}
                     className="w-full border-b border-gray-800/50"
                   >
-<<<<<<< HEAD
-                    <div
-                      className={`max-w-[80%] px-4 py-3 rounded-2xl ${
-                        message.role === 'user'
-                          ? 'bg-cyan-500 text-white'
-                          : 'bg-gray-800 text-gray-200'
-                      }`}
-                    >
-                      {message.role === 'assistant' && message.agentName ? (
-                        <p className="text-xs font-semibold text-cyan-300 mb-1">{message.agentName}</p>
-                      ) : null}
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                      
-                      {/* Swap Interface */}
-                      {message.role === 'assistant' && 
-                        message.metadata?.event === 'swap_intent_ready' && (
-                        <div className="mt-4 space-y-3">
-                          {/* Quote Information */}
-                          {swapLoading && (
-                            <div className="flex items-center gap-2 text-cyan-400">
-                              <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                              <span className="text-sm">Getting quote...</span>
-                            </div>
-                          )}
-                          
-                          {swapQuote?.quote && (
-                            <div className="bg-gray-700/50 rounded-lg p-3 space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-300">You will receive:</span>
-                                <span className="text-sm font-medium text-white">
-                                  {formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)} {String(message.metadata?.to_token)}
-                                </span>
-                              </div>
-                              {swapQuote.quote.fees?.totalFeeUsd && (
-                                <div className="flex justify-between items-center">
-                                  <span className="text-sm text-gray-300">Total fees:</span>
-                                  <span className="text-sm text-gray-400">${swapQuote.quote.fees.totalFeeUsd}</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          
-                          {swapError && (
-                            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
-                              <p className="text-sm text-red-400">{swapError}</p>
-                            </div>
-                          )}
-                          
-                          {swapSuccess && (
-                            <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3">
-                              <p className="text-sm text-green-400 mb-3">✅ Swap executed successfully!</p>
-                              
-                              {/* Transaction Hashes */}
-                              {swapTxHashes.length > 0 && (
-                                <div className="space-y-2">
-                                  <div className="text-xs text-gray-400">Transaction Hashes:</div>
-                                  {swapTxHashes.map((tx, index) => {
-                                    const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
-                                    return (
-                                      <div key={index} className="flex items-center justify-between bg-gray-800/50 rounded p-2">
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs text-gray-300 font-mono truncate">
-                                            {tx.hash}
-                                          </div>
-                                          <div className="text-xs text-gray-500">
-                                            Chain ID: {tx.chainId}
-                                          </div>
-                                        </div>
-                                        {explorerUrl && (
-                                          <a
-                                            href={explorerUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors"
-                                          >
-                                            View
-                                          </a>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          
-                          {swapLoading && !swapQuote?.quote && (
-                            <div className="mt-3 p-3 bg-gray-700/50 rounded-lg border border-cyan-500/30">
-                              <div className="flex items-center gap-2">
-                                <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                                <span className="text-sm text-cyan-400">Preparing swap transaction...</span>
-                              </div>
-                            </div>
-                          )}
-                          
-                          {swapQuote?.quote && (
-                            <SignatureApprovalButton
-                              onApprove={() => handleSignatureApproval(message.metadata as Record<string, unknown>)}
-                              onReject={handleSignatureRejection}
-                              disabled={isSending || swapLoading || executingSwap}
-                            />
-                          )}
-                        </div>
-                      )}
-                      {timeLabel ? (
-                        <p className="text-xs opacity-60 mt-1">{timeLabel}</p>
-                      ) : null}
-=======
                     <div className="max-w-3xl mx-auto px-4 py-6">
                       <div className={`flex items-start gap-3 ${
                         message.role === 'user' ? 'flex-row-reverse' : ''
@@ -1231,10 +1142,101 @@ export default function ChatPage() {
                             message.role === 'user' ? 'text-right' : ''
                           }`}>
                             {message.content}
+
+                            {/* Swap Interface */}
+                            {message.role === 'assistant' &&
+                              message.metadata?.event === 'swap_intent_ready' && (
+                              <div className="mt-4 space-y-3">
+                                {/* Quote Information */}
+                                {swapLoading && (
+                                  <div className="flex items-center gap-2 text-cyan-400">
+                                    <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                                    <span className="text-sm">Getting quote...</span>
+                                  </div>
+                                )}
+
+                                {swapQuote?.quote && (
+                                  <div className="bg-gray-700/50 rounded-lg p-3 space-y-2">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-sm text-gray-300">You will receive:</span>
+                                      <span className="text-sm font-medium text-white">
+                                        {formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)} {String(message.metadata?.to_token)}
+                                      </span>
+                                    </div>
+                                    {swapQuote.quote.fees?.totalFeeUsd && (
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-300">Total fees:</span>
+                                        <span className="text-sm text-gray-400">${swapQuote.quote.fees.totalFeeUsd}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {swapError && (
+                                  <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
+                                    <p className="text-sm text-red-400">{swapError}</p>
+                                  </div>
+                                )}
+
+                                {swapSuccess && (
+                                  <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3">
+                                    <p className="text-sm text-green-400 mb-3">✅ Swap executed successfully!</p>
+
+                                    {/* Transaction Hashes */}
+                                    {swapTxHashes.length > 0 && (
+                                      <div className="space-y-2">
+                                        <div className="text-xs text-gray-400">Transaction Hashes:</div>
+                                        {swapTxHashes.map((tx, index) => {
+                                          const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
+                                          return (
+                                            <div key={index} className="flex items-center justify-between bg-gray-800/50 rounded p-2">
+                                              <div className="flex-1 min-w-0">
+                                                <div className="text-xs text-gray-300 font-mono truncate">
+                                                  {tx.hash}
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                  Chain ID: {tx.chainId}
+                                                </div>
+                                              </div>
+                                              {explorerUrl && (
+                                                <a
+                                                  href={explorerUrl}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors"
+                                                >
+                                                  View
+                                                </a>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {swapLoading && !swapQuote?.quote && (
+                                  <div className="mt-3 p-3 bg-gray-700/50 rounded-lg border border-cyan-500/30">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                                      <span className="text-sm text-cyan-400">Preparing swap transaction...</span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {swapQuote?.quote && (
+                                  <SignatureApprovalButton
+                                    onApprove={() => handleSignatureApproval(message.metadata as Record<string, unknown>)}
+                                    onReject={handleSignatureRejection}
+                                    disabled={isSending || swapLoading || executingSwap}
+                                  />
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
->>>>>>> develop
                     </div>
                   </div>
                 );
