@@ -121,6 +121,7 @@ function deriveConversationTitle(fallbackTitle: string, messages: Message[]): st
 export default function ChatPage() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isLargeScreen, setIsLargeScreen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -191,6 +192,22 @@ export default function ChatPage() {
       debug('component:unmount');
     };
   }, [debug]);
+
+  // Detect screen size and keep sidebar open on larger screens
+  useEffect(() => {
+    const checkScreenSize = () => {
+      const isLarge = window.innerWidth >= 1024; // lg breakpoint
+      setIsLargeScreen(isLarge);
+      if (isLarge) {
+        setSidebarOpen(true);
+      }
+    };
+
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
 
   // Use wallet address as userId instead of Telegram user ID
   const getWalletAddress = useCallback(() => {
@@ -554,7 +571,10 @@ export default function ChatPage() {
   const handleSelectConversation = (conversationId: string) => {
     setActiveConversationId(conversationId);
     setInitializationError(null);
-    setSidebarOpen(false);
+    // Only close sidebar on mobile/tablet
+    if (!isLargeScreen) {
+      setSidebarOpen(false);
+    }
     debug('conversation:select', { conversationId });
   };
 
@@ -796,31 +816,38 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0d1117] text-white flex">
+    <div className="h-screen bg-[#0d1117] text-white flex overflow-hidden">
       {/* Left Sidebar with Chat Conversations */}
       {sidebarOpen && (
         <>
-          <div
-            className="fixed inset-0 bg-black/50 z-40"
-            onClick={() => setSidebarOpen(false)}
-          />
-          <div className="fixed top-0 left-0 h-screen w-80 bg-[#0d1117] border-r border-cyan-500/20 z-50 overflow-y-auto flex flex-col">
+          {/* Overlay - only on mobile/tablet */}
+          {!isLargeScreen && (
+            <div
+              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
+          <div className={`h-full w-80 bg-[#0d1117] border-r border-cyan-500/20 overflow-y-auto flex flex-col ${
+            isLargeScreen ? 'relative' : 'fixed top-0 left-0 z-50 h-screen'
+          }`}>
             {/* Header with logo - Fixed */}
-            <div className="flex-shrink-0 p-4 border-b border-cyan-500/20 flex items-center justify-between">
+            <div className="flex-shrink-0 px-4 py-3 border-b border-cyan-500/20 flex items-center justify-between">
               <Image
                 src={zicoBlue}
                 alt="Zico"
                 width={32}
                 height={32}
               />
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              {!isLargeScreen && (
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="text-gray-400 hover:text-white lg:hidden"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
             </div>
 
             {/* Scrollable Content */}
@@ -830,7 +857,7 @@ export default function ChatPage() {
                 <button
                   onClick={() => {
                     router.push('/chat');
-                    setSidebarOpen(false);
+                    if (!isLargeScreen) setSidebarOpen(false);
                   }}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/50"
                 >
@@ -842,7 +869,7 @@ export default function ChatPage() {
                 <button
                   onClick={() => {
                     router.push('/swap');
-                    setSidebarOpen(false);
+                    if (!isLargeScreen) setSidebarOpen(false);
                   }}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-all"
                 >
@@ -916,8 +943,8 @@ export default function ChatPage() {
                       localStorage.removeItem('authSignature');
                       localStorage.removeItem('telegram_user');
 
-                      // Close sidebar
-                      setSidebarOpen(false);
+                      // Close sidebar on mobile
+                      if (!isLargeScreen) setSidebarOpen(false);
 
                       // Small delay to ensure localStorage is cleared
                       await new Promise(resolve => setTimeout(resolve, 100));
@@ -944,17 +971,20 @@ export default function ChatPage() {
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col h-full">
         {/* Top Bar - Fixed */}
-        <div className="sticky top-0 z-30 bg-[#0d1117] border-b border-cyan-500/20 px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="text-gray-400 hover:text-white"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
+        <div className="flex-shrink-0 bg-[#0d1117] border-b border-cyan-500/20 px-4 py-3 flex items-center justify-between">
+          {!isLargeScreen && (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="text-gray-400 hover:text-white lg:hidden"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          )}
+          {isLargeScreen && <div className="w-6"></div>}
 
           <div className="flex items-center gap-2">
             <Image src={zicoBlue} alt="Zico" width={32} height={32} />
@@ -964,7 +994,7 @@ export default function ChatPage() {
         </div>
 
         {/* Messages or Empty State */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           {initializing ? (
             <div className="h-full flex items-center justify-center px-4 py-12 text-center">
               {initializationError ? (
@@ -1033,7 +1063,7 @@ export default function ChatPage() {
               </div>
             </div>
           ) : (
-            <div className="px-4 py-6 space-y-4">
+            <div className="py-6">
               {activeMessages.map((message, index) => {
                 const timestampValue = message.timestamp.getTime();
                 const hasValidTime = !Number.isNaN(timestampValue);
@@ -1050,8 +1080,9 @@ export default function ChatPage() {
                 return (
                   <div
                     key={messageKey}
-                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    className="w-full border-b border-gray-800/50"
                   >
+<<<<<<< HEAD
                     <div
                       className={`max-w-[80%] px-4 py-3 rounded-2xl ${
                         message.role === 'user'
@@ -1158,18 +1189,78 @@ export default function ChatPage() {
                       {timeLabel ? (
                         <p className="text-xs opacity-60 mt-1">{timeLabel}</p>
                       ) : null}
+=======
+                    <div className="max-w-3xl mx-auto px-4 py-6">
+                      <div className={`flex items-start gap-3 ${
+                        message.role === 'user' ? 'flex-row-reverse' : ''
+                      }`}>
+                        {/* Avatar/Icon */}
+                        <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
+                          {message.role === 'user' ? (
+                            <div className="w-full h-full rounded-full bg-cyan-500 text-white flex items-center justify-center">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
+                            </div>
+                          ) : (
+                            <Image
+                              src={zicoBlue}
+                              alt="Zico"
+                              width={32}
+                              height={32}
+                              className="w-8 h-8"
+                            />
+                          )}
+                        </div>
+
+                        {/* Message Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className={`flex items-center gap-2 mb-2 ${
+                            message.role === 'user' ? 'justify-end' : ''
+                          }`}>
+                            {timeLabel ? (
+                              <span className="text-xs text-gray-500">{timeLabel}</span>
+                            ) : null}
+                            <span className={`text-sm font-semibold ${
+                              message.role === 'user' ? 'text-cyan-400' : 'text-gray-300'
+                            }`}>
+                              {message.role === 'user' ? 'You' : 'Zico'}
+                            </span>
+                          </div>
+                          <div className={`text-[15px] text-gray-200 break-words leading-relaxed ${
+                            message.role === 'user' ? 'text-right' : ''
+                          }`}>
+                            {message.content}
+                          </div>
+                        </div>
+                      </div>
+>>>>>>> develop
                     </div>
                   </div>
                 );
               })}
 
               {isSending && (
-                <div className="flex justify-start">
-                  <div className="bg-gray-800 text-gray-200 px-4 py-3 rounded-2xl">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
-                      <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse delay-75" />
-                      <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse delay-150" />
+                <div className="w-full border-b border-gray-800/50">
+                  <div className="max-w-3xl mx-auto px-4 py-6">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
+                        <Image
+                          src={zicoBlue}
+                          alt="Zico"
+                          width={32}
+                          height={32}
+                          className="w-8 h-8"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-semibold text-gray-300 mb-2">Zico</div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
+                          <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse delay-75" />
+                          <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse delay-150" />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1181,7 +1272,7 @@ export default function ChatPage() {
         </div>
 
         {/* Input Area - Fixed */}
-        <div className="sticky bottom-0 z-30 bg-[#0d1117] border-t border-cyan-500/20 p-4">
+        <div className="flex-shrink-0 bg-[#0d1117] border-t border-cyan-500/20 p-4">
           <div className="flex items-center gap-2 max-w-4xl mx-auto">
             <input
               type="text"
