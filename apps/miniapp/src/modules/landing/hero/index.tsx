@@ -23,7 +23,7 @@ const Hero = () => {
   }, [words.length])
 
   return (
-    <div className="relative flex flex-col items-center justify-center h-full mt-32">
+    <div className="relative flex flex-col items-center justify-center h-full mt-12 md:mt-32">
       <h1 className="text-4xl lg:text-5xl 2xl:text-6xl text-landing-title w-[90%] md:w-full md:max-w-[1200px] mx-auto px-4 md:px-0">
         <span className="flex flex-col items-center gap-5 text-center">
           A Panoramic View of
