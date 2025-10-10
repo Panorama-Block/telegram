@@ -1,3 +1,5 @@
+'use client'
+
 import Verticals from '@/modules/landing/verticals'
 import Partners from '@/modules/landing/partners'
 import Roadmap from '@/modules/landing/roadmap'

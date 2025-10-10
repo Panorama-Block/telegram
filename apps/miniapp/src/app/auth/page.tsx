@@ -10,6 +10,7 @@ import zicoBlue from '../../../public/icons/zico_blue.svg';
 export default function AuthPage() {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [redirectCountdown, setRedirectCountdown] = useState(3);
 
   // Check wallet authentication (not Telegram auth)
   useEffect(() => {
@@ -22,7 +23,21 @@ export default function AuthPage() {
 
       // Auto-redirect to chat when authentication happens
       if (!wasAuthenticated && isNowAuthenticated) {
-        router.push('/chat');
+        // Start countdown before redirect
+        let countdown = 3;
+        setRedirectCountdown(countdown);
+
+        const countdownInterval = setInterval(() => {
+          countdown -= 1;
+          setRedirectCountdown(countdown);
+
+          if (countdown <= 0) {
+            clearInterval(countdownInterval);
+            router.push('/chat');
+          }
+        }, 1000);
+
+        return () => clearInterval(countdownInterval);
       }
     };
 
@@ -33,11 +48,14 @@ export default function AuthPage() {
     return () => clearInterval(interval);
   }, [isAuthenticated, router]);
 
-  const handleContinue = () => {
-    if (isAuthenticated) {
+  // Check if already authenticated on mount - redirect immediately to chat
+  useEffect(() => {
+    const authToken = localStorage.getItem('authToken');
+    if (authToken) {
+      console.log('✅ Already authenticated, redirecting to chat...');
       router.push('/chat');
     }
-  };
+  }, [router]);
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-white relative overflow-hidden">
@@ -80,6 +98,25 @@ export default function AuthPage() {
           {/* Wallet Connect Panel */}
           <div className="bg-[#1a1a1a]/80 backdrop-blur-lg border border-cyan-500/30 rounded-2xl p-6 sm:p-8 shadow-xl shadow-cyan-500/10">
             <WalletConnectPanel />
+
+            {/* Redirect countdown message */}
+            {isAuthenticated && (
+              <div className="mt-6 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-green-400 font-medium">
+                    Redirecting to chat in {redirectCountdown}s...
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Helper text */}
+          <div className="mt-6 text-center">
+            <p className="text-gray-400 text-sm">
+              💡 Tip: Use the <span className="text-cyan-400 font-medium">Launch App</span> button on the landing page for a faster experience!
+            </p>
           </div>
         </div>
       </main>
