@@ -18,7 +18,21 @@ export function EvmConnectButton() {
 
   const wallets = useMemo(() => {
     const isTelegram = typeof window !== 'undefined' && (window as any).Telegram?.WebApp;
+    const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+
+    if (isTelegram && isiOS) {
+      return [
+        inAppWallet({
+          auth: {
+            options: ['email', 'passkey', 'guest'],
+            mode: 'redirect',
+            redirectUrl,
+          },
+        }),
+      ];
+    }
+
     return [
       inAppWallet({
         auth: {
