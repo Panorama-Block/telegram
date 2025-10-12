@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Panorama Block — Telegram Mini App
 
-## Getting Started
+Deploy-ready Next.js (App Router) with thirdweb in-app wallet using OAuth redirect for Telegram WebView, and backend auth integration.
 
-First, run the development server:
+Quick Start (Local)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Copy `.env.example` to `.env.local` and fill at least:
+  - `THIRDWEB_CLIENT_ID`
+  - `AUTH_API_BASE`
+  - (Optional) `SWAP_API_BASE`, `PUBLIC_GATEWAY_URL`, `DEFAULT_CHAIN_ID` etc.
+- Run `npm install` then `npm run dev`.
+- Open http://localhost:3000/miniapp
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Deploy (Vercel)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Set these Project Env Vars in Vercel:
+  - `THIRDWEB_CLIENT_ID`
+  - `AUTH_API_BASE`
+  - (Optional) `SWAP_API_BASE`, `PUBLIC_GATEWAY_URL`, `DEFAULT_CHAIN_ID`, `AI_API_URL`, `AGENTS_*`
+- Deploy the app. Production URL will be: `https://<your-vercel-domain>.vercel.app/miniapp`
+- OAuth redirect is automatically configured to: `/miniapp/auth/callback`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Telegram Bot Setup
 
-## Learn More
+- In your bot, set the Web App URL to your production URL above (path `/miniapp`).
+- The app detects Telegram WebView and uses OAuth via redirect, storing the in-app wallet token and auto-connecting on return.
 
-To learn more about Next.js, take a look at the following resources:
+Notes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- The TON Connect manifest is served dynamically at `/miniapp/api/tonconnect-manifest` and uses your deployment origin for icon/URL.
+- After OAuth callback, the app redirects to `/miniapp/newchat`, then to `/miniapp/chat` once authenticated with the backend.

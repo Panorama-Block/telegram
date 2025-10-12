@@ -16,17 +16,26 @@ export function EvmConnectButton() {
     }
   }, []);
 
+  const wallets = useMemo(() => {
+    const isTelegram = typeof window !== 'undefined' && (window as any).Telegram?.WebApp;
+    const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    return [
+      inAppWallet({
+        auth: {
+          options: ['google', 'telegram', 'email'],
+          mode: isTelegram ? 'redirect' : 'popup',
+          redirectUrl,
+        },
+      }),
+      createWallet('io.metamask'),
+    ];
+  }, []);
+
   return (
     <Card
       title="EVM Wallet"
       action={client ? (
-        <ConnectButton
-          client={client}
-          wallets={[
-            inAppWallet({ auth: { options: ['google', 'telegram'] } }),
-            createWallet('io.metamask'),
-          ]}
-        />
+        <ConnectButton client={client} wallets={wallets} />
       ) : (
         <span style={{ color: '#ef4444' }}>Missing THIRDWEB_CLIENT_ID</span>
       )}

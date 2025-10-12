@@ -9,6 +9,7 @@ import {
   type Hex,
 } from 'thirdweb';
 import { ConnectButton } from 'thirdweb/react';
+import { inAppWallet, createWallet } from 'thirdweb/wallets';
 
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
@@ -162,6 +163,21 @@ export function SwapCard() {
   const account = useActiveAccount();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
+  const wallets = useMemo(() => {
+    if (typeof window === 'undefined') return [inAppWallet(), createWallet('io.metamask')];
+    const isTelegram = (window as any).Telegram?.WebApp;
+    const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    return [
+      inAppWallet({
+        auth: {
+          options: ['google', 'telegram', 'email'],
+          mode: isTelegram ? 'redirect' : 'popup',
+          redirectUrl,
+        },
+      }),
+      createWallet('io.metamask'),
+    ];
+  }, []);
   const supportedChains = useMemo(() => networks.map((n) => n.chainId), []);
   
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
@@ -674,6 +690,7 @@ export function SwapCard() {
         {needsWalletConnection ? (
           <ConnectButton
             client={client!}
+            wallets={wallets}
             connectModal={{
               size: 'compact',
               title: 'Connect Wallet to Execute Swap',
@@ -772,6 +789,7 @@ export function SwapCard() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <ConnectButton
               client={client!}
+              wallets={wallets}
               connectModal={{
                 size: 'compact',
                 title: 'Adicionar Fundos',

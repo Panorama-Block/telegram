@@ -8,6 +8,9 @@
     "start": "next start",
     "lint": "eslint"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@orbs-network/ton-access": "^2.2.2",
     "@ton/core": "^0.56.3",

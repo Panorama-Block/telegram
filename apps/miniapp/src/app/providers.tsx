@@ -35,7 +35,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
 
         WebApp?.ready?.();
 
-        const manifestUrl = `${window.location.origin}/miniapp/manifest.json`;
+        const manifestUrl = `${window.location.origin}/miniapp/api/tonconnect-manifest`;
         const thirdwebClientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
 
         // Create providers component

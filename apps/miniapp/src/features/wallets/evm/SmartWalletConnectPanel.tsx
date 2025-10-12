@@ -4,6 +4,7 @@ import { createThirdwebClient } from 'thirdweb';
 import { signLoginPayload } from 'thirdweb/auth';
 import { Card, Button } from '@/shared/ui';
 import { THIRDWEB_CLIENT_ID } from '../../../shared/config/thirdweb';
+import { inAppWallet, createWallet } from 'thirdweb/wallets';
 
 
 function WalletIcon({ size = 20, style }: { size?: number; style?: React.CSSProperties }) {
@@ -67,6 +68,22 @@ export function SmartWalletConnectPanel() {
 
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
+
+  const wallets = useMemo(() => {
+    if (typeof window === 'undefined') return [inAppWallet(), createWallet('io.metamask')];
+    const isTelegram = (window as any).Telegram?.WebApp;
+    const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    return [
+      inAppWallet({
+        auth: {
+          options: ['google', 'telegram', 'email'],
+          mode: isTelegram ? 'redirect' : 'popup',
+          redirectUrl,
+        },
+      }),
+      createWallet('io.metamask'),
+    ];
+  }, []);
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const isAlreadyAuthenticated = !!addressFromToken;
@@ -204,6 +221,7 @@ export function SmartWalletConnectPanel() {
           {client && !isAuthenticated && !isAuthenticating && (
             <ConnectButton
               client={client}
+              wallets={wallets}
               connectModal={{
                 size: 'compact',
                 title: 'Conectar Carteira',
@@ -317,6 +335,7 @@ export function SmartWalletConnectPanel() {
         {client && !isAuthenticated && !isAuthenticating && (
           <ConnectButton
             client={client}
+            wallets={wallets}
             connectModal={{
               size: 'compact',
               title: 'Conectar Carteira',
