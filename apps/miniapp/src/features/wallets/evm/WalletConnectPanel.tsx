@@ -62,13 +62,20 @@ export function WalletConnectPanel() {
     }
   }, []);
 
-  const wallets = useMemo(
-    () => [
-      inAppWallet({ auth: { options: ['google', 'telegram'] } }),
+  const wallets = useMemo(() => {
+    const isTelegram = typeof window !== 'undefined' && (window as any).Telegram?.WebApp;
+    const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    return [
+      inAppWallet({
+        auth: {
+          options: ['google', 'telegram', 'email'],
+          mode: isTelegram ? 'redirect' : 'popup',
+          redirectUrl,
+        },
+      }),
       createWallet('io.metamask'),
-    ],
-    [],
-  );
+    ];
+  }, []);
 
   const authenticateWithBackend = useCallback(async () => {
 
