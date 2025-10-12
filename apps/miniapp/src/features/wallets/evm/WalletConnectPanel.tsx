@@ -3,6 +3,7 @@ import { ConnectButton, useActiveAccount, useActiveWallet, useDisconnect } from 
 import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
+import { MetaMaskFallback } from './MetaMaskFallback';
 
 function WalletIcon({ size = 20 }: { size?: number }) {
   return (
@@ -62,13 +63,46 @@ export function WalletConnectPanel() {
     }
   }, []);
 
-  const wallets = useMemo(
-    () => [
-      inAppWallet({ auth: { options: ['google', 'telegram'] } }),
-      createWallet('io.metamask'),
-    ],
-    [],
-  );
+  const wallets = useMemo(() => {
+    // Detectar se estamos em um miniapp do Telegram
+    const isTelegramMiniApp = typeof window !== 'undefined' && 
+      (window as any).Telegram?.WebApp || 
+      navigator.userAgent.includes('TelegramBot');
+
+    console.log('🔍 [WALLET DEBUG] É miniapp do Telegram:', isTelegramMiniApp);
+
+    const walletList = [
+      inAppWallet({ 
+        auth: { 
+          options: ['google', 'telegram'],
+          // URL de callback específica para o miniapp
+          redirectUrl: typeof window !== 'undefined' ? window.location.origin + '/auth/callback' : undefined
+        } 
+      })
+    ];
+
+    // Para miniapps do Telegram, usar configuração específica do MetaMask
+    if (isTelegramMiniApp) {
+      walletList.push(
+        createWallet('io.metamask', {
+          // Configuração específica para WebGL/miniapps
+          options: {
+            // Usar popup em vez de redirect para evitar problemas no miniapp
+            usePopup: true,
+            // Timeout para popups (30 segundos)
+            popupTimeout: 30000,
+            // Configurações de popup específicas para miniapps
+            popupFeatures: 'width=400,height=600,scrollbars=yes,resizable=yes,status=yes,toolbar=no,menubar=no,location=no'
+          }
+        })
+      );
+    } else {
+      // Para ambiente normal, usar MetaMask padrão
+      walletList.push(createWallet('io.metamask'));
+    }
+
+    return walletList;
+  }, []);
 
   const authenticateWithBackend = useCallback(async () => {
 
@@ -261,7 +295,16 @@ export function WalletConnectPanel() {
           <ConnectButton
             client={client}
             wallets={wallets}
-            connectModal={{ size: 'compact' }}
+            connectModal={{ 
+              size: 'compact',
+              // Configurações específicas para miniapps
+              ...(typeof window !== 'undefined' && (window as any).Telegram?.WebApp ? {
+                // Usar popup para miniapps
+                usePopup: true,
+                // Configurações de popup
+                popupFeatures: 'width=400,height=600,scrollbars=yes,resizable=yes,status=yes,toolbar=no,menubar=no,location=no'
+              } : {})
+            }}
             connectButton={{
               label: 'Connect Wallet',
               style: {
@@ -335,6 +378,19 @@ export function WalletConnectPanel() {
         <div style={{ color: '#ef4444', fontSize: 14, padding: '12px', background: '#1a1a1a', borderRadius: 8 }}>
           {error}
         </div>
+      )}
+      
+      {/* Fallback para quando MetaMask não funciona */}
+      {!connected && client && (
+        <MetaMaskFallback
+          onConnect={(wallet) => {
+            console.log('🔄 [FALLBACK] Conectando wallet alternativa:', wallet);
+            // Aqui você pode implementar a lógica de conexão alternativa
+          }}
+          onError={(error) => {
+            setError(error);
+          }}
+        />
       )}
     </div>
   );

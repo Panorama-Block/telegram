@@ -31,15 +31,20 @@ const nextConfig: NextConfig = {
     config.resolve.fallback = {
       ...config.resolve.fallback,
       buffer: require.resolve('buffer/'),
+      // Adicionar fallbacks necessários para MetaMask em miniapps
+      stream: require.resolve('stream-browserify'),
+      crypto: require.resolve('crypto-browserify'),
+      util: require.resolve('util/'),
     };
 
-    // config.resolve.alias = {
-    //   ...config.resolve.alias,
-    //   'thirdweb/dist/esm/react/web/wallets/shared/locale/getConnectLocale.js': path.resolve(
-    //     __dirname,
-    //     './src/shared/thirdweb/getConnectLocale.ts',
-    //   ),
-    // };
+    // Configurações específicas para WebGL/miniapps conforme documentação Thirdweb
+    config.module.rules.push({
+      test: /\.m?js$/,
+      resolve: {
+        fullySpecified: false,
+      },
+    });
+
     return config;
   },
 };

@@ -35,6 +35,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Error parsing stored user:', error);
         localStorage.removeItem('telegram_user');
       }
+    } else {
+      // Check if we have telegram_user_id in URL params
+      const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      const telegramUserId = urlParams?.get('telegram_user_id');
+      
+      if (telegramUserId) {
+        // Create a temporary user object from URL params
+        const tempUser: TelegramUser = {
+          id: parseInt(telegramUserId),
+          first_name: 'Telegram User',
+          username: `user_${telegramUserId}`,
+        };
+        
+        // Store temporarily (will be replaced by proper login)
+        localStorage.setItem('telegram_user', JSON.stringify(tempUser));
+        setUser(tempUser);
+      }
     }
     setIsLoading(false);
   }, []);

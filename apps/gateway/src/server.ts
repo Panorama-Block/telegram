@@ -89,7 +89,7 @@ export async function createServer(): Promise<FastifyInstance> {
 
   // Rate limiting
   await app.register(rateLimit, {
-    max: 100,
+    max: 1000000,
     timeWindow: '1 minute',
     redis: null, // usar in-memory para dev, Redis para prod
   });

@@ -64,19 +64,46 @@ export function TelegramCompatibleWallet() {
   }, []);
 
   // Configuração específica para miniapps do Telegram
-  const wallets = useMemo(
-    () => [
+  const wallets = useMemo(() => {
+    // Detectar se estamos em um miniapp do Telegram
+    const isTelegramMiniApp = typeof window !== 'undefined' && 
+      (window as any).Telegram?.WebApp || 
+      navigator.userAgent.includes('TelegramBot');
+
+    console.log('🔍 [TELEGRAM WALLET DEBUG] É miniapp do Telegram:', isTelegramMiniApp);
+
+    const walletList = [
       inAppWallet({ 
         auth: { 
           options: ['google', 'telegram'],
           // URL de callback específica para o miniapp
           redirectUrl: typeof window !== 'undefined' ? window.location.origin + '/auth/callback' : undefined
         } 
-      }),
-      createWallet('io.metamask'),
-    ],
-    [],
-  );
+      })
+    ];
+
+    // Para miniapps do Telegram, usar configuração específica do MetaMask
+    if (isTelegramMiniApp) {
+      walletList.push(
+        createWallet('io.metamask', {
+          // Configuração específica para WebGL/miniapps
+          options: {
+            // Usar popup em vez de redirect para evitar problemas no miniapp
+            usePopup: true,
+            // Timeout para popups (30 segundos)
+            popupTimeout: 30000,
+            // Configurações de popup específicas para miniapps
+            popupFeatures: 'width=400,height=600,scrollbars=yes,resizable=yes,status=yes,toolbar=no,menubar=no,location=no'
+          }
+        })
+      );
+    } else {
+      // Para ambiente normal, usar MetaMask padrão
+      walletList.push(createWallet('io.metamask'));
+    }
+
+    return walletList;
+  }, []);
 
   // Interceptar o fluxo de autenticação para miniapps
   useEffect(() => {

@@ -40,19 +40,27 @@ export function AuthGuard({ children }: AuthGuardProps) {
     const hasWalletAuth = !!authToken;
     const normalizedPath = normalizePathname(pathname);
     const isPublicRoute = publicRoutes.includes(normalizedPath);
-    const canAccessProtectedRoute = isAuthenticated || hasWalletAuth;
+    
+    // Check if we have Telegram user ID in URL params (from Telegram miniapp)
+    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const telegramUserId = urlParams?.get('telegram_user_id');
+    const hasTelegramUser = !!telegramUserId;
+    
+    const canAccessProtectedRoute = isAuthenticated || hasWalletAuth || hasTelegramUser;
 
     console.log('🛡️ [AUTHGUARD DEBUG]', {
       pathname: normalizedPath,
       isAuthenticated,
       isLoading,
       hasWalletAuth,
+      hasTelegramUser,
+      telegramUserId,
       telegram_user: typeof window !== 'undefined' ? localStorage.getItem('telegram_user') : null,
       authToken: authToken ? `${authToken.slice(0, 20)}...` : null
     });
 
     if (!isLoading) {
-      // For protected routes, ensure wallet or Telegram authentication is present
+      // For protected routes, ensure wallet, Telegram authentication, or Telegram user ID is present
       if (!canAccessProtectedRoute && !isPublicRoute) {
         console.log('🔒 [AUTHGUARD] Redirecting to /auth - missing authentication credentials');
         router.push('/auth');
@@ -86,7 +94,13 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const isPublicRoute = publicRoutes.includes(normalizedPath);
   const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
   const hasWalletAuth = !!authToken;
-  const canAccessProtectedRoute = isAuthenticated || hasWalletAuth;
+  
+  // Check if we have Telegram user ID in URL params (from Telegram miniapp)
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const telegramUserId = urlParams?.get('telegram_user_id');
+  const hasTelegramUser = !!telegramUserId;
+  
+  const canAccessProtectedRoute = isAuthenticated || hasWalletAuth || hasTelegramUser;
 
   if (!canAccessProtectedRoute && !isPublicRoute) {
     return null;
