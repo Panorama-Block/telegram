@@ -35,6 +35,62 @@ export function ClientProviders({ children }: ClientProvidersProps) {
 
         WebApp?.ready?.();
 
+        // Consumir start_param (deep link) para recuperar sessão criada externamente
+        try {
+          const isTelegram = (WebApp as any)?.initDataUnsafe;
+          const startParam = (WebApp as any)?.initDataUnsafe?.start_param
+            || new URLSearchParams(window.location.search).get('startapp')
+            || '';
+          const hasAuth = !!localStorage.getItem('authToken');
+          if (isTelegram && startParam && !hasAuth) {
+            const match = String(startParam).match(/^(code:)?(.+)$/);
+            const nonce = match ? match[2] : null;
+            const authApiBase = process.env.VITE_AUTH_API_BASE || '';
+            if (nonce && authApiBase) {
+              const resp = await fetch(`${authApiBase}/auth/miniapp/session/consume`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nonce }),
+              });
+              if (resp.ok) {
+                const { token, walletCookie } = await resp.json();
+                if (walletCookie) {
+                  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+                  if (clientId) {
+                    await localStorage.setItem(`walletToken-${clientId}`, walletCookie);
+                  }
+                }
+                if (token) {
+                  localStorage.setItem('authToken', token);
+                  // tentar auto-conectar a in-app wallet
+                  try {
+                    const thirdweb = await import('thirdweb');
+                    const wallets = await import('thirdweb/wallets');
+                    const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+                    if (clientId) {
+                      const client = thirdweb.createThirdwebClient({ clientId });
+                      const w = wallets.inAppWallet();
+                      await w.autoConnect({ client });
+                    }
+                  } catch (e) {
+                    console.warn('[StartParam Consume] autoConnect failed:', e);
+                  }
+                  // opcional: navegar para newchat
+                  try {
+                    const basePath = '/miniapp';
+                    const current = window.location.pathname;
+                    if (!current.endsWith('/newchat') && !current.endsWith('/chat')) {
+                      window.location.href = `${basePath}/newchat`;
+                    }
+                  } catch {}
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[StartParam Consume] Ignored:', e);
+        }
+
         const manifestUrl = `${window.location.origin}/miniapp/api/tonconnect-manifest`;
         const thirdwebClientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
 

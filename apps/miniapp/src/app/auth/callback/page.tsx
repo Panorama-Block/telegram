@@ -25,6 +25,7 @@ export default function AuthCallbackPage() {
   const router = useRouter();
   const [status, setStatus] = useState('Inicializando...');
   const [error, setError] = useState<string | null>(null);
+  const [deepLinkUrl, setDeepLinkUrl] = useState<string | null>(null);
 
   useEffect(() => {
     async function run() {
@@ -117,8 +118,30 @@ export default function AuthCallbackPage() {
         localStorage.setItem('authPayload', JSON.stringify(payload));
         localStorage.setItem('authSignature', signature);
 
+        const isTelegram = (window as any).Telegram?.WebApp;
+        const bot = process.env.VITE_TELEGRAM_BOT_USERNAME || '';
+        if (!isTelegram && bot) {
+          // Criar sessão one-time para retorno ao Mini App via deep link
+          setStatus('Preparando retorno ao Telegram...');
+          try {
+            const createResp = await fetch(`${authApiBase}/auth/miniapp/session/create`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: authToken, walletCookie: localStorage.getItem(`walletToken-${clientId}`), ttlSeconds: 600 }),
+            });
+            if (createResp.ok) {
+              const { nonce } = await createResp.json();
+              const deepLink = `https://t.me/${bot}?startapp=code:${encodeURIComponent(nonce)}`;
+              setDeepLinkUrl(deepLink);
+              setStatus('Abra no Telegram para continuar.');
+              return; // não redireciona dentro do Safari
+            }
+          } catch (e) {
+            console.warn('[AUTH CALLBACK] Falha ao criar sessão para deep link', e);
+          }
+        }
+
         setStatus('Autenticação concluída. Redirecionando...');
-        // 4) Redirecionar para nova conversa
         router.replace('/newchat');
       } catch (e: any) {
         console.error('[AUTH CALLBACK] Erro:', e);
@@ -137,8 +160,25 @@ export default function AuthCallbackPage() {
         {error && (
           <p style={{ marginTop: 12, color: '#ef4444' }}>Erro: {error}</p>
         )}
+        {!error && deepLinkUrl && (
+          <div style={{ marginTop: 16 }}>
+            <a
+              href={deepLinkUrl}
+              style={{
+                display: 'inline-block',
+                padding: '12px 16px',
+                background: '#2481cc',
+                color: '#fff',
+                borderRadius: 10,
+                fontWeight: 600,
+                textDecoration: 'none',
+              }}
+            >
+              Voltar ao Telegram
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );
 }
-

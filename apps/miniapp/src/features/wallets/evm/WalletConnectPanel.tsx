@@ -64,7 +64,23 @@ export function WalletConnectPanel() {
 
   const wallets = useMemo(() => {
     const isTelegram = typeof window !== 'undefined' && (window as any).Telegram?.WebApp;
+    const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+
+    // iOS + Telegram WebView has Google OAuth blocked (disallowed_useragent)
+    // and MetaMask deep link is unreliable. Prefer email/passkey only.
+    if (isTelegram && isiOS) {
+      return [
+        inAppWallet({
+          auth: {
+            options: ['email', 'passkey', 'guest'],
+            mode: 'redirect',
+            redirectUrl,
+          },
+        }),
+      ];
+    }
+
     return [
       inAppWallet({
         auth: {
@@ -259,6 +275,29 @@ export function WalletConnectPanel() {
 
   return (
     <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {typeof window !== 'undefined' && (window as any).Telegram?.WebApp && /iPhone|iPad|iPod/i.test(navigator.userAgent) && (
+        <div style={{ fontSize: 13, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', padding: 12, borderRadius: 8 }}>
+          Em iOS (Telegram), o Google bloqueia login em webviews. Use Email/Passkey ou toque em
+          <button
+            onClick={() => {
+              try {
+                const WebApp = (window as any).Telegram?.WebApp;
+                const url = `${window.location.origin}/miniapp/auth/external?strategy=google`;
+                if (WebApp?.openLink) {
+                  WebApp.openLink(url, { try_instant_view: false });
+                } else {
+                  window.open(url, '_blank');
+                }
+              } catch {
+                window.open(`${window.location.origin}/miniapp/auth/external?strategy=google`, '_blank');
+              }
+            }}
+            style={{ marginLeft: 6, color: '#fbbf24', textDecoration: 'underline', background: 'transparent', border: 'none', cursor: 'pointer' }}
+          >
+            Abrir no navegador
+          </button>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
         <WalletIcon size={24} />
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#fff' }}>Wallet</h2>
