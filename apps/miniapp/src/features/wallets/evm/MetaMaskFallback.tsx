@@ -98,3 +98,4 @@ export function MetaMaskFallback({ onConnect, onError }: MetaMaskFallbackProps) 
     </div>
   );
 }
+
