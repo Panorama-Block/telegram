@@ -6,12 +6,15 @@ config();
 
 const nextConfig: NextConfig = {
   basePath: '/miniapp',
+<<<<<<< HEAD
   async redirects() {
     return [
       // Redirect root to basePath so www.panoramablock.com -> /miniapp
       { source: '/', destination: '/miniapp', permanent: false },
     ];
   },
+=======
+>>>>>>> parent of a6e9ca5 (Merge pull request #39 from Panorama-Block/fix/telegram-auth)
   images: {
     remotePatterns: [
       {
@@ -30,7 +33,6 @@ const nextConfig: NextConfig = {
     VITE_AI_API_URL: process.env.AI_API_URL || '',
     VITE_AGENTS_API_BASE: process.env.AGENTS_API_BASE || '',
     VITE_TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || '',
-    VITE_WC_PROJECT_ID: process.env.WALLETCONNECT_PROJECT_ID || '',
     AGENTS_API_BASE: process.env.AGENTS_API_BASE || '',
     AGENTS_RESPONSE_MESSAGE_PATH: process.env.AGENTS_RESPONSE_MESSAGE_PATH || '',
     AGENTS_DEBUG_SHAPE: process.env.AGENTS_DEBUG_SHAPE || 'false',
