@@ -71,16 +71,16 @@ export function SmartWalletConnectPanel() {
 
   const wallets = useMemo(() => {
     if (typeof window === 'undefined') return [inAppWallet()];
-    const isTelegram = (window as any).Telegram?.WebApp;
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    const mode = isiOS ? 'redirect' : 'popup';
+    const redirectUrl = isiOS ? `${window.location.origin}/miniapp/auth/callback` : undefined;
 
-    if (isTelegram && isiOS) {
+    if (isiOS) {
       return [
         inAppWallet({
           auth: {
             options: ['email', 'passkey', 'guest'],
-            mode: 'redirect',
+            mode,
             redirectUrl,
           },
         }),
@@ -91,7 +91,7 @@ export function SmartWalletConnectPanel() {
       inAppWallet({
         auth: {
           options: ['google', 'telegram', 'email'],
-          mode: isTelegram ? 'redirect' : 'popup',
+          mode,
           redirectUrl,
         },
       }),
