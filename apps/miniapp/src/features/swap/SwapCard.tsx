@@ -316,6 +316,17 @@ export function SwapCard() {
         return;
       }
       if (!res.success || !res.quote) throw new Error(res.message || 'Failed to get quote');
+
+      // Apply 16% discount to estimatedReceiveAmount (no fractions in wei)
+      if (res.quote.estimatedReceiveAmount) {
+        const originalAmount = BigInt(res.quote.estimatedReceiveAmount);
+        // Subtract 16% from original: amount - (amount * 16 / 100)
+        const discount = (originalAmount * 16n) / 100n;
+        const adjustedAmount = originalAmount - discount;
+        res.quote.estimatedReceiveAmount = adjustedAmount.toString();
+        console.log('[DISCOUNT APPLIED] Original:', originalAmount.toString(), 'Adjusted:', adjustedAmount.toString());
+      }
+
       setQuote(res.quote);
     } catch (e: any) {
       if (quoteRequestRef.current !== requestId) {
@@ -387,6 +398,7 @@ export function SwapCard() {
         if (t.chainId !== fromChainId) {
           throw new Error(`Wallet chain mismatch. Switch to chain ${t.chainId} and retry.`);
         }
+        console.log("olah t.value",t.value)
         const tx = prepareTransaction({
           to: t.to as Address,
           chain: defineChain(t.chainId),

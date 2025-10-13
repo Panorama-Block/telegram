@@ -319,30 +319,34 @@ export default function SwapPage() {
 
       const res = await swapApi.quote(body);
 
-      console.log('=== QUOTE API RESPONSE ===');
-      console.log('Full response:', JSON.stringify(res, null, 2));
-      console.log('Quote object:', res.quote);
-      console.log('Fees object:', res.quote?.fees);
+      // Apply -16% discount to estimatedReceiveAmount to compensate for Thirdweb SDK discrepancy
+      const adjustedRes = {
+        ...res,
+        quote: res.quote ? {
+          ...res.quote,
+          estimatedReceiveAmount: (BigInt(res.quote.estimatedReceiveAmount) * BigInt(84) / BigInt(100)).toString() // 16% discount
+        } : res.quote
+      };
 
       if (quoteRequestRef.current !== requestId) {
         return;
       }
 
-      if (!res.success || !res.quote) {
-        throw new Error(res.message || 'Failed to get quote');
+      if (!adjustedRes.success || !adjustedRes.quote) {
+        throw new Error(adjustedRes.message || 'Failed to get quote');
       }
 
-      setQuote(res.quote);
+      setQuote(adjustedRes.quote);
 
       // Update buy amount from quote
-      if (res.quote.estimatedReceiveAmount && buyToken && client) {
+      if (adjustedRes.quote.estimatedReceiveAmount && buyToken && client) {
         // Get correct decimals for the destination token
         const decimals = await getTokenDecimals({
           client,
           chainId: toChainId,
           token: buyToken.address
         });
-        const formatted = formatAmountHuman(BigInt(res.quote.estimatedReceiveAmount), decimals);
+        const formatted = formatAmountHuman(BigInt(adjustedRes.quote.estimatedReceiveAmount), decimals);
         setBuyAmount(formatted);
       }
     } catch (e: any) {
