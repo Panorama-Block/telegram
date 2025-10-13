@@ -57,20 +57,23 @@ export function usePWA(): PWAState & PWAActions {
 
   // Get cache size
   const getCacheSize = useCallback(async (): Promise<number> => {
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      return new Promise((resolve) => {
-        const channel = new MessageChannel()
-        channel.port1.onmessage = (event) => {
-          const size = event.data.cacheSize || 0
-          setCacheSize(size)
-          resolve(size)
-        }
+    if ('serviceWorker' in navigator) {
+      const controller = navigator.serviceWorker.controller
+      if (controller) {
+        return new Promise((resolve) => {
+          const channel = new MessageChannel()
+          channel.port1.onmessage = (event) => {
+            const size = event.data?.cacheSize || 0
+            setCacheSize(size)
+            resolve(size)
+          }
 
-        navigator.serviceWorker.controller.postMessage(
-          { type: 'GET_CACHE_SIZE' },
-          [channel.port2]
-        )
-      })
+          controller.postMessage(
+            { type: 'GET_CACHE_SIZE' },
+            [channel.port2]
+          )
+        })
+      }
     }
     return 0
   }, [])
