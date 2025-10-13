@@ -14,6 +14,8 @@ const nextConfig: NextConfig = {
         pathname: '/coins/images/**',
       },
     ],
+    unoptimized: true,
+    minimumCacheTTL: 60,
   },
   env: {
     VITE_GATEWAY_BASE: process.env.PUBLIC_GATEWAY_URL || '',
