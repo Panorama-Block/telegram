@@ -3,38 +3,29 @@ import { config as loadEnv } from "dotenv";
 loadEnv();
 
 const nextConfig: NextConfig = {
-  // Seu app vive sob /miniapp
+  // o app vive sob /miniapp
   basePath: "/miniapp",
 
-  // Redirects: mudam a URL no navegador
   async redirects() {
     return [
-      // 1) raiz do domínio -> /miniapp (sem duplicar o basePath)
+      // Raiz do domínio -> /miniapp (sem duplicar basePath)
       { source: "/", destination: "/miniapp", permanent: true, basePath: false },
 
-      // OPCIONAL: se quiser que /auth mostre /miniapp/auth na URL
-      // { source: "/auth", destination: "/miniapp/auth", permanent: true, basePath: false },
-      // { source: "/chat", destination: "/miniapp/chat", permanent: true, basePath: false },
-      // { source: "/swap", destination: "/miniapp/swap", permanent: true, basePath: false },
-      // { source: "/newchat", destination: "/miniapp/newchat", permanent: true, basePath: false },
-    ];
-  },
-
-  // Rewrites: mantêm URL curta, servindo do /miniapp por trás
-  async rewrites() {
-    return [
-      { source: "/auth", destination: "/miniapp/auth", basePath: false },
-      { source: "/auth/:path*", destination: "/miniapp/auth/:path*", basePath: false },
-      { source: "/chat", destination: "/miniapp/chat", basePath: false },
-      { source: "/swap", destination: "/miniapp/swap", basePath: false },
-      { source: "/swap/:path*", destination: "/miniapp/swap/:path*", basePath: false },
-      { source: "/newchat", destination: "/miniapp/newchat", basePath: false },
-      { source: "/api/tonconnect-manifest", destination: "/miniapp/api/tonconnect-manifest", basePath: false },
+      // (OPCIONAL) Rotas curtas -> /miniapp/...
+      { source: "/auth", destination: "/miniapp/auth", permanent: true, basePath: false },
+      { source: "/auth/:path*", destination: "/miniapp/auth/:path*", permanent: true, basePath: false },
+      { source: "/chat", destination: "/miniapp/chat", permanent: true, basePath: false },
+      { source: "/swap", destination: "/miniapp/swap", permanent: true, basePath: false },
+      { source: "/swap/:path*", destination: "/miniapp/swap/:path*", permanent: true, basePath: false },
+      { source: "/newchat", destination: "/miniapp/newchat", permanent: true, basePath: false },
+      { source: "/api/tonconnect-manifest", destination: "/miniapp/api/tonconnect-manifest", permanent: true, basePath: false },
     ];
   },
 
   images: {
-    remotePatterns: [{ protocol: "https", hostname: "assets.coingecko.com", pathname: "/coins/images/**" }],
+    remotePatterns: [
+      { protocol: "https", hostname: "assets.coingecko.com", pathname: "/coins/images/**" },
+    ],
   },
 
   env: {
