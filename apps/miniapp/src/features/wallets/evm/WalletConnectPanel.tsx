@@ -67,9 +67,8 @@ export function WalletConnectPanel() {
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
 
-    // iOS + Telegram WebView has Google OAuth blocked (disallowed_useragent)
-    // and MetaMask deep link is unreliable. Prefer email/passkey only.
     if (isTelegram && isiOS) {
+      // iOS + Telegram WebView: prefer email/passkey/guest only
       return [
         inAppWallet({
           auth: {
@@ -84,7 +83,7 @@ export function WalletConnectPanel() {
     return [
       inAppWallet({
         auth: {
-          options: ['google', 'telegram', 'email'],
+          options: ['google', 'telegram', 'email', 'guest'],
           mode: isTelegram ? 'redirect' : 'popup',
           redirectUrl,
         },
@@ -93,9 +92,25 @@ export function WalletConnectPanel() {
     ];
   }, []);
 
-  const authenticateWithBackend = useCallback(async () => {
+  // moved below to avoid "used before declaration" TS error
 
-    if (!account || !client) {
+  const openGoogleInBrowser = useCallback(() => {
+    try {
+      const WebApp = (window as any).Telegram?.WebApp;
+      const url = `${window.location.origin}/miniapp/auth/external?strategy=google`;
+      if (WebApp?.openLink) {
+        WebApp.openLink(url, { try_instant_view: false });
+      } else {
+        window.open(url, '_blank');
+      }
+    } catch {
+      window.open(`${window.location.origin}/miniapp/auth/external?strategy=google`, '_blank');
+    }
+  }, []);
+
+  const authenticateWithBackend = useCallback(async (overrideAccount?: { address: string } | null) => {
+    const effectiveAccount = overrideAccount ?? account;
+    if (!effectiveAccount || !client) {
       return;
     }
 
@@ -106,7 +121,7 @@ export function WalletConnectPanel() {
       setError(null);
 
       // 1. Obter payload do backend (exatamente como na página wallet)
-      const normalizedAddress = account.address;
+      const normalizedAddress = effectiveAccount.address;
 
       const loginPayload = { address: normalizedAddress };
 
@@ -135,8 +150,8 @@ export function WalletConnectPanel() {
       const { payload } = await loginResponse.json();
 
       // Verificar se os endereços batem
-      if (account.address.toLowerCase() !== payload.address.toLowerCase()) {
-        throw new Error(`Endereço da wallet (${account.address}) não confere com o payload (${payload.address})`);
+      if (effectiveAccount.address.toLowerCase() !== payload.address.toLowerCase()) {
+        throw new Error(`Endereço da wallet (${effectiveAccount.address}) não confere com o payload (${payload.address})`);
       }
 
       // 2. Assinar payload usando Thirdweb como intermediário (como no swap)
@@ -146,7 +161,7 @@ export function WalletConnectPanel() {
       try {
         // Usar signLoginPayload da Thirdweb (método correto para autenticação)
         const signResult = await signLoginPayload({
-          account: account,
+          account: effectiveAccount as any,
           payload: payload
         });
         
@@ -245,6 +260,21 @@ export function WalletConnectPanel() {
     }
   }, [account, client, activeWallet]);
 
+  // Guest connect (after authenticateWithBackend is declared)
+  const connectGuest = useCallback(async () => {
+    try {
+      if (!client) return;
+      const wallet = inAppWallet();
+      const guestAccount = await wallet.connect({ client, strategy: 'guest' } as any);
+      if (guestAccount?.address) {
+        await authenticateWithBackend(guestAccount as any);
+      }
+    } catch (e) {
+      console.error('[GUEST LOGIN] Failed:', e);
+      setError('Guest sign-in failed');
+    }
+  }, [client, authenticateWithBackend]);
+
   // Autenticação automática quando a conta estiver conectada
   useEffect(() => {
     if (account && client && !isAuthenticated && !isAuthenticating) {
@@ -277,30 +307,41 @@ export function WalletConnectPanel() {
     <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {typeof window !== 'undefined' && (window as any).Telegram?.WebApp && /iPhone|iPad|iPod/i.test(navigator.userAgent) && (
         <div style={{ fontSize: 13, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', padding: 12, borderRadius: 8 }}>
-          Em iOS (Telegram), o Google bloqueia login em webviews. Use Email/Passkey ou toque em
+          On iOS (Telegram), Google blocks sign-in inside webviews. Use Email/Passkey or
           <button
-            onClick={() => {
-              try {
-                const WebApp = (window as any).Telegram?.WebApp;
-                const url = `${window.location.origin}/miniapp/auth/external?strategy=google`;
-                if (WebApp?.openLink) {
-                  WebApp.openLink(url, { try_instant_view: false });
-                } else {
-                  window.open(url, '_blank');
-                }
-              } catch {
-                window.open(`${window.location.origin}/miniapp/auth/external?strategy=google`, '_blank');
-              }
-            }}
+            onClick={openGoogleInBrowser}
             style={{ marginLeft: 6, color: '#fbbf24', textDecoration: 'underline', background: 'transparent', border: 'none', cursor: 'pointer' }}
           >
-            Abrir no navegador
+            open in browser
           </button>
+          .
+          <div style={{ marginTop: 8 }}>
+            <button
+              onClick={connectGuest}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: '1px solid rgba(251,191,36,0.6)',
+                background: 'transparent',
+                color: '#fbbf24',
+                cursor: 'pointer',
+              }}
+            >
+              Continue as guest
+            </button>
+          </div>
         </div>
       )}
       {typeof window !== 'undefined' && (window as any).Telegram?.WebApp && /Android/i.test(navigator.userAgent) && (
         <div style={{ fontSize: 13, color: '#93c5fd', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.3)', padding: 12, borderRadius: 8 }}>
-          Em Android (Telegram), conecte pelo app da MetaMask:
+          On Android (Telegram), connect using the MetaMask app, or
+          <button
+            onClick={openGoogleInBrowser}
+            style={{ marginLeft: 6, color: '#93c5fd', textDecoration: 'underline', background: 'transparent', border: 'none', cursor: 'pointer' }}
+          >
+            open Google in browser
+          </button>
+          :
           <button
             onClick={() => {
               try {
@@ -317,7 +358,7 @@ export function WalletConnectPanel() {
             }}
             style={{ marginLeft: 6, color: '#93c5fd', textDecoration: 'underline', background: 'transparent', border: 'none', cursor: 'pointer' }}
           >
-            Abrir MetaMask
+            Open MetaMask
           </button>
         </div>
       )}

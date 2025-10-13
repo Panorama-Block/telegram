@@ -8,7 +8,15 @@ interface AuthGuardProps {
   children: React.ReactNode;
 }
 
-const publicRoutes = ['/', '/auth', '/auth/callback', '/newchat'];
+const publicRoutes = [
+  '/',
+  '/auth',
+  '/auth/callback',
+  '/auth/external',
+  '/auth/wallet-external',
+  '/swap/external',
+  '/newchat',
+];
 
 function normalizePathname(pathname: string) {
   if (!pathname) return pathname;

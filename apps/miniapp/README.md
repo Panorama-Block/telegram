@@ -16,6 +16,7 @@ Deploy (Vercel)
 - Set these Project Env Vars in Vercel:
   - `THIRDWEB_CLIENT_ID`
   - `AUTH_API_BASE`
+  - `TELEGRAM_BOT_USERNAME` (for deep link return from iOS external login)
   - (Optional) `SWAP_API_BASE`, `PUBLIC_GATEWAY_URL`, `DEFAULT_CHAIN_ID`, `AI_API_URL`, `AGENTS_*`
 - Deploy the app. Production URL will be: `https://<your-vercel-domain>.vercel.app/miniapp`
 - OAuth redirect is automatically configured to: `/miniapp/auth/callback`
