@@ -298,6 +298,29 @@ export function WalletConnectPanel() {
           </button>
         </div>
       )}
+      {typeof window !== 'undefined' && (window as any).Telegram?.WebApp && /Android/i.test(navigator.userAgent) && (
+        <div style={{ fontSize: 13, color: '#93c5fd', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.3)', padding: 12, borderRadius: 8 }}>
+          Em Android (Telegram), conecte pelo app da MetaMask:
+          <button
+            onClick={() => {
+              try {
+                const WebApp = (window as any).Telegram?.WebApp;
+                const url = `${window.location.origin}/miniapp/auth/wallet-external?wallet=metamask`;
+                if (WebApp?.openLink) {
+                  WebApp.openLink(url, { try_instant_view: false });
+                } else {
+                  window.open(url, '_blank');
+                }
+              } catch {
+                window.open(`${window.location.origin}/miniapp/auth/wallet-external?wallet=metamask`, '_blank');
+              }
+            }}
+            style={{ marginLeft: 6, color: '#93c5fd', textDecoration: 'underline', background: 'transparent', border: 'none', cursor: 'pointer' }}
+          >
+            Abrir MetaMask
+          </button>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
         <WalletIcon size={24} />
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#fff' }}>Wallet</h2>
