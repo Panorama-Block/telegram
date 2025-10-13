@@ -80,7 +80,7 @@ export default function SwapExternalPage() {
         if (!quoteRes.success || !quoteRes.quote) throw new Error(quoteRes.message || 'Falha ao cotar');
 
         setStatus('Preparando transações...');
-        const decimals = await getTokenDecimals({ client, chainId: fromChainId, token: fromToken });
+        // decimals não é necessário aqui pois a API já retorna amount em wei na quote
         const prepRes = await swapApi.prepare({
           fromChainId,
           toChainId,

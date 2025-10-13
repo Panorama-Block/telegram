@@ -1,5 +1,4 @@
 import type { NextConfig } from "next"; 
-import path from 'path';
 import { config } from 'dotenv';
 
 // Carregar variáveis de ambiente do arquivo .env
@@ -13,8 +12,6 @@ const nextConfig: NextConfig = {
       { source: '/', destination: '/miniapp', permanent: false },
     ];
   },
-  // Silence monorepo root inference warning
-  outputFileTracingRoot: path.resolve(__dirname, '../../..'),
   images: {
     remotePatterns: [
       {

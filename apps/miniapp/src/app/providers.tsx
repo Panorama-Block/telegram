@@ -92,7 +92,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
         }
 
         const manifestUrl = `${window.location.origin}/miniapp/api/tonconnect-manifest`;
-        const thirdwebClientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+        // const thirdwebClientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
 
         // Create providers component
         const ProvidersComponent = ({ children }: { children: React.ReactNode }) => {

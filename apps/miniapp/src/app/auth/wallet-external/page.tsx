@@ -36,7 +36,7 @@ export default function WalletExternalPage() {
             const acc = await mm.connect({ client });
             connectedAccount = acc;
             accountAddress = acc.address;
-          } catch (e) {
+          } catch {
             // Se estiver fora do app da MetaMask, oferecer deep link
             const dappUrl = `${window.location.origin}/miniapp/auth/wallet-external?wallet=metamask`;
             const deep = `https://metamask.app.link/dapp/${dappUrl.replace(/^https?:\/\//, '')}`;
@@ -70,7 +70,7 @@ export default function WalletExternalPage() {
         try {
           const res = await signLoginPayload({ account: connectedAccount, payload });
           signature = typeof res === 'string' ? res : (res as any).signature;
-        } catch (e) {
+        } catch {
           throw new Error('Falha ao assinar payload');
         }
 
@@ -107,9 +107,9 @@ export default function WalletExternalPage() {
         }
 
         setStatus('Concluído. Você pode voltar ao Telegram.');
-      } catch (e: any) {
-        console.error('[WALLET EXTERNAL] error:', e);
-        setError(e?.message || 'Falha');
+      } catch (err: any) {
+        console.error('[WALLET EXTERNAL] error:', err);
+        setError(err?.message || 'Falha');
       }
     })();
   }, [client, clientId, authApiBase, bot, search]);
