@@ -65,7 +65,7 @@ export default function AuthPage() {
     if (isAuthenticated) {
       router.push('/chat');
     }
-  };
+  }, [router]);
 
   const AuthHeader = () => (
     <div className="sticky top-0 z-50 bg-pano-surface/95 backdrop-blur-md border-b border-pano-border/20">

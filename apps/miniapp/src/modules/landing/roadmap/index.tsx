@@ -82,11 +82,11 @@ const Connector = () => {
 
 const Roadmap = () => {
   return (
-    <div id="roadmap" className="relative flex flex-col gap-6 mt-32">
+    <div id="roadmap" className="relative flex flex-col gap-4 md:gap-6 mt-16 md:mt-32">
       <h2 className="text-landing-title text-3xl lg:text-5xl text-center">Roadmap</h2>
 
       {/* Grid + connecting vector */}
-      <div className="relative w-full px-4 md:px-8 lg:px-12 mt-12">
+      <div className="relative w-full px-6 md:px-8 lg:px-12 mt-6 md:mt-12">
         <Connector />
         <div className="relative z-10 grid grid-cols-12 gap-4 md:gap-6 lg:gap-8">
           {/* Row 1: 7/5 split for asymmetry */}

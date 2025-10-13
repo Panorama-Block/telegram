@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import zicoBlue from '../../../../public/icons/zico_blue.svg'
+import AuthModal from '../auth-modal'
 
 const Hero = () => {
   const [currentWord, setCurrentWord] = useState(0)
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
 
   const words = [
     'Composable DeFi Strategies',
@@ -23,7 +25,7 @@ const Hero = () => {
   }, [words.length])
 
   return (
-    <div className="relative flex flex-col items-center justify-center h-full mt-32">
+    <div className="relative flex flex-col items-center justify-center h-full mt-12 md:mt-32">
       <h1 className="text-4xl lg:text-5xl 2xl:text-6xl text-landing-title w-[90%] md:w-full md:max-w-[1200px] mx-auto px-4 md:px-0">
         <span className="flex flex-col items-center gap-5 text-center">
           A Panoramic View of
@@ -40,9 +42,12 @@ const Hero = () => {
       </span>
 
       <div className="flex flex-col items-center mx-auto w-fit mt-8 gap-8 z-50">
-        <a href="/miniapp/auth">
-          <Button className="min-w-[180px] h-14 rounded-[30px] hover:bg-gray-100">Launch App</Button>
-        </a>
+        <Button
+          onClick={() => setIsAuthModalOpen(true)}
+          className="min-w-[180px] h-14 rounded-[30px] hover:bg-gray-100"
+        >
+          Launch App
+        </Button>
 
         {/* Zico Blue Logo */}
         <div className="relative">
@@ -56,6 +61,12 @@ const Hero = () => {
           />
         </div>
       </div>
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
     </div>
   )
 }
