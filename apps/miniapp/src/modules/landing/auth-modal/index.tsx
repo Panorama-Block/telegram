@@ -161,11 +161,11 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
       setIsAuthenticated(true);
 
-      console.log('✅ [AUTH MODAL] Autenticação bem-sucedida! Redirecionando para /chat...');
+      console.log('✅ [AUTH MODAL] Autenticação bem-sucedida! Redirecionando para /newchat...');
 
-      // 5. Redirecionar para /chat após pequeno delay
+      // 5. Redirecionar para /newchat (página que cria conversa e abre o Chat)
       setTimeout(() => {
-        router.push('/chat');
+        router.push('/newchat');
       }, 500);
 
     } catch (err: any) {
