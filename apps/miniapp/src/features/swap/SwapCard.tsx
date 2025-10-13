@@ -165,9 +165,13 @@ export function SwapCard() {
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
   const wallets = useMemo(() => {
     if (typeof window === 'undefined') return [inAppWallet()];
+    const WebApp = (window as any).Telegram?.WebApp;
+    const platform = WebApp?.platform || '';
+    const isTelegram = !!WebApp;
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const mode = isiOS ? 'redirect' : 'popup';
-    const redirectUrl = isiOS ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    const isTelegramDesktop = isTelegram && /tdesktop|macos|unigram|linux/i.test(platform);
+    const mode = isiOS || isTelegramDesktop ? 'redirect' : 'popup';
+    const redirectUrl = (isiOS || isTelegramDesktop) ? `${window.location.origin}/miniapp/auth/callback` : undefined;
 
     if (isiOS) {
       return [
