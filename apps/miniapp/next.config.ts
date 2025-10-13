@@ -10,6 +10,14 @@ const nextConfig: NextConfig = {
     return [
       // Serve landing at root while app lives under /miniapp
       { source: '/', destination: '/miniapp' },
+      // Map top-level app routes to /miniapp equivalents (robust for deep links)
+      { source: '/auth', destination: '/miniapp/auth' },
+      { source: '/auth/:path*', destination: '/miniapp/auth/:path*' },
+      { source: '/chat', destination: '/miniapp/chat' },
+      { source: '/swap', destination: '/miniapp/swap' },
+      { source: '/swap/:path*', destination: '/miniapp/swap/:path*' },
+      { source: '/newchat', destination: '/miniapp/newchat' },
+      { source: '/api/tonconnect-manifest', destination: '/miniapp/api/tonconnect-manifest' },
     ];
   },
   images: {
