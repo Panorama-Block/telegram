@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { networks, Token } from '@/features/swap/tokens';
 import { swapApi, SwapApiError } from '@/features/swap/api';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl } from '@/features/swap/utils';
-import { useActiveAccount, PayEmbed } from 'thirdweb/react';
+import { useActiveAccount, PayEmbed, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
@@ -108,7 +108,7 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
             </div>
 
             {/* Chain selector */}
-            <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-2 scrollbar-hide">
+            <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
               <button
                 onClick={() => setSelectedChain(null)}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
@@ -119,7 +119,7 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
               >
                 All Chains
               </button>
-              {networks.slice(0, 3).map((network) => (
+              {networks.map((network) => (
                 <button
                   key={network.chainId}
                   onClick={() => setSelectedChain(network.chainId)}
@@ -157,6 +157,11 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
                       width={24}
                       height={24}
                       className="w-6 h-6 rounded-full"
+                      unoptimized
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
+                      }}
                     />
                     <span className="text-xs font-medium text-white truncate w-full text-center">{token.symbol}</span>
                   </button>
@@ -191,6 +196,11 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
                     width={32}
                     height={32}
                     className="w-8 h-8 rounded-full flex-shrink-0"
+                    unoptimized
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
+                    }}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-white truncate">{token.symbol}</div>
@@ -227,6 +237,7 @@ function getAddressFromToken(): string | null {
 
 export default function SwapPage() {
   const account = useActiveAccount();
+  const switchChain = useSwitchActiveWalletChain();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
@@ -308,6 +319,11 @@ export default function SwapPage() {
 
       const res = await swapApi.quote(body);
 
+      console.log('=== QUOTE API RESPONSE ===');
+      console.log('Full response:', JSON.stringify(res, null, 2));
+      console.log('Quote object:', res.quote);
+      console.log('Fees object:', res.quote?.fees);
+
       if (quoteRequestRef.current !== requestId) {
         return;
       }
@@ -319,8 +335,13 @@ export default function SwapPage() {
       setQuote(res.quote);
 
       // Update buy amount from quote
-      if (res.quote.estimatedReceiveAmount) {
-        const decimals = 18; // You can fetch this from token metadata
+      if (res.quote.estimatedReceiveAmount && buyToken && client) {
+        // Get correct decimals for the destination token
+        const decimals = await getTokenDecimals({
+          client,
+          chainId: toChainId,
+          token: buyToken.address
+        });
         const formatted = formatAmountHuman(BigInt(res.quote.estimatedReceiveAmount), decimals);
         setBuyAmount(formatted);
       }
@@ -371,6 +392,24 @@ export default function SwapPage() {
     setSuccess(false);
 
     try {
+      // Switch to the correct chain FIRST, before doing anything else
+      if (account && switchChain) {
+        const networkName = networks.find(n => n.chainId === fromChainId)?.name || `Chain ${fromChainId}`;
+        console.log('Switching to source chain before preparing transactions...');
+        console.log('Target chain:', fromChainId, networkName);
+
+        setError(`Switching to ${networkName}...`);
+
+        try {
+          await switchChain(defineChain(fromChainId));
+          console.log('✅ Chain switched successfully to:', fromChainId);
+          setError(null);
+        } catch (e: any) {
+          console.error('❌ Failed to switch chain:', e);
+          throw new Error(`Please approve the network switch to ${networkName} in your wallet.`);
+        }
+      }
+
       setPreparing(true);
 
       const decimals = await getTokenDecimals({
@@ -386,6 +425,15 @@ export default function SwapPage() {
         throw new Error('Please select a token to buy');
       }
 
+      console.log('=== SWAP DEBUG ===');
+      console.log('Sell token:', sellToken.symbol, sellToken.address);
+      console.log('Buy token:', buyToken.symbol, buyToken.address);
+      console.log('Sell amount (human):', sellAmount);
+      console.log('Sell amount (wei):', wei.toString());
+      console.log('Sell token decimals:', decimals);
+      console.log('From chain:', fromChainId);
+      console.log('To chain:', toChainId);
+
       const prep = await swapApi.prepare({
         fromChainId,
         toChainId,
@@ -395,11 +443,14 @@ export default function SwapPage() {
         sender: effectiveAddress,
       });
 
+      console.log('Prepared transactions:', prep.prepared);
+
       const seq = flattenPrepared(prep.prepared);
-      
+
       if (!seq.length) throw new Error('No transactions returned by prepare');
 
       setPreparing(false);
+
       setExecuting(true);
       setTxHashes([]); // Reset transaction hashes
 
@@ -408,13 +459,37 @@ export default function SwapPage() {
           throw new Error(`Wallet chain mismatch. Switch to chain ${t.chainId} and retry.`);
         }
 
+        console.log('=== TRANSACTION DEBUG ===');
+        console.log('Raw transaction from API:', t);
+        console.log('Raw value from API:', t.value, 'type:', typeof t.value);
+
+        // Use the value from the API response - it knows the correct amount including fees
+        let txValue = 0n;
+        if (t.value) {
+          const valueStr = typeof t.value === 'string' ? t.value : String(t.value);
+          if (valueStr && valueStr !== '0') {
+            try {
+              txValue = BigInt(valueStr);
+              console.log('Using value from API:', txValue.toString());
+            } catch (e) {
+              console.error('Failed to parse transaction value:', valueStr, e);
+              txValue = 0n;
+            }
+          }
+        }
+
+        console.log('Final txValue (bigint):', txValue.toString());
+        console.log('Is native token?', isNative(sellToken.address));
+
         const tx = prepareTransaction({
           to: t.to as Address,
           chain: defineChain(t.chainId),
           client,
           data: t.data as Hex,
-          value: t.value ? BigInt(t.value as any) : 0n,
+          value: txValue,
         });
+
+        console.log('Final prepared transaction value:', txValue.toString());
 
         if (!account) {
           throw new Error('To execute the swap, you need to connect your wallet. Please go to the dashboard and connect your wallet first.');
@@ -467,6 +542,11 @@ export default function SwapPage() {
       setBuyToken(temp);
       setSellAmount(buyAmount);
       setBuyAmount(sellAmount);
+      
+      // Also swap the chain IDs
+      const tempChainId = fromChainId;
+      setFromChainId(toChainId);
+      setToChainId(tempChainId);
     }
   };
 
@@ -524,6 +604,11 @@ export default function SwapPage() {
                         width={18}
                         height={18}
                         className="w-[18px] h-[18px] rounded-full flex-shrink-0"
+                        unoptimized
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
+                        }}
                       />
                       <span className="font-medium text-sm whitespace-nowrap">{sellToken.symbol}</span>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="flex-shrink-0">
@@ -579,6 +664,11 @@ export default function SwapPage() {
                             width={18}
                             height={18}
                             className="w-[18px] h-[18px] rounded-full flex-shrink-0"
+                            unoptimized
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
+                            }}
                           />
                           <span className="font-medium text-sm whitespace-nowrap">{buyToken.symbol}</span>
                         </>
@@ -613,33 +703,6 @@ export default function SwapPage() {
                         ? 'Start Swap'
                         : 'Aguardando cotação...'}
               </button>
-
-              {/* Quote Info */}
-              {quote && (
-                <div className="mt-4 p-3 rounded-lg bg-[#2a2a2a] border border-cyan-500/30">
-                  <div className="text-xs text-gray-400 mb-2">📊 Informações da Cotação</div>
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Taxa de câmbio:</span>
-                      <span className="text-white font-medium">
-                        1 {sellToken.symbol} ≈ {quote.exchangeRate || 'N/A'} {buyToken?.symbol}
-                      </span>
-                    </div>
-                    {quote.estimatedDuration && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Tempo estimado:</span>
-                        <span className="text-white font-medium">{quote.estimatedDuration}s</span>
-                      </div>
-                    )}
-                    {quote.fees?.totalFeeUsd && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Taxa total:</span>
-                        <span className="text-white font-medium">${quote.fees.totalFeeUsd}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {/* Error Message */}
               {error && (
