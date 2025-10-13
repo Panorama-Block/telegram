@@ -6,10 +6,10 @@ config();
 
 const nextConfig: NextConfig = {
   basePath: '/miniapp',
-  async redirects() {
+  async rewrites() {
     return [
-      // Redirect root to basePath so www.panoramablock.com -> /miniapp
-      { source: '/', destination: '/miniapp', permanent: false },
+      // Serve landing at root while app lives under /miniapp
+      { source: '/', destination: '/miniapp' },
     ];
   },
   images: {
