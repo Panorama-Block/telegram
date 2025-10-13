@@ -41,13 +41,42 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     }
   }, []);
 
-  const wallets = useMemo(
-    () => [
-      inAppWallet({ auth: { options: ['google', 'telegram'] } }),
-      createWallet('io.metamask'),
-    ],
-    [],
-  );
+  const wallets = useMemo(() => {
+    if (typeof window === 'undefined') return [inAppWallet()];
+    const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const mode = isiOS ? 'redirect' : 'popup';
+    const redirectUrl = isiOS ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+
+    if (isiOS) {
+      return [
+        inAppWallet({
+          auth: {
+            options: ['email', 'passkey', 'guest'],
+            mode,
+            redirectUrl,
+          },
+        }),
+      ];
+    }
+    return [
+      inAppWallet({ auth: { options: ['google', 'telegram', 'email'], mode, redirectUrl } }),
+      createWallet('io.metamask', { preferDeepLink: true }),
+    ];
+  }, []);
+
+  const openGoogleInBrowser = useCallback(() => {
+    try {
+      const WebApp = (window as any).Telegram?.WebApp;
+      const url = `${window.location.origin}/miniapp/auth/external?strategy=google`;
+      if (WebApp?.openLink) {
+        WebApp.openLink(url, { try_instant_view: false });
+      } else {
+        window.open(url, '_blank');
+      }
+    } catch {
+      window.open(`${window.location.origin}/miniapp/auth/external?strategy=google`, '_blank');
+    }
+  }, []);
 
   const authenticateWithBackend = useCallback(async () => {
     if (!account || !client) {
@@ -250,6 +279,18 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
         {/* Content */}
         <div className="space-y-4">
+          {typeof window !== 'undefined' && (window as any).Telegram?.WebApp && /iPhone|iPad|iPod/i.test(navigator.userAgent) && (
+            <div className="text-yellow-300/90 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-sm">
+              On iOS (Telegram), Google blocks sign-in inside webviews. Use Email/Passkey or
+              <button
+                onClick={openGoogleInBrowser}
+                className="ml-1 underline text-yellow-300 hover:text-yellow-200"
+              >
+                open in browser
+              </button>
+              .
+            </div>
+          )}
           {!connected ? (
             client ? (
               <ConnectButton

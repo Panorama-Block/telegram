@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { ConnectButton } from 'thirdweb/react';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
 import { createThirdwebClient } from 'thirdweb';
@@ -17,16 +17,16 @@ export function EvmConnectButton() {
   }, []);
 
   const wallets = useMemo(() => {
-    const isTelegram = typeof window !== 'undefined' && (window as any).Telegram?.WebApp;
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    const mode = isiOS ? 'redirect' : 'popup';
+    const redirectUrl = isiOS ? `${window.location.origin}/miniapp/auth/callback` : undefined;
 
-    if (isTelegram && isiOS) {
+    if (isiOS) {
       return [
         inAppWallet({
           auth: {
             options: ['email', 'passkey', 'guest'],
-            mode: 'redirect',
+            mode,
             redirectUrl,
           },
         }),
@@ -37,12 +37,26 @@ export function EvmConnectButton() {
       inAppWallet({
         auth: {
           options: ['google', 'telegram', 'email'],
-          mode: isTelegram ? 'redirect' : 'popup',
+          mode,
           redirectUrl,
         },
       }),
       createWallet('io.metamask', { preferDeepLink: true }),
     ];
+  }, []);
+
+  const openGoogleInBrowser = useCallback(() => {
+    try {
+      const WebApp = (window as any).Telegram?.WebApp;
+      const url = `${window.location.origin}/miniapp/auth/external?strategy=google`;
+      if (WebApp?.openLink) {
+        WebApp.openLink(url, { try_instant_view: false });
+      } else {
+        window.open(url, '_blank');
+      }
+    } catch {
+      window.open(`${window.location.origin}/miniapp/auth/external?strategy=google`, '_blank');
+    }
   }, []);
 
   return (
@@ -54,6 +68,18 @@ export function EvmConnectButton() {
         <span style={{ color: '#ef4444' }}>Missing THIRDWEB_CLIENT_ID</span>
       )}
     >
+      {typeof window !== 'undefined' && (window as any).Telegram?.WebApp && /iPhone|iPad|iPod/i.test(navigator.userAgent) && (
+        <div style={{ fontSize: 13, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', padding: 12, borderRadius: 8, marginBottom: 12 }}>
+          On iOS (Telegram), Google blocks sign-in inside webviews. Use Email/Passkey or
+          <button
+            onClick={openGoogleInBrowser}
+            style={{ marginLeft: 6, color: '#fbbf24', textDecoration: 'underline', background: 'transparent', border: 'none', cursor: 'pointer' }}
+          >
+            open in browser
+          </button>
+          .
+        </div>
+      )}
       <p style={{ color: 'var(--tg-theme-hint-color, #666)', margin: 0 }}>
         Connect an EVM wallet (WalletConnect supported). Some wallets may not work inside Telegram’s webview.
       </p>
