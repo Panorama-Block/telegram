@@ -63,9 +63,13 @@ export function WalletConnectPanel() {
   }, []);
 
   const wallets = useMemo(() => {
+    const WebApp = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : undefined;
+    const platform = WebApp?.platform || '';
+    const isTelegram = !!WebApp;
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const mode = isiOS ? 'redirect' : 'popup';
-    const redirectUrl = isiOS ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    const isTelegramDesktop = isTelegram && /tdesktop|macos|unigram|linux/i.test(platform);
+    const mode = isiOS || isTelegramDesktop ? 'redirect' : 'popup';
+    const redirectUrl = (isiOS || isTelegramDesktop) ? `${window.location.origin}/miniapp/auth/callback` : undefined;
 
     if (isiOS) {
       // iOS WebView: prefer email/passkey/guest only
