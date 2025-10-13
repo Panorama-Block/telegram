@@ -26,6 +26,8 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "assets.coingecko.com", pathname: "/coins/images/**" },
     ],
+    unoptimized: true,
+    minimumCacheTTL: 60,
   },
 
   env: {
