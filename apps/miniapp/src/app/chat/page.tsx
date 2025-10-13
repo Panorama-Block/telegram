@@ -1,6 +1,21 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Container, AppLayoutWithSidebar, DesktopLayoutWithSidebar } from '@/components/layout';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/shared/lib/utils';
+import { SignatureApprovalButton } from '@/shared/ui';
+import { PullToRefresh, useNavigationGestures, useSmoothScrollContainer } from '@/components/gestures';
+import Image from 'next/image';
+import zicoBlue from '../../../public/icons/zico_blue.svg';
+import XIcon from '../../../public/icons/X.svg';
+import BlockchainTechnology from '../../../public/icons/BlockchainTechnology.svg';
+import Briefcase from '../../../public/icons/Briefcase.svg';
+import ComboChart from '../../../public/icons/ComboChart.svg';
+import SwapIcon from '../../../public/icons/Swap.svg';
+import WalletIcon from '../../../public/icons/Wallet.svg';
 
 // Declaração de tipo para window.ethereum
 declare global {
@@ -10,15 +25,6 @@ declare global {
     };
   }
 }
-import { Sidebar, SignatureApprovalButton } from '@/shared/ui';
-import Image from 'next/image';
-import zicoBlue from '../../../public/icons/zico_blue.svg';
-import XIcon from '../../../public/icons/X.svg';
-import BlockchainTechnology from '../../../public/icons/BlockchainTechnology.svg';
-import Briefcase from '../../../public/icons/Briefcase.svg';
-import ComboChart from '../../../public/icons/ComboChart.svg';
-import SwapIcon from '../../../public/icons/Swap.svg';
-import WalletIcon from '../../../public/icons/Wallet.svg';
 import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -48,15 +54,17 @@ const TRENDING_PROMPTS = [
   "What's the best DeFi strategy for yield farming?",
   "How do I bridge tokens between chains safely?",
   "Explain liquidity pools and impermanent loss",
+  "Show me the latest market trends",
+  "Help me analyze my portfolio",
 ];
 
 const FEATURE_CARDS = [
-  { name: 'Wallet Tracking', icon: WalletIcon, path: null },
-  { name: 'AI Agents on X', icon: XIcon, path: null },
-  { name: 'Liquid Swap', icon: SwapIcon, path: '/swap' },
-  { name: 'Pano View', icon: BlockchainTechnology, path: null },
-  { name: 'AI MarketPulse', icon: ComboChart, path: null },
-  { name: 'Portfolio', icon: Briefcase, path: null },
+  { name: 'Wallet Tracking', icon: WalletIcon, path: null, description: 'Track wallet performance' },
+  { name: 'AI Agents on X', icon: XIcon, path: null, description: 'Social sentiment analysis' },
+  { name: 'Liquid Swap', icon: SwapIcon, path: '/swap', description: 'Instant token swaps' },
+  { name: 'Pano View', icon: BlockchainTechnology, path: null, description: 'Blockchain analytics' },
+  { name: 'AI MarketPulse', icon: ComboChart, path: null, description: 'Real-time market data' },
+  { name: 'Portfolio', icon: Briefcase, path: null, description: 'Portfolio management' },
 ];
 
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
@@ -133,10 +141,21 @@ export default function ChatPage() {
   const [bootstrapVersion, setBootstrapVersion] = useState(0);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
   const { user, isLoading: authLoading } = useAuth();
   const isMountedRef = useRef(true);
   const bootstrapKeyRef = useRef<string | undefined>(undefined);
+
+  // Gesture and scroll enhancements
+  const { scrollToBottom } = useSmoothScrollContainer(messagesContainerRef);
+
+  // Navigation gestures for mobile sidebar
+  const { ref: navigationRef } = useNavigationGestures(
+    () => !isLargeScreen && setSidebarOpen(true), // Swipe right to open sidebar
+    undefined, // No swipe left action for now
+    100
+  );
 
   // Thirdweb setup
   const account = useActiveAccount();
@@ -316,13 +335,27 @@ export default function ChatPage() {
     [agentsClient, debug, getAuthOptions, userId]
   );
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const scrollToBottomSmooth = useCallback(() => {
+    if (messagesContainerRef.current) {
+      scrollToBottom();
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [scrollToBottom]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [activeMessages, activeConversationId]);
+    // Small delay to ensure DOM is updated
+    const timer = setTimeout(scrollToBottomSmooth, 100);
+    return () => clearTimeout(timer);
+  }, [activeMessages, activeConversationId, scrollToBottomSmooth]);
+
+  // Pull to refresh handler
+  const handleRefresh = useCallback(async () => {
+    if (!activeConversationId || loadingConversationId === activeConversationId) return;
+
+    // Reload the current conversation
+    await loadConversationMessages(activeConversationId);
+  }, [activeConversationId, loadingConversationId, loadConversationMessages]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -805,18 +838,554 @@ export default function ChatPage() {
     }
   }, [swapQuote, client, account, clientId, getWalletAddress]);
 
+  // Render sidebar content
+  const renderSidebar = useCallback(() => (
+    <div className="flex flex-col h-full">
+      {/* Sidebar Header */}
+      <div className="flex-shrink-0 p-4 border-b border-pano-border flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Image src={zicoBlue} alt="Zico" width={28} height={28} />
+          <span className="font-semibold text-pano-text-primary">Zico AI</span>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden p-2 text-pano-text-secondary hover:text-pano-text-primary"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </Button>
+      </div>
+
+      {/* Sidebar Content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Navigation */}
+        <nav className="space-y-2">
+          <Button
+            variant="default"
+            size="md"
+            className="w-full justify-start gap-3 bg-pano-primary/10 text-pano-primary border-pano-primary/20"
+            onClick={() => {
+              router.push('/chat');
+              if (!isLargeScreen) setSidebarOpen(false);
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            Chat
+          </Button>
+          <Button
+            variant="ghost"
+            size="md"
+            className="w-full justify-start gap-3"
+            onClick={() => {
+              router.push('/swap');
+              if (!isLargeScreen) setSidebarOpen(false);
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+            </svg>
+            Swap
+          </Button>
+        </nav>
+
+        {/* New Chat Button */}
+        <Button
+          variant="outline"
+          size="md"
+          className="w-full"
+          onClick={createNewChat}
+          disabled={isCreatingConversation}
+        >
+          {isCreatingConversation ? (
+            <>
+              <div className="w-4 h-4 border-2 border-pano-primary border-t-transparent rounded-full animate-spin mr-2" />
+              Creating...
+            </>
+          ) : (
+            <>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="mr-2">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Chat
+            </>
+          )}
+        </Button>
+
+        {/* Recent Conversations */}
+        {conversations.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-pano-text-secondary px-2">Recent Conversations</h3>
+            <div className="space-y-1">
+              {conversations.slice(0, 5).map((conv) => (
+                <Button
+                  key={conv.id}
+                  variant={conv.id === activeConversationId ? "default" : "ghost"}
+                  size="sm"
+                  className={cn(
+                    "w-full justify-start gap-3 text-left h-auto py-2 px-3",
+                    conv.id === activeConversationId && "bg-pano-primary/10 text-pano-primary border-pano-primary/20"
+                  )}
+                  onClick={() => handleSelectConversation(conv.id)}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="flex-shrink-0">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  <span className="text-xs truncate">{conv.title}</span>
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Trending Prompts */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-pano-primary">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <h3 className="text-sm font-medium text-pano-text-primary">Trending Prompts</h3>
+          </div>
+          <div className="space-y-1">
+            {TRENDING_PROMPTS.slice(0, 3).map((prompt, idx) => (
+              <Button
+                key={idx}
+                variant="ghost"
+                size="sm"
+                className="w-full text-left justify-start h-auto py-2 px-3 text-xs text-pano-text-secondary hover:text-pano-text-primary"
+                onClick={() => sendMessage(prompt)}
+                disabled={!activeConversationId || isSending}
+              >
+                {prompt}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Sidebar Footer */}
+      <div className="flex-shrink-0 p-4 border-t border-pano-border">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full text-pano-error border-pano-error/20 hover:bg-pano-error/10 hover:border-pano-error/50"
+          onClick={async () => {
+            try {
+              localStorage.removeItem('authToken');
+              localStorage.removeItem('authPayload');
+              localStorage.removeItem('authSignature');
+              localStorage.removeItem('telegram_user');
+              if (!isLargeScreen) setSidebarOpen(false);
+              await new Promise(resolve => setTimeout(resolve, 100));
+              window.location.href = '/miniapp';
+            } catch (error) {
+              console.error('Error disconnecting:', error);
+              window.location.href = '/miniapp';
+            }
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="mr-2">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Disconnect
+        </Button>
+      </div>
+    </div>
+  ), [conversations, activeConversationId, isCreatingConversation, isSending, router, isLargeScreen]);
+
+  // Signature approval handlers
   const handleSignatureApproval = useCallback(async (metadata: Record<string, unknown>) => {
     console.log('✅ Signature approved');
-    
+
     // Force MetaMask window to open before executing swap
     await forceMetaMaskWindow();
-    
+
     await executeSwap(metadata);
   }, [executeSwap, forceMetaMaskWindow]);
 
   const handleSignatureRejection = useCallback(async () => {
     console.log('❌ Signature rejected');
   }, []);
+
+  // Render messages content
+  const renderMessages = useCallback(() => {
+    if (initializing) {
+      return (
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center space-y-4">
+            {initializationError ? (
+              <>
+                <div className="w-12 h-12 rounded-full bg-pano-error/10 flex items-center justify-center mx-auto mb-4">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-pano-error">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.966-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <p className="text-pano-text-secondary">{initializationError}</p>
+                <Button onClick={retryBootstrap} size="sm">
+                  Try Again
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="w-12 h-12 rounded-full bg-pano-primary/10 flex items-center justify-center mx-auto mb-4">
+                  <div className="w-6 h-6 border-2 border-pano-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+                <p className="text-pano-text-secondary">Loading your conversations...</p>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (!activeConversationId) {
+      return (
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center space-y-6 max-w-md">
+            <div className="w-16 h-16 rounded-full bg-pano-primary/10 flex items-center justify-center mx-auto">
+              <Image src={zicoBlue} alt="Zico" width={32} height={32} />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold text-pano-text-primary">Welcome to Zico AI</h2>
+              <p className="text-pano-text-secondary">Your DeFi assistant is ready to help</p>
+            </div>
+            <Button onClick={createNewChat} disabled={isCreatingConversation}>
+              {isCreatingConversation ? 'Creating...' : 'Start New Chat'}
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    if (initializationError && activeMessages.length === 0) {
+      return (
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-pano-error/10 flex items-center justify-center mx-auto">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-pano-error">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.966-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <p className="text-pano-text-secondary">{initializationError}</p>
+            <Button onClick={retryBootstrap} size="sm">
+              Try Again
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    if (isHistoryLoading && activeMessages.length === 0) {
+      return (
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-pano-primary/10 flex items-center justify-center mx-auto">
+              <div className="w-6 h-6 border-2 border-pano-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+            <p className="text-pano-text-secondary">Loading conversation...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeMessages.length === 0) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center p-6">
+          <div className="text-center space-y-6 max-w-2xl">
+            <div className="w-16 h-16 rounded-full bg-pano-primary/10 flex items-center justify-center mx-auto">
+              <Image src={zicoBlue} alt="Zico" width={32} height={32} />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-semibold text-pano-text-primary">Get Started with DeFi</h2>
+              <p className="text-pano-text-secondary">Choose a feature below or start chatting</p>
+            </div>
+
+            {/* Feature Cards Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-lg mx-auto">
+              {FEATURE_CARDS.map((feature, idx) => (
+                <Card
+                  key={idx}
+                  variant={feature.path ? "interactive" : "default"}
+                  size="sm"
+                  className={cn(
+                    "cursor-pointer transition-all hover:scale-105",
+                    !feature.path && "opacity-50 cursor-not-allowed hover:scale-100"
+                  )}
+                  onClick={() => {
+                    if (feature.path) {
+                      router.push(feature.path);
+                    }
+                  }}
+                >
+                  <CardContent className="flex flex-col items-center text-center space-y-2 p-4">
+                    <Image
+                      src={feature.icon}
+                      alt={feature.name}
+                      width={24}
+                      height={24}
+                      className="w-6 h-6"
+                    />
+                    <div className="space-y-1">
+                      <h3 className="text-xs font-medium text-pano-text-primary">{feature.name}</h3>
+                      <p className="text-xs text-pano-text-muted">{feature.description}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Trending Prompts */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium text-pano-text-secondary">Try these prompts:</h3>
+              <div className="grid gap-2">
+                {TRENDING_PROMPTS.slice(0, 3).map((prompt, idx) => (
+                  <Button
+                    key={idx}
+                    variant="outline"
+                    size="sm"
+                    className="text-left justify-start h-auto py-2 px-3 text-sm"
+                    onClick={() => sendMessage(prompt)}
+                    disabled={isSending}
+                  >
+                    {prompt}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Render active conversation messages
+    return (
+      <div className="flex-1 overflow-y-auto">
+        <Container className="py-4 space-y-4 max-w-4xl">
+          {activeMessages.map((message, index) => {
+            const timestampValue = message.timestamp.getTime();
+            const hasValidTime = !Number.isNaN(timestampValue);
+            const timeLabel = hasValidTime
+              ? message.timestamp.toLocaleTimeString('en-US', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : '';
+            const messageKey = hasValidTime
+              ? `${message.role}-${timestampValue}-${index}`
+              : `${message.role}-${index}`;
+
+            return (
+              <div
+                key={messageKey}
+                className={cn(
+                  "flex gap-3 animate-fade-in",
+                  message.role === 'user' ? "flex-row-reverse" : "flex-row"
+                )}
+              >
+                {/* Avatar */}
+                <div className="flex-shrink-0">
+                  {message.role === 'user' ? (
+                    <div className="w-8 h-8 rounded-full bg-pano-primary flex items-center justify-center">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-white">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-pano-surface-elevated flex items-center justify-center">
+                      <Image src={zicoBlue} alt="Zico" width={20} height={20} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Message Content */}
+                <div className={cn(
+                  "flex-1 max-w-[75%] space-y-1",
+                  message.role === 'user' ? "items-end" : "items-start"
+                )}>
+                  {/* Message Header */}
+                  <div className={cn(
+                    "flex items-center gap-2 text-xs text-pano-text-muted",
+                    message.role === 'user' ? "flex-row-reverse" : "flex-row"
+                  )}>
+                    <span className="font-medium">
+                      {message.role === 'user' ? 'You' : (message.agentName || 'Zico')}
+                    </span>
+                    {timeLabel && <span>{timeLabel}</span>}
+                  </div>
+
+                  {/* Message Bubble */}
+                  <Card
+                    variant={message.role === 'user' ? "filled" : "default"}
+                    size="sm"
+                    className={cn(
+                      "inline-block max-w-full",
+                      message.role === 'user'
+                        ? "bg-pano-primary text-white"
+                        : "bg-pano-surface-elevated"
+                    )}
+                  >
+                    <CardContent className="p-3">
+                      <div className="text-sm leading-relaxed break-words">
+                        {message.content}
+
+                        {/* Swap Interface for assistant messages */}
+                        {message.role === 'assistant' &&
+                          message.metadata?.event === 'swap_intent_ready' && (
+                          <div className="mt-4 space-y-3">
+                            {/* Quote Loading */}
+                            {swapLoading && (
+                              <div className="flex items-center gap-2 text-pano-primary">
+                                <div className="w-4 h-4 border-2 border-pano-primary border-t-transparent rounded-full animate-spin" />
+                                <span className="text-sm">Getting quote...</span>
+                              </div>
+                            )}
+
+                            {/* Quote Display */}
+                            {swapQuote?.quote && (
+                              <Card variant="filled" size="xs">
+                                <CardContent className="p-3 space-y-2">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-pano-text-secondary">You will receive:</span>
+                                    <span className="text-sm font-medium text-pano-text-primary">
+                                      {formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)} {String(message.metadata?.to_token)}
+                                    </span>
+                                  </div>
+                                  {swapQuote.quote.fees?.totalFeeUsd && (
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-sm text-pano-text-secondary">Total fees:</span>
+                                      <span className="text-sm text-pano-text-muted">${swapQuote.quote.fees.totalFeeUsd}</span>
+                                    </div>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            )}
+
+                            {/* Error Display */}
+                            {swapError && (
+                              <Card variant="filled" className="border-pano-error/20 bg-pano-error/10">
+                                <CardContent className="p-3">
+                                  <p className="text-sm text-pano-error">{swapError}</p>
+                                </CardContent>
+                              </Card>
+                            )}
+
+                            {/* Success Display */}
+                            {swapSuccess && (
+                              <Card variant="filled" className="border-pano-success/20 bg-pano-success/10">
+                                <CardContent className="p-3 space-y-3">
+                                  <p className="text-sm text-pano-success font-medium">✅ Swap executed successfully!</p>
+
+                                  {swapTxHashes.length > 0 && (
+                                    <div className="space-y-2">
+                                      <div className="text-xs text-pano-text-muted">Transaction Hashes:</div>
+                                      {swapTxHashes.map((tx, index) => {
+                                        const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
+                                        return (
+                                          <div key={index} className="flex items-center justify-between bg-pano-surface rounded p-2">
+                                            <div className="flex-1 min-w-0">
+                                              <div className="text-xs text-pano-text-primary font-mono truncate">
+                                                {tx.hash}
+                                              </div>
+                                              <div className="text-xs text-pano-text-muted">
+                                                Chain ID: {tx.chainId}
+                                              </div>
+                                            </div>
+                                            {explorerUrl && (
+                                              <Button
+                                                size="xs"
+                                                variant="outline"
+                                                asChild
+                                              >
+                                                <a
+                                                  href={explorerUrl}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="ml-2"
+                                                >
+                                                  View
+                                                </a>
+                                              </Button>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            )}
+
+                            {/* Signature Approval Button */}
+                            {swapQuote?.quote && (
+                              <SignatureApprovalButton
+                                onApprove={() => handleSignatureApproval(message.metadata as Record<string, unknown>)}
+                                onReject={handleSignatureRejection}
+                                disabled={isSending || swapLoading || executingSwap}
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Typing Indicator */}
+          {isSending && (
+            <div className="flex gap-3 animate-fade-in">
+              <div className="w-8 h-8 rounded-full bg-pano-surface-elevated flex items-center justify-center">
+                <Image src={zicoBlue} alt="Zico" width={20} height={20} />
+              </div>
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center gap-2 text-xs text-pano-text-muted">
+                  <span className="font-medium">Zico</span>
+                </div>
+                <Card variant="default" size="sm" className="inline-block">
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-pano-primary rounded-full animate-pulse" />
+                      <div className="w-2 h-2 bg-pano-primary rounded-full animate-pulse delay-75" />
+                      <div className="w-2 h-2 bg-pano-primary rounded-full animate-pulse delay-150" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </Container>
+      </div>
+    );
+  }, [
+    initializing,
+    initializationError,
+    activeConversationId,
+    activeMessages,
+    isHistoryLoading,
+    isCreatingConversation,
+    isSending,
+    swapLoading,
+    swapQuote,
+    swapError,
+    swapSuccess,
+    swapTxHashes,
+    retryBootstrap,
+    createNewChat,
+    sendMessage,
+    router,
+    handleSignatureApproval,
+    handleSignatureRejection,
+    executingSwap
+  ]);
+
 
   // Helper function to flatten prepared transactions (from swap page)
   function flattenPrepared(prepared: any): PreparedTx[] {
@@ -835,468 +1404,149 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-screen bg-[#0d1117] text-white flex overflow-hidden">
-      {/* Left Sidebar with Chat Conversations */}
-      {sidebarOpen && (
-        <>
-          {/* Overlay - only on mobile/tablet */}
-          {!isLargeScreen && (
-            <div
-              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-              onClick={() => setSidebarOpen(false)}
-            />
-          )}
-          <div className={`h-full w-80 bg-[#0d1117] border-r border-cyan-500/20 overflow-y-auto flex flex-col ${
-            isLargeScreen ? 'relative' : 'fixed top-0 left-0 z-50 h-screen'
-          }`}>
-            {/* Header with logo - Fixed */}
-            <div className="flex-shrink-0 px-4 py-3 border-b border-cyan-500/20 flex items-center justify-between">
-              <Image
-                src={zicoBlue}
-                alt="Zico"
-                width={32}
-                height={32}
-              />
-              {!isLargeScreen && (
-                <button
-                  onClick={() => setSidebarOpen(false)}
-                  className="text-gray-400 hover:text-white lg:hidden"
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
-
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              {/* Navigation Menu */}
-              <nav className="p-4 space-y-2 border-b border-cyan-500/20">
-                <button
-                  onClick={() => {
-                    router.push('/chat');
-                    if (!isLargeScreen) setSidebarOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/50"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  <span className="font-medium">Chat</span>
-                </button>
-                <button
-                  onClick={() => {
-                    router.push('/swap');
-                    if (!isLargeScreen) setSidebarOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-all"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                  </svg>
-                  <span className="font-medium">Swap</span>
-                </button>
-              </nav>
-
-              {/* New Chat Button */}
-              <div className="px-4 mt-4 mb-6">
-                <button
-                  onClick={createNewChat}
-                  disabled={isCreatingConversation}
-                  className="w-full px-4 py-3 rounded-lg border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isCreatingConversation ? 'Creating...' : 'New Chat'}
-                </button>
-              </div>
-
-              {/* Past Conversations (Last 5) */}
-              <div className="px-4 mb-6">
-                <h3 className="text-gray-400 text-sm font-semibold mb-2">Recent Conversations</h3>
-                {conversations.slice(0, 5).map((conv) => (
-                  <button
-                    key={conv.id}
-                    onClick={() => handleSelectConversation(conv.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 mb-2 rounded-lg transition-all text-left ${
-                      conv.id === activeConversationId
-                        ? 'bg-gray-800 border border-cyan-500/40 text-white'
-                        : 'text-gray-400 hover:bg-gray-800'
-                    }`}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    <span className="text-sm">{conv.title}</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Trending Prompts */}
-              <div className="px-4 mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-cyan-400">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  <h3 className="text-white font-semibold">Trending Prompts</h3>
-                </div>
-                {TRENDING_PROMPTS.map((prompt, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => sendMessage(prompt)}
-                    disabled={!activeConversationId || isSending}
-                    className="w-full text-left px-4 py-3 mb-2 rounded-lg bg-gray-800/50 text-gray-300 hover:bg-gray-800 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-
-              {/* Disconnect Button */}
-              <div className="px-4 pb-6">
-                <button
-                  onClick={async () => {
-                    try {
-                      // Clear all auth data
-                      localStorage.removeItem('authToken');
-                      localStorage.removeItem('authPayload');
-                      localStorage.removeItem('authSignature');
-                      localStorage.removeItem('telegram_user');
-
-                      // Close sidebar on mobile
-                      if (!isLargeScreen) setSidebarOpen(false);
-
-                      // Small delay to ensure localStorage is cleared
-                      await new Promise(resolve => setTimeout(resolve, 100));
-
-                      // Force page reload to clear all state (basePath is /miniapp)
-                      window.location.href = '/miniapp';
-                    } catch (error) {
-                      console.error('Error disconnecting:', error);
-                      // Force redirect anyway
-                      window.location.href = '/miniapp';
-                    }
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-all border border-red-500/20 hover:border-red-500/50"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  <span className="font-medium">Disconnect</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full">
-        {/* Top Bar - Fixed */}
-        <div className="flex-shrink-0 bg-[#0d1117] border-b border-cyan-500/20 px-4 py-3 flex items-center justify-between">
-          {!isLargeScreen && (
-            <button
+    <AppLayout>
+      {/* Mobile Layout */}
+      <MobileLayout className="lg:hidden">
+        <div className="flex flex-col h-full">
+          {/* Mobile Header */}
+          <div className="flex-shrink-0 px-4 py-3 border-b border-pano-border bg-pano-surface flex items-center justify-between safe-top">
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setSidebarOpen(true)}
-              className="text-gray-400 hover:text-white lg:hidden"
+              className="p-2 text-pano-text-secondary hover:text-pano-text-primary"
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
-            </button>
-          )}
-          {isLargeScreen && <div className="w-6"></div>}
+            </Button>
 
-          <div className="flex items-center gap-2">
-            <Image src={zicoBlue} alt="Zico" width={32} height={32} />
+            <div className="flex items-center gap-2">
+              <Image src={zicoBlue} alt="Zico" width={24} height={24} />
+              <span className="text-lg font-semibold text-pano-text-primary">Chat</span>
+            </div>
+
+            <div className="w-8"></div>
           </div>
 
-          <div className="w-6"></div>
+          {/* Mobile Messages with Gestures */}
+          <div
+            ref={navigationRef}
+            className="flex-1 relative"
+          >
+            <PullToRefresh
+              onRefresh={handleRefresh}
+              className="h-full"
+              disabled={!activeConversationId || initializing}
+            >
+              <div
+                ref={messagesContainerRef}
+                className="h-full overflow-y-auto"
+              >
+                {renderMessages()}
+              </div>
+            </PullToRefresh>
+          </div>
+
+          {/* Mobile Input */}
+          <div className="flex-shrink-0 p-4 border-t border-pano-border bg-pano-surface safe-bottom">
+            <div className="flex items-center gap-2">
+              <Input
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Type your message..."
+                disabled={isSending || !activeConversationId || initializing}
+                className="flex-1 rounded-2xl"
+                size="lg"
+              />
+              <Button
+                onClick={() => sendMessage()}
+                disabled={!inputMessage.trim() || isSending || !activeConversationId || initializing}
+                size="lg"
+                className="rounded-2xl px-4"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </Button>
+            </div>
+          </div>
         </div>
 
-        {/* Messages or Empty State */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {initializing ? (
-            <div className="h-full flex items-center justify-center px-4 py-12 text-center">
-              {initializationError ? (
-                <div className="space-y-4">
-                  <p className="text-gray-300">{initializationError}</p>
-                  <button
-                    onClick={retryBootstrap}
-                    className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-cyan-500 text-white hover:bg-cyan-600 transition-all"
-                  >
-                    Try again
-                  </button>
+        {/* Mobile Sidebar Overlay */}
+        {sidebarOpen && (
+          <>
+            <div
+              className="fixed inset-0 bg-black/50 z-40"
+              onClick={() => setSidebarOpen(false)}
+            />
+            <div className="fixed top-0 left-0 h-full w-80 bg-pano-surface border-r border-pano-border z-50 overflow-y-auto safe-top safe-bottom">
+              {renderSidebar()}
+            </div>
+          </>
+        )}
+      </MobileLayout>
+
+      {/* Desktop Layout */}
+      <DesktopLayout className="hidden lg:flex">
+        <div className="flex h-full">
+          {/* Desktop Sidebar */}
+          <div className="w-80 border-r border-pano-border bg-pano-surface overflow-y-auto">
+            {renderSidebar()}
+          </div>
+
+          {/* Desktop Main Content */}
+          <div className="flex-1 flex flex-col">
+            {/* Desktop Header */}
+            <div className="flex-shrink-0 px-6 py-4 border-b border-pano-border bg-pano-surface flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Image src={zicoBlue} alt="Zico" width={32} height={32} />
+                <h1 className="text-xl font-semibold text-pano-text-primary">Chat Assistant</h1>
+              </div>
+
+              {activeConversationId && (
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={createNewChat} disabled={isCreatingConversation}>
+                    {isCreatingConversation ? 'Creating...' : 'New Chat'}
+                  </Button>
                 </div>
-              ) : (
-                <p className="text-gray-400">Loading your conversations...</p>
               )}
             </div>
-          ) : !activeConversationId ? (
-            <div className="h-full flex items-center justify-center px-4 py-12">
-              <p className="text-gray-400">Create a new chat to get started.</p>
-            </div>
-          ) : initializationError && activeMessages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center px-4 py-12 text-center space-y-4">
-              <p className="text-gray-300">{initializationError}</p>
-              <button
-                onClick={retryBootstrap}
-                className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-cyan-500 text-white hover:bg-cyan-600 transition-all"
-              >
-                Try again
-              </button>
-            </div>
-          ) : isHistoryLoading && activeMessages.length === 0 ? (
-            <div className="h-full flex items-center justify-center px-4 py-12">
-              <p className="text-gray-400">Loading conversation...</p>
-            </div>
-          ) : activeMessages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center px-4 py-12">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-300 mb-12">
-                Select a Feature or Start a Chat
-              </h2>
 
-              {/* Feature Cards Grid */}
-              <div className="grid grid-cols-3 gap-4 max-w-md mb-8">
-                {FEATURE_CARDS.map((feature, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      if (feature.path) {
-                        router.push(feature.path);
-                      }
-                    }}
-                    disabled={!feature.path}
-                    className={`flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-gray-800/30 backdrop-blur-md hover:bg-gray-800/50 border border-cyan-500/20 hover:border-cyan-500/50 transition-all shadow-lg hover:shadow-cyan-500/20 ${
-                      !feature.path ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                    }`}
-                  >
-                    <Image
-                      src={feature.icon}
-                      alt={feature.name}
-                      width={32}
-                      height={32}
-                      className="w-8 h-8"
-                    />
-                    <span className="text-xs text-gray-400 text-center">{feature.name}</span>
-                  </button>
-                ))}
+            {/* Desktop Messages */}
+            <div className="flex-1 overflow-y-auto">
+              {renderMessages()}
+            </div>
+
+            {/* Desktop Input */}
+            <div className="flex-shrink-0 p-6 border-t border-pano-border bg-pano-surface">
+              <div className="flex items-end gap-3 max-w-4xl mx-auto">
+                <Input
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Type your message..."
+                  disabled={isSending || !activeConversationId || initializing}
+                  className="flex-1 min-h-[44px] py-3 rounded-2xl resize-none"
+                  size="lg"
+                />
+                <Button
+                  onClick={() => sendMessage()}
+                  disabled={!inputMessage.trim() || isSending || !activeConversationId || initializing}
+                  size="lg"
+                  className="rounded-2xl px-6 h-[44px]"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </Button>
               </div>
             </div>
-          ) : (
-            <div className="py-6">
-              {activeMessages.map((message, index) => {
-                const timestampValue = message.timestamp.getTime();
-                const hasValidTime = !Number.isNaN(timestampValue);
-                const timeLabel = hasValidTime
-                  ? message.timestamp.toLocaleTimeString('en-US', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  : '';
-                const messageKey = hasValidTime
-                  ? `${message.role}-${timestampValue}-${index}`
-                  : `${message.role}-${index}`;
-
-                return (
-                  <div
-                    key={messageKey}
-                    className="w-full border-b border-gray-800/50"
-                  >
-                    <div className="max-w-3xl mx-auto px-4 py-6">
-                      <div className={`flex items-start gap-3 ${
-                        message.role === 'user' ? 'flex-row-reverse' : ''
-                      }`}>
-                        {/* Avatar/Icon */}
-                        <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-                          {message.role === 'user' ? (
-                            <div className="w-full h-full rounded-full bg-cyan-500 text-white flex items-center justify-center">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                              </svg>
-                            </div>
-                          ) : (
-                            <Image
-                              src={zicoBlue}
-                              alt="Zico"
-                              width={32}
-                              height={32}
-                              className="w-8 h-8"
-                            />
-                          )}
-                        </div>
-
-                        {/* Message Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className={`flex items-center gap-2 mb-2 ${
-                            message.role === 'user' ? 'justify-end' : ''
-                          }`}>
-                            {timeLabel ? (
-                              <span className="text-xs text-gray-500">{timeLabel}</span>
-                            ) : null}
-                            <span className={`text-sm font-semibold ${
-                              message.role === 'user' ? 'text-cyan-400' : 'text-gray-300'
-                            }`}>
-                              {message.role === 'user' ? 'You' : 'Zico'}
-                            </span>
-                          </div>
-                          <div className={`text-[15px] text-gray-200 break-words leading-relaxed ${
-                            message.role === 'user' ? 'text-right' : ''
-                          }`}>
-                            {message.content}
-
-                            {/* Swap Interface */}
-                            {message.role === 'assistant' &&
-                              message.metadata?.event === 'swap_intent_ready' && (
-                              <div className="mt-4 space-y-3">
-                                {/* Quote Information */}
-                                {swapLoading && (
-                                  <div className="flex items-center gap-2 text-cyan-400">
-                                    <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                                    <span className="text-sm">Getting quote...</span>
-                                  </div>
-                                )}
-
-                                {swapQuote?.quote && (
-                                  <div className="bg-gray-700/50 rounded-lg p-3 space-y-2">
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-sm text-gray-300">You will receive:</span>
-                                      <span className="text-sm font-medium text-white">
-                                        {formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)} {String(message.metadata?.to_token)}
-                                      </span>
-                                    </div>
-                                    {swapQuote.quote.fees?.totalFeeUsd && (
-                                      <div className="flex justify-between items-center">
-                                        <span className="text-sm text-gray-300">Total fees:</span>
-                                        <span className="text-sm text-gray-400">${swapQuote.quote.fees.totalFeeUsd}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {swapError && (
-                                  <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
-                                    <p className="text-sm text-red-400">{swapError}</p>
-                                  </div>
-                                )}
-
-                                {swapSuccess && (
-                                  <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3">
-                                    <p className="text-sm text-green-400 mb-3">✅ Swap executed successfully!</p>
-
-                                    {/* Transaction Hashes */}
-                                    {swapTxHashes.length > 0 && (
-                                      <div className="space-y-2">
-                                        <div className="text-xs text-gray-400">Transaction Hashes:</div>
-                                        {swapTxHashes.map((tx, index) => {
-                                          const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
-                                          return (
-                                            <div key={index} className="flex items-center justify-between bg-gray-800/50 rounded p-2">
-                                              <div className="flex-1 min-w-0">
-                                                <div className="text-xs text-gray-300 font-mono truncate">
-                                                  {tx.hash}
-                                                </div>
-                                                <div className="text-xs text-gray-500">
-                                                  Chain ID: {tx.chainId}
-                                                </div>
-                                              </div>
-                                              {explorerUrl && (
-                                                <a
-                                                  href={explorerUrl}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors"
-                                                >
-                                                  View
-                                                </a>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {swapLoading && !swapQuote?.quote && (
-                                  <div className="mt-3 p-3 bg-gray-700/50 rounded-lg border border-cyan-500/30">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                                      <span className="text-sm text-cyan-400">Preparing swap transaction...</span>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {swapQuote?.quote && (
-                                  <SignatureApprovalButton
-                                    onApprove={() => handleSignatureApproval(message.metadata as Record<string, unknown>)}
-                                    onReject={handleSignatureRejection}
-                                    disabled={isSending || swapLoading || executingSwap}
-                                  />
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {isSending && (
-                <div className="w-full border-b border-gray-800/50">
-                  <div className="max-w-3xl mx-auto px-4 py-6">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-                        <Image
-                          src={zicoBlue}
-                          alt="Zico"
-                          width={32}
-                          height={32}
-                          className="w-8 h-8"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-sm font-semibold text-gray-300 mb-2">Zico</div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
-                          <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse delay-75" />
-                          <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse delay-150" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </div>
-
-        {/* Input Area - Fixed */}
-        <div className="flex-shrink-0 bg-[#0d1117] border-t border-cyan-500/20 p-4">
-          <div className="flex items-center gap-2 max-w-4xl mx-auto">
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your message..."
-              disabled={isSending || !activeConversationId || initializing}
-              className="flex-1 px-4 py-3 rounded-full bg-gray-800 border border-cyan-500/30 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
-            />
-            <button
-              onClick={() => sendMessage()}
-              disabled={!inputMessage.trim() || isSending || !activeConversationId || initializing}
-              className="p-3 rounded-full bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            </button>
           </div>
         </div>
-      </div>
-    </div>
+      </DesktopLayout>
+    </AppLayout>
+
   );
 }

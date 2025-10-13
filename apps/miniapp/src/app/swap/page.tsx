@@ -1,15 +1,24 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Sidebar } from '@/shared/ui/Sidebar';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Container, AppLayout, MobileLayout, DesktopLayout } from '@/components/layout';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Spinner, LoadingOverlay } from '@/components/ui/spinner';
+import { LazyImage } from '@/components/ui/lazy-image';
+import { Skeleton, SkeletonWrapper } from '@/components/ui/skeleton';
+import { ErrorBoundary, ErrorFallback } from '@/components/error-boundary';
+import { cn } from '@/shared/lib/utils';
 import Image from 'next/image';
 import { networks, Token } from '@/features/swap/tokens';
 import { swapApi, SwapApiError } from '@/features/swap/api';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl } from '@/features/swap/utils';
-import { useActiveAccount, PayEmbed } from 'thirdweb/react';
+import { useActiveAccount } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
+import { useDebounce, usePerformanceMonitor } from '@/hooks/usePerformance';
 import type { PreparedTx } from '@/features/swap/types';
 
 interface TokenSelectorProps {
@@ -20,9 +29,128 @@ interface TokenSelectorProps {
   currentChainId: number;
 }
 
+interface SwapState {
+  fromToken: Token | null;
+  toToken: Token | null;
+  fromChainId: number;
+  toChainId: number;
+  fromAmount: string;
+  toAmount: string;
+  isLoading: boolean;
+  quote: any;
+  error: string | null;
+  slippage: number;
+  gasPrice: 'slow' | 'standard' | 'fast';
+}
+
+interface SwapSettings {
+  slippage: number;
+  gasPrice: 'slow' | 'standard' | 'fast';
+  deadline: number;
+  expertMode: boolean;
+}
+
+interface PriceInfoProps {
+  quote: any;
+  fromToken: Token;
+  toToken: Token | null;
+}
+
+interface SwapRouteProps {
+  quote: any;
+  fromToken: Token;
+  toToken: Token | null;
+}
+
+// Price info component
+function PriceInfo({ quote, fromToken, toToken }: PriceInfoProps) {
+  if (!quote || !toToken) return null;
+
+  return (
+    <Card variant="glass" className="border-pano-accent/30">
+      <CardContent className="pano-space-4">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-2 h-2 rounded-full bg-pano-success animate-pulse" />
+          <span className="text-xs font-medium text-pano-text-secondary uppercase tracking-wide">Best Price Route</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <div className="text-xs text-pano-text-muted mb-1">Exchange Rate</div>
+            <div className="text-sm font-medium text-pano-text-primary">
+              1 {fromToken.symbol} ≈ {quote.exchangeRate || 'N/A'} {toToken.symbol}
+            </div>
+          </div>
+
+          {quote.estimatedDuration && (
+            <div>
+              <div className="text-xs text-pano-text-muted mb-1">Est. Time</div>
+              <div className="text-sm font-medium text-pano-text-primary">
+                ~{quote.estimatedDuration}s
+              </div>
+            </div>
+          )}
+        </div>
+
+        {quote.fees?.totalFeeUsd && (
+          <div className="flex justify-between items-center pt-3 border-t border-pano-border">
+            <span className="text-xs text-pano-text-muted">Network Fee</span>
+            <span className="text-sm font-medium text-pano-text-primary">${quote.fees.totalFeeUsd}</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Swap route visualization
+function SwapRoute({ quote, fromToken, toToken }: SwapRouteProps) {
+  if (!quote || !toToken) return null;
+
+  return (
+    <Card variant="glass" className="border-pano-accent/30">
+      <CardContent className="pano-space-4">
+        <div className="text-xs font-medium text-pano-text-secondary uppercase tracking-wide mb-3">Swap Route</div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <LazyImage
+              src={fromToken.icon || '/icons/default-token.svg'}
+              alt={fromToken.symbol}
+              className="w-6 h-6 rounded-full"
+              fallbackSrc="/icons/default-token.svg"
+            />
+            <span className="text-sm font-medium text-pano-text-primary">{fromToken.symbol}</span>
+          </div>
+
+          <div className="flex items-center gap-2 text-pano-text-muted">
+            <div className="w-6 h-px bg-pano-border" />
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+            <div className="w-6 h-px bg-pano-border" />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <LazyImage
+              src={toToken.icon || '/icons/default-token.svg'}
+              alt={toToken.symbol}
+              className="w-6 h-6 rounded-full"
+              fallbackSrc="/icons/default-token.svg"
+            />
+            <span className="text-sm font-medium text-pano-text-primary">{toToken.symbol}</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Token selector component with enhanced search and filtering
 function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: TokenSelectorProps) {
   const [search, setSearch] = useState('');
   const [selectedChain, setSelectedChain] = useState<number | null>(currentChainId);
+  const debouncedSearch = useDebounce(search, 300);
 
   if (!isOpen) return null;
 
@@ -229,12 +357,13 @@ export default function SwapPage() {
   const account = useActiveAccount();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
+  const { trackEvent } = usePerformanceMonitor();
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const userAddress = localStorage.getItem('userAddress');
   const effectiveAddress = account?.address || addressFromToken || userAddress;
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Swap state
   const [fromChainId, setFromChainId] = useState(8453); // Base
   const [toChainId, setToChainId] = useState(42161); // Arbitrum
   const [sellToken, setSellToken] = useState<Token>({
@@ -255,9 +384,12 @@ export default function SwapPage() {
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [showFundWallet, setShowFundWallet] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [txHashes, setTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
   const quoteRequestRef = useRef(0);
+
+  // Debounced sell amount for performance
+  const debouncedSellAmount = useDebounce(sellAmount, 500);
 
   // Check if we can request quote
   const canQuote = useMemo(() => {
@@ -471,298 +603,510 @@ export default function SwapPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d1117] text-white flex overflow-hidden">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col md:ml-64 overflow-x-hidden">
-        {/* Top Bar */}
-        <div className="border-b border-cyan-500/20 px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="md:hidden text-gray-400 hover:text-white"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-
-          <h1 className="text-xl font-bold">Swap</h1>
-          <div className="w-6" /> {/* Spacer */}
-        </div>
-
-        {/* Swap Interface */}
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="w-full max-w-lg mx-auto">
-            {/* Swap Card */}
-            <div className="bg-[#1a1a1a] border border-gray-800 rounded-2xl p-5 sm:p-6 shadow-xl">
-              {/* Sell Section */}
-              <div className="mb-3">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-xs text-gray-500 uppercase tracking-wide">Sell</label>
-                  <div className="text-xs text-gray-400">
-                    {networks.find(n => n.chainId === fromChainId)?.name || 'Base'}
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={sellAmount}
-                    onChange={(e) => setSellAmount(e.target.value)}
-                    placeholder="1.290"
-                    className="bg-transparent text-3xl sm:text-4xl font-light text-white outline-none w-full"
-                  />
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm text-gray-500 flex-shrink-0">0 USD</div>
-                    <button
-                      onClick={() => setShowSellSelector(true)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#2a2a2a] hover:bg-[#333] transition-colors flex-shrink-0"
-                    >
-                      <Image
-                        src={sellToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
-                        alt={sellToken.symbol}
-                        width={18}
-                        height={18}
-                        className="w-[18px] h-[18px] rounded-full flex-shrink-0"
-                      />
-                      <span className="font-medium text-sm whitespace-nowrap">{sellToken.symbol}</span>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="flex-shrink-0">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Swap Button */}
-              <div className="flex justify-center my-3">
-                <button
-                  onClick={handleSwapTokens}
-                  className="bg-[#2a2a2a] border border-gray-700 rounded-full p-2.5 hover:bg-[#333] transition-colors"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Buy Section */}
-              <div className="mb-5">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-xs text-gray-500 uppercase tracking-wide">Buy</label>
-                  <div className="text-xs text-gray-400">
-                    {networks.find(n => n.chainId === toChainId)?.name || 'Arbitrum'}
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={buyAmount}
-                    onChange={(e) => setBuyAmount(e.target.value)}
-                    placeholder="0"
-                    className="bg-transparent text-3xl sm:text-4xl font-light text-white outline-none w-full"
-                    readOnly
-                  />
-                  <div className="flex items-center justify-end">
-                    <button
-                      onClick={() => setShowBuySelector(true)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0"
-                      style={{
-                        background: buyToken ? '#2a2a2a' : '#00d9ff',
-                      }}
-                    >
-                      {buyToken ? (
-                        <>
-                          <Image
-                            src={buyToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
-                            alt={buyToken.symbol}
-                            width={18}
-                            height={18}
-                            className="w-[18px] h-[18px] rounded-full flex-shrink-0"
-                          />
-                          <span className="font-medium text-sm whitespace-nowrap">{buyToken.symbol}</span>
-                        </>
-                      ) : (
-                        <span className="font-medium text-sm text-black whitespace-nowrap">Select Token</span>
-                      )}
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="flex-shrink-0">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Start Button */}
-              <button
-                onClick={handleStartSwap}
-                disabled={!quote || quoting || preparing || executing}
-                className="w-full py-4 rounded-xl font-semibold text-base transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  background: quote ? '#00d9ff' : '#4a7c7e',
-                  color: quote ? '#000' : 'white',
-                }}
+    <ErrorBoundary fallback={<ErrorFallback resetError={() => window.location.reload()} />}>
+      <AppLayout>
+        <MobileLayout>
+          <Container size="sm" className="min-h-screen py-6">
+            {/* Mobile Header */}
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-xl font-bold text-pano-text-primary">Swap</h1>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowSettings(true)}
+                className="h-auto p-2"
               >
-                {executing
-                  ? 'Executando swap...'
-                  : preparing
-                    ? 'Preparando transação...'
-                    : quoting
-                      ? 'Calculando cotação...'
-                      : quote
-                        ? 'Start Swap'
-                        : 'Aguardando cotação...'}
-              </button>
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+              </Button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Main Swap Card */}
+              <Card variant="glass" className="border-pano-accent/30">
+                <CardContent className="pano-space-6">
+                  {/* From Token */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-pano-text-secondary uppercase tracking-wide">From</label>
+                      <div className="text-xs text-pano-text-muted">
+                        {networks.find(n => n.chainId === fromChainId)?.name || 'Base'}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <Input
+                        variant="ghost"
+                        size="xl"
+                        value={sellAmount}
+                        onChange={(e) => setSellAmount(e.target.value)}
+                        placeholder="0.0"
+                        className="text-3xl font-light text-center border-none bg-transparent"
+                      />
+
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-pano-text-muted">$0.00</div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowSellSelector(true)}
+                          className="flex items-center gap-2 px-3 py-2"
+                        >
+                          <LazyImage
+                            src={sellToken.icon || '/icons/default-token.svg'}
+                            alt={sellToken.symbol}
+                            className="w-5 h-5 rounded-full"
+                            fallbackSrc="/icons/default-token.svg"
+                          />
+                          <span className="font-medium">{sellToken.symbol}</span>
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Swap Button */}
+                  <div className="flex justify-center my-6">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSwapTokens}
+                      className="rounded-full p-3 border-pano-accent/30 hover:border-pano-accent hover:bg-pano-accent/10"
+                    >
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                      </svg>
+                    </Button>
+                  </div>
+
+                  {/* To Token */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-pano-text-secondary uppercase tracking-wide">To</label>
+                      <div className="text-xs text-pano-text-muted">
+                        {networks.find(n => n.chainId === toChainId)?.name || 'Arbitrum'}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <LoadingOverlay isLoading={quoting} backdrop="blur">
+                        <Input
+                          variant="ghost"
+                          size="xl"
+                          value={buyAmount}
+                          readOnly
+                          placeholder="0.0"
+                          className="text-3xl font-light text-center border-none bg-transparent"
+                        />
+                      </LoadingOverlay>
+
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-pano-text-muted">$0.00</div>
+                        <Button
+                          variant={buyToken ? "outline" : "default"}
+                          size="sm"
+                          onClick={() => setShowBuySelector(true)}
+                          className="flex items-center gap-2 px-3 py-2"
+                        >
+                          {buyToken ? (
+                            <>
+                              <LazyImage
+                                src={buyToken.icon || '/icons/default-token.svg'}
+                                alt={buyToken.symbol}
+                                className="w-5 h-5 rounded-full"
+                                fallbackSrc="/icons/default-token.svg"
+                              />
+                              <span className="font-medium">{buyToken.symbol}</span>
+                            </>
+                          ) : (
+                            <span className="font-medium">Select Token</span>
+                          )}
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Swap Button */}
+                  <Button
+                    onClick={handleStartSwap}
+                    disabled={!quote || quoting || preparing || executing}
+                    variant={quote ? "default" : "outline"}
+                    size="lg"
+                    className="w-full mt-6"
+                  >
+                    {executing ? (
+                      <><Spinner size="sm" className="mr-2" />Executing Swap...</>
+                    ) : preparing ? (
+                      <><Spinner size="sm" className="mr-2" />Preparing...</>
+                    ) : quoting ? (
+                      <><Spinner size="sm" className="mr-2" />Getting Quote...</>
+                    ) : quote ? (
+                      'Start Swap'
+                    ) : (
+                      'Enter Amount'
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
 
               {/* Quote Info */}
               {quote && (
-                <div className="mt-4 p-3 rounded-lg bg-[#2a2a2a] border border-cyan-500/30">
-                  <div className="text-xs text-gray-400 mb-2">📊 Informações da Cotação</div>
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Taxa de câmbio:</span>
-                      <span className="text-white font-medium">
-                        1 {sellToken.symbol} ≈ {quote.exchangeRate || 'N/A'} {buyToken?.symbol}
-                      </span>
-                    </div>
-                    {quote.estimatedDuration && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Tempo estimado:</span>
-                        <span className="text-white font-medium">{quote.estimatedDuration}s</span>
-                      </div>
-                    )}
-                    {quote.fees?.totalFeeUsd && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Taxa total:</span>
-                        <span className="text-white font-medium">${quote.fees.totalFeeUsd}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <PriceInfo quote={quote} fromToken={sellToken} toToken={buyToken} />
+              )}
+
+              {/* Swap Route */}
+              {quote && (
+                <SwapRoute quote={quote} fromToken={sellToken} toToken={buyToken} />
               )}
 
               {/* Error Message */}
               {error && (
-                <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
-                  <div className="text-sm text-red-400">{error}</div>
-                </div>
+                <Card variant="outline" className="border-pano-error/30 bg-pano-error/5">
+                  <CardContent className="pano-space-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-5 h-5 rounded-full bg-pano-error/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <svg className="w-3 h-3 text-pano-error" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="12" y1="8" x2="12" y2="12" />
+                          <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                      </div>
+                      <div className="text-sm text-pano-error">{error}</div>
+                    </div>
+                  </CardContent>
+                </Card>
               )}
 
               {/* Success Message */}
               {success && (
-                <div className="mt-4 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
-                  <div className="text-sm text-green-400 mb-3">✅ Swap executed successfully!</div>
-                  
-                  {/* Transaction Hashes */}
-                  {txHashes.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-xs text-gray-400">Transaction Hashes:</div>
-                      {txHashes.map((tx, index) => {
-                        const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
-                        return (
-                          <div key={index} className="flex items-center justify-between bg-gray-800/50 rounded p-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs text-gray-300 font-mono truncate">
-                                {tx.hash}
+                <Card variant="outline" className="border-pano-success/30 bg-pano-success/5">
+                  <CardContent className="pano-space-4">
+                    <div className="flex items-start gap-3 mb-4">
+                      <div className="w-5 h-5 rounded-full bg-pano-success/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <svg className="w-3 h-3 text-pano-success" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <div className="text-sm text-pano-success font-medium">Swap executed successfully!</div>
+                    </div>
+
+                    {/* Transaction Hashes */}
+                    {txHashes.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium text-pano-text-secondary uppercase tracking-wide">Transactions</div>
+                        {txHashes.map((tx, index) => {
+                          const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
+                          return (
+                            <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-pano-surface-elevated">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-mono text-pano-text-primary truncate">
+                                  {tx.hash}
+                                </div>
+                                <div className="text-xs text-pano-text-muted">
+                                  Chain {tx.chainId}
+                                </div>
                               </div>
-                              <div className="text-xs text-gray-500">
-                                Chain ID: {tx.chainId}
-                              </div>
+                              {explorerUrl && (
+                                <Button
+                                  variant="outline"
+                                  size="xs"
+                                  asChild
+                                  className="ml-2"
+                                >
+                                  <a
+                                    href={explorerUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    View
+                                  </a>
+                                </Button>
+                              )}
                             </div>
-                            {explorerUrl && (
-                              <a
-                                href={explorerUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors"
-                              >
-                                View
-                              </a>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Fund Wallet Modal */}
-              {showFundWallet && client && (
-                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-                  <div className="bg-[#1a1a1a] border border-cyan-500/30 rounded-2xl max-w-md w-full p-6 relative">
-                    <button
-                      onClick={() => setShowFundWallet(false)}
-                      className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
-                    >
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-
-                    <h3 className="text-xl font-bold text-white mb-2">💰 Adicionar Fundos</h3>
-                    <p className="text-gray-400 text-sm mb-4">
-                      Seu saldo é insuficiente para executar esta transação. Adicione fundos à sua carteira.
-                    </p>
-
-                    <div className="mb-4">
-                      <PayEmbed
-                        client={client}
-                        theme="dark"
-                        payOptions={{
-                          mode: 'fund_wallet',
-                          metadata: {
-                            name: 'Adicionar fundos para swap',
-                          },
-                          prefillBuy: {
-                            chain: defineChain(fromChainId),
-                            token: sellToken.address === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
-                              ? undefined
-                              : {
-                                  address: sellToken.address as Address,
-                                  name: sellToken.symbol,
-                                  symbol: sellToken.symbol,
-                                }
-                          }
-                        }}
-                      />
-                    </div>
-
-                    <button
-                      onClick={() => setShowFundWallet(false)}
-                      className="w-full py-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-medium transition-colors"
-                    >
-                      Fechar
-                    </button>
-                  </div>
-                </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               )}
             </div>
-          </div>
-        </div>
-      </div>
+          </Container>
+        </MobileLayout>
 
-      {/* Token Selectors */}
-      <TokenSelector
-        isOpen={showSellSelector}
-        onClose={() => setShowSellSelector(false)}
-        onSelect={(token, chainId) => {
-          setSellToken(token);
-          setFromChainId(chainId);
-        }}
-        title="Select a token to sell"
-        currentChainId={fromChainId}
-      />
-      <TokenSelector
-        isOpen={showBuySelector}
-        onClose={() => setShowBuySelector(false)}
-        onSelect={(token, chainId) => {
-          setBuyToken(token);
-          setToChainId(chainId);
-        }}
-        title="Select a token to buy"
-        currentChainId={toChainId}
-      />
-    </div>
+        <DesktopLayout>
+          <Container size="lg" className="min-h-screen py-8">
+            <div className="grid grid-cols-12 gap-8">
+              {/* Main Swap Area */}
+              <div className="col-span-8">
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h1 className="text-2xl font-bold text-pano-text-primary">Token Swap</h1>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowSettings(true)}
+                    >
+                      <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <circle cx="12" cy="12" r="3" />
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                      </svg>
+                      Settings
+                    </Button>
+                  </div>
+
+                  {/* Desktop Swap Card */}
+                  <Card variant="glass" className="border-pano-accent/30 max-w-md mx-auto">
+                    <CardContent className="pano-space-8">
+                      {/* From Token */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm font-medium text-pano-text-secondary">From</label>
+                          <div className="text-sm text-pano-text-muted">
+                            {networks.find(n => n.chainId === fromChainId)?.name || 'Base'}
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <Input
+                            variant="ghost"
+                            size="xl"
+                            value={sellAmount}
+                            onChange={(e) => setSellAmount(e.target.value)}
+                            placeholder="0.0"
+                            className="text-4xl font-light text-center border-none bg-transparent"
+                          />
+
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm text-pano-text-muted">$0.00</div>
+                            <Button
+                              variant="outline"
+                              onClick={() => setShowSellSelector(true)}
+                              className="flex items-center gap-3 px-4 py-3 h-auto"
+                            >
+                              <LazyImage
+                                src={sellToken.icon || '/icons/default-token.svg'}
+                                alt={sellToken.symbol}
+                                className="w-6 h-6 rounded-full"
+                                fallbackSrc="/icons/default-token.svg"
+                              />
+                              <span className="font-medium text-base">{sellToken.symbol}</span>
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Swap Button */}
+                      <div className="flex justify-center my-8">
+                        <Button
+                          variant="outline"
+                          onClick={handleSwapTokens}
+                          className="rounded-full p-4 border-pano-accent/30 hover:border-pano-accent hover:bg-pano-accent/10"
+                        >
+                          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                          </svg>
+                        </Button>
+                      </div>
+
+                      {/* To Token */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm font-medium text-pano-text-secondary">To</label>
+                          <div className="text-sm text-pano-text-muted">
+                            {networks.find(n => n.chainId === toChainId)?.name || 'Arbitrum'}
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <LoadingOverlay isLoading={quoting} backdrop="blur">
+                            <Input
+                              variant="ghost"
+                              size="xl"
+                              value={buyAmount}
+                              readOnly
+                              placeholder="0.0"
+                              className="text-4xl font-light text-center border-none bg-transparent"
+                            />
+                          </LoadingOverlay>
+
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm text-pano-text-muted">$0.00</div>
+                            <Button
+                              variant={buyToken ? "outline" : "default"}
+                              onClick={() => setShowBuySelector(true)}
+                              className="flex items-center gap-3 px-4 py-3 h-auto"
+                            >
+                              {buyToken ? (
+                                <>
+                                  <LazyImage
+                                    src={buyToken.icon || '/icons/default-token.svg'}
+                                    alt={buyToken.symbol}
+                                    className="w-6 h-6 rounded-full"
+                                    fallbackSrc="/icons/default-token.svg"
+                                  />
+                                  <span className="font-medium text-base">{buyToken.symbol}</span>
+                                </>
+                              ) : (
+                                <span className="font-medium text-base">Select Token</span>
+                              )}
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Swap Button */}
+                      <Button
+                        onClick={handleStartSwap}
+                        disabled={!quote || quoting || preparing || executing}
+                        variant={quote ? "default" : "outline"}
+                        size="lg"
+                        className="w-full mt-8 py-4 text-lg"
+                      >
+                        {executing ? (
+                          <><Spinner size="sm" className="mr-2" />Executing Swap...</>
+                        ) : preparing ? (
+                          <><Spinner size="sm" className="mr-2" />Preparing...</>
+                        ) : quoting ? (
+                          <><Spinner size="sm" className="mr-2" />Getting Quote...</>
+                        ) : quote ? (
+                          'Start Swap'
+                        ) : (
+                          'Enter Amount'
+                        )}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+
+              {/* Sidebar */}
+              <div className="col-span-4">
+                <div className="space-y-6">
+                  {/* Quote Info */}
+                  {quote && (
+                    <PriceInfo quote={quote} fromToken={sellToken} toToken={buyToken} />
+                  )}
+
+                  {/* Swap Route */}
+                  {quote && (
+                    <SwapRoute quote={quote} fromToken={sellToken} toToken={buyToken} />
+                  )}
+
+                  {/* Error Message */}
+                  {error && (
+                    <Card variant="outline" className="border-pano-error/30 bg-pano-error/5">
+                      <CardContent className="pano-space-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-5 h-5 rounded-full bg-pano-error/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <svg className="w-3 h-3 text-pano-error" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="12" y1="8" x2="12" y2="12" />
+                              <line x1="12" y1="16" x2="12.01" y2="16" />
+                            </svg>
+                          </div>
+                          <div className="text-sm text-pano-error">{error}</div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Success Message */}
+                  {success && (
+                    <Card variant="outline" className="border-pano-success/30 bg-pano-success/5">
+                      <CardContent className="pano-space-4">
+                        <div className="flex items-start gap-3 mb-4">
+                          <div className="w-5 h-5 rounded-full bg-pano-success/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <svg className="w-3 h-3 text-pano-success" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                          <div className="text-sm text-pano-success font-medium">Swap executed successfully!</div>
+                        </div>
+
+                        {/* Transaction Hashes */}
+                        {txHashes.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-xs font-medium text-pano-text-secondary uppercase tracking-wide">Transactions</div>
+                            {txHashes.map((tx, index) => {
+                              const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
+                              return (
+                                <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-pano-surface-elevated">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-xs font-mono text-pano-text-primary truncate">
+                                      {tx.hash}
+                                    </div>
+                                    <div className="text-xs text-pano-text-muted">
+                                      Chain {tx.chainId}
+                                    </div>
+                                  </div>
+                                  {explorerUrl && (
+                                    <Button
+                                      variant="outline"
+                                      size="xs"
+                                      asChild
+                                      className="ml-2"
+                                    >
+                                      <a
+                                        href={explorerUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      >
+                                        View
+                                      </a>
+                                    </Button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Container>
+        </DesktopLayout>
+
+        {/* Token Selectors */}
+        <TokenSelector
+          isOpen={showSellSelector}
+          onClose={() => setShowSellSelector(false)}
+          onSelect={(token, chainId) => {
+            setSellToken(token);
+            setFromChainId(chainId);
+            trackEvent('token_selected', { type: 'sell', token: token.symbol, chainId });
+          }}
+          title="Select a token to sell"
+          currentChainId={fromChainId}
+        />
+        <TokenSelector
+          isOpen={showBuySelector}
+          onClose={() => setShowBuySelector(false)}
+          onSelect={(token, chainId) => {
+            setBuyToken(token);
+            setToChainId(chainId);
+            trackEvent('token_selected', { type: 'buy', token: token.symbol, chainId });
+          }}
+          title="Select a token to buy"
+          currentChainId={toChainId}
+        />
+      </AppLayout>
+    </ErrorBoundary>
   );
 }
