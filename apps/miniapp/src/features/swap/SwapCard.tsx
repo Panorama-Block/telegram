@@ -164,9 +164,23 @@ export function SwapCard() {
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
   const wallets = useMemo(() => {
-    if (typeof window === 'undefined') return [inAppWallet(), createWallet('io.metamask')];
+    if (typeof window === 'undefined') return [inAppWallet()];
     const isTelegram = (window as any).Telegram?.WebApp;
+    const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+
+    if (isTelegram && isiOS) {
+      return [
+        inAppWallet({
+          auth: {
+            options: ['email', 'passkey', 'guest'],
+            mode: 'redirect',
+            redirectUrl,
+          },
+        }),
+      ];
+    }
+
     return [
       inAppWallet({
         auth: {
@@ -175,7 +189,7 @@ export function SwapCard() {
           redirectUrl,
         },
       }),
-      createWallet('io.metamask'),
+      createWallet('io.metamask', { preferDeepLink: true }),
     ];
   }, []);
   const supportedChains = useMemo(() => networks.map((n) => n.chainId), []);
@@ -489,6 +503,8 @@ export function SwapCard() {
       : 'Aguardando cotação…';
 
   const primaryVariant = quote ? 'accent' : 'primary';
+  const isTelegram = typeof window !== 'undefined' && (window as any).Telegram?.WebApp;
+  const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   return (
     <Card padding={20} tone="muted">
@@ -716,6 +732,55 @@ export function SwapCard() {
       {error && (
         <div style={{ color: '#ef4444', marginTop: 16, fontSize: 13 }}>
           {error}
+        </div>
+      )}
+
+      {quote && isTelegram && isiOS && (
+        <div style={{ marginTop: 12 }}>
+          <Button
+            variant="outline"
+            size="lg"
+            block
+            onClick={async () => {
+              try {
+                const WebApp = (window as any).Telegram?.WebApp;
+                const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+                const authApiBase = process.env.VITE_AUTH_API_BASE || '';
+                const walletCookie = clientId ? localStorage.getItem(`walletToken-${clientId}`) : null;
+                const token = localStorage.getItem('authToken');
+                let nonce = '';
+                if (authApiBase) {
+                  const resp = await fetch(`${authApiBase}/auth/miniapp/session/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, walletCookie, ttlSeconds: 600 }),
+                  });
+                  if (resp.ok) {
+                    const data = await resp.json();
+                    nonce = data.nonce;
+                  }
+                }
+                const params = new URLSearchParams({
+                  fromChainId: String(fromChainId),
+                  toChainId: String(toChainId),
+                  fromToken: normalizeToApi(fromToken),
+                  toToken: normalizeToApi(toToken),
+                  amount: amount.trim(),
+                });
+                if (nonce) params.set('nonce', nonce);
+                const url = `${window.location.origin}/miniapp/swap/external?${params.toString()}`;
+                if (WebApp?.openLink) {
+                  WebApp.openLink(url, { try_instant_view: false });
+                } else {
+                  window.open(url, '_blank');
+                }
+              } catch (e) {
+                console.error('[SwapCard] open external failed', e);
+              }
+            }}
+          >
+            Executar no Safari (recomendado no iOS)
+          </Button>
         </div>
       )}
 

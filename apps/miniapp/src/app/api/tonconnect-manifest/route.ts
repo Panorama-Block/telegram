@@ -13,8 +13,7 @@ export async function GET(request: Request) {
       privacyPolicyUrl: '',
     };
     return NextResponse.json(json);
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: 'failed to build manifest' }, { status: 500 });
   }
 }
-
