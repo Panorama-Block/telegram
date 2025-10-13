@@ -92,20 +92,64 @@ export function ClientProviders({ children }: ClientProvidersProps) {
         }
 
         const manifestUrl = `${window.location.origin}/miniapp/api/tonconnect-manifest`;
-        const thirdwebClientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+        // const thirdwebClientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
 
         // Create providers component
-        const ProvidersComponent = ({ children }: { children: React.ReactNode }) => (
-          <AuthProvider>
-            <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
-              <thirdwebReact.ThirdwebProvider>
-                <AuthGuard>
-                  {children}
-                </AuthGuard>
-              </thirdwebReact.ThirdwebProvider>
-            </tonConnect.TonConnectUIProvider>
-          </AuthProvider>
-        );
+        const ProvidersComponent = ({ children }: { children: React.ReactNode }) => {
+          const [PWAInstallPrompt, setPWAInstallPrompt] = useState<any>(null);
+          const [PWAUpdateNotification, setPWAUpdateNotification] = useState<any>(null);
+          const [OfflineIndicator, setOfflineIndicator] = useState<any>(null);
+
+          useEffect(() => {
+            // Dynamic import PWA components to avoid SSR issues
+            Promise.all([
+              import('@/components/pwa/PWAInstallPrompt'),
+              import('@/components/pwa/PWAUpdateNotification'),
+              import('@/components/pwa/OfflineIndicator')
+            ]).then(([installPrompt, updateNotification, offlineIndicator]) => {
+              setPWAInstallPrompt(() => installPrompt.PWAInstallPrompt);
+              setPWAUpdateNotification(() => updateNotification.PWAUpdateNotification);
+              setOfflineIndicator(() => offlineIndicator.OfflineIndicator);
+            }).catch(console.error);
+          }, []);
+
+          return (
+            <AuthProvider>
+              <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
+                <thirdwebReact.ThirdwebProvider>
+                  <AuthGuard>
+                    {children}
+                    {/* PWA Components */}
+                    {PWAInstallPrompt && (
+                      <PWAInstallPrompt
+                        variant="toast"
+                        position="bottom"
+                        showOnMobile={true}
+                        showOnDesktop={true}
+                        autoShow={true}
+                        delay={5000}
+                      />
+                    )}
+                    {PWAUpdateNotification && (
+                      <PWAUpdateNotification
+                        variant="toast"
+                        position="bottom"
+                        autoUpdate={false}
+                      />
+                    )}
+                    {OfflineIndicator && (
+                      <OfflineIndicator
+                        variant="banner"
+                        position="top"
+                        showOnlineStatus={true}
+                      />
+                    )}
+                  </AuthGuard>
+                </thirdwebReact.ThirdwebProvider>
+              </tonConnect.TonConnectUIProvider>
+            </AuthProvider>
+          );
+        };
 
         setProviders(() => ProvidersComponent);
         setIsReady(true);
