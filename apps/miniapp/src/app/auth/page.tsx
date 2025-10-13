@@ -65,7 +65,7 @@ export default function AuthPage() {
     if (isAuthenticated) {
       router.push('/chat');
     }
-  }, [router]);
+  };
 
   const AuthHeader = () => (
     <div className="sticky top-0 z-50 bg-pano-surface/95 backdrop-blur-md border-b border-pano-border/20">
@@ -189,6 +189,13 @@ export default function AuthPage() {
                 </div>
               </Stack>
             </Card>
+          </div>
+
+          {/* Helper text */}
+          <div className="mt-6 text-center">
+            <p className="text-gray-400 text-sm">
+              💡 Tip: Use the <span className="text-cyan-400 font-medium">Launch App</span> button on the landing page for a faster experience!
+            </p>
           </div>
         </Stack>
       </Container>
