@@ -1,92 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import { verifyTelegramAuth } from '../services/authService.js';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { join, dirname } from 'node:path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 export async function registerAuthRoutes(app: FastifyInstance) {
   const env = process.env;
 
-  // Serve auth HTML with injected THIRDWEB_CLIENT_ID
-  app.get('/auth/wallet', async (req, reply) => {
-    try {
-      const htmlPath = join(__dirname, '../views/auth.html');
-      let html = readFileSync(htmlPath, 'utf-8');
-
-      // Inject THIRDWEB_CLIENT_ID as a global variable
-      const clientId = process.env.THIRDWEB_CLIENT_ID || '';
-      const scriptTag = `<script>window.THIRDWEB_CLIENT_ID = '${clientId}';</script>`;
-      html = html.replace('</head>', `${scriptTag}\n</head>`);
-
-      reply.type('text/html').send(html);
-    } catch (error) {
-      console.error('❌ [AUTH] Failed to serve auth HTML:', error);
-      reply.code(500).send({ error: 'Failed to load authentication page' });
-    }
-  });
-
-  // Serve auth callback page for OAuth redirects
-  app.get('/auth/callback', async (req, reply) => {
-    try {
-      const htmlPath = join(__dirname, '../views/auth-callback.html');
-      let html = readFileSync(htmlPath, 'utf-8');
-
-      // Inject THIRDWEB_CLIENT_ID as a global variable
-      const clientId = process.env.THIRDWEB_CLIENT_ID || '';
-      const scriptTag = `<script>window.THIRDWEB_CLIENT_ID = '${clientId}';</script>`;
-      html = html.replace('</head>', `${scriptTag}\n</head>`);
-
-      reply.type('text/html').send(html);
-    } catch (error) {
-      console.error('❌ [AUTH] Failed to serve auth callback:', error);
-      reply.code(500).send({ error: 'Failed to load callback page' });
-    }
-  });
-
-  // Serve external auth page for Telegram WebView
-  app.get('/auth/external', async (req, reply) => {
-    try {
-      const htmlPath = join(__dirname, '../views/auth-external.html');
-      let html = readFileSync(htmlPath, 'utf-8');
-
-      // Inject THIRDWEB_CLIENT_ID as a global variable
-      const clientId = process.env.THIRDWEB_CLIENT_ID || '';
-      const scriptTag = `<script>window.THIRDWEB_CLIENT_ID = '${clientId}';</script>`;
-      html = html.replace('</head>', `${scriptTag}\n</head>`);
-
-      reply.type('text/html').send(html);
-    } catch (error) {
-      console.error('❌ [AUTH] Failed to serve external auth:', error);
-      reply.code(500).send({ error: 'Failed to load external auth page' });
-    }
-  });
-
-  // Serve auth.js
-  app.get('/static/auth.js', async (req, reply) => {
-    try {
-      const jsPath = join(__dirname, '../views/auth.js');
-      const js = readFileSync(jsPath, 'utf-8');
-      reply.type('application/javascript').send(js);
-    } catch (error) {
-      console.error('❌ [AUTH] Failed to serve auth.js:', error);
-      reply.code(500).send({ error: 'Failed to load auth script' });
-    }
-  });
-
-  // Serve auth.css
-  app.get('/static/auth.css', async (req, reply) => {
-    try {
-      const cssPath = join(__dirname, '../views/auth.css');
-      const css = readFileSync(cssPath, 'utf-8');
-      reply.type('text/css').send(css);
-    } catch (error) {
-      console.error('❌ [AUTH] Failed to serve auth.css:', error);
-      reply.code(500).send({ error: 'Failed to load auth styles' });
-    }
-  });
+  // Static files are already registered in server.ts
 
   app.post('/auth/telegram/verify', async (req, reply) => {
     try {
