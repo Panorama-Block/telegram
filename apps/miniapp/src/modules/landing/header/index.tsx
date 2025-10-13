@@ -13,16 +13,22 @@ const Header = () => {
   }
 
   return (
-    <header className='flex items-center px-4 md:px-12 py-8 w-full'>
+    <header className='relative flex items-center px-4 md:px-12 py-4 w-full'>
+      {/* Left: brand */}
       <div className="w-fit hidden md:block">
         <Image src={logo} alt="Panorama Block Logo" className='w-[80px] md:w-auto' width={140} height={105} />
       </div>
-      <div className="flex-1 flex justify-evenly md:justify-center gap-3 md:gap-8 text-sm sm:text-base md:mr-24 md:text-lg text-landing-text">
+
+      {/* Center: absolute to guarantee perfect centering regardless of left content width */}
+      <nav className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-4 md:gap-8 text-sm sm:text-base md:text-lg text-landing-text">
         <a href="#about" onClick={(e) => handleSmoothScroll(e, '#about')} className="hover:text-cyan-600 transition-colors">About</a>
         <a href="#vision" onClick={(e) => handleSmoothScroll(e, '#vision')} className="hover:text-cyan-600 transition-colors">Vision</a>
         <a href="#roadmap" onClick={(e) => handleSmoothScroll(e, '#roadmap')} className="hover:text-cyan-600 transition-colors">Roadmap</a>
         <a href="#resources" onClick={(e) => handleSmoothScroll(e, '#resources')} className="hover:text-cyan-600 transition-colors">Resources</a>
-      </div>
+      </nav>
+
+      {/* Right spacer (keeps header height consistent and allows future CTA) */}
+      <div className="ml-auto hidden md:block w-[140px]" aria-hidden />
     </header>
   )
 }

@@ -115,7 +115,7 @@ export class AgentsClient {
     // content pode ser string, array de blocos, objetos etc.
     if (typeof content === 'string') return content;
     if (Array.isArray(content)) {
-      return content
+      const pieces = content
         .map((part) => {
           if (!part) return '';
           if (typeof part === 'string') return part;
@@ -126,8 +126,10 @@ export class AgentsClient {
           }
           return '';
         })
-        .filter(Boolean)
-        .join('');
+        .filter(Boolean);
+      // Join parts with newlines to preserve Markdown blocks (headings, lists)
+      const joined = pieces.join('\n');
+      return joined;
     }
     if (typeof content === 'object' && content) {
       const anyObj = content as any;

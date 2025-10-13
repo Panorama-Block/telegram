@@ -57,15 +57,17 @@ export const metadata: Metadata = {
     },
   },
   icons: {
+    // Ensure favicon uses our brand icon (Next.js also serves /icon.svg automatically)
     icon: [
-      { url: "/icons/icon-32x32.png", sizes: "32x32", type: "image/png" },
-      { url: "/icons/icon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/logos/pblok_nav.svg", type: "image/svg+xml" },
     ],
+    // Apple touch icon falls back to an existing PNG logo
     apple: [
-      { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      { url: "/landing/logo-horse.png", sizes: "180x180", type: "image/png" },
     ],
     other: [
-      { rel: "mask-icon", url: "/icons/safari-pinned-tab.svg", color: "#00d9ff" },
+      { rel: "mask-icon", url: "/logos/pblok_nav.svg", color: "#00d9ff" },
     ],
   },
   manifest: "/manifest.json",
