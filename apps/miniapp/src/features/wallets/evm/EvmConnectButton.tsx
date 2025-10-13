@@ -41,7 +41,7 @@ export function EvmConnectButton() {
           redirectUrl,
         },
       }),
-      createWallet('io.metamask'),
+      createWallet('io.metamask', { preferDeepLink: true }),
     ];
   }, []);
 

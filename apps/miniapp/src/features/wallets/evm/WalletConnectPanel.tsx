@@ -89,7 +89,7 @@ export function WalletConnectPanel() {
           redirectUrl,
         },
       }),
-      createWallet('io.metamask'),
+      createWallet('io.metamask', { preferDeepLink: true }),
     ];
   }, []);
 
