@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { ConnectButton, useActiveAccount, useActiveWallet, useDisconnect } from 'thirdweb/react';
 import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
@@ -85,7 +85,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       return;
     }
 
-    const authApiBase = process.env.VITE_AUTH_API_BASE || 'http://localhost:3001';
+    const authApiBase = (process.env.VITE_AUTH_API_BASE || 'http://localhost:3001').replace(/\/+$/, '');
 
     try {
       setIsAuthenticating(true);
@@ -215,11 +215,15 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     }
   }, [account, client, activeWallet, router]);
 
+  // prevent infinite retries: only one auto-attempt per account address
+  const lastTriedAddressRef = useRef<string | null>(null);
+
   // Autenticação automática quando a conta estiver conectada
   useEffect(() => {
-    if (account && client && !isAuthenticated && !isAuthenticating) {
-      authenticateWithBackend();
-    }
+    if (!account || !client || isAuthenticated || isAuthenticating) return;
+    if (lastTriedAddressRef.current === account.address) return;
+    lastTriedAddressRef.current = account.address;
+    authenticateWithBackend();
   }, [account, client, isAuthenticated, isAuthenticating, authenticateWithBackend]);
 
   async function handleDisconnect() {

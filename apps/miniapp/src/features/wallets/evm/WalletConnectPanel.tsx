@@ -116,7 +116,7 @@ export function WalletConnectPanel() {
       return;
     }
 
-    const authApiBase = process.env.VITE_AUTH_API_BASE || 'http://localhost:3001';
+    const authApiBase = (process.env.VITE_AUTH_API_BASE || 'http://localhost:3001').replace(/\/+$/, '');
 
     try {
       setIsAuthenticating(true);
@@ -278,10 +278,13 @@ export function WalletConnectPanel() {
   }, [client, authenticateWithBackend]);
 
   // Autenticação automática quando a conta estiver conectada
+  // Avoid infinite retries: attempt once per address
+  const lastTriedAddressRef = React.useRef<string | null>(null);
   useEffect(() => {
-    if (account && client && !isAuthenticated && !isAuthenticating) {
-      authenticateWithBackend();
-    }
+    if (!account || !client || isAuthenticated || isAuthenticating) return;
+    if (lastTriedAddressRef.current === account.address) return;
+    lastTriedAddressRef.current = account.address;
+    authenticateWithBackend();
   }, [account, client, isAuthenticated, isAuthenticating, authenticateWithBackend]);
 
   async function handleDisconnect() {

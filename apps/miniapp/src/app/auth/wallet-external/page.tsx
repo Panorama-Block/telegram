@@ -14,7 +14,7 @@ export default function WalletExternalPage() {
 
   const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
   const bot = process.env.VITE_TELEGRAM_BOT_USERNAME || '';
-  const authApiBase = process.env.VITE_AUTH_API_BASE || '';
+  const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
 
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 

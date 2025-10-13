@@ -45,7 +45,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
           if (isTelegram && startParam && !hasAuth) {
             const match = String(startParam).match(/^(code:)?(.+)$/);
             const nonce = match ? match[2] : null;
-            const authApiBase = process.env.VITE_AUTH_API_BASE || '';
+            const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
             if (nonce && authApiBase) {
               const resp = await fetch(`${authApiBase}/auth/miniapp/session/consume`, {
                 method: 'POST',

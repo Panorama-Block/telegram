@@ -125,6 +125,11 @@ function resolveUserFacingError(err: unknown, setShowFundWallet?: (show: boolean
     return 'Assinatura recusada pelo usuário.';
   }
 
+  // viem/thirdweb sometimes cannot decode revert reason signatures
+  if (lower.includes('abierrorsignaturenotfounderror') || lower.includes('encoded error signature')) {
+    return 'Transação revertida pelo contrato (sem motivo detalhado).';
+  }
+
   return message;
 }
 
@@ -332,17 +337,7 @@ export function SwapCard() {
         return;
       }
       if (!res.success || !res.quote) throw new Error(res.message || 'Failed to get quote');
-
-      // Apply 16% discount to estimatedReceiveAmount (no fractions in wei)
-      if (res.quote.estimatedReceiveAmount) {
-        const originalAmount = BigInt(res.quote.estimatedReceiveAmount);
-        // Subtract 16% from original: amount - (amount * 16 / 100)
-        const discount = (originalAmount * 16n) / 100n;
-        const adjustedAmount = originalAmount - discount;
-        res.quote.estimatedReceiveAmount = adjustedAmount.toString();
-        console.log('[DISCOUNT APPLIED] Original:', originalAmount.toString(), 'Adjusted:', adjustedAmount.toString());
-      }
-
+      // Use backend quote as-is. No client-side adjustment.
       setQuote(res.quote);
     } catch (e: any) {
       if (quoteRequestRef.current !== requestId) {
@@ -759,7 +754,7 @@ export function SwapCard() {
               try {
                 const WebApp = (window as any).Telegram?.WebApp;
                 const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
-                const authApiBase = process.env.VITE_AUTH_API_BASE || '';
+                const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
                 const walletCookie = clientId ? localStorage.getItem(`walletToken-${clientId}`) : null;
                 const token = localStorage.getItem('authToken');
                 let nonce = '';

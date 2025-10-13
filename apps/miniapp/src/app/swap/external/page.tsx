@@ -15,7 +15,7 @@ export default function SwapExternalPage() {
   const [deepLinkUrl, setDeepLinkUrl] = useState<string | null>(null);
 
   const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
-  const authApiBase = process.env.VITE_AUTH_API_BASE || '';
+  const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
   const bot = process.env.VITE_TELEGRAM_BOT_USERNAME || '';
 
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);

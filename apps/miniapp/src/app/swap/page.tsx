@@ -319,34 +319,26 @@ export default function SwapPage() {
 
       const res = await swapApi.quote(body);
 
-      // Apply -16% discount to estimatedReceiveAmount to compensate for Thirdweb SDK discrepancy
-      const adjustedRes = {
-        ...res,
-        quote: res.quote ? {
-          ...res.quote,
-          estimatedReceiveAmount: (BigInt(res.quote.estimatedReceiveAmount) * BigInt(84) / BigInt(100)).toString() // 16% discount
-        } : res.quote
-      };
-
+      // Use backend quote as-is. Do not adjust client-side.
       if (quoteRequestRef.current !== requestId) {
         return;
       }
 
-      if (!adjustedRes.success || !adjustedRes.quote) {
-        throw new Error(adjustedRes.message || 'Failed to get quote');
+      if (!res.success || !res.quote) {
+        throw new Error(res.message || 'Failed to get quote');
       }
 
-      setQuote(adjustedRes.quote);
+      setQuote(res.quote);
 
       // Update buy amount from quote
-      if (adjustedRes.quote.estimatedReceiveAmount && buyToken && client) {
+      if (res.quote.estimatedReceiveAmount && buyToken && client) {
         // Get correct decimals for the destination token
         const decimals = await getTokenDecimals({
           client,
           chainId: toChainId,
           token: buyToken.address
         });
-        const formatted = formatAmountHuman(BigInt(adjustedRes.quote.estimatedReceiveAmount), decimals);
+        const formatted = formatAmountHuman(BigInt(res.quote.estimatedReceiveAmount), decimals);
         setBuyAmount(formatted);
       }
     } catch (e: any) {
@@ -521,7 +513,7 @@ export default function SwapPage() {
       setBuyAmount('');
       setQuote(null);
     } catch (e: any) {
-      const errorMessage = e.message || 'Failed to execute swap';
+      let errorMessage = e.message || 'Failed to execute swap';
       const lowerError = errorMessage.toLowerCase();
 
       // Check if it's an insufficient funds error
@@ -530,6 +522,11 @@ export default function SwapPage() {
           lowerError.includes('32003') ||
           lowerError.includes('gas required exceeds allowance')) {
         setShowFundWallet(true);
+      }
+
+      // Clean up noisy ABI decode errors from viem/thirdweb
+      if (lowerError.includes('abierrorsignaturenotfounderror') || lowerError.includes('encoded error signature')) {
+        errorMessage = 'Transação revertida pelo contrato (sem motivo detalhado).';
       }
 
       setError(errorMessage);
