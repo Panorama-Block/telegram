@@ -69,10 +69,11 @@ export async function createServer(): Promise<FastifyInstance> {
   const serverOptions: FastifyServerOptions = {
     logger: {
       level: 'info',
-      transport: process.env['NODE_ENV'] === 'production' ? undefined : {
-        target: 'pino-pretty',
-        options: { translateTime: 'SYS:standard' },
-      },
+      // Desabilitar pino-pretty devido a incompatibilidade com Node.js v24
+      // transport: process.env['NODE_ENV'] === 'production' ? undefined : {
+      //   target: 'pino-pretty',
+      //   options: { translateTime: 'SYS:standard' },
+      // },
     },
   };
 

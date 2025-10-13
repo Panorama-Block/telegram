@@ -3,6 +3,7 @@ class AuthManager {
     constructor() {
         this.client = null;
         this.wallet = null;
+        this.account = null;
         this.isConnecting = false;
         this.init();
     }
@@ -15,8 +16,14 @@ class AuthManager {
 
     setupClient() {
         try {
+            const clientId = window.THIRDWEB_CLIENT_ID;
+
+            if (!clientId) {
+                throw new Error('THIRDWEB_CLIENT_ID não configurado');
+            }
+
             this.client = thirdweb.createThirdwebClient({
-                clientId: 'YOUR_CLIENT_ID' // Replace with actual client ID
+                clientId: clientId
             });
             console.log('✅ [AUTH] Thirdweb client initialized');
         } catch (error) {
@@ -26,36 +33,96 @@ class AuthManager {
     }
 
     setupEventListeners() {
-        const connectBtn = document.getElementById('connectBtn');
-        if (connectBtn) {
-            connectBtn.addEventListener('click', () => this.connectWallet());
+        // MetaMask button
+        const metamaskBtn = document.getElementById('metamaskBtn');
+        if (metamaskBtn) {
+            metamaskBtn.addEventListener('click', () => this.connectWallet('metamask'));
+        }
+
+        // Google button
+        const googleBtn = document.getElementById('googleBtn');
+        if (googleBtn) {
+            googleBtn.addEventListener('click', () => this.connectWallet('google'));
+        }
+
+        // Telegram button
+        const telegramBtn = document.getElementById('telegramBtn');
+        if (telegramBtn) {
+            telegramBtn.addEventListener('click', () => this.connectWallet('telegram'));
+        }
+
+        // Email button
+        const emailBtn = document.getElementById('emailBtn');
+        if (emailBtn) {
+            emailBtn.addEventListener('click', () => this.connectWallet('email'));
         }
     }
 
-    async connectWallet() {
+    async connectWallet(walletType) {
         if (this.isConnecting) return;
-        
+
         this.isConnecting = true;
-        this.showLoading('Conectando carteira...');
+        this.showLoading(`Conectando via ${walletType}...`);
 
         try {
-            console.log('🔗 [AUTH] Starting wallet connection...');
-            
-            // Create wallet instance
-            this.wallet = thirdweb.createWallet('io.metamask');
-            
+            console.log(`🔗 [AUTH] Starting ${walletType} connection...`);
+
+            // Check if we're in Telegram WebView
+            const isTelegram = !!window.Telegram?.WebApp;
+
+            // For OAuth providers in Telegram, open external window
+            if (isTelegram && (walletType === 'google' || walletType === 'telegram')) {
+                this.openOAuthInBrowser(walletType);
+                return;
+            }
+
+            // Create wallet instance based on type
+            if (walletType === 'metamask') {
+                this.wallet = thirdweb.createWallet('io.metamask');
+            } else if (walletType === 'google' || walletType === 'telegram' || walletType === 'email') {
+                // Use in-app wallet for OAuth providers
+                this.wallet = thirdweb.inAppWallet();
+            } else {
+                throw new Error('Tipo de carteira não suportado');
+            }
+
             // Connect wallet
-            const account = await this.wallet.connect({
-                client: this.client
-            });
+            let account;
+            if (walletType === 'metamask') {
+                account = await this.wallet.connect({
+                    client: this.client
+                });
+            } else if (walletType === 'google') {
+                // Use redirect mode for OAuth to avoid CORS issues
+                const redirectUrl = `${window.location.origin}/auth/callback`;
+                account = await this.wallet.connect({
+                    client: this.client,
+                    strategy: 'google',
+                    redirectUrl: redirectUrl
+                });
+            } else if (walletType === 'telegram') {
+                const redirectUrl = `${window.location.origin}/auth/callback`;
+                account = await this.wallet.connect({
+                    client: this.client,
+                    strategy: 'telegram',
+                    redirectUrl: redirectUrl
+                });
+            } else if (walletType === 'email') {
+                account = await this.wallet.connect({
+                    client: this.client,
+                    strategy: 'email',
+                    email: prompt('Digite seu email:')
+                });
+            }
 
             if (!account) {
                 throw new Error('Falha ao conectar carteira');
             }
 
+            this.account = account;
             console.log('✅ [AUTH] Wallet connected:', account.address);
             this.showSuccess('Carteira conectada com sucesso!');
-            
+
             // Proceed with authentication
             await this.authenticate(account);
 
@@ -67,56 +134,94 @@ class AuthManager {
         }
     }
 
+    openOAuthInBrowser(walletType) {
+        try {
+            const strategy = walletType === 'google' ? 'google' : 'telegram';
+            const url = `${window.location.origin}/auth/external?strategy=${strategy}`;
+
+            console.log(`🌐 [AUTH] Opening OAuth in external browser: ${url}`);
+
+            // Use Telegram WebApp API to open external link
+            if (window.Telegram?.WebApp?.openLink) {
+                window.Telegram.WebApp.openLink(url, { try_instant_view: false });
+                this.showInfo('Por favor, complete a autenticação na janela que se abriu.');
+            } else {
+                // Fallback for non-Telegram environments
+                window.open(url, '_blank');
+                this.showInfo('Por favor, complete a autenticação na nova aba.');
+            }
+        } catch (error) {
+            console.error('❌ [AUTH] Failed to open OAuth window:', error);
+            this.showError('Falha ao abrir janela de autenticação');
+        } finally {
+            this.isConnecting = false;
+        }
+    }
+
     async authenticate(account) {
         try {
-            this.showLoading('Autenticando...');
+            this.showLoading('Autenticando com backend...');
             console.log('🔐 [AUTH] Starting authentication for:', account.address);
 
-            // Create smart wallet
-            const smartWallet = thirdweb.smartWallet({
-                factoryAddress: "0x9406Cc6185a346906296840746125a0E44976454",
-                gasless: true,
-                client: this.client,
-                chain: thirdweb.sepolia
+            const authApiBase = window.location.origin.replace(/:\d+/, ':3001');
+
+            // 1. Get login payload from backend
+            const loginResponse = await fetch(`${authApiBase}/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: account.address })
             });
 
-            // Connect smart wallet
-            await smartWallet.connect({
-                personalWallet: this.wallet
-            });
+            if (!loginResponse.ok) {
+                throw new Error('Falha ao obter payload de login');
+            }
 
-            console.log('✅ [AUTH] Smart wallet connected');
+            const { payload } = await loginResponse.json();
+            console.log('📝 [AUTH] Login payload received from backend');
 
-            // Create session key
-            const sessionKeyWallet = await smartWallet.createSessionKey();
-            const sessionKeyAccount = await sessionKeyWallet.getAccount();
-
-            console.log('✅ [AUTH] Session key created:', sessionKeyAccount.address);
-
-            // Generate login payload
-            const loginPayload = await smartWallet.generateLoginPayload({
-                payload: {
-                    address: account.address,
-                    chainId: 11155111, // Sepolia
-                    nonce: Date.now().toString()
+            // 2. Sign payload using the connected wallet
+            let signature;
+            try {
+                // Try using signLoginPayload if available
+                if (thirdweb.signLoginPayload) {
+                    const signResult = await thirdweb.signLoginPayload({
+                        account: account,
+                        payload: payload
+                    });
+                    signature = typeof signResult === 'string' ? signResult : signResult.signature;
+                } else {
+                    // Fallback to direct message signing
+                    const messageToSign = JSON.stringify(payload);
+                    signature = await this.wallet.signMessage({ message: messageToSign });
                 }
-            });
-
-            console.log('📝 [AUTH] Login payload generated');
-
-            // Sign login payload
-            const signature = await sessionKeyWallet.signMessage({
-                message: loginPayload.payload
-            });
+            } catch (error) {
+                console.error('❌ [AUTH] Signing failed:', error);
+                throw new Error('Falha ao assinar payload');
+            }
 
             console.log('✍️ [AUTH] Payload signed');
 
-            // Send authentication to backend
+            // 3. Verify signature with backend
+            const verifyResponse = await fetch(`${authApiBase}/auth/verify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ payload, signature })
+            });
+
+            if (!verifyResponse.ok) {
+                throw new Error('Falha na verificação de assinatura');
+            }
+
+            const { token } = await verifyResponse.json();
+            console.log('✅ [AUTH] Authentication successful');
+
+            // 4. Send to gateway backend
             await this.sendAuthToBackend({
                 address: account.address,
-                sessionKeyAddress: sessionKeyAccount.address,
-                loginPayload: loginPayload.payload,
-                signature: signature
+                sessionKeyAddress: account.address, // Use same address for simplicity
+                loginPayload: payload,
+                signature: signature,
+                token: token
             });
 
         } catch (error) {
