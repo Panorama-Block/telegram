@@ -10,7 +10,7 @@ declare global {
     };
   }
 }
-import { Sidebar, SignatureApprovalButton } from '@/shared/ui';
+import { Sidebar, SignatureApprovalButton, MessageContent } from '@/shared/ui';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import XIcon from '../../../public/icons/X.svg';
@@ -1138,10 +1138,8 @@ export default function ChatPage() {
                               {message.role === 'user' ? 'You' : 'Zico'}
                             </span>
                           </div>
-                          <div className={`text-[15px] text-gray-200 break-words leading-relaxed ${
-                            message.role === 'user' ? 'text-right' : ''
-                          }`}>
-                            {message.content}
+                          <div className={message.role === 'user' ? 'text-right' : ''}>
+                            <MessageContent content={message.content} role={message.role} />
 
                             {/* Swap Interface */}
                             {message.role === 'assistant' &&
