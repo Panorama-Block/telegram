@@ -6,15 +6,12 @@ config();
 
 const nextConfig: NextConfig = {
   basePath: '/miniapp',
-<<<<<<< HEAD
   async redirects() {
     return [
       // Redirect root to basePath so www.panoramablock.com -> /miniapp
       { source: '/', destination: '/miniapp', permanent: false },
     ];
   },
-=======
->>>>>>> parent of a6e9ca5 (Merge pull request #39 from Panorama-Block/fix/telegram-auth)
   images: {
     remotePatterns: [
       {
