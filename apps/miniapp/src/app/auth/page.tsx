@@ -15,28 +15,51 @@ import zicoBlue from '../../../public/icons/zico_blue.svg';
 export default function AuthPage() {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [redirectCountdown, setRedirectCountdown] = useState(3);
 
   // Check wallet authentication (not Telegram auth)
   useEffect(() => {
+    let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
     const checkAuth = () => {
-      const authToken = localStorage.getItem('authToken');
+      const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
       const wasAuthenticated = isAuthenticated;
       const isNowAuthenticated = !!authToken;
 
       setIsAuthenticated(isNowAuthenticated);
 
-      // Auto-redirect to chat when authentication happens
+      // Auto-redirect to chat when authentication happens (with short countdown)
       if (!wasAuthenticated && isNowAuthenticated) {
-        router.push('/chat');
+        let counter = 3;
+        setRedirectCountdown(counter);
+        countdownInterval = setInterval(() => {
+          counter -= 1;
+          setRedirectCountdown(counter);
+          if (counter <= 0) {
+            if (countdownInterval) clearInterval(countdownInterval);
+            router.push('/chat');
+          }
+        }, 1000);
       }
     };
 
     checkAuth();
 
-    // Listen for storage changes (when wallet authenticates)
+    // Poll for changes while auth UI is open
     const interval = setInterval(checkAuth, 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (countdownInterval) clearInterval(countdownInterval);
+    };
   }, [isAuthenticated, router]);
+
+  // Immediate redirect if already authenticated on mount
+  useEffect(() => {
+    const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    if (authToken) {
+      router.push('/chat');
+    }
+  }, [router]);
 
   const handleContinue = () => {
     if (isAuthenticated) {
@@ -109,22 +132,32 @@ export default function AuthPage() {
             <WalletConnectPanel />
           </Card>
 
-          {/* Continue Button (shown when authenticated) */}
+          {/* Authenticated notice: countdown + manual continue */}
           {isAuthenticated && (
-            <Stack direction="vertical" gap="md" align="center">
-              <Button
-                variant="primary"
-                size="lg"
-                fullWidth
-                onClick={handleContinue}
-                className="animate-fadeIn"
-              >
-                Continue to Chat
-              </Button>
-              <p className="text-xs text-pano-text-muted text-center">
-                You&apos;ll be redirected automatically in a moment
-              </p>
-            </Stack>
+            <>
+              <div className="mt-6 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-green-400 font-medium">
+                    Redirecting to chat in {redirectCountdown}s...
+                  </span>
+                </div>
+              </div>
+              <Stack direction="vertical" gap="md" align="center">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  onClick={handleContinue}
+                  className="animate-fadeIn"
+                >
+                  Continue to Chat
+                </Button>
+                <p className="text-xs text-pano-text-muted text-center">
+                  You&apos;ll be redirected automatically in a moment
+                </p>
+              </Stack>
+            </>
           )}
 
           {/* Features Preview */}
