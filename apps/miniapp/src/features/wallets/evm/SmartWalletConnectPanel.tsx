@@ -104,10 +104,13 @@ export function SmartWalletConnectPanel() {
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const isAlreadyAuthenticated = !!addressFromToken;
 
+  // Avoid infinite retries: attempt once per address
+  const lastTriedAddressRef = React.useRef<string | null>(null);
   useEffect(() => {
-    if (account && client && !isAuthenticated && !isAuthenticating) {
-      authenticateWithBackend();
-    }
+    if (!account || !client || isAuthenticated || isAuthenticating) return;
+    if (lastTriedAddressRef.current === account.address) return;
+    lastTriedAddressRef.current = account.address;
+    authenticateWithBackend();
   }, [account, client, isAuthenticated, isAuthenticating]);
 
   const authenticateWithBackend = async () => {
@@ -125,7 +128,7 @@ export function SmartWalletConnectPanel() {
 
       const loginPayload = { address: normalizedAddress };
 
-      const authApiBase = process.env.VITE_AUTH_API_BASE || 'http://localhost:3001';
+      const authApiBase = (process.env.VITE_AUTH_API_BASE || 'http://localhost:3001').replace(/\/+$/, '');
       const loginResponse = await fetch(`${authApiBase}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
