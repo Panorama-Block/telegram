@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autenticação em andamento...</title>
+    <script src="https://unpkg.com/thirdweb@5"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .callback-container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .loader {
+            width: 48px;
+            height: 48px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        h1 {
+            margin: 0 0 10px;
+            color: #333;
+            font-size: 24px;
+        }
+
+        p {
+            color: #666;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="callback-container">
+        <div class="loader"></div>
+        <h1>Autenticando...</h1>
+        <p>Por favor, aguarde enquanto concluímos sua autenticação.</p>
+    </div>
+
+    <script>
+        console.log('🔐 [AUTH CALLBACK] Processing OAuth callback...');
+
+        // This page will be handled by Thirdweb SDK automatically
+        // The SDK will process the OAuth response and redirect back
+        window.addEventListener('load', () => {
+            console.log('📍 [AUTH CALLBACK] URL:', window.location.href);
+            console.log('📍 [AUTH CALLBACK] Search params:', window.location.search);
+
+            // Check if we have auth data in URL
+            const params = new URLSearchParams(window.location.search);
+
+            // Log all params for debugging
+            for (const [key, value] of params) {
+                console.log(`  ${key}: ${value}`);
+            }
+        });
+    </script>
+</body>
+</html>
