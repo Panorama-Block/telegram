@@ -1,53 +1,33 @@
-// apps/miniapp/next.config.ts
 import type { NextConfig } from "next";
-// opcional: Next já carrega .env; pode remover se quiser.
-import { config } from "dotenv";
-config();
+import { config as loadEnv } from "dotenv";
+loadEnv();
 
 const nextConfig: NextConfig = {
-  // seu app vive sob /miniapp
+  // o app vive sob /miniapp
   basePath: "/miniapp",
 
-  // REDIRECTS (mudam a URL no browser)
   async redirects() {
     return [
-      // raiz -> /miniapp (permanente)
-      { source: "/", destination: "/miniapp", permanent: true },
-      // se quiser que /auth mostre /miniapp/auth na URL, troque os rewrites abaixo por redirects:
-      // { source: "/auth", destination: "/miniapp/auth", permanent: true },
-      // { source: "/auth/:path*", destination: "/miniapp/auth/:path*", permanent: true },
-      // { source: "/chat", destination: "/miniapp/chat", permanent: true },
-      // { source: "/swap", destination: "/miniapp/swap", permanent: true },
-      // { source: "/swap/:path*", destination: "/miniapp/swap/:path*", permanent: true },
-      // { source: "/newchat", destination: "/miniapp/newchat", permanent: true },
-      // { source: "/api/tonconnect-manifest", destination: "/miniapp/api/tonconnect-manifest", permanent: true },
-    ];
-  },
+      // Raiz do domínio -> /miniapp (sem duplicar basePath)
+      { source: "/", destination: "/miniapp", permanent: true, basePath: false },
 
-  // REWRITES (mantêm a URL curta; só “proxyam” para /miniapp)
-  async rewrites() {
-    return [
-      { source: "/auth", destination: "/miniapp/auth" },
-      { source: "/auth/:path*", destination: "/miniapp/auth/:path*" },
-      { source: "/chat", destination: "/miniapp/chat" },
-      { source: "/swap", destination: "/miniapp/swap" },
-      { source: "/swap/:path*", destination: "/miniapp/swap/:path*" },
-      { source: "/newchat", destination: "/miniapp/newchat" },
-      { source: "/api/tonconnect-manifest", destination: "/miniapp/api/tonconnect-manifest" },
+      // (OPCIONAL) Rotas curtas -> /miniapp/...
+      { source: "/auth", destination: "/miniapp/auth", permanent: true, basePath: false },
+      { source: "/auth/:path*", destination: "/miniapp/auth/:path*", permanent: true, basePath: false },
+      { source: "/chat", destination: "/miniapp/chat", permanent: true, basePath: false },
+      { source: "/swap", destination: "/miniapp/swap", permanent: true, basePath: false },
+      { source: "/swap/:path*", destination: "/miniapp/swap/:path*", permanent: true, basePath: false },
+      { source: "/newchat", destination: "/miniapp/newchat", permanent: true, basePath: false },
+      { source: "/api/tonconnect-manifest", destination: "/miniapp/api/tonconnect-manifest", permanent: true, basePath: false },
     ];
   },
 
   images: {
     remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "assets.coingecko.com",
-        pathname: "/coins/images/**",
-      },
+      { protocol: "https", hostname: "assets.coingecko.com", pathname: "/coins/images/**" },
     ],
   },
 
-  // OBS: variáveis no cliente em Next devem começar com NEXT_PUBLIC_
   env: {
     VITE_GATEWAY_BASE: process.env.PUBLIC_GATEWAY_URL || "",
     VITE_SWAP_API_BASE: process.env.SWAP_API_BASE || "",
@@ -63,10 +43,7 @@ const nextConfig: NextConfig = {
   },
 
   webpack: (config) => {
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      buffer: require.resolve("buffer/"),
-    };
+    config.resolve.fallback = { ...config.resolve.fallback, buffer: require.resolve("buffer/") };
     return config;
   },
 };
