@@ -189,7 +189,7 @@ export function SwapCard() {
           redirectUrl,
         },
       }),
-      createWallet('io.metamask'),
+      createWallet('io.metamask', { preferDeepLink: true }),
     ];
   }, []);
   const supportedChains = useMemo(() => networks.map((n) => n.chainId), []);

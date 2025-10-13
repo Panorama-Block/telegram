@@ -95,7 +95,7 @@ export function SmartWalletConnectPanel() {
           redirectUrl,
         },
       }),
-      createWallet('io.metamask'),
+      createWallet('io.metamask', { preferDeepLink: true }),
     ];
   }, []);
 
