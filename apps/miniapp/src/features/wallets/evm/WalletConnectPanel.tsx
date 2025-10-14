@@ -116,7 +116,10 @@ export function WalletConnectPanel() {
       return;
     }
 
-    const authApiBase = (process.env.VITE_AUTH_API_BASE || 'http://localhost:3001').replace(/\/+$/, '');
+    const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
+    if (!authApiBase) {
+      throw new Error('VITE_AUTH_API_BASE não configurado');
+    }
 
     try {
       setIsAuthenticating(true);
