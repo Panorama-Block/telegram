@@ -56,7 +56,8 @@ export default function NewChatPage() {
         if (!account) return;
 
         setStatus('Autenticando com backend...');
-        const authApiBase = (process.env.VITE_AUTH_API_BASE || 'http://localhost:3001').replace(/\/+$/, '');
+        const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
+        if (!authApiBase) throw new Error('VITE_AUTH_API_BASE não configurado');
         const loginPayload = { address: account.address };
         const loginResponse = await fetch(`${authApiBase}/auth/login`, {
           method: 'POST',
