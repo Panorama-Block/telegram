@@ -1,0 +1,300 @@
+/**
+ * DCA Service API Client
+ * Integrates with panorama-block-backend DCA service
+ */
+
+const DCA_API_URL = process.env.DCA_API_BASE || process.env.NEXT_PUBLIC_DCA_API_BASE || 'http://localhost:3004';
+
+export interface SmartAccountPermissions {
+  approvedTargets: string[];
+  nativeTokenLimitPerTransaction: string;
+  startTimestamp: number;
+  endTimestamp: number;
+}
+
+export interface SmartAccount {
+  address: string;
+  userId: string;
+  name: string;
+  createdAt: number;
+  sessionKeyAddress: string;
+  expiresAt: number;
+  permissions: SmartAccountPermissions;
+}
+
+export interface CreateAccountRequest {
+  userId: string;
+  name: string;
+  permissions: {
+    approvedTargets: string[];
+    nativeTokenLimit: string;
+    durationDays: number;
+  };
+}
+
+export interface CreateAccountResponse {
+  smartAccountAddress: string;
+  sessionKeyAddress: string;
+  sessionKeyPrivateKey: string;
+  expiresAt: Date;
+}
+
+export interface DCAStrategy {
+  smartAccountId: string;
+  fromToken: string;
+  toToken: string;
+  fromChainId: number;
+  toChainId: number;
+  amount: string;
+  interval: 'daily' | 'weekly' | 'monthly';
+  lastExecuted: number;
+  nextExecution: number;
+  isActive: boolean;
+}
+
+export interface CreateStrategyRequest {
+  smartAccountId: string;
+  fromToken: string;
+  toToken: string;
+  fromChainId: number;
+  toChainId: number;
+  amount: string;
+  interval: 'daily' | 'weekly' | 'monthly';
+}
+
+export interface ExecutionHistory {
+  timestamp: number;
+  txHash: string;
+  amount: string;
+  fromToken: string;
+  toToken: string;
+  status: 'success' | 'failed';
+  error?: string;
+}
+
+export class DCAApiError extends Error {
+  constructor(message: string, public status?: number) {
+    super(message);
+    this.name = 'DCAApiError';
+  }
+}
+
+/**
+ * Create a new smart account
+ */
+export async function createSmartAccount(request: CreateAccountRequest): Promise<CreateAccountResponse> {
+  try {
+    const response = await fetch(`${DCA_API_URL}/dca/create-account`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new DCAApiError(error.error || 'Failed to create smart account', response.status);
+    }
+
+    const data = await response.json();
+    return {
+      ...data,
+      expiresAt: new Date(data.expiresAt)
+    };
+  } catch (error: any) {
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    throw new DCAApiError(error.message || 'Network error');
+  }
+}
+
+/**
+ * Get all smart accounts for a user
+ */
+export async function getUserAccounts(userId: string): Promise<SmartAccount[]> {
+  try {
+    const response = await fetch(`${DCA_API_URL}/dca/accounts/${userId}`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new DCAApiError(error.error || 'Failed to fetch accounts', response.status);
+    }
+
+    const data = await response.json();
+    return data.accounts;
+  } catch (error: any) {
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    throw new DCAApiError(error.message || 'Network error');
+  }
+}
+
+/**
+ * Get a single smart account
+ */
+export async function getSmartAccount(address: string): Promise<SmartAccount> {
+  try {
+    const response = await fetch(`${DCA_API_URL}/dca/account/${address}`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new DCAApiError(error.error || 'Failed to fetch account', response.status);
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    throw new DCAApiError(error.message || 'Network error');
+  }
+}
+
+/**
+ * Delete a smart account
+ */
+export async function deleteSmartAccount(address: string, userId: string): Promise<void> {
+  try {
+    const response = await fetch(`${DCA_API_URL}/dca/account/${address}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new DCAApiError(error.error || 'Failed to delete account', response.status);
+    }
+  } catch (error: any) {
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    throw new DCAApiError(error.message || 'Network error');
+  }
+}
+
+/**
+ * Create a DCA strategy
+ */
+export async function createStrategy(request: CreateStrategyRequest): Promise<{ strategyId: string; nextExecution: Date }> {
+  try {
+    const response = await fetch(`${DCA_API_URL}/dca/create-strategy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new DCAApiError(error.error || 'Failed to create strategy', response.status);
+    }
+
+    const data = await response.json();
+    return {
+      ...data,
+      nextExecution: new Date(data.nextExecution)
+    };
+  } catch (error: any) {
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    throw new DCAApiError(error.message || 'Network error');
+  }
+}
+
+/**
+ * Get all strategies for a smart account
+ */
+export async function getAccountStrategies(smartAccountId: string): Promise<DCAStrategy[]> {
+  try {
+    const response = await fetch(`${DCA_API_URL}/dca/strategies/${smartAccountId}`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new DCAApiError(error.error || 'Failed to fetch strategies', response.status);
+    }
+
+    const data = await response.json();
+    return data.strategies;
+  } catch (error: any) {
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    throw new DCAApiError(error.message || 'Network error');
+  }
+}
+
+/**
+ * Toggle strategy active status
+ */
+export async function toggleStrategy(strategyId: string, isActive: boolean): Promise<void> {
+  try {
+    const response = await fetch(`${DCA_API_URL}/dca/strategy/${strategyId}/toggle`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ isActive }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new DCAApiError(error.error || 'Failed to toggle strategy', response.status);
+    }
+  } catch (error: any) {
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    throw new DCAApiError(error.message || 'Network error');
+  }
+}
+
+/**
+ * Delete a strategy
+ */
+export async function deleteStrategy(strategyId: string): Promise<void> {
+  try {
+    const response = await fetch(`${DCA_API_URL}/dca/strategy/${strategyId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new DCAApiError(error.error || 'Failed to delete strategy', response.status);
+    }
+  } catch (error: any) {
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    throw new DCAApiError(error.message || 'Network error');
+  }
+}
+
+/**
+ * Get execution history for a smart account
+ */
+export async function getExecutionHistory(smartAccountId: string, limit = 100): Promise<ExecutionHistory[]> {
+  try {
+    const response = await fetch(`${DCA_API_URL}/dca/history/${smartAccountId}?limit=${limit}`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new DCAApiError(error.error || 'Failed to fetch history', response.status);
+    }
+
+    const data = await response.json();
+    return data.history;
+  } catch (error: any) {
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    throw new DCAApiError(error.message || 'Network error');
+  }
+}
