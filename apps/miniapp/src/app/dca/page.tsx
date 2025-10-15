@@ -15,6 +15,7 @@ import {
 } from '@/features/dca/api';
 import SignMessageTest from '@/features/dca/SignMessageTest';
 import DepositModal from '@/features/dca/DepositModal';
+import SmartAccountDetails from '@/features/dca/SmartAccountDetails';
 import { useSessionKey } from '@/features/dca/useSessionKey';
 
 // Use the SmartAccount type from API
@@ -312,6 +313,7 @@ export default function DCAPage() {
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<SubAccount | null>(null);
+  const [expandedAccountAddress, setExpandedAccountAddress] = useState<string | null>(null);
 
   // Load subaccounts from backend API on mount
   useEffect(() => {
@@ -619,17 +621,41 @@ export default function DCAPage() {
                           })}
                         </div>
 
-                        {/* Deposit Button */}
-                        <button
-                          onClick={() => {
-                            setSelectedAccount(subAccount);
-                            setDepositModalOpen(true);
-                          }}
-                          disabled={expired}
-                          className="mt-4 w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          💰 Depositar AVAX nesta Smart Account
-                        </button>
+                        {/* Action Buttons */}
+                        <div className="mt-4 flex gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedAccount(subAccount);
+                              setDepositModalOpen(true);
+                            }}
+                            disabled={expired}
+                            className="flex-1 py-3 rounded-xl font-semibold bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            💰 Depositar
+                          </button>
+                          <button
+                            onClick={() => {
+                              setExpandedAccountAddress(
+                                expandedAccountAddress === subAccount.address
+                                  ? null
+                                  : subAccount.address
+                              );
+                            }}
+                            className="px-4 py-3 rounded-xl font-semibold bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 transition-all"
+                          >
+                            {expandedAccountAddress === subAccount.address ? '▼ Ocultar' : '📊 Detalhes'}
+                          </button>
+                        </div>
+
+                        {/* Expanded Details */}
+                        {expandedAccountAddress === subAccount.address && (
+                          <div className="mt-4 p-4 bg-[#0d1117] rounded-xl border border-cyan-500/20">
+                            <SmartAccountDetails
+                              smartAccountAddress={subAccount.address}
+                              smartAccountName={subAccount.name}
+                            />
+                          </div>
+                        )}
                       </div>
                     );
                   })}
