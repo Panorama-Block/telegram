@@ -20,6 +20,8 @@ import Briefcase from '../../../public/icons/Briefcase.svg';
 import ComboChart from '../../../public/icons/ComboChart.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
 import WalletIcon from '../../../public/icons/Wallet.svg';
+import ChatIcon from '../../../public/icons/chat.svg';
+import LightningIcon from '../../../public/icons/lightning.svg';
 import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -157,6 +159,7 @@ export default function ChatPage() {
   const [isLargeScreen, setIsLargeScreen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [exploreDropdownOpen, setExploreDropdownOpen] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messagesByConversation, setMessagesByConversation] = useState<Record<string, Message[]>>({});
@@ -882,255 +885,307 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-screen bg-[#0d1117] text-white flex overflow-hidden">
-      {/* Left Sidebar with Chat Conversations */}
-      {sidebarOpen && (
-        <>
-          {/* Overlay - only on mobile/tablet */}
-          {!isLargeScreen && (
-            <div
-              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-              onClick={() => setSidebarOpen(false)}
-            />
-          )}
-          <div className={`h-full w-80 bg-[#0d1117] border-r border-cyan-500/20 overflow-y-auto flex flex-col ${
-            isLargeScreen ? 'relative' : 'fixed top-0 left-0 z-50 h-screen'
-          }`}>
-            {/* Header with logo - Fixed */}
-            <div className="flex-shrink-0 px-4 py-3 border-b border-cyan-500/20 flex items-center justify-between">
-              <Image
-                src={zicoBlue}
-                alt="Zico"
-                width={32}
-                height={32}
+    <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
+      {/* Top Navbar - Horizontal across full width */}
+      <header className="flex-shrink-0 bg-black border-b border-gray-800/50 px-6 py-3 z-50">
+        <div className="flex items-center justify-between max-w-[1920px] mx-auto">
+          {/* Left: Menu toggle (mobile only) + Logo (desktop only) + Navigation */}
+          <div className="flex items-center gap-8">
+            {!isLargeScreen && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="text-gray-400 hover:text-white"
+                aria-label="Open menu"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            )}
+
+            {/* Logo - Desktop on left, Mobile centered separately */}
+            {!isLargeScreen ? (
+              <div className="flex items-center gap-2">
+                <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
+                <span className="text-white font-semibold text-sm tracking-wide">PANORAMA</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-8">
+                <div className="flex items-center gap-2">
+                  <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
+                  <span className="text-white font-semibold text-sm tracking-wide">PANORAMA BLOCK</span>
+                </div>
+
+                {/* Navigation Menu - Desktop only */}
+                <nav className="flex items-center gap-6 text-sm">
+                  {/* Explore Dropdown */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setExploreDropdownOpen(!exploreDropdownOpen)}
+                      className="text-gray-400 hover:text-white transition-colors flex items-center gap-1"
+                    >
+                      Explore
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {exploreDropdownOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setExploreDropdownOpen(false)}
+                        />
+                        <div className="absolute top-full left-0 mt-2 w-48 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg shadow-xl z-20">
+                          <div className="py-2">
+                            <a
+                              href="https://x.com/panorama_block"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                              </svg>
+                              Twitter
+                            </a>
+                            <a
+                              href="https://github.com/Panorama-Block"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                              </svg>
+                              GitHub
+                            </a>
+                            <a
+                              href="https://t.me/panorama_block"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                              </svg>
+                              Telegram
+                            </a>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Docs Link */}
+                  <a
+                    href="https://docs.panoramablock.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    Docs
+                  </a>
+                </nav>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Notifications + Wallet Address */}
+          <div className="flex items-center gap-3">
+            {/* Notifications Icon */}
+            <button className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+            </button>
+
+            {/* Wallet Address Display */}
+            {(account?.address || getWalletAddress()) ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
+                <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
+                <span className="text-white text-xs font-mono">
+                  {account?.address
+                    ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                    : getWalletAddress()
+                      ? `${getWalletAddress()!.slice(0, 6)}...${getWalletAddress()!.slice(-4)}`
+                      : ''}
+                </span>
+              </div>
+            ) : (
+              <button
+                onClick={() => router.push('/auth')}
+                className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-medium transition-colors"
+              >
+                Connect Wallet
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Main content area with sidebar and messages */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar - Below navbar */}
+        {(isLargeScreen || sidebarOpen) && (
+          <>
+            {/* Mobile backdrop */}
+            {!isLargeScreen && sidebarOpen && (
+              <div
+                className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+                onClick={() => setSidebarOpen(false)}
               />
-              {!isLargeScreen && (
-                <button
-                  onClick={() => setSidebarOpen(false)}
-                  className="text-gray-400 hover:text-white lg:hidden"
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
+            )}
 
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              {/* Navigation Menu */}
-              <nav className="p-4 space-y-2 border-b border-cyan-500/20">
-                <button
-                  onClick={() => {
-                    router.push('/chat');
-                    if (!isLargeScreen) setSidebarOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/50"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  <span className="font-medium">Chat</span>
-                </button>
-                <button
-                  onClick={() => {
-                    router.push('/swap');
-                    if (!isLargeScreen) setSidebarOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-all"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                  </svg>
-                  <span className="font-medium">Swap</span>
-                </button>
-              </nav>
-
-              {/* New Chat Button */}
-              <div className="px-4 mt-4 mb-6">
+            {/* Sidebar content */}
+            <aside className={`
+              ${isLargeScreen ? 'relative' : 'fixed inset-y-0 left-0 z-50'}
+              w-80 bg-black border-r border-gray-800/50 flex flex-col
+              ${!isLargeScreen && !sidebarOpen ? 'hidden' : ''}
+            `}>
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
+                {/* New Chat Button */}
                 <button
                   onClick={createNewChat}
                   disabled={isCreatingConversation}
-                  className="w-full px-4 py-3 rounded-lg border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2 rounded-full border border-white bg-transparent hover:bg-gray-900 text-white text-sm font-normal transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {isCreatingConversation ? 'Creating...' : 'New Chat'}
+                  {isCreatingConversation ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Creating...</span>
+                    </>
+                  ) : (
+                    <span>New Chat</span>
+                  )}
                 </button>
-              </div>
 
-              {/* Past Conversations (Last 5) */}
-              <div className="px-4 mb-6">
-                <h3 className="text-gray-400 text-sm font-semibold mb-2">Recent Conversations</h3>
-                {conversations.slice(0, 5).map((conv) => (
-                  <button
-                    key={conv.id}
-                    onClick={() => handleSelectConversation(conv.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 mb-2 rounded-lg transition-all text-left ${
-                      conv.id === activeConversationId
-                        ? 'bg-gray-800 border border-cyan-500/40 text-white'
-                        : 'text-gray-400 hover:bg-gray-800'
-                    }`}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    <span className="text-sm">{conv.title}</span>
-                  </button>
-                ))}
-              </div>
+                {/* Past Conversations */}
+                {conversations.length > 0 && (
+                  <div className="max-h-[180px] overflow-y-auto custom-scrollbar pr-2">
+                    <div className="space-y-3">
+                      {conversations.map((conversation) => (
+                        <button
+                          key={conversation.id}
+                          onClick={() => handleSelectConversation(conversation.id)}
+                          className={`w-full text-left px-3 py-2 transition-colors text-sm flex items-center gap-3 ${
+                            activeConversationId === conversation.id
+                              ? 'text-white'
+                              : 'text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          <Image src={ChatIcon} alt="Chat" width={20} height={20} className="shrink-0" />
+                          <div className="truncate">{conversation.title}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-              {/* Trending Prompts */}
-              <div className="px-4 mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-cyan-400">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  <h3 className="text-white font-semibold">Trending Prompts</h3>
-                </div>
-                {TRENDING_PROMPTS.map((prompt, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => sendMessage(prompt)}
-                    disabled={!activeConversationId || isSending}
-                    className="w-full text-left px-4 py-3 mb-2 rounded-lg bg-gray-800/50 text-gray-300 hover:bg-gray-800 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
+                {/* Separator Line */}
+                <div className="border-t border-white/20 my-6"></div>
 
-              {/* Disconnect Button */}
-              <div className="px-4 pb-6">
-                <button
-                  onClick={async () => {
-                    try {
-                      // Clear all auth data
-                      localStorage.removeItem('authToken');
-                      localStorage.removeItem('authPayload');
-                      localStorage.removeItem('authSignature');
-                      localStorage.removeItem('telegram_user');
-
-                      // Close sidebar on mobile
-                      if (!isLargeScreen) setSidebarOpen(false);
-
-                      // Small delay to ensure localStorage is cleared
-                      await new Promise(resolve => setTimeout(resolve, 100));
-
-                      // Force page reload to clear all state (basePath is /miniapp)
-                      window.location.href = '/miniapp';
-                    } catch (error) {
-                      console.error('Error disconnecting:', error);
-                      // Force redirect anyway
-                      window.location.href = '/miniapp';
-                    }
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-all border border-red-500/20 hover:border-red-500/50"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  <span className="font-medium">Disconnect</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full">
-        {/* Top Bar - Fixed */}
-        <div className="flex-shrink-0 bg-[#0d1117] border-b border-cyan-500/20 px-4 py-3 flex items-center justify-between">
-          {!isLargeScreen && (
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="text-gray-400 hover:text-white lg:hidden"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-          )}
-          {isLargeScreen && <div className="w-6"></div>}
-
-          <div className="flex items-center gap-2">
-            <Image src={zicoBlue} alt="Zico" width={32} height={32} />
-          </div>
-
-          <div className="w-6"></div>
-        </div>
-
-        {/* Messages or Empty State */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {initializing ? (
-            <div className="h-full flex items-center justify-center px-4 py-12 text-center">
-              {initializationError ? (
+                {/* Trending Prompts */}
                 <div className="space-y-4">
-                  <p className="text-gray-300">{initializationError}</p>
-                  <button
-                    onClick={retryBootstrap}
-                    className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-cyan-500 text-white hover:bg-cyan-600 transition-all"
-                  >
-                    Try again
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <Image src={LightningIcon} alt="Lightning" width={18} height={18} />
+                    <h3 className="text-sm font-semibold text-white">
+                      Trending Prompts
+                    </h3>
+                  </div>
+                  <div className="space-y-3">
+                    {TRENDING_PROMPTS.map((prompt, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => sendMessage(prompt)}
+                        disabled={isSending || !activeConversationId}
+                        className="w-full text-left text-sm text-gray-400 leading-relaxed hover:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-[#202020] px-5 py-5 rounded-md"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              ) : (
-                <p className="text-gray-400">Loading your conversations...</p>
-              )}
-            </div>
-          ) : !activeConversationId ? (
-            <div className="h-full flex items-center justify-center px-4 py-12">
-              <p className="text-gray-400">Create a new chat to get started.</p>
-            </div>
-          ) : initializationError && activeMessages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center px-4 py-12 text-center space-y-4">
-              <p className="text-gray-300">{initializationError}</p>
-              <button
-                onClick={retryBootstrap}
-                className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-cyan-500 text-white hover:bg-cyan-600 transition-all"
-              >
-                Try again
-              </button>
-            </div>
-          ) : isHistoryLoading && activeMessages.length === 0 ? (
-            <div className="h-full flex items-center justify-center px-4 py-12">
-              <p className="text-gray-400">Loading conversation...</p>
-            </div>
-          ) : activeMessages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center px-4 py-12">
-              <h2 className="text-3xl sm:text-4xl font-bold text-gray-300 mb-14">
-                Select a Feature or Start a Chat
-              </h2>
-
-              {/* Feature Cards Grid */}
-              <div className="grid grid-cols-3 gap-6 max-w-2xl mb-10">
-                {FEATURE_CARDS.map((feature, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      if (feature.path) {
-                        router.push(feature.path);
-                      }
-                    }}
-                    disabled={!feature.path}
-                    className={`flex flex-col items-center justify-center gap-4 p-8 min-w-[180px] min-h-[150px] rounded-2xl bg-gray-800/30 backdrop-blur-md hover:bg-gray-800/50 border border-cyan-500/20 hover:border-cyan-500/50 transition-all shadow-lg hover:shadow-cyan-500/20 ${
-                      !feature.path ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                    }`}
-                  >
-                    <Image
-                      src={feature.icon}
-                      alt={feature.name}
-                      width={40}
-                      height={40}
-                      className="w-10 h-10"
-                    />
-                    <span className="text-sm text-gray-300 text-center">{feature.name}</span>
-                  </button>
-                ))}
               </div>
-            </div>
-          ) : (
-            <div className="py-6">
-              {activeMessages.map((message, index) => {
+            </aside>
+          </>
+        )}
+
+        {/* Messages Area */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          {/* Messages or Empty State */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {initializing ? (
+              <div className="h-full flex items-center justify-center px-4 py-12 text-center">
+                {initializationError ? (
+                  <div className="space-y-4">
+                    <p className="text-gray-300">{initializationError}</p>
+                    <button
+                      onClick={retryBootstrap}
+                      className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition-all font-medium"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-gray-400">Loading your conversations...</p>
+                )}
+              </div>
+            ) : !activeConversationId ? (
+              <div className="h-full flex items-center justify-center px-4 py-12">
+                <p className="text-gray-400">Create a new chat to get started.</p>
+              </div>
+            ) : initializationError && activeMessages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center px-4 py-12 text-center space-y-4">
+                <p className="text-gray-300">{initializationError}</p>
+                <button
+                  onClick={retryBootstrap}
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition-all font-medium"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : isHistoryLoading && activeMessages.length === 0 ? (
+              <div className="h-full flex items-center justify-center px-4 py-12">
+                <p className="text-gray-400">Loading conversation...</p>
+              </div>
+            ) : activeMessages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center px-4 py-12">
+                <h2 className="text-2xl sm:text-3xl font-normal text-gray-400 mb-14">
+                  How can I help you today?
+                </h2>
+
+                {/* Feature Cards Grid */}
+                <div className="grid grid-cols-3 gap-6 max-w-2xl mb-10">
+                  {FEATURE_CARDS.map((feature, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        if (feature.path) {
+                          router.push(feature.path);
+                        }
+                      }}
+                      disabled={!feature.path}
+                      className={`flex flex-col items-center justify-center gap-4 p-8 min-w-[180px] min-h-[150px] rounded-2xl bg-black backdrop-blur-md hover:bg-gray-900 border border-gray-700/50 hover:border-gray-600 transition-all shadow-lg ${
+                        !feature.path ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                      }`}
+                    >
+                      <Image
+                        src={feature.icon}
+                        alt={feature.name}
+                        width={40}
+                        height={40}
+                        className="w-10 h-10"
+                      />
+                      <span className="text-sm text-gray-300 text-center">{feature.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="py-6">
+                {activeMessages.map((message, index) => {
                 const timestampValue = message.timestamp.getTime();
                 const hasValidTime = !Number.isNaN(timestampValue);
                 const timeLabel = hasValidTime
@@ -1146,21 +1201,35 @@ export default function ChatPage() {
                 return (
                   <div
                     key={messageKey}
-                    className="w-full border-b border-gray-800/50"
+                    className="w-full"
                   >
-                    <div className="max-w-3xl mx-auto px-4 py-6">
-                      <div className={`flex items-start gap-3 ${
-                        message.role === 'user' ? 'flex-row-reverse' : ''
-                      }`}>
-                        {/* Avatar/Icon */}
-                        <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-                          {message.role === 'user' ? (
-                            <div className="w-full h-full rounded-full bg-cyan-500 text-white flex items-center justify-center">
+                    <div className="max-w-3xl mx-auto px-4 py-4">
+                      {message.role === 'user' ? (
+                        // User message - aligned to the right with background
+                        <div className="flex items-start gap-3 justify-end">
+                          <div className="flex flex-col items-end max-w-[80%]">
+                            <div className="flex items-center gap-2 mb-2">
+                              {timeLabel ? (
+                                <span className="text-xs text-gray-500">{timeLabel}</span>
+                              ) : null}
+                              <span className="text-sm font-semibold text-gray-300">You</span>
+                            </div>
+                            <div className="rounded-2xl bg-black/80 backdrop-blur-xl border border-white/20 text-gray-200 px-4 py-3 text-[15px] break-words leading-relaxed">
+                              {message.content}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
+                            <div className="w-full h-full rounded-full bg-gray-700 text-white flex items-center justify-center">
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                               </svg>
                             </div>
-                          ) : (
+                          </div>
+                        </div>
+                      ) : (
+                        // Assistant message - aligned to the left without background
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
                             <Image
                               src={zicoBlue}
                               alt="Zico"
@@ -1168,33 +1237,17 @@ export default function ChatPage() {
                               height={32}
                               className="w-8 h-8"
                             />
-                          )}
-                        </div>
-
-                        {/* Message Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className={`flex items-center gap-2 mb-2 ${
-                            message.role === 'user' ? 'justify-end' : ''
-                          }`}>
-                            {timeLabel ? (
-                              <span className="text-xs text-gray-500">{timeLabel}</span>
-                            ) : null}
-                            <span className={`text-sm font-semibold ${
-                              message.role === 'user' ? 'text-cyan-400' : 'text-gray-300'
-                            }`}>
-                              {message.role === 'user' ? 'You' : 'Zico'}
-                            </span>
                           </div>
-                          <div className={`text-[15px] break-words leading-relaxed ${
-                            message.role === 'user' ? 'text-right text-gray-200' : 'text-left'
-                          }`}>
-                            {message.role === 'assistant' ? (
-                              <div className="rounded-2xl bg-gray-800/30 border border-cyan-500/15 p-3 shadow-[0_6px_18px_rgba(0,0,0,0.25)]">
-                                <MarkdownMessage text={message.content} />
-                              </div>
-                            ) : (
-                              <span className="inline-block rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-gray-200 px-4 py-3">{message.content}</span>
-                            )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-sm font-semibold text-gray-300">Zico</span>
+                              {timeLabel ? (
+                                <span className="text-xs text-gray-500">{timeLabel}</span>
+                              ) : null}
+                            </div>
+                            <div className="text-[15px] break-words leading-relaxed text-gray-200">
+                              <MarkdownMessage text={message.content} />
+                            </div>
                           
                             {/* Swap Interface */}
                             {message.role === 'assistant' &&
@@ -1202,8 +1255,8 @@ export default function ChatPage() {
                               <div className="mt-4 space-y-3">
                                 {/* Quote Information */}
                                 {swapLoading && (
-                                  <div className="flex items-center gap-2 text-cyan-400">
-                                    <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                                  <div className="flex items-center gap-2 text-gray-300">
+                                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
                                     <span className="text-sm">Getting quote...</span>
                                   </div>
                                 )}
@@ -1256,7 +1309,7 @@ export default function ChatPage() {
                                                   href={explorerUrl}
                                                   target="_blank"
                                                   rel="noopener noreferrer"
-                                                  className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors"
+                                                  className="ml-2 px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded transition-colors font-medium"
                                                 >
                                                   View
                                                 </a>
@@ -1270,10 +1323,10 @@ export default function ChatPage() {
                                 )}
 
                                 {swapLoading && !swapQuote?.quote && (
-                                  <div className="mt-3 p-3 bg-gray-700/50 rounded-lg border border-cyan-500/30">
+                                  <div className="mt-3 p-3 bg-gray-700/50 rounded-lg border border-gray-600">
                                     <div className="flex items-center gap-2">
-                                      <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                                      <span className="text-sm text-cyan-400">Preparing swap transaction...</span>
+                                      <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                                      <span className="text-sm text-gray-300">Preparing swap transaction...</span>
                                     </div>
                                   </div>
                                 )}
@@ -1289,15 +1342,15 @@ export default function ChatPage() {
                             )}
                           </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 );
               })}
 
               {isSending && (
-                <div className="w-full border-b border-gray-800/50">
-                  <div className="max-w-3xl mx-auto px-4 py-6">
+                <div className="w-full">
+                  <div className="max-w-3xl mx-auto px-4 py-4">
                     <div className="flex items-start gap-3">
                       <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
                         <Image
@@ -1309,13 +1362,13 @@ export default function ChatPage() {
                         />
                       </div>
                       <div className="flex-1">
-                        <div className="rounded-2xl bg-gray-800/40 border border-cyan-500/20 p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-                          <div className="text-sm font-semibold text-gray-300 mb-2">Zico</div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
-                            <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse delay-75" />
-                            <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse delay-150" />
-                          </div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-semibold text-gray-300">Zico</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-75" />
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150" />
                         </div>
                       </div>
                     </div>
@@ -1323,35 +1376,39 @@ export default function ChatPage() {
                 </div>
               )}
 
-              <div ref={messagesEndRef} />
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Input Area - Fixed */}
-        <div className="flex-shrink-0 bg-[#0d1117] border-t border-cyan-500/20 p-4">
-          <div className="flex items-center gap-2 max-w-4xl mx-auto">
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your message..."
-              disabled={isSending || !activeConversationId || initializing}
-              className="flex-1 px-4 py-3 rounded-full bg-gray-800 border border-cyan-500/30 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
-            />
-            <button
-              onClick={() => sendMessage()}
-              disabled={!inputMessage.trim() || isSending || !activeConversationId || initializing}
-              className="p-3 rounded-full bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            </button>
-          </div>
+            {/* Input Area - Fixed with black bg */}
+            <div className="flex-shrink-0 bg-black p-4">
+              <div className="flex items-center gap-3 max-w-4xl mx-auto relative">
+                <input
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Type your message..."
+                  disabled={isSending || !activeConversationId || initializing}
+                  className="flex-1 px-4 py-3 rounded-lg bg-gray-900/50 border border-gray-700/50 text-white placeholder-gray-500 focus:outline-none focus:border-gray-600 disabled:opacity-50"
+                />
+
+                {/* Send Button - Arrow pointing UP */}
+                <button
+                  onClick={() => sendMessage()}
+                  disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
+                  className="p-3 rounded-lg bg-white hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Send message"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-900" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </main>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }

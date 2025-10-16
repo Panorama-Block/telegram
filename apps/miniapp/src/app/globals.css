@@ -25,11 +25,11 @@
   --pano-border: 0 0% 30%;              /* #4d4d4d */
   --pano-border-subtle: 0 0% 20%;       /* #333333 */
 
-  /* Accent Colors */
-  --pano-primary: 180 100% 50%;         /* #00d9ff - Ciano vibrante */
-  --pano-primary-muted: 180 65% 6%;     /* #031415 */
-  --pano-primary-hover: 180 100% 45%;   /* #00c2e6 */
-  --pano-secondary: 183 84% 20%;        /* #0a5f63 */
+  /* Accent Colors - Emerald Green Primary */
+  --pano-primary: 165 100% 50%;         /* #00FFC3 - Neon emerald green */
+  --pano-primary-muted: 165 70% 8%;     /* #041510 - Muted emerald */
+  --pano-primary-hover: 165 100% 45%;   /* #00E6B0 - Hover emerald */
+  --pano-secondary: 170 80% 25%;        /* #0d5f4a - Secondary green */
   --pano-success: 142 76% 36%;          /* #16a34a */
   --pano-warning: 38 92% 50%;           /* #f59e0b */
   --pano-error: 0 84% 60%;              /* #dc2626 */
@@ -38,18 +38,20 @@
   --pano-text-primary: 0 0% 100%;       /* #ffffff */
   --pano-text-secondary: 0 0% 100% / 0.6; /* rgba(255,255,255,0.6) */
   --pano-text-muted: 0 0% 100% / 0.4;   /* rgba(255,255,255,0.4) */
-  --pano-text-accent: 180 100% 50%;     /* #00d9ff */
+  --pano-text-accent: 165 100% 50%;     /* #00FFC3 - Emerald green */
   --pano-text-inverse: 0 0% 0%;         /* #000000 */
 
-  /* Gradients */
-  --pano-gradient-primary: linear-gradient(135deg, hsl(180 100% 50%) 0%, hsl(183 84% 20%) 100%);
+  /* Gradients - Emerald Theme */
+  --pano-gradient-primary: linear-gradient(135deg, hsl(165 100% 50%) 0%, hsl(170 80% 25%) 100%);
   --pano-gradient-surface: linear-gradient(135deg, hsl(0 0% 12%) 0%, hsl(0 0% 8%) 100%);
+  --pano-gradient-background: linear-gradient(to bottom, rgba(0, 255, 195, 0.15) 0%, rgba(0, 0, 0, 1) 35%, rgba(0, 0, 0, 1) 65%, rgba(0, 255, 195, 0.15) 100%);
 
   /* Shadows */
   --pano-shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.05);
   --pano-shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.06);
   --pano-shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.1), 0 4px 6px -2px hsl(0 0% 0% / 0.05);
-  --pano-shadow-glow: 0 0 20px hsl(180 100% 50% / 0.3);
+  --pano-shadow-glow: 0 0 20px hsl(165 100% 50% / 0.3);
+  --pano-shadow-glow-strong: 0 0 40px hsl(165 100% 50% / 0.5);
 
   /* Transitions */
   --pano-transition-fast: 150ms ease-out;
@@ -186,7 +188,7 @@
 
 @font-face {
   font-family: 'SuisseIntl';
-  src: url('/fonts/suisse-intl-regular.ttf') format('truetype');
+  src: url('/fonts/Suisse_Intl_Regular.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -194,7 +196,7 @@
 
 @font-face {
   font-family: 'SuisseIntl';
-  src: url('/fonts/suisse-intl-medium.ttf') format('truetype');
+  src: url('/fonts/Suisse_Intl_Regular.ttf') format('truetype');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -226,9 +228,21 @@ html, body {
 }
 
 body {
-  background: var(--background);
+  background: #000000;
   color: var(--foreground);
   font-family: 'SuisseIntl', Arial, Helvetica, sans-serif;
+}
+
+/* Panorama Block Signature Background Gradient */
+.pano-gradient-bg {
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 255, 195, 0.15) 0%,
+    rgba(0, 0, 0, 1) 35%,
+    rgba(0, 0, 0, 1) 65%,
+    rgba(0, 255, 195, 0.15) 100%
+  );
+  min-height: 100vh;
 }
 
 .typewriter { position: relative; }
@@ -239,7 +253,7 @@ body {
   top: 50%;
   transform: translateY(-50%);
   animation: blink 0.6s ease infinite;
-  color: hsl(var(--landing-highlight-color));
+  color: hsl(var(--pano-text-secondary));
   font-weight: 300;
 }
 
@@ -302,11 +316,11 @@ body {
 
 @keyframes pulseGlow {
   0%, 100% {
-    box-shadow: 0 0 20px hsl(180 100% 50% / 0.3);
+    box-shadow: 0 0 20px hsl(165 100% 50% / 0.3);
   }
   50% {
-    box-shadow: 0 0 40px hsl(180 100% 50% / 0.6),
-                0 0 60px hsl(180 100% 50% / 0.3);
+    box-shadow: 0 0 40px hsl(165 100% 50% / 0.6),
+                0 0 60px hsl(165 100% 50% / 0.3);
   }
 }
 
@@ -348,10 +362,10 @@ body {
   scrollbar-width: none;  /* Firefox */
 }
 
-/* Custom scrollbar for sidebar */
+/* Custom scrollbar for sidebar - Dark */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(6, 182, 212, 0.3) transparent;
+  scrollbar-color: rgba(75, 85, 99, 0.5) transparent;
   scroll-behavior: smooth;
 }
 
@@ -364,12 +378,12 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(6, 182, 212, 0.3);
+  background: rgba(75, 85, 99, 0.5);
   border-radius: 3px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(6, 182, 212, 0.5);
+  background: rgba(107, 114, 128, 0.7);
 }
 
 /* PanoramaBlock Design System v2.0 Utility Classes */

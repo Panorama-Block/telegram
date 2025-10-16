@@ -258,7 +258,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       />
 
       {/* Modal */}
-      <div className="relative bg-[#0d1117] border border-cyan-500/30 rounded-2xl p-8 max-w-md w-full mx-4 shadow-xl shadow-cyan-500/10">
+      <div className="relative bg-[#202020]/80 backdrop-blur-lg border border-white/10 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-xl shadow-black/50">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -310,12 +310,12 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   label: 'Connect Wallet',
                   style: {
                     width: '100%',
-                    padding: '16px 24px',
-                    borderRadius: 12,
+                    padding: '12px 20px',
+                    borderRadius: 6,
                     fontWeight: 600,
                     fontSize: 16,
-                    background: '#06b6d4',
-                    color: '#fff',
+                    background: '#ffffff',
+                    color: '#000000',
                     border: 'none',
                     cursor: 'pointer',
                   },
