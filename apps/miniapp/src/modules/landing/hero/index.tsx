@@ -58,7 +58,10 @@ const Hero = () => {
 
       {/* Zico Blue Logo */}
       <div className="relative mt-8 mb-16">
-        <div className="absolute inset-0 bg-cyan-400/20 blur-3xl rounded-full" />
+        {/* Multiple layered blur effects for stronger glow */}
+        <div className="absolute inset-0 bg-cyan-400/30 blur-3xl rounded-full animate-pulse" />
+        <div className="absolute inset-0 bg-landing-highlight/20 blur-2xl rounded-full" style={{ animationDelay: '0.5s' }} />
+        <div className="absolute -inset-4 bg-cyan-500/15 blur-3xl rounded-full animate-pulse" style={{ animationDelay: '1s' }} />
         <Image
           src={zicoBlue}
           alt="Zico Blue"

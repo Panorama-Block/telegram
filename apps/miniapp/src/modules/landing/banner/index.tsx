@@ -128,7 +128,7 @@ const Banner = () => {
       <div className={`xl:mt-12 relative w-[95%] md:w-[90%] xl:w-[80%] max-w-[1200px] mx-auto ${!isPausingBeforeDelete ? 'typewriter' : ''}`}>
         <div className="flex items-center border border-white/30 rounded-[25px] w-full text-white cursor-default pl-4 pr-4 md:px-4 py-3 md:py-2 duration-75 shadow-[0px_16px_57.7px_0px_rgba(0,0,0,0.42)] z-20 min-h-[60px] bg-[#202020]">
           <Image src={inputHorse} alt="" className="w-[40px] h-[40px] md:w-[48px] md:h-[48px] flex-shrink-0" width={48} height={48} />
-          <div className="flex-1 pl-2 md:pl-4 pr-4 text-xs md:text-sm xl:text-lg whitespace-normal break-words">
+          <div className="flex-1 pl-2 md:pl-4 pr-4 text-sm md:text-base xl:text-lg whitespace-normal break-words">
             {text}
           </div>
         </div>
