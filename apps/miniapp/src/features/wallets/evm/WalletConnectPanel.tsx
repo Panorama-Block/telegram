@@ -385,8 +385,8 @@ export function WalletConnectPanel() {
                 borderRadius: 12,
                 fontWeight: 600,
                 fontSize: 16,
-                background: '#06b6d4',
-                color: '#fff',
+                background: '#ffffff',
+                color: '#000000',
                 border: 'none',
                 cursor: 'pointer',
               },
@@ -402,27 +402,29 @@ export function WalletConnectPanel() {
         <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div
             style={{
-              border: '1px solid rgba(6, 182, 212, 0.3)',
-              background: '#0d1117',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              background: 'rgba(0, 0, 0, 0.4)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
               borderRadius: 12,
               padding: 16,
               textAlign: 'left',
             }}
           >
-            <p style={{ margin: 0, fontSize: 13, color: '#9ca3af' }}>Connected wallet</p>
+            <p style={{ margin: 0, fontSize: 13, color: '#ffffff' }}>Connected wallet</p>
             <p
               style={{
                 margin: '8px 0 0',
                 fontFamily: 'monospace',
                 fontSize: 15,
-                color: '#06b6d4',
+                color: '#ffffff',
                 wordBreak: 'break-all',
                 fontWeight: 600,
               }}
             >
               {shortAddress(account!.address)}
             </p>
-            <div style={{ fontSize: 13, color: isAuthenticating ? '#9ca3af' : isAuthenticated ? '#10b981' : '#9ca3af', marginTop: 8 }}>
+            <div style={{ fontSize: 13, color: '#ffffff', marginTop: 8 }}>
               {isAuthenticating ? 'Autenticando...' : isAuthenticated ? 'Autenticado com sucesso!' : 'Conecte para autenticar'}
             </div>
           </div>
@@ -435,9 +437,9 @@ export function WalletConnectPanel() {
               borderRadius: 10,
               fontWeight: 600,
               fontSize: 14,
-              background: 'transparent',
-              color: '#ef4444',
-              border: '1px solid #ef4444',
+              background: '#ffffff',
+              color: '#000000',
+              border: 'none',
               cursor: isDisconnecting ? 'not-allowed' : 'pointer',
               opacity: isDisconnecting ? 0.6 : 1,
             }}

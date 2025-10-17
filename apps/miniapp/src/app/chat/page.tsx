@@ -10,9 +10,10 @@ declare global {
     };
   }
 }
-import { Sidebar, SignatureApprovalButton } from '@/shared/ui';
+import { Sidebar, SignatureApprovalButton, GlobalLoader } from '@/shared/ui';
 import MarkdownMessage from '@/shared/ui/MarkdownMessage';
 import Image from 'next/image';
+import '../../shared/ui/loader.css';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import XIcon from '../../../public/icons/X.svg';
 import BlockchainTechnology from '../../../public/icons/BlockchainTechnology.svg';
@@ -54,12 +55,12 @@ const TRENDING_PROMPTS = [
 ];
 
 const FEATURE_CARDS = [
-  { name: 'Positions Monitoring', icon: WalletIcon, path: null },
-  { name: 'AI Agents on X', icon: XIcon, path: null },
-  { name: 'Liquid Swap', icon: SwapIcon, path: '/swap' },
-  { name: 'Liquid Staking', icon: BlockchainTechnology, path: null },
-  { name: 'Liquidity Provisioning', icon: ComboChart, path: null },
-  { name: 'Lending', icon: Briefcase, path: null },
+  { name: 'Wallet Tracking', icon: WalletIcon, path: null, prompt: null, description: 'Monitor your wallet balances across multiple chains in real-time' },
+  { name: 'AI Agents on X', icon: XIcon, path: null, prompt: null, description: 'Follow our AI agents on X for insights and market analysis' },
+  { name: 'Liquid Swap', icon: SwapIcon, path: null, prompt: 'I would like to perform a token swap. Can you help me with the process and guide me through the steps?', description: 'Swap tokens across multiple chains with the best rates' },
+  { name: 'Liquid Staking', icon: BlockchainTechnology, path: null, prompt: null, description: 'Stake your assets while maintaining liquidity' },
+  { name: 'AI MarketPlace', icon: ComboChart, path: null, prompt: null, description: 'Browse and trade AI-powered trading strategies' },
+  { name: 'Portfolio', icon: Briefcase, path: null, prompt: null, description: 'Track and manage your entire DeFi portfolio in one place' },
 ];
 
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
@@ -411,24 +412,24 @@ export default function ChatPage() {
           return;
         }
 
-        let ensuredConversationId = conversationIds[0] ?? null;
-
-        if (!ensuredConversationId) {
-          try {
-            ensuredConversationId = await agentsClient.createConversation(userId, authOpts);
-            if (ensuredConversationId) {
-              conversationIds = [ensuredConversationId, ...conversationIds.filter((id) => id !== ensuredConversationId)];
-            }
-            debug('bootstrap:createConversation', { ensuredConversationId });
-          } catch (error) {
-            console.error('Error creating initial conversation:', error);
-            debug('bootstrap:createConversation:error', {
-              error: error instanceof Error ? error.message : String(error),
-            });
-            if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
-              setInitializationError('We could not start a conversation. Please try again.');
-            }
+        // Always create a new conversation on login/page load
+        let ensuredConversationId: string | null = null;
+        try {
+          ensuredConversationId = await agentsClient.createConversation(userId, authOpts);
+          if (ensuredConversationId) {
+            conversationIds = [ensuredConversationId, ...conversationIds.filter((id) => id !== ensuredConversationId)];
           }
+          debug('bootstrap:createConversation', { ensuredConversationId });
+        } catch (error) {
+          console.error('Error creating initial conversation:', error);
+          debug('bootstrap:createConversation:error', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
+            setInitializationError('We could not start a conversation. Please try again.');
+          }
+          // Fallback to first existing conversation if creation fails
+          ensuredConversationId = conversationIds[0] ?? null;
         }
 
         if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) return;
@@ -440,15 +441,16 @@ export default function ChatPage() {
             : [];
 
         setConversations(mappedConversations);
-        setMessagesByConversation({});
 
-        const targetId = ensuredConversationId ?? (conversationIds.length > 0 ? conversationIds[0] : null);
-        setActiveConversationId(targetId ?? null);
-        debug('bootstrap:targetSelected', { targetId, totalConversations: mappedConversations.length });
+        // Initialize messagesByConversation with empty array for new conversation
+        setMessagesByConversation(ensuredConversationId ? {
+          [ensuredConversationId]: []
+        } : {});
 
-        if (targetId) {
-          loadConversationMessages(targetId);
-        }
+        // Always use the new conversation (ensuredConversationId) as the active one
+        setActiveConversationId(ensuredConversationId);
+        setInitializationError(null);
+        debug('bootstrap:targetSelected', { targetId: ensuredConversationId, totalConversations: mappedConversations.length });
       } catch (error) {
         console.error('Error initialising chat:', error);
         debug('bootstrap:error', { error: error instanceof Error ? error.message : String(error) });
@@ -885,9 +887,11 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
+    <>
+      <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
+      <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
       {/* Top Navbar - Horizontal across full width */}
-      <header className="flex-shrink-0 bg-black border-b border-gray-800/50 px-6 py-3 z-50">
+      <header className="flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
         <div className="flex items-center justify-between max-w-[1920px] mx-auto">
           {/* Left: Menu toggle (mobile only) + Logo (desktop only) + Navigation */}
           <div className="flex items-center gap-8">
@@ -903,97 +907,72 @@ export default function ChatPage() {
               </button>
             )}
 
-            {/* Logo - Desktop on left, Mobile centered separately */}
+            {/* Logo - Desktop on left, Mobile just icon */}
             {!isLargeScreen ? (
               <div className="flex items-center gap-2">
                 <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
-                <span className="text-white font-semibold text-sm tracking-wide">PANORAMA</span>
               </div>
             ) : (
-              <div className="flex items-center gap-8">
-                <div className="flex items-center gap-2">
-                  <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
-                  <span className="text-white font-semibold text-sm tracking-wide">PANORAMA BLOCK</span>
-                </div>
-
-                {/* Navigation Menu - Desktop only */}
-                <nav className="flex items-center gap-6 text-sm">
-                  {/* Explore Dropdown */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setExploreDropdownOpen(!exploreDropdownOpen)}
-                      className="text-gray-400 hover:text-white transition-colors flex items-center gap-1"
-                    >
-                      Explore
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-
-                    {/* Dropdown Menu */}
-                    {exploreDropdownOpen && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-10"
-                          onClick={() => setExploreDropdownOpen(false)}
-                        />
-                        <div className="absolute top-full left-0 mt-2 w-48 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg shadow-xl z-20">
-                          <div className="py-2">
-                            <a
-                              href="https://x.com/panorama_block"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                              </svg>
-                              Twitter
-                            </a>
-                            <a
-                              href="https://github.com/Panorama-Block"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                              </svg>
-                              GitHub
-                            </a>
-                            <a
-                              href="https://t.me/panorama_block"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
-                              </svg>
-                              Telegram
-                            </a>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Docs Link */}
-                  <a
-                    href="https://docs.panoramablock.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-white transition-colors"
-                  >
-                    Docs
-                  </a>
-                </nav>
+              <div className="flex items-center gap-2">
+                <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
+                <span className="text-white font-semibold text-sm tracking-wide">PANORAMA BLOCK</span>
               </div>
             )}
           </div>
 
-          {/* Right: Notifications + Wallet Address */}
+          {/* Right: Explore + Docs + Notifications + Wallet Address */}
           <div className="flex items-center gap-3">
+            {/* Navigation Menu - Desktop only */}
+            {isLargeScreen && (
+              <nav className="flex items-center gap-6 text-sm mr-3">
+                {/* Explore Dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={() => setExploreDropdownOpen(!exploreDropdownOpen)}
+                    className="text-gray-400 hover:text-white transition-colors flex items-center gap-1"
+                  >
+                    Explore
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {exploreDropdownOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setExploreDropdownOpen(false)}
+                      />
+                      <div className="absolute top-full right-0 mt-2 w-48 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg shadow-xl z-20">
+                        <div className="py-2">
+                          <button
+                            onClick={() => {
+                              router.push('/swap');
+                              setExploreDropdownOpen(false);
+                            }}
+                            className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          >
+                            <Image src={SwapIcon} alt="Swap" width={16} height={16} />
+                            Swap
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Docs Link */}
+                <a
+                  href="https://docs.panoramablock.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  Docs
+                </a>
+              </nav>
+            )}
             {/* Notifications Icon */}
             <button className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth={2}>
@@ -1041,38 +1020,40 @@ export default function ChatPage() {
             {/* Sidebar content */}
             <aside className={`
               ${isLargeScreen ? 'relative' : 'fixed inset-y-0 left-0 z-50'}
-              w-80 bg-black border-r border-gray-800/50 flex flex-col
+              w-80 bg-black border-r-2 border-white/15 flex flex-col
               ${!isLargeScreen && !sidebarOpen ? 'hidden' : ''}
             `}>
               <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
                 {/* New Chat Button */}
-                <button
-                  onClick={createNewChat}
-                  disabled={isCreatingConversation}
-                  className="w-full px-4 py-2 rounded-full border border-white bg-transparent hover:bg-gray-900 text-white text-sm font-normal transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isCreatingConversation ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Creating...</span>
-                    </>
-                  ) : (
-                    <span>New Chat</span>
-                  )}
-                </button>
+                <div className="px-4">
+                  <button
+                    onClick={createNewChat}
+                    disabled={isCreatingConversation}
+                    className="w-full px-4 py-2 rounded-full border border-white bg-transparent hover:bg-gray-900 text-white text-sm font-normal transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isCreatingConversation ? (
+                      <>
+                        <div className="loader-inline-sm" />
+                        <span>Creating...</span>
+                      </>
+                    ) : (
+                      <span>New Chat</span>
+                    )}
+                  </button>
+                </div>
 
                 {/* Past Conversations */}
                 {conversations.length > 0 && (
-                  <div className="max-h-[180px] overflow-y-auto custom-scrollbar pr-2">
+                  <div className="max-h-[180px] overflow-y-auto custom-scrollbar pr-2 px-4">
                     <div className="space-y-3">
                       {conversations.map((conversation) => (
                         <button
                           key={conversation.id}
                           onClick={() => handleSelectConversation(conversation.id)}
-                          className={`w-full text-left px-3 py-2 transition-colors text-sm flex items-center gap-3 ${
+                          className={`w-full text-left px-3 py-2 transition-colors text-sm flex items-center gap-3 rounded-md ${
                             activeConversationId === conversation.id
-                              ? 'text-white'
-                              : 'text-gray-400 hover:text-white'
+                              ? 'text-white bg-[#202020]'
+                              : 'text-gray-400 hover:text-white hover:bg-[#202020]'
                           }`}
                         >
                           <Image src={ChatIcon} alt="Chat" width={20} height={20} className="shrink-0" />
@@ -1094,13 +1075,13 @@ export default function ChatPage() {
                       Trending Prompts
                     </h3>
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-3 px-4">
                     {TRENDING_PROMPTS.map((prompt, idx) => (
                       <button
                         key={idx}
                         onClick={() => sendMessage(prompt)}
                         disabled={isSending || !activeConversationId}
-                        className="w-full text-left text-sm text-gray-400 leading-relaxed hover:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-[#202020] px-5 py-5 rounded-md"
+                        className="w-full text-left text-sm text-gray-400 leading-relaxed hover:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-[#202020] px-4 py-4 rounded-md"
                       >
                         {prompt}
                       </button>
@@ -1151,34 +1132,53 @@ export default function ChatPage() {
                 <p className="text-gray-400">Loading conversation...</p>
               </div>
             ) : activeMessages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center px-4 py-12">
-                <h2 className="text-2xl sm:text-3xl font-normal text-gray-400 mb-14">
+              <div className="h-full flex flex-col items-center justify-center px-4 py-6 sm:py-8 overflow-y-auto">
+                <h2 className="text-xl sm:text-2xl font-normal text-gray-400 mb-6 sm:mb-8">
                   How can I help you today?
                 </h2>
 
                 {/* Feature Cards Grid */}
-                <div className="grid grid-cols-3 gap-6 max-w-2xl mb-10">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 max-w-4xl w-full">
                   {FEATURE_CARDS.map((feature, idx) => (
                     <button
                       key={idx}
                       onClick={() => {
                         if (feature.path) {
                           router.push(feature.path);
+                        } else if (feature.prompt) {
+                          sendMessage(feature.prompt);
                         }
                       }}
-                      disabled={!feature.path}
-                      className={`flex flex-col items-center justify-center gap-4 p-8 min-w-[180px] min-h-[150px] rounded-2xl bg-black backdrop-blur-md hover:bg-gray-900 border border-gray-700/50 hover:border-gray-600 transition-all shadow-lg ${
-                        !feature.path ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                      disabled={!feature.path && !feature.prompt}
+                      className={`flex flex-col p-3 sm:p-4 rounded-xl bg-black/80 backdrop-blur-md border border-white/15 transition-all shadow-lg text-left ${
+                        !feature.path && !feature.prompt ? 'opacity-50 cursor-not-allowed' : 'hover:border-white/30 cursor-pointer'
                       }`}
                     >
-                      <Image
-                        src={feature.icon}
-                        alt={feature.name}
-                        width={40}
-                        height={40}
-                        className="w-10 h-10"
-                      />
-                      <span className="text-sm text-gray-300 text-center">{feature.name}</span>
+                      {/* Icon */}
+                      <div className="mb-2">
+                        <Image
+                          src={feature.icon}
+                          alt={feature.name}
+                          width={32}
+                          height={32}
+                          className="w-6 h-6 sm:w-8 sm:h-8"
+                        />
+                      </div>
+
+                      {/* Title */}
+                      <h3 className="text-xs sm:text-sm text-white font-semibold mb-1.5">
+                        {feature.name}
+                      </h3>
+
+                      {/* Description */}
+                      <p className="text-xs text-gray-400 leading-snug mb-3 sm:mb-4 flex-1 line-clamp-2">
+                        {feature.description}
+                      </p>
+
+                      {/* Continue Button - Only on larger screens */}
+                      <div className="hidden sm:block w-full px-3 py-1.5 rounded-md bg-white text-black text-xs font-medium text-center">
+                        Continue
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -1256,7 +1256,7 @@ export default function ChatPage() {
                                 {/* Quote Information */}
                                 {swapLoading && (
                                   <div className="flex items-center gap-2 text-gray-300">
-                                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                                    <div className="loader-inline-sm" />
                                     <span className="text-sm">Getting quote...</span>
                                   </div>
                                 )}
@@ -1325,7 +1325,7 @@ export default function ChatPage() {
                                 {swapLoading && !swapQuote?.quote && (
                                   <div className="mt-3 p-3 bg-gray-700/50 rounded-lg border border-gray-600">
                                     <div className="flex items-center gap-2">
-                                      <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                                      <div className="loader-inline-sm" />
                                       <span className="text-sm text-gray-300">Preparing swap transaction...</span>
                                     </div>
                                   </div>
@@ -1382,7 +1382,7 @@ export default function ChatPage() {
             </div>
 
             {/* Input Area - Fixed with black bg */}
-            <div className="flex-shrink-0 bg-black p-4">
+            <div className="flex-shrink-0 bg-black px-4 pb-10 pt-4">
               <div className="flex items-center gap-3 max-w-4xl mx-auto relative">
                 <input
                   type="text"
@@ -1391,17 +1391,17 @@ export default function ChatPage() {
                   onKeyPress={handleKeyPress}
                   placeholder="Type your message..."
                   disabled={isSending || !activeConversationId || initializing}
-                  className="flex-1 px-4 py-3 rounded-lg bg-gray-900/50 border border-gray-700/50 text-white placeholder-gray-500 focus:outline-none focus:border-gray-600 disabled:opacity-50"
+                  className="flex-1 px-4 py-3 rounded-lg bg-[#202020] border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-gray-500 disabled:opacity-50"
                 />
 
-                {/* Send Button - Arrow pointing UP */}
+                {/* Send Button - Round with white bg */}
                 <button
                   onClick={() => sendMessage()}
                   disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                  className="p-3 rounded-lg bg-white hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="p-3 rounded-full bg-white hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="Send message"
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-900" strokeWidth={2}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-black" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
                   </svg>
                 </button>
@@ -1410,5 +1410,6 @@ export default function ChatPage() {
           </main>
         </div>
       </div>
-    );
-  }
+    </>
+  );
+}

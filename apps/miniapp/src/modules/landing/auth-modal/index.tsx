@@ -8,6 +8,7 @@ import { signLoginPayload } from 'thirdweb/auth';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../../public/icons/zico_blue.svg';
+import '../../../shared/ui/loader.css';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -326,33 +327,33 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             )
           ) : (
             <div className="space-y-4">
-              <div className="border border-cyan-500/30 bg-[#1a1a1a] rounded-xl p-4">
-                <p className="text-xs text-gray-400 mb-1">Connected wallet</p>
-                <p className="font-mono text-sm text-cyan-400 font-semibold">
+              <div className="border border-white/10 bg-black/40 backdrop-blur-md rounded-xl p-4">
+                <p className="text-xs text-white mb-1">Connected wallet</p>
+                <p className="font-mono text-sm text-white font-semibold">
                   {shortAddress(account!.address)}
                 </p>
                 <div className="text-sm mt-2">
                   {isAuthenticating ? (
-                    <div className="flex items-center gap-2 text-cyan-400">
-                      <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                    <div className="flex items-center gap-2 text-white">
+                      <div className="loader-inline-sm" />
                       <span>Authenticating...</span>
                     </div>
                   ) : isAuthenticated ? (
-                    <div className="flex items-center gap-2 text-green-400">
+                    <div className="flex items-center gap-2 text-white">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                       <span>Authenticated! Redirecting...</span>
                     </div>
                   ) : (
-                    <span className="text-gray-400">Waiting for authentication</span>
+                    <span className="text-white">Waiting for authentication</span>
                   )}
                 </div>
               </div>
 
               <button
                 onClick={handleDisconnect}
-                className="w-full px-4 py-3 rounded-lg bg-transparent text-red-400 border border-red-400 hover:bg-red-500/10 transition-all font-medium"
+                className="w-full px-4 py-3 rounded-lg bg-white text-black border-none hover:bg-gray-100 transition-all font-medium"
               >
                 Disconnect
               </button>
