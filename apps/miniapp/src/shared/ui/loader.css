@@ -1,0 +1,94 @@
+/* HTML: <div class="loader"></div> */
+.loader-custom {
+  display: inline-grid;
+}
+.loader-custom:before,
+.loader-custom:after {
+  content: "";
+  grid-area: 1/1;
+  height: 30px;
+  aspect-ratio: 6;
+  --c: #0000 64%, #5AD4D5 66% 83%, #7DE0E1 85% 98%, #0000 101%;
+  background:
+    radial-gradient(35% 146% at 50% 159%, var(--c)) 0 0,
+    radial-gradient(35% 146% at 50% -59%, var(--c)) 25% 100%;
+  background-size: calc(100%/3) 50%;
+  background-repeat: repeat-x;
+  clip-path: inset(0 100% 0 0);
+  animation: l10 1.5s infinite linear;
+}
+.loader-custom:after {
+  scale: -1;
+}
+
+/* Loader inline sizes */
+.loader-inline-sm {
+  display: inline-grid;
+}
+.loader-inline-sm:before,
+.loader-inline-sm:after {
+  content: "";
+  grid-area: 1/1;
+  height: 15px;
+  aspect-ratio: 6;
+  --c: #0000 64%, #5AD4D5 66% 83%, #7DE0E1 85% 98%, #0000 101%;
+  background:
+    radial-gradient(35% 146% at 50% 159%, var(--c)) 0 0,
+    radial-gradient(35% 146% at 50% -59%, var(--c)) 25% 100%;
+  background-size: calc(100%/3) 50%;
+  background-repeat: repeat-x;
+  clip-path: inset(0 100% 0 0);
+  animation: l10 1.5s infinite linear;
+}
+.loader-inline-sm:after {
+  scale: -1;
+}
+
+.loader-inline-md {
+  display: inline-grid;
+}
+.loader-inline-md:before,
+.loader-inline-md:after {
+  content: "";
+  grid-area: 1/1;
+  height: 20px;
+  aspect-ratio: 6;
+  --c: #0000 64%, #5AD4D5 66% 83%, #7DE0E1 85% 98%, #0000 101%;
+  background:
+    radial-gradient(35% 146% at 50% 159%, var(--c)) 0 0,
+    radial-gradient(35% 146% at 50% -59%, var(--c)) 25% 100%;
+  background-size: calc(100%/3) 50%;
+  background-repeat: repeat-x;
+  clip-path: inset(0 100% 0 0);
+  animation: l10 1.5s infinite linear;
+}
+.loader-inline-md:after {
+  scale: -1;
+}
+
+.loader-inline-lg {
+  display: inline-grid;
+}
+.loader-inline-lg:before,
+.loader-inline-lg:after {
+  content: "";
+  grid-area: 1/1;
+  height: 30px;
+  aspect-ratio: 6;
+  --c: #0000 64%, #5AD4D5 66% 83%, #7DE0E1 85% 98%, #0000 101%;
+  background:
+    radial-gradient(35% 146% at 50% 159%, var(--c)) 0 0,
+    radial-gradient(35% 146% at 50% -59%, var(--c)) 25% 100%;
+  background-size: calc(100%/3) 50%;
+  background-repeat: repeat-x;
+  clip-path: inset(0 100% 0 0);
+  animation: l10 1.5s infinite linear;
+}
+.loader-inline-lg:after {
+  scale: -1;
+}
+
+@keyframes l10 {
+  50% { clip-path: inset(0); }
+  to { clip-path: inset(0 0 0 100%); }
+}

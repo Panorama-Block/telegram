@@ -233,15 +233,9 @@ body {
   font-family: 'SuisseIntl', Arial, Helvetica, sans-serif;
 }
 
-/* Panorama Block Signature Background Gradient */
+/* Panorama Block Signature Background - Solid Black */
 .pano-gradient-bg {
-  background: linear-gradient(
-    to bottom,
-    rgba(0, 255, 195, 0.15) 0%,
-    rgba(0, 0, 0, 1) 35%,
-    rgba(0, 0, 0, 1) 65%,
-    rgba(0, 255, 195, 0.15) 100%
-  );
+  background: #000000;
   min-height: 100vh;
 }
 

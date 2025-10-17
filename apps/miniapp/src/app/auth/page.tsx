@@ -9,13 +9,16 @@ import { Container } from '../../components/layout/Container';
 import { Stack } from '../../components/layout/Stack';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import { GlobalLoader } from '../../shared/ui';
 import pblokNav from '../../../public/logos/pblok_nav.svg';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
+import '../../shared/ui/loader.css';
 
 export default function AuthPage() {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [redirectCountdown, setRedirectCountdown] = useState(3);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   // Check wallet authentication (not Telegram auth)
   useEffect(() => {
@@ -37,7 +40,10 @@ export default function AuthPage() {
           setRedirectCountdown(counter);
           if (counter <= 0) {
             if (countdownInterval) clearInterval(countdownInterval);
-            router.push('/chat');
+            setIsRedirecting(true);
+            setTimeout(() => {
+              router.replace('/chat');
+            }, 100);
           }
         }, 1000);
       }
@@ -57,13 +63,19 @@ export default function AuthPage() {
   useEffect(() => {
     const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     if (authToken) {
-      router.push('/chat');
+      setIsRedirecting(true);
+      setTimeout(() => {
+        router.replace('/chat');
+      }, 100);
     }
   }, [router]);
 
   const handleContinue = () => {
     if (isAuthenticated) {
-      router.push('/chat');
+      setIsRedirecting(true);
+      setTimeout(() => {
+        router.replace('/chat');
+      }, 100);
     }
   };
 
@@ -92,11 +104,13 @@ export default function AuthPage() {
   );
 
   return (
-    <MobileLayout
-      header={<AuthHeader />}
-      padding={false}
-      className="bg-black"
-    >
+    <>
+      <GlobalLoader isLoading={isRedirecting} message="Loading your workspace..." />
+      <MobileLayout
+        header={<AuthHeader />}
+        padding={false}
+        className="bg-black"
+      >
       <Container size="md" className="py-8 sm:py-12">
         <Stack direction="vertical" gap="xl" className="max-w-lg mx-auto">
           {/* Hero Section */}
@@ -138,7 +152,7 @@ export default function AuthPage() {
             <>
               <div className="mt-6 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
                 <div className="flex items-center gap-3">
-                  <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+                  <div className="loader-inline-sm"></div>
                   <span className="text-green-400 font-medium">
                     Redirecting to chat in {redirectCountdown}s...
                   </span>
@@ -194,5 +208,6 @@ export default function AuthPage() {
         </Stack>
       </Container>
     </MobileLayout>
+    </>
   );
 }
