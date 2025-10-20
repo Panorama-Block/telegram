@@ -15,7 +15,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
 
   const navigate = (path: string) => {
-    router.push(path);
+    router.push(path)
     onClose();
   };
 

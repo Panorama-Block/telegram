@@ -138,7 +138,7 @@ export default function SignMessageTest() {
                 <div>
                   <div className="text-xs text-gray-400 mb-1">Mensagem:</div>
                   <div className="text-sm text-white bg-gray-800/50 rounded p-2 break-words">
-                    "{message}"
+                    &ldquo;{message}&rdquo;
                   </div>
                 </div>
                 <div>

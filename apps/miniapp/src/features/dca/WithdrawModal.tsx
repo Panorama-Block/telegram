@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useActiveWalletChain } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, eth_getBalance, getRpcClient, type Address } from 'thirdweb';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { withdrawFromSmartAccount, DCAApiError } from './api';
@@ -21,6 +21,7 @@ export default function WithdrawModal({
   smartAccountName,
 }: WithdrawModalProps) {
   const account = useActiveAccount();
+  const activeChain = useActiveWalletChain();
   const [isTestnet, setIsTestnet] = useState(false);
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -194,9 +195,9 @@ export default function WithdrawModal({
                   />
                 </button>
               </div>
-              {account?.chain && account.chain.id !== selectedChainId && (
+              {activeChain && activeChain.id !== selectedChainId && (
                 <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-3 py-2 text-[11px] text-pano-warning">
-                  Sua carteira está em {account.chain.name || 'outra rede'}. Altere para {isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet'} antes de confirmar o saque.
+                  Sua carteira está em {activeChain.name || 'outra rede'}. Altere para {isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet'} antes de confirmar o saque.
                 </div>
               )}
             </div>

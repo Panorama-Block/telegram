@@ -6,9 +6,11 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Account, PreparedTransaction } from 'thirdweb';
+import { PreparedTransaction } from 'thirdweb';
 import { sendTransaction } from 'thirdweb';
 import { privateKeyToAccount } from 'thirdweb/wallets';
+
+type Account = ReturnType<typeof privateKeyToAccount>;
 
 interface SessionKeyData {
   privateKey: string;

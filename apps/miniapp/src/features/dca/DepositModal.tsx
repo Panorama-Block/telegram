@@ -5,7 +5,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useActiveWalletChain } from 'thirdweb/react';
 import { sendTransaction, prepareTransaction, toWei, getContract, defineChain } from 'thirdweb';
 import { createThirdwebClient, type Address } from 'thirdweb';
 import { approve, allowance } from 'thirdweb/extensions/erc20';
@@ -41,6 +41,7 @@ export default function DepositModal({
   smartAccountName,
 }: DepositModalProps) {
   const account = useActiveAccount();
+  const activeChain = useActiveWalletChain();
   const [isTestnet, setIsTestnet] = useState<boolean>(false); // Toggle between Mainnet/Testnet
   const [chainId, setChainId] = useState<number>(1); // Ethereum mainnet default
   const [selectedToken, setSelectedToken] = useState<string>('');
@@ -58,10 +59,10 @@ export default function DepositModal({
   const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID || '' });
 
   useEffect(() => {
-    if (account?.chain?.id != null) {
-      setWalletChainId(account.chain.id);
+    if (activeChain?.id != null) {
+      setWalletChainId(activeChain.id);
     }
-  }, [account]);
+  }, [activeChain]);
 
   // Update chainId when testnet toggle changes
   useEffect(() => {
@@ -144,16 +145,19 @@ export default function DepositModal({
 
   // Check if wallet is on wrong network
   const isWrongNetwork = useMemo(() => {
-    const currentChain = walletChainId ?? account?.chain?.id;
+    const currentChain = walletChainId ?? activeChain?.id;
     if (currentChain == null) {
       return false;
     }
     return currentChain !== chainId;
-  }, [walletChainId, account, chainId]);
+  }, [walletChainId, activeChain, chainId]);
 
   // Check wallet balance
   const checkWalletBalance = async () => {
     if (!account || !currentNetwork) return;
+
+    // TypeScript narrowing
+    const activeAccount = account;
 
     setIsCheckingBalance(true);
     try {
@@ -171,7 +175,7 @@ export default function DepositModal({
         // const balance = await getBalance({
         //   client,
         //   chain: defineChain(chainId),
-        //   address: account.address as Address,
+        //   address: activeAccount.address as Address,
         // });
 
         // // Convert from wei to readable format
@@ -208,17 +212,25 @@ export default function DepositModal({
         const { balanceOf } = await import('thirdweb/extensions/erc20');
         const balance = await balanceOf({
           contract,
-          address: account.address as Address,
+          address: activeAccount.address as Address,
         });
 
         console.log('🔍 Raw balance response:', balance);
 
         // Handle different response formats
-        let balanceValue;
+        let balanceValue: bigint;
         if (typeof balance === 'bigint') {
           balanceValue = balance;
-        } else if (balance && typeof balance === 'object' && balance.value !== undefined) {
-          balanceValue = balance.value;
+        } else if (balance && typeof balance === 'object') {
+          // Handle object with value property
+          const balanceObj = balance as any;
+          if (balanceObj.value !== undefined && typeof balanceObj.value === 'bigint') {
+            balanceValue = balanceObj.value;
+          } else {
+            console.error('Invalid balance response format:', balance);
+            setWalletBalance('0');
+            return;
+          }
         } else {
           console.error('Invalid balance response format:', balance);
           setWalletBalance('0');
@@ -274,10 +286,11 @@ export default function DepositModal({
       setWalletChainId(newChainId);
     };
 
-    window.ethereum.on('chainChanged', handleChainChanged);
+    const ethereum = window.ethereum as any;
+    ethereum.on?.('chainChanged', handleChainChanged);
 
     return () => {
-      window.ethereum?.removeListener('chainChanged', handleChainChanged);
+      ethereum.removeListener?.('chainChanged', handleChainChanged);
     };
   }, [isOpen, account, chainId]);
 
@@ -359,7 +372,7 @@ export default function DepositModal({
       try {
         const contract = getContract({
           client,
-          chain: chainId === 43114 ? avalanche : defineChain(chainId),
+          chain: defineChain(chainId),
           address: selectedToken as Address,
         });
 
@@ -393,14 +406,14 @@ export default function DepositModal({
 
       const contract = getContract({
         client,
-        chain: chainId === 43114 ? avalanche : defineChain(chainId),
+        chain: defineChain(chainId),
         address: selectedToken as Address,
       });
 
       const transaction = approve({
         contract,
         spender: smartAccountAddress as Address,
-        amount: toWei(amount),
+        amount: toWei(amount) as any,
       });
 
       const result = await sendTransaction({
@@ -445,12 +458,12 @@ export default function DepositModal({
     }
 
     // Check if wallet is on the correct network
-    const currentWalletChainId = walletChainId ?? account.chain?.id;
+    const currentWalletChainId = walletChainId ?? activeChain?.id;
 
     if (typeof currentWalletChainId === 'number' && currentWalletChainId !== chainId) {
       const expectedNetwork = isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet';
       const currentWalletNetwork =
-        account.chain?.name ||
+        activeChain?.name ||
         (currentWalletChainId === 11155111 ? 'Sepolia Testnet' : `Chain ID: ${currentWalletChainId}`);
 
       setError(`⚠️ Sua carteira está em ${currentWalletNetwork}, mas você selecionou ${expectedNetwork}.\n\nPor favor, troque sua carteira para ${expectedNetwork} (Chain ID: ${chainId}) no MetaMask.`);
@@ -539,7 +552,7 @@ export default function DepositModal({
         const transaction = transfer({
           contract,
           to: depositAddress as Address,
-          amount: amountInWei,
+          amount: amountInWei as any,
         });
 
         console.log('📤 Enviando transação ERC20...');
@@ -648,9 +661,9 @@ export default function DepositModal({
                   />
                 </button>
               </div>
-              {account?.chain && account.chain.id !== chainId && (
+              {activeChain && activeChain.id !== chainId && (
                 <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-3 py-2 text-[11px] text-pano-warning">
-                  Sua carteira está em {account.chain.name || 'outra rede'}. Altere para {isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet'} antes de continuar.
+                  Sua carteira está em {activeChain.name || 'outra rede'}. Altere para {isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet'} antes de continuar.
                 </div>
               )}
             </div>

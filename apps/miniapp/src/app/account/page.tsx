@@ -561,7 +561,6 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-pano-bg-primary text-pano-text-primary flex">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="flex-1 flex flex-col md:ml-64">
         <header className="sticky top-0 z-30 border-b border-pano-border bg-pano-surface/80 backdrop-blur-md">
