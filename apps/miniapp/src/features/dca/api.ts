@@ -35,7 +35,6 @@ export interface CreateAccountRequest {
 export interface CreateAccountResponse {
   smartAccountAddress: string;
   sessionKeyAddress: string;
-  sessionKeyPrivateKey: string;
   expiresAt: Date;
 }
 
@@ -296,5 +295,114 @@ export async function getExecutionHistory(smartAccountId: string, limit = 100): 
       throw error;
     }
     throw new DCAApiError(error.message || 'Network error');
+  }
+}
+
+/**
+ * Sign and execute a transaction using backend session key
+ * SECURITY: Private key never leaves backend!
+ */
+export interface SignAndExecuteRequest {
+  smartAccountAddress: string;
+  userId: string;
+  to: string;
+  value: string; // Amount in ETH
+  chainId: number;
+  data?: string;
+}
+
+export interface SignAndExecuteResponse {
+  transactionHash: string;
+  success: boolean;
+  error?: string;
+}
+
+export async function signAndExecuteTransaction(
+  request: SignAndExecuteRequest
+): Promise<SignAndExecuteResponse> {
+  try {
+    const response = await fetch(`${DCA_API_URL}/transaction/sign-and-execute`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new DCAApiError(error.error || 'Failed to sign transaction', response.status);
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    throw new DCAApiError(error.message || 'Network error');
+  }
+}
+
+/**
+ * Validate if a transaction would be allowed by session key permissions
+ */
+export async function validateTransactionPermissions(
+  smartAccountAddress: string,
+  to: string,
+  value: string
+): Promise<{ valid: boolean; reason?: string }> {
+  try {
+    const response = await fetch(`${DCA_API_URL}/transaction/validate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ smartAccountAddress, to, value }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new DCAApiError(error.error || 'Failed to validate transaction', response.status);
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    throw new DCAApiError(error.message || 'Network error');
+  }
+}
+
+/**
+ * Withdraw funds from smart account to main wallet
+ * Uses backend signing for security
+ */
+export interface WithdrawRequest {
+  smartAccountAddress: string;
+  userId: string; // Your main wallet address
+  amount: string; // Amount in ETH to withdraw
+  chainId: number;
+}
+
+export async function withdrawFromSmartAccount(
+  request: WithdrawRequest
+): Promise<SignAndExecuteResponse> {
+  try {
+    // Withdraw = send ETH from smart account back to main wallet (userId)
+    const result = await signAndExecuteTransaction({
+      smartAccountAddress: request.smartAccountAddress,
+      userId: request.userId,
+      to: request.userId, // Send back to main wallet
+      value: request.amount,
+      chainId: request.chainId,
+    });
+
+    return result;
+  } catch (error: any) {
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    throw new DCAApiError(error.message || 'Failed to withdraw funds');
   }
 }

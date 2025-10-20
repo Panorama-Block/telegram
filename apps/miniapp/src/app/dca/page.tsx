@@ -13,10 +13,8 @@ import {
   type CreateAccountRequest,
   DCAApiError
 } from '@/features/dca/api';
-import SignMessageTest from '@/features/dca/SignMessageTest';
 import DepositModal from '@/features/dca/DepositModal';
-import SmartAccountDetails from '@/features/dca/SmartAccountDetails';
-import { useSessionKey } from '@/features/dca/useSessionKey';
+import WithdrawModal from '@/features/dca/WithdrawModal';
 
 // Use the SmartAccount type from API
 type SubAccount = SmartAccount;
@@ -303,7 +301,6 @@ export default function DCAPage() {
   const account = useActiveAccount();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
-  const { saveSessionKey } = useSessionKey();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [subAccounts, setSubAccounts] = useState<SubAccount[]>([]);
@@ -312,8 +309,8 @@ export default function DCAPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
+  const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<SubAccount | null>(null);
-  const [expandedAccountAddress, setExpandedAccountAddress] = useState<string | null>(null);
 
   // Load subaccounts from backend API on mount
   useEffect(() => {
@@ -373,21 +370,15 @@ export default function DCAPage() {
 
       console.log('Smart account created:', result);
 
-      // 🔑 Save session key automatically!
-      saveSessionKey({
-        privateKey: result.sessionKeyPrivateKey,
-        address: result.sessionKeyAddress,
-        smartAccountAddress: result.smartAccountAddress,
-        expiresAt: new Date(result.expiresAt).getTime(),
-      });
-
-      console.log('✅ Session key saved! You can now sign transactions automatically.');
+      // 🔐 SECURITY: Session key is kept SECURE in backend!
+      // No private keys stored in frontend anymore!
+      console.log('✅ Smart account created! Session key stored securely on backend.');
 
       // Reload accounts from backend
       const accounts = await getUserAccounts(account.address);
       setSubAccounts(accounts);
 
-      setSuccess(`✅ Smart Account "${config.name}" criada com sucesso! Session key salva e pronta para uso automático (válida por ${config.durationDays} dias).`);
+      setSuccess(`✅ Smart Account "${config.name}" criada com sucesso! Session key armazenada de forma segura no backend (válida por ${config.durationDays} dias).`);
       setShowConfigModal(false);
     } catch (e: any) {
       console.error('Error creating smart account:', e);
@@ -458,7 +449,7 @@ export default function DCAPage() {
 
         {/* DCA Interface */}
         <div className="flex-1 overflow-y-auto p-4">
-          <div className="w-full max-w-4xl mx-auto space-y-6">
+          <div className="w-full max-w-7xl mx-auto space-y-6">
             {/* Info Card */}
             <div className="bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/30 rounded-xl p-5">
               <h2 className="text-lg font-semibold text-cyan-400 mb-2">🎯 DCA com Account Abstraction</h2>
@@ -535,136 +526,216 @@ export default function DCAPage() {
               </div>
             )}
 
-            {/* Subaccounts List */}
+            {/* Smart Accounts Table */}
             {subAccounts.length > 0 && (
-              <div className="bg-[#1a1a1a] border border-gray-800 rounded-2xl p-6 shadow-xl">
-                <h2 className="text-xl font-bold mb-4">🏦 Minhas Smart Accounts</h2>
+              <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl overflow-hidden min-h-[600px]">
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                      🏦 Minhas Smart Accounts
+                    </h2>
+                    <div className="flex items-center gap-2">
+                      <button className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                        Suspend All
+                      </button>
+                      <button className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                        Archive All
+                      </button>
+                      <button className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                        Delete All
+                      </button>
+                    </div>
+                  </div>
+                </div>
 
-                <div className="space-y-4">
-                  {subAccounts.filter(acc => acc.permissions).map((subAccount) => {
-                    const expired = isSessionKeyExpired(subAccount.permissions.endTimestamp);
-
-                    return (
-                      <div
-                        key={subAccount.address}
-                        className={`p-5 rounded-xl border transition-all ${
-                          expired
-                            ? 'bg-red-500/5 border-red-500/30'
-                            : 'bg-gray-800/50 border-cyan-500/20 hover:border-cyan-500/40'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h3 className="text-base font-semibold text-white">{subAccount.name}</h3>
-                              {expired && (
-                                <span className="px-2 py-0.5 text-xs font-semibold bg-red-500/20 text-red-400 rounded-full">
-                                  Expirada
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs font-mono text-gray-400 break-all mb-1">
-                              Smart Account: {subAccount.address}
-                            </div>
-                            {subAccount.sessionKeyAddress && (
-                              <div className="text-xs font-mono text-gray-500 break-all">
-                                Session Key: {subAccount.sessionKeyAddress}
+                {/* Table */}
+                <div className="overflow-x-auto max-h-[500px]">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 dark:bg-gray-800">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          <input type="checkbox" className="rounded border-gray-300" />
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          SMART ACCOUNT
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          ROLE
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          STATUS
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          BALANCE
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          LIMIT
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          EXPIRES
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          ACTIONS
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                      {subAccounts.filter(acc => acc.permissions).map((subAccount) => {
+                        const expired = isSessionKeyExpired(subAccount.permissions.endTimestamp);
+                        const daysUntilExpiry = Math.ceil((subAccount.permissions.endTimestamp * 1000 - Date.now()) / (1000 * 60 * 60 * 24));
+                        
+                        return (
+                          <tr key={subAccount.address} className="hover:bg-gray-50 dark:hover:bg-gray-800 h-16">
+                            {/* Checkbox */}
+                            <td className="px-6 py-6 whitespace-nowrap">
+                              <input type="checkbox" className="rounded border-gray-300" />
+                            </td>
+                            
+                            {/* Smart Account Info */}
+                            <td className="px-6 py-6 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="flex-shrink-0 h-10 w-10">
+                                  <div className="h-10 w-10 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center text-white font-semibold">
+                                    {subAccount.name.charAt(0).toUpperCase()}
+                                  </div>
+                                </div>
+                                <div className="ml-4">
+                                  <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                    {subAccount.name}
+                                  </div>
+                                  <div className="text-sm text-gray-500 dark:text-gray-400 font-mono">
+                                    {subAccount.address.slice(0, 6)}...{subAccount.address.slice(-4)}
+                                  </div>
+                                </div>
                               </div>
-                            )}
-                          </div>
-
-                          <button
-                            onClick={() => handleDeleteSubAccount(subAccount.address)}
-                            className="ml-4 p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors flex-shrink-0"
-                          >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-
-                        {/* Permissions Details */}
-                        <div className="grid grid-cols-2 gap-3 text-xs">
-                          <div className="bg-[#0d1117]/50 rounded-lg p-3">
-                            <div className="text-gray-400 mb-1">Limite por TX</div>
-                            <div className="text-cyan-400 font-semibold">
+                            </td>
+                            
+                            {/* Role */}
+                            <td className="px-6 py-6 whitespace-nowrap">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clipRule="evenodd" />
+                                </svg>
+                                DCA Account
+                              </span>
+                            </td>
+                            
+                            {/* Status */}
+                            <td className="px-6 py-6 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className={`flex-shrink-0 h-2.5 w-2.5 rounded-full mr-2 ${expired ? 'bg-red-400' : 'bg-green-400'}`}></div>
+                                <span className={`text-sm font-medium ${expired ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                                  {expired ? 'Inactive' : 'Active'}
+                                </span>
+                              </div>
+                            </td>
+                            
+                            {/* Balance */}
+                            <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                              <div className="flex items-center">
+                                <span className="text-lg font-semibold">0.00</span>
+                                <span className="ml-1 text-xs text-gray-500">AVAX</span>
+                              </div>
+                            </td>
+                            
+                            {/* Limit */}
+                            <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                               {subAccount.permissions.nativeTokenLimitPerTransaction} ETH
-                            </div>
-                          </div>
-                          <div className="bg-[#0d1117]/50 rounded-lg p-3">
-                            <div className="text-gray-400 mb-1">Contratos</div>
-                            <div className="text-cyan-400 font-semibold">
-                              {subAccount.permissions.approvedTargets[0] === '*'
-                                ? 'Todos'
-                                : `${subAccount.permissions.approvedTargets.length}`}
-                            </div>
-                          </div>
-                          <div className="bg-[#0d1117]/50 rounded-lg p-3">
-                            <div className="text-gray-400 mb-1">Válido de</div>
-                            <div className="text-white font-mono">
-                              {formatTimestamp(subAccount.permissions.startTimestamp)}
-                            </div>
-                          </div>
-                          <div className="bg-[#0d1117]/50 rounded-lg p-3">
-                            <div className="text-gray-400 mb-1">Válido até</div>
-                            <div className={`font-mono ${expired ? 'text-red-400' : 'text-white'}`}>
-                              {formatTimestamp(subAccount.permissions.endTimestamp)}
-                            </div>
-                          </div>
-                        </div>
+                            </td>
+                            
+                            {/* Expires */}
+                            <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                              <div className="flex items-center">
+                                <span className={`font-medium ${expired ? 'text-red-600 dark:text-red-400' : daysUntilExpiry <= 7 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-900 dark:text-white'}`}>
+                                  {expired ? 'Expired' : `${daysUntilExpiry} days`}
+                                </span>
+                                {!expired && daysUntilExpiry <= 7 && (
+                                  <svg className="ml-1 w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                              </div>
+                            </td>
+                            
+                            {/* Actions */}
+                            <td className="px-6 py-6 whitespace-nowrap text-right text-sm font-medium">
+                              <div className="flex items-center justify-end space-x-2">
+                                <button
+                                  onClick={() => {
+                                    setSelectedAccount(subAccount);
+                                    setDepositModalOpen(true);
+                                  }}
+                                  disabled={expired}
+                                  className="px-3 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-full hover:bg-green-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  💰 Deposit
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedAccount(subAccount);
+                                    setWithdrawModalOpen(true);
+                                  }}
+                                  disabled={expired}
+                                  className="px-3 py-1 text-xs font-medium text-red-700 bg-red-100 rounded-full hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  💸 Withdraw
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteSubAccount(subAccount.address)}
+                                  className="p-1 text-red-400 hover:text-red-600 hover:bg-red-100 rounded-full transition-colors"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
 
-                        <div className="mt-4 text-xs text-gray-500">
-                          Criada em: {new Date(subAccount.createdAt).toLocaleDateString('pt-BR', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="mt-4 flex gap-2">
-                          <button
-                            onClick={() => {
-                              setSelectedAccount(subAccount);
-                              setDepositModalOpen(true);
-                            }}
-                            disabled={expired}
-                            className="flex-1 py-3 rounded-xl font-semibold bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            💰 Depositar
-                          </button>
-                          <button
-                            onClick={() => {
-                              setExpandedAccountAddress(
-                                expandedAccountAddress === subAccount.address
-                                  ? null
-                                  : subAccount.address
-                              );
-                            }}
-                            className="px-4 py-3 rounded-xl font-semibold bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 transition-all"
-                          >
-                            {expandedAccountAddress === subAccount.address ? '▼ Ocultar' : '📊 Detalhes'}
-                          </button>
-                        </div>
-
-                        {/* Expanded Details */}
-                        {expandedAccountAddress === subAccount.address && (
-                          <div className="mt-4 p-4 bg-[#0d1117] rounded-xl border border-cyan-500/20">
-                            <SmartAccountDetails
-                              smartAccountAddress={subAccount.address}
-                              smartAccountName={subAccount.name}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                {/* Pagination */}
+                <div className="px-6 py-3 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Show</span>
+                      <select className="mx-2 text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                        <option>10</option>
+                        <option>25</option>
+                        <option>50</option>
+                      </select>
+                      <span className="text-sm text-gray-700 dark:text-gray-300">per page</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-gray-700 dark:text-gray-300">
+                        1-{subAccounts.length} of {subAccounts.length}
+                      </span>
+                      <button className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50" disabled>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                      </button>
+                      <button className="px-2 py-1 text-sm font-medium text-white bg-blue-600 rounded">1</button>
+                      <button className="px-2 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">2</button>
+                      <button className="px-2 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">3</button>
+                      <span className="px-2 py-1 text-sm text-gray-500">...</span>
+                      <button className="px-2 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">10</button>
+                      <button className="p-1 text-gray-400 hover:text-gray-600">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Sign Message Test */}
-            <SignMessageTest />
+
 
             {/* Educational Section */}
             <div className="bg-[#1a1a1a] border border-cyan-500/30 rounded-2xl p-6 shadow-xl">
@@ -744,6 +815,16 @@ export default function DCAPage() {
         <DepositModal
           isOpen={depositModalOpen}
           onClose={() => setDepositModalOpen(false)}
+          smartAccountAddress={selectedAccount.address}
+          smartAccountName={selectedAccount.name}
+        />
+      )}
+
+      {/* Withdraw Modal */}
+      {selectedAccount && (
+        <WithdrawModal
+          isOpen={withdrawModalOpen}
+          onClose={() => setWithdrawModalOpen(false)}
           smartAccountAddress={selectedAccount.address}
           smartAccountName={selectedAccount.name}
         />
