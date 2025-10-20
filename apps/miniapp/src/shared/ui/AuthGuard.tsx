@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/shared/contexts/AuthContext';
+import './loader.css';
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -75,16 +76,8 @@ export function AuthGuard({ children }: AuthGuardProps) {
   // Show loading while checking authentication
   if (isLoading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center' }}>
-        <div style={{
-          width: 32,
-          height: 32,
-          border: '3px solid #e0e0e0',
-          borderTop: '3px solid #007aff',
-          borderRadius: '50%',
-          animation: 'spin 1s linear infinite',
-          margin: '0 auto'
-        }} />
+      <div className="fixed inset-0 z-50 bg-pano-bg-primary flex items-center justify-center">
+        <div className="loader-custom"></div>
       </div>
     );
   }

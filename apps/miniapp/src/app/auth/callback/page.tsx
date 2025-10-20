@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
+import '@/shared/ui/loader.css';
 
 function decodeAuthResult(value: string) {
   try {
@@ -23,14 +24,12 @@ function decodeAuthResult(value: string) {
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const [status, setStatus] = useState('Inicializando...');
   const [error, setError] = useState<string | null>(null);
   const [deepLinkUrl, setDeepLinkUrl] = useState<string | null>(null);
 
   useEffect(() => {
     async function run() {
       try {
-        setStatus('Processando retorno de autenticação...');
         const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
         if (!clientId) {
           throw new Error('THIRDWEB_CLIENT_ID ausente');
@@ -60,7 +59,6 @@ export default function AuthCallbackPage() {
         }
 
         // 2) Auto-conectar a wallet usando o token salvo
-        setStatus('Conectando carteira...');
         const client = createThirdwebClient({ clientId });
         const wallet = inAppWallet();
         const account = await wallet.autoConnect({ client });
@@ -70,7 +68,6 @@ export default function AuthCallbackPage() {
         }
 
         // 3) Autenticar no backend (gerar JWT da sua plataforma)
-        setStatus('Autenticando com backend...');
         const authApiBase = (process.env.VITE_AUTH_API_BASE || 'http://localhost:3001').replace(/\/+$/, '');
 
         const loginPayload = { address: account.address };
@@ -122,7 +119,6 @@ export default function AuthCallbackPage() {
         const bot = process.env.VITE_TELEGRAM_BOT_USERNAME || '';
         if (!isTelegram && bot) {
           // Criar sessão one-time para retorno ao Mini App via deep link
-          setStatus('Preparando retorno ao Telegram...');
           try {
             const createResp = await fetch(`${authApiBase}/auth/miniapp/session/create`, {
               method: 'POST',
@@ -133,7 +129,6 @@ export default function AuthCallbackPage() {
               const { nonce } = await createResp.json();
               const deepLink = `https://t.me/${bot}?startapp=code:${encodeURIComponent(nonce)}`;
               setDeepLinkUrl(deepLink);
-              setStatus('Abra no Telegram para continuar.');
               return; // não redireciona dentro do Safari
             }
           } catch (e) {
@@ -141,7 +136,6 @@ export default function AuthCallbackPage() {
           }
         }
 
-        setStatus('Autenticação concluída. Redirecionando...');
         router.replace('/newchat');
       } catch (e: any) {
         console.error('[AUTH CALLBACK] Erro:', e);
@@ -152,15 +146,23 @@ export default function AuthCallbackPage() {
     run();
   }, [router]);
 
-  return (
-    <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ maxWidth: 480, width: '100%', padding: 24, background: '#0d1117', color: '#fff', borderRadius: 12, border: '1px solid rgba(6,182,212,0.3)' }}>
-        <h2 style={{ marginTop: 0, marginBottom: 12 }}>Finalizando login</h2>
-        <p style={{ margin: 0, color: '#9ca3af' }}>{status}</p>
-        {error && (
+  if (error) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ maxWidth: 480, width: '100%', padding: 24, background: '#0d1117', color: '#fff', borderRadius: 12, border: '1px solid rgba(6,182,212,0.3)' }}>
+          <h2 style={{ marginTop: 0, marginBottom: 12 }}>Erro na autenticação</h2>
           <p style={{ marginTop: 12, color: '#ef4444' }}>Erro: {error}</p>
-        )}
-        {!error && deepLinkUrl && (
+        </div>
+      </div>
+    );
+  }
+
+  if (deepLinkUrl) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ maxWidth: 480, width: '100%', padding: 24, background: '#0d1117', color: '#fff', borderRadius: 12, border: '1px solid rgba(6,182,212,0.3)' }}>
+          <h2 style={{ marginTop: 0, marginBottom: 12 }}>Autenticação concluída</h2>
+          <p style={{ margin: 0, color: '#9ca3af' }}>Abra no Telegram para continuar.</p>
           <div style={{ marginTop: 16 }}>
             <a
               href={deepLinkUrl}
@@ -177,8 +179,14 @@ export default function AuthCallbackPage() {
               Voltar ao Telegram
             </a>
           </div>
-        )}
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-pano-bg-primary flex items-center justify-center">
+      <div className="loader-custom"></div>
     </div>
   );
 }
