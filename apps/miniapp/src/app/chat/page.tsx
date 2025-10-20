@@ -1384,9 +1384,9 @@ export default function ChatPage() {
                                           </div>
                                         </div>
 
-                                        {swapQuote.quote.fees?.totalFeeUsd && (
+                                        {swapQuote?.quote?.fees?.totalFeeUsd && (
                                           <div className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs font-medium rounded">
-                                            ${swapQuote.quote.fees.totalFeeUsd}
+                                            ${swapQuote?.quote?.fees?.totalFeeUsd}
                                           </div>
                                         )}
                                       </div>
@@ -1413,7 +1413,7 @@ export default function ChatPage() {
                                               <div className="w-4 h-4 rounded-full bg-gray-500"></div>
                                               <span className="text-xs text-white">{String(message.metadata?.to_token)}</span>
                                             </div>
-                                            <span className="text-xs text-white">{formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)}</span>
+                                            <span className="text-xs text-white">{formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)}</span>
                                           </div>
                                         </div>
                                       </div>
@@ -1437,7 +1437,7 @@ export default function ChatPage() {
                                               <div className="w-4 h-4 rounded-full bg-gray-500"></div>
                                               <span className="text-xs text-white">{String(message.metadata?.to_token)}</span>
                                             </div>
-                                            <span className="text-xs text-white">{(parseFloat(formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)) * 0.99).toFixed(6)}</span>
+                                            <span className="text-xs text-white">{(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)}</span>
                                           </div>
                                         </div>
                                       </div>
@@ -1449,7 +1449,7 @@ export default function ChatPage() {
                                           <div className="bg-black/40 border border-white/10 rounded-lg p-3">
                                             <div className="text-xs text-gray-400 mb-0.5">Min</div>
                                             <div className="text-base font-medium text-white">
-                                              {(parseFloat(formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)) / parseFloat(String(message.metadata?.amount)) * 0.95).toFixed(2)}
+                                              {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) / parseFloat(String(message.metadata?.amount)) * 0.95).toFixed(2)}
                                             </div>
                                             <div className="text-[10px] text-gray-400 mt-0.5">
                                               {String(message.metadata?.to_token)} per {String(message.metadata?.from_token)}
@@ -1458,7 +1458,7 @@ export default function ChatPage() {
                                           <div className="bg-black/40 border border-white/10 rounded-lg p-3">
                                             <div className="text-xs text-gray-400 mb-0.5">Max</div>
                                             <div className="text-base font-medium text-white">
-                                              {(parseFloat(formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)) / parseFloat(String(message.metadata?.amount)) * 1.05).toFixed(2)}
+                                              {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) / parseFloat(String(message.metadata?.amount)) * 1.05).toFixed(2)}
                                             </div>
                                             <div className="text-[10px] text-gray-400 mt-0.5">
                                               {String(message.metadata?.to_token)} per {String(message.metadata?.from_token)}
@@ -1478,10 +1478,10 @@ export default function ChatPage() {
 
                                       {/* Details */}
                                       <div className="space-y-1.5 pt-1.5 border-t border-white/5">
-                                        {swapQuote.quote.fees?.totalFeeUsd && (
+                                        {swapQuote?.quote?.fees?.totalFeeUsd && (
                                           <div className="flex items-center justify-between">
                                             <span className="text-xs text-gray-400">Est. Total Gas Fee</span>
-                                            <span className="text-xs text-white">${swapQuote.quote.fees.totalFeeUsd}</span>
+                                            <span className="text-xs text-white">${swapQuote?.quote?.fees?.totalFeeUsd}</span>
                                           </div>
                                         )}
                                         <div className="flex items-center justify-between">
@@ -1710,13 +1710,13 @@ export default function ChatPage() {
                         <div className="flex justify-between">
                           <span className="text-gray-400">Expected Amount Out</span>
                           <span className="text-white font-medium">
-                            {formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)} {String(currentSwapMetadata?.to_token)}
+                            {formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)} {String(currentSwapMetadata?.to_token)}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-400">Min. Out After Slippage</span>
                           <span className="text-white font-medium">
-                            {(parseFloat(formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
+                            {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
                           </span>
                         </div>
                       </div>
@@ -1806,13 +1806,13 @@ export default function ChatPage() {
                     <div className="flex justify-between">
                       <span className="text-gray-400">Expected Amount Out</span>
                       <span className="text-white font-medium">
-                        {formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)} {String(currentSwapMetadata?.to_token)}
+                        {formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)} {String(currentSwapMetadata?.to_token)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400">Min. Out After Slippage</span>
                       <span className="text-white font-medium">
-                        {(parseFloat(formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
+                        {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
                       </span>
                     </div>
                   </div>
