@@ -11,6 +11,8 @@ import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction,
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx } from '@/features/swap/types';
+import { useSessionKey } from '@/features/dca/useSessionKey';
+import { privateKeyToAccount } from 'thirdweb/wallets';
 
 interface TokenSelectorProps {
   isOpen: boolean;
@@ -240,6 +242,7 @@ export default function SwapPage() {
   const switchChain = useSwitchActiveWalletChain();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
+  const { sessionKey, hasSessionKey } = useSessionKey();
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const userAddress = localStorage.getItem('userAddress');
@@ -536,6 +539,159 @@ export default function SwapPage() {
     }
   }
 
+  async function handleSwapWithSessionKey() {
+    if (!quote) {
+      setError('Please wait for the quote to be calculated');
+      return;
+    }
+
+    if (!hasSessionKey || !sessionKey) {
+      setError('Session Key não encontrada. Crie uma Smart Account primeiro na página DCA.');
+      return;
+    }
+
+    if (!clientId || !client) {
+      setError('Missing THIRDWEB client configuration.');
+      return;
+    }
+
+    setError(null);
+    setSuccess(false);
+
+    try {
+      console.log('🔑 Executing swap with Session Key (automatic approval)...');
+      console.log('Session Key Address:', sessionKey.address);
+      console.log('Smart Account:', sessionKey.smartAccountAddress);
+
+      setPreparing(true);
+
+      const decimals = await getTokenDecimals({
+        client,
+        chainId: fromChainId,
+        token: sellToken.address
+      });
+
+      const wei = parseAmountToWei(sellAmount, decimals);
+      if (wei <= 0n) throw new Error('Invalid amount');
+
+      if (!buyToken) {
+        throw new Error('Please select a token to buy');
+      }
+
+      console.log('=== SWAP WITH SESSION KEY DEBUG ===');
+      console.log('Sell token:', sellToken.symbol, sellToken.address);
+      console.log('Buy token:', buyToken.symbol, buyToken.address);
+      console.log('Sell amount (human):', sellAmount);
+      console.log('Sell amount (wei):', wei.toString());
+      console.log('From chain:', fromChainId);
+      console.log('To chain:', toChainId);
+
+      // Use Smart Account address as sender
+      const prep = await swapApi.prepare({
+        fromChainId,
+        toChainId,
+        fromToken: normalizeToApi(sellToken.address),
+        toToken: normalizeToApi(buyToken.address),
+        amount: wei.toString(),
+        sender: sessionKey.smartAccountAddress,
+      });
+
+      console.log('Prepared transactions:', prep.prepared);
+
+      const seq = flattenPrepared(prep.prepared);
+
+      if (!seq.length) throw new Error('No transactions returned by prepare');
+
+      setPreparing(false);
+
+      setExecuting(true);
+      setTxHashes([]);
+
+      // Create account from session key private key
+      const sessionAccount = privateKeyToAccount({
+        client,
+        privateKey: sessionKey.privateKey,
+      });
+
+      console.log('✅ Session Key account created:', sessionAccount.address);
+
+      for (const t of seq) {
+        if (t.chainId !== fromChainId) {
+          throw new Error(`Chain mismatch. Expected chain ${t.chainId}`);
+        }
+
+        console.log('=== TRANSACTION DEBUG (SESSION KEY) ===');
+        console.log('Raw transaction from API:', t);
+
+        let txValue = 0n;
+        if (t.value) {
+          const valueStr = typeof t.value === 'string' ? t.value : String(t.value);
+          if (valueStr && valueStr !== '0') {
+            try {
+              txValue = BigInt(valueStr);
+              console.log('Using value from API:', txValue.toString());
+            } catch (e) {
+              console.error('Failed to parse transaction value:', valueStr, e);
+              txValue = 0n;
+            }
+          }
+        }
+
+        const tx = prepareTransaction({
+          to: t.to as Address,
+          chain: defineChain(t.chainId),
+          client,
+          data: t.data as Hex,
+          value: txValue,
+        });
+
+        console.log('🔐 Signing transaction with Session Key (no popup!)...');
+
+        // Execute with session key account - NO POPUP!
+        const result = await safeExecuteTransactionV2(async () => {
+          return await sendTransaction({ account: sessionAccount, transaction: tx });
+        });
+
+        if (!result.success) {
+          throw new Error(`Transaction failed: ${result.error}`);
+        }
+
+        if (!result.transactionHash) {
+          throw new Error('Transaction failed: no transaction hash returned.');
+        }
+
+        setTxHashes(prev => [...prev, { hash: result.transactionHash!, chainId: t.chainId }]);
+        console.log(`✅ Transaction ${result.transactionHash} submitted automatically with Session Key!`);
+      }
+
+      setSuccess(true);
+      setSellAmount('');
+      setBuyAmount('');
+      setQuote(null);
+
+      console.log('🎉 Swap executed successfully with Session Key - NO POPUP REQUIRED!');
+    } catch (e: any) {
+      let errorMessage = e.message || 'Failed to execute swap with Session Key';
+      const lowerError = errorMessage.toLowerCase();
+
+      if (lowerError.includes('insufficient funds') ||
+          lowerError.includes('have 0 want') ||
+          lowerError.includes('32003') ||
+          lowerError.includes('gas required exceeds allowance')) {
+        errorMessage = 'Saldo insuficiente na Smart Account. Deposite fundos na Smart Account primeiro (página DCA).';
+      }
+
+      if (lowerError.includes('abierrorsignaturenotfounderror') || lowerError.includes('encoded error signature')) {
+        errorMessage = 'Transação revertida pelo contrato (sem motivo detalhado).';
+      }
+
+      setError(errorMessage);
+    } finally {
+      setPreparing(false);
+      setExecuting(false);
+    }
+  }
+
   const handleSwapTokens = () => {
     if (buyToken) {
       const temp = sellToken;
@@ -704,6 +860,36 @@ export default function SwapPage() {
                         ? 'Start Swap'
                         : 'Aguardando cotação...'}
               </button>
+
+              {/* Session Key Swap Button */}
+              {hasSessionKey && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-purple-400">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <span className="text-xs text-purple-300">Session Key Ativa - Aprovação Automática Disponível</span>
+                  </div>
+                  <button
+                    onClick={handleSwapWithSessionKey}
+                    disabled={!quote || quoting || preparing || executing}
+                    className="w-full py-4 rounded-xl font-semibold text-base transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-purple-500 to-pink-500 text-white"
+                  >
+                    {executing
+                      ? '🔑 Executando com Session Key...'
+                      : preparing
+                        ? 'Preparando transação...'
+                        : quoting
+                          ? 'Calculando cotação...'
+                          : quote
+                            ? '🔑 Swap Automático (Sem Popup!)'
+                            : 'Aguardando cotação...'}
+                  </button>
+                  <div className="text-xs text-gray-400 text-center">
+                    ⚡ Este swap será executado automaticamente usando sua Session Key, sem necessidade de aprovar no popup!
+                  </div>
+                </div>
+              )}
 
               {/* Error Message */}
               {error && (
