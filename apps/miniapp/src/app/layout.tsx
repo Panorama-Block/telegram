@@ -57,18 +57,7 @@ export const metadata: Metadata = {
     },
   },
   icons: {
-    // Ensure favicon uses our brand icon (Next.js also serves /icon.svg automatically)
-    icon: [
-      { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/logos/pblok_nav.svg", type: "image/svg+xml" },
-    ],
-    // Apple touch icon falls back to an existing PNG logo
-    apple: [
-      { url: "/landing/logo-horse.png", sizes: "180x180", type: "image/png" },
-    ],
-    other: [
-      { rel: "mask-icon", url: "/logos/pblok_nav.svg", color: "#00d9ff" },
-    ],
+    apple: [{ url: "/landing/logo-horse.png", sizes: "180x180", type: "image/png" }],
   },
   manifest: "/manifest.json",
   appleWebApp: {
@@ -140,6 +129,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-touch-fullscreen" content="yes" />
         <meta name="format-detection" content="telephone=no, email=no, address=no" />
+        <link rel="icon" href="/miniapp/favicon.ico" sizes="any" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://api.panoramablock.com" />
