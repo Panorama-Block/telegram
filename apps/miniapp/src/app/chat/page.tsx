@@ -25,7 +25,7 @@ import ChatIcon from '../../../public/icons/chat.svg';
 import LightningIcon from '../../../public/icons/lightning.svg';
 import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { swapApi, SwapApiError } from '@/features/swap/api';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, explorerTxUrl } from '@/features/swap/utils';
 import { networks, Token } from '@/features/swap/tokens';
@@ -156,6 +156,7 @@ function deriveConversationTitle(fallbackTitle: string, messages: Message[]): st
 
 export default function ChatPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLargeScreen, setIsLargeScreen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
@@ -169,6 +170,7 @@ export default function ChatPage() {
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [bootstrapVersion, setBootstrapVersion] = useState(0);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
   const { user, isLoading: authLoading } = useAuth();
@@ -187,6 +189,12 @@ export default function ChatPage() {
   const [swapSuccess, setSwapSuccess] = useState(false);
   const [executingSwap, setExecutingSwap] = useState(false);
   const [swapTxHashes, setSwapTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
+
+  // Swap flow states
+  const [swapFlowStep, setSwapFlowStep] = useState<'preview' | 'routing' | 'details' | 'confirm' | null>(null);
+  const [tosAccepted, setTosAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [currentSwapMetadata, setCurrentSwapMetadata] = useState<Record<string, unknown> | null>(null);
   const debug = useCallback(
     (event: string, details?: Record<string, unknown>) => {
       if (!DEBUG_CHAT_ENABLED) return;
@@ -245,6 +253,13 @@ export default function ChatPage() {
 
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  // Reset navigation loader when leaving the chat page
+  useEffect(() => {
+    if (pathname !== '/chat') {
+      setIsNavigating(false);
+    }
+  }, [pathname]);
 
   // Use wallet address as userId instead of Telegram user ID
   const getWalletAddress = useCallback(() => {
@@ -536,8 +551,19 @@ export default function ChatPage() {
       );
 
       if (!isMountedRef.current) return;
-      
-      console.log('response: ', response);
+
+      // Enhanced diagnostic logging
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📨 [CHAT DEBUG] Backend Response Received');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🔍 Response Keys:', Object.keys(response));
+      console.log('📊 Response.metadata:', response.metadata);
+      console.log('📝 Response.metadata type:', typeof response.metadata);
+      console.log('🎯 Response.metadata?.event:', response.metadata?.event);
+      console.log('💬 Response.message (first 200 chars):', response.message?.substring(0, 200));
+      console.log('🤖 Response.agent_name:', response.agent_name);
+      console.log('📋 Full Response JSON:', JSON.stringify(response, null, 2));
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       const assistantMessage: Message = {
         role: 'assistant',
@@ -549,8 +575,39 @@ export default function ChatPage() {
 
       // Auto-fetch quote if it's a swap intent
       if (response.metadata?.event === 'swap_intent_ready') {
-        console.log('🔄 Swap intent detected, fetching quote...', response.metadata);
+        console.log('✅ [CHAT] Swap intent detected via metadata event, fetching quote...');
+        console.log('📦 Swap metadata:', JSON.stringify(response.metadata, null, 2));
         getSwapQuote(response.metadata as Record<string, unknown>);
+      } else {
+        console.log('❌ [CHAT] No swap_intent_ready event in metadata');
+
+        // Enhanced fallback detection
+        const messageContent = response.message?.toLowerCase() || '';
+        const hasSwapKeywords = messageContent.includes('swap') || messageContent.includes('troca');
+        const hasConfirmKeywords = messageContent.includes('confirm') || messageContent.includes('confirme');
+
+        if (hasSwapKeywords && hasConfirmKeywords) {
+          console.log('⚠️ [SWAP FALLBACK] Detected swap keywords in message but metadata is missing or invalid');
+          console.log('⚠️ Message snippet:', response.message?.substring(0, 300));
+          console.log('⚠️ This indicates the backend should have returned swap metadata but didn\'t');
+          console.log('⚠️ Check backend logs to see why metadata.event is not "swap_intent_ready"');
+        }
+
+        // Check if metadata exists but has wrong event
+        if (response.metadata && response.metadata.event !== 'swap_intent_ready') {
+          console.log('⚠️ [METADATA MISMATCH] Metadata exists but event is not swap_intent_ready');
+          console.log('⚠️ Actual event:', response.metadata.event);
+          console.log('⚠️ Full metadata:', JSON.stringify(response.metadata, null, 2));
+        }
+
+        // Check if metadata is completely null/undefined
+        if (!response.metadata) {
+          console.log('⚠️ [NO METADATA] Backend returned null/undefined metadata');
+          console.log('⚠️ This usually means:');
+          console.log('   1. Backend is not detecting the swap intent');
+          console.log('   2. Backend is not including metadata in the response');
+          console.log('   3. There was an error processing the request on the backend');
+        }
       }
 
       setMessagesByConversation((prev) => {
@@ -713,7 +770,9 @@ export default function ChatPage() {
 
       if (quoteResponse.success && quoteResponse.quote) {
         setSwapQuote(quoteResponse);
-        console.log('✅ Quote received successfully');
+        setCurrentSwapMetadata(metadata);
+        setSwapFlowStep('routing');
+        console.log('✅ Quote received successfully - Opening Order Routing modal');
       } else {
         const errorMsg = quoteResponse.message || 'Failed to get quote';
         console.error('❌ Quote failed:', errorMsg);
@@ -889,6 +948,7 @@ export default function ChatPage() {
   return (
     <>
       <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
+      <GlobalLoader isLoading={isNavigating} message="Loading Swap..." />
       <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
       {/* Top Navbar - Horizontal across full width */}
       <header className="flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
@@ -948,8 +1008,21 @@ export default function ChatPage() {
                         <div className="py-2">
                           <button
                             onClick={() => {
-                              router.push('/swap');
                               setExploreDropdownOpen(false);
+                              router.push('/chat');
+                            }}
+                            className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            Chat
+                          </button>
+                          <button
+                            onClick={() => {
+                              setIsNavigating(true);
+                              setExploreDropdownOpen(false);
+                              router.push('/swap');
                             }}
                             className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
                           >
@@ -1146,13 +1219,13 @@ export default function ChatPage() {
                 <p className="text-gray-400">Loading conversation...</p>
               </div>
             ) : activeMessages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center px-4 py-6 sm:py-8 overflow-y-auto">
-                <h2 className="text-xl sm:text-2xl font-normal text-gray-400 mb-6 sm:mb-8">
+              <div className="h-full flex flex-col items-center justify-center px-6 sm:px-8 md:px-12 lg:px-16 py-1 sm:py-2 md:py-3 lg:py-4">
+                <h2 className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl font-normal text-white mb-2 sm:mb-3 md:mb-4 lg:mb-5 xl:mb-6 flex-shrink-0">
                   How can I help you today?
                 </h2>
 
                 {/* Feature Cards Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 max-w-4xl w-full">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2 md:gap-2.5 lg:gap-3 xl:gap-4 2xl:gap-5 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
                   {FEATURE_CARDS.map((feature, idx) => (
                     <button
                       key={idx}
@@ -1164,33 +1237,33 @@ export default function ChatPage() {
                         }
                       }}
                       disabled={!feature.path && !feature.prompt}
-                      className={`flex flex-col p-3 sm:p-4 rounded-xl bg-black/80 backdrop-blur-md border border-white/15 transition-all shadow-lg text-left ${
+                      className={`flex flex-col p-1.5 sm:p-2 md:p-2.5 lg:p-3 xl:p-4 2xl:p-5 rounded-lg md:rounded-xl bg-black/80 backdrop-blur-md border border-white/15 transition-all shadow-lg text-left ${
                         !feature.path && !feature.prompt ? 'opacity-50 cursor-not-allowed' : 'hover:border-white/30 cursor-pointer'
                       }`}
                     >
                       {/* Icon */}
-                      <div className="mb-2">
+                      <div className="mb-0.5 sm:mb-1 md:mb-1.5 lg:mb-2 xl:mb-2.5">
                         <Image
                           src={feature.icon}
                           alt={feature.name}
-                          width={32}
-                          height={32}
-                          className="w-6 h-6 sm:w-8 sm:h-8"
+                          width={48}
+                          height={48}
+                          className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 xl:w-10 xl:h-10 2xl:w-12 2xl:h-12"
                         />
                       </div>
 
                       {/* Title */}
-                      <h3 className="text-xs sm:text-sm text-white font-semibold mb-1.5">
+                      <h3 className="text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base text-white font-semibold mb-0.5 sm:mb-0.5 md:mb-1 lg:mb-1.5">
                         {feature.name}
                       </h3>
 
                       {/* Description */}
-                      <p className="text-xs text-gray-400 leading-snug mb-3 sm:mb-4 flex-1 line-clamp-2">
+                      <p className="text-[7px] sm:text-[8px] md:text-[9px] lg:text-[10px] xl:text-xs 2xl:text-sm text-gray-400 leading-tight mb-1 sm:mb-1.5 md:mb-2 lg:mb-2.5 xl:mb-3 flex-1 line-clamp-2">
                         {feature.description}
                       </p>
 
                       {/* Continue Button - Only on larger screens */}
-                      <div className="hidden sm:block w-full px-3 py-1.5 rounded-md bg-white text-black text-xs font-medium text-center">
+                      <div className="hidden sm:block w-full px-1.5 py-0.5 sm:px-2 sm:py-0.5 md:px-2.5 md:py-1 lg:px-3 lg:py-1.5 xl:px-4 xl:py-2 rounded-md bg-white text-black text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base font-medium text-center">
                         Continue
                       </div>
                     </button>
@@ -1228,7 +1301,7 @@ export default function ChatPage() {
                               ) : null}
                               <span className="text-sm font-semibold text-gray-300">You</span>
                             </div>
-                            <div className="rounded-2xl bg-black/80 backdrop-blur-xl border border-white/20 text-gray-200 px-4 py-3 text-[15px] break-words leading-relaxed">
+                            <div className="rounded-2xl bg-[#202020] text-gray-200 px-4 py-3 text-[15px] break-words leading-relaxed">
                               {message.content}
                             </div>
                           </div>
@@ -1266,41 +1339,219 @@ export default function ChatPage() {
                             {/* Swap Interface */}
                             {message.role === 'assistant' &&
                               message.metadata?.event === 'swap_intent_ready' && (
-                              <div className="mt-4 space-y-3">
-                                {/* Quote Information */}
-                                {swapLoading && (
-                                  <div className="flex items-center gap-2 text-gray-300">
-                                    <div className="loader-inline-sm" />
-                                    <span className="text-sm">Getting quote...</span>
-                                  </div>
-                                )}
-
-                                {swapQuote?.quote && (
-                                  <div className="bg-gray-700/50 rounded-lg p-3 space-y-2">
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-sm text-gray-300">You will receive:</span>
-                                      <span className="text-sm font-medium text-white">
-                                        {formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)} {String(message.metadata?.to_token)}
-                                      </span>
+                              <div className="mt-4">
+                                {/* Loading State */}
+                                {swapLoading && !swapQuote?.quote && (
+                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
+                                    <div className="flex items-center gap-2 text-gray-300">
+                                      <div className="loader-inline-sm" />
+                                      <span className="text-sm">Getting quote...</span>
                                     </div>
-                                    {swapQuote.quote.fees?.totalFeeUsd && (
-                                      <div className="flex justify-between items-center">
-                                        <span className="text-sm text-gray-300">Total fees:</span>
-                                        <span className="text-sm text-gray-400">${swapQuote.quote.fees.totalFeeUsd}</span>
+                                  </div>
+                                )}
+
+                                {/* Error State */}
+                                {swapError && !swapLoading && (
+                                  <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4">
+                                    <p className="text-sm text-red-400">❌ {swapError}</p>
+                                  </div>
+                                )}
+
+                                {/* Swap Preview Card - Hidden, modal flow is used instead */}
+                                {false && swapQuote?.quote && !swapSuccess && (
+                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden max-w-sm">
+                                    {/* Header */}
+                                    <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                                      <h3 className="text-sm font-semibold text-white">Preview Swap Position</h3>
+                                      <button
+                                        onClick={() => {
+                                          setSwapQuote(null);
+                                          setSwapError(null);
+                                        }}
+                                        className="text-gray-400 hover:text-white transition-colors"
+                                      >
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      </button>
+                                    </div>
+
+                                    {/* Token Pair Indicator */}
+                                    <div className="px-4 py-3 bg-[#2A2A2A]/50">
+                                      <div className="flex items-center gap-2.5">
+                                        {/* Overlapping circles */}
+                                        <div className="relative flex items-center">
+                                          <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center text-xs font-bold text-black">
+                                            {String(message.metadata?.from_token).slice(0, 1)}
+                                          </div>
+                                          <div className="w-7 h-7 rounded-full bg-gray-500 flex items-center justify-center text-xs font-bold text-white -ml-2">
+                                            {String(message.metadata?.to_token).slice(0, 1)}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex-1">
+                                          <div className="text-sm text-white font-medium">
+                                            {String(message.metadata?.from_token)}/{String(message.metadata?.to_token)}
+                                          </div>
+                                          <div className="text-xs text-gray-400 mt-0.5">
+                                            {String(message.metadata?.from_network)} → {String(message.metadata?.to_network)}
+                                          </div>
+                                        </div>
+
+                                        {swapQuote?.quote?.fees?.totalFeeUsd && (
+                                          <div className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs font-medium rounded">
+                                            ${swapQuote?.quote?.fees?.totalFeeUsd}
+                                          </div>
+                                        )}
                                       </div>
-                                    )}
+                                    </div>
+
+                                    {/* Content */}
+                                    <div className="px-4 py-3 space-y-3">
+                                      {/* Token Deposited */}
+                                      <div>
+                                        <div className="text-xs text-gray-400 mb-2">Token Deposited</div>
+                                        <div className="text-xl font-light text-white mb-2">
+                                          ${(parseFloat(String(message.metadata?.amount)) * 1800).toFixed(3)}
+                                        </div>
+                                        <div className="space-y-1.5">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-4 h-4 rounded-full bg-white"></div>
+                                              <span className="text-xs text-white">{String(message.metadata?.from_token)}</span>
+                                            </div>
+                                            <span className="text-xs text-white">{String(message.metadata?.amount)}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-4 h-4 rounded-full bg-gray-500"></div>
+                                              <span className="text-xs text-white">{String(message.metadata?.to_token)}</span>
+                                            </div>
+                                            <span className="text-xs text-white">{formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Divider Line */}
+                                      <div className="border-t border-white/5"></div>
+
+                                      {/* Min. Amounts */}
+                                      <div>
+                                        <div className="text-xs text-gray-400 mb-2">Min. Amounts to Receive</div>
+                                        <div className="space-y-1.5">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-4 h-4 rounded-full bg-white"></div>
+                                              <span className="text-xs text-white">{String(message.metadata?.from_token)}</span>
+                                            </div>
+                                            <span className="text-xs text-white">0</span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-4 h-4 rounded-full bg-gray-500"></div>
+                                              <span className="text-xs text-white">{String(message.metadata?.to_token)}</span>
+                                            </div>
+                                            <span className="text-xs text-white">{(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Price Range */}
+                                      <div>
+                                        <div className="text-xs text-gray-400 mb-2">Price Range</div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                          <div className="bg-black/40 border border-white/10 rounded-lg p-3">
+                                            <div className="text-xs text-gray-400 mb-0.5">Min</div>
+                                            <div className="text-base font-medium text-white">
+                                              {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) / parseFloat(String(message.metadata?.amount)) * 0.95).toFixed(2)}
+                                            </div>
+                                            <div className="text-[10px] text-gray-400 mt-0.5">
+                                              {String(message.metadata?.to_token)} per {String(message.metadata?.from_token)}
+                                            </div>
+                                          </div>
+                                          <div className="bg-black/40 border border-white/10 rounded-lg p-3">
+                                            <div className="text-xs text-gray-400 mb-0.5">Max</div>
+                                            <div className="text-base font-medium text-white">
+                                              {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) / parseFloat(String(message.metadata?.amount)) * 1.05).toFixed(2)}
+                                            </div>
+                                            <div className="text-[10px] text-gray-400 mt-0.5">
+                                              {String(message.metadata?.to_token)} per {String(message.metadata?.from_token)}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Fee Tier */}
+                                      <div className="flex items-center justify-between py-1.5">
+                                        <span className="text-xs text-gray-400">Fee Tier</span>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-xs text-cyan-400 font-medium">Best for Stable Pairs</span>
+                                          <span className="text-xs text-white">0.01%</span>
+                                        </div>
+                                      </div>
+
+                                      {/* Details */}
+                                      <div className="space-y-1.5 pt-1.5 border-t border-white/5">
+                                        {swapQuote?.quote?.fees?.totalFeeUsd && (
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs text-gray-400">Est. Total Gas Fee</span>
+                                            <span className="text-xs text-white">${swapQuote?.quote?.fees?.totalFeeUsd}</span>
+                                          </div>
+                                        )}
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs text-gray-400">Slippage Setting</span>
+                                          <span className="text-xs text-white">10%</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs text-gray-400">Order Routing</span>
+                                          <div className="flex items-center gap-1">
+                                            <div className="w-3 h-3 rounded-full bg-white"></div>
+                                            <span className="text-xs text-white">UNI V3</span>
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400">
+                                              <circle cx="12" cy="12" r="10" />
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
+                                            </svg>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Error Message */}
+                                      {swapError && (
+                                        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
+                                          <p className="text-sm text-red-400">{swapError}</p>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="px-4 py-3 border-t border-white/10 flex gap-2">
+                                      <button
+                                        onClick={() => {
+                                          setSwapQuote(null);
+                                          setSwapError(null);
+                                        }}
+                                        className="flex-1 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#333333] text-white text-sm font-medium transition-colors"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
+                                          setSwapFlowStep('routing');
+                                        }}
+                                        disabled={executingSwap}
+                                        className="flex-1 py-2.5 rounded-xl bg-cyan-400 hover:bg-cyan-500 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                      >
+                                        Confirm Open Position
+                                      </button>
+                                    </div>
                                   </div>
                                 )}
 
-                                {swapError && (
-                                  <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
-                                    <p className="text-sm text-red-400">{swapError}</p>
-                                  </div>
-                                )}
-
+                                {/* Success State */}
                                 {swapSuccess && (
-                                  <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3">
-                                    <p className="text-sm text-green-400 mb-3">✅ Swap executed successfully!</p>
+                                  <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-4">
+                                    <p className="text-sm text-green-400 mb-3 font-medium">✅ Swap executed successfully!</p>
 
                                     {/* Transaction Hashes */}
                                     {swapTxHashes.length > 0 && (
@@ -1323,7 +1574,7 @@ export default function ChatPage() {
                                                   href={explorerUrl}
                                                   target="_blank"
                                                   rel="noopener noreferrer"
-                                                  className="ml-2 px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded transition-colors font-medium"
+                                                  className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors font-medium"
                                                 >
                                                   View
                                                 </a>
@@ -1334,23 +1585,6 @@ export default function ChatPage() {
                                       </div>
                                     )}
                                   </div>
-                                )}
-
-                                {swapLoading && !swapQuote?.quote && (
-                                  <div className="mt-3 p-3 bg-gray-700/50 rounded-lg border border-gray-600">
-                                    <div className="flex items-center gap-2">
-                                      <div className="loader-inline-sm" />
-                                      <span className="text-sm text-gray-300">Preparing swap transaction...</span>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {swapQuote?.quote && (
-                                  <SignatureApprovalButton
-                                    onApprove={() => handleSignatureApproval(message.metadata as Record<string, unknown>)}
-                                    onReject={handleSignatureRejection}
-                                    disabled={isSending || swapLoading || executingSwap}
-                                  />
                                 )}
                               </div>
                             )}
@@ -1424,6 +1658,291 @@ export default function ChatPage() {
           </main>
         </div>
       </div>
+
+      {/* Order Routing Modal */}
+      {swapFlowStep === 'routing' && swapQuote?.quote && currentSwapMetadata && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setSwapFlowStep(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-black border border-black rounded-2xl overflow-hidden max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Order Routing</h3>
+                <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="px-5 py-5 space-y-4">
+                {/* Select Swap API Label */}
+                <div className="text-sm font-medium text-white">Select Swap API</div>
+
+                {/* Routing Option Card */}
+                <div className="bg-[#0A0A0A] border border-white/10 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    {/* Radio Button + Label */}
+                    <div className="flex flex-col pt-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center flex-shrink-0">
+                          <div className="w-2 h-2 rounded-full bg-black"></div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-white font-semibold text-sm">UNI V3</span>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
+                            <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-400 ml-7">Est. Price Impact 1.1%</div>
+                    </div>
+
+                    {/* Swap Info */}
+                    <div className="flex-1 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-base font-medium text-white">
+                          Swap {String(currentSwapMetadata?.from_token)} to {String(currentSwapMetadata?.to_token)}
+                        </div>
+                        <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-xs font-semibold rounded flex items-center gap-1">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                          </svg>
+                          Suggested
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Amount in</span>
+                          <span className="text-white font-medium">
+                            {String(currentSwapMetadata?.amount)} {String(currentSwapMetadata?.from_token)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Expected Amount Out</span>
+                          <span className="text-white font-medium">
+                            {formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)} {String(currentSwapMetadata?.to_token)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Min. Out After Slippage</span>
+                          <span className="text-white font-medium">
+                            {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="px-5 py-4 border-t border-white/10">
+                <button
+                  onClick={() => setSwapFlowStep('details')}
+                  className="px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Swap Details Modal */}
+      {swapFlowStep === 'details' && swapQuote?.quote && currentSwapMetadata && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setSwapFlowStep(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-black border border-black rounded-2xl overflow-hidden max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Swap Details</h3>
+                <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="px-5 py-5 space-y-4">
+                {/* Select Swap API */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-white">Select Swap API</span>
+                  <button disabled className="px-3 py-1.5 rounded-lg bg-[#202020] text-gray-400 text-xs font-medium cursor-not-allowed">
+                    Change API
+                  </button>
+                </div>
+
+                {/* Routing */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-400">Routing</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full bg-white flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 rounded-full bg-black"></div>
+                    </div>
+                    <span className="text-sm text-white">UNI V3</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
+                      <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
+                    </svg>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-xs font-semibold rounded flex items-center gap-1">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                    </svg>
+                    Suggested
+                  </div>
+                  <span className="text-xs text-gray-400">Est. Price Impact 1.1%</span>
+                </div>
+
+                {/* Swap Details Card */}
+                <div className="bg-[#0A0A0A] border border-white/10 rounded-xl p-4">
+                  <div className="text-base font-semibold text-white mb-4">
+                    Swap {String(currentSwapMetadata?.from_token)} to {String(currentSwapMetadata?.to_token)}
+                  </div>
+
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Amount in</span>
+                      <span className="text-white font-medium">
+                        {String(currentSwapMetadata?.amount)} {String(currentSwapMetadata?.from_token)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Expected Amount Out</span>
+                      <span className="text-white font-medium">
+                        {formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)} {String(currentSwapMetadata?.to_token)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Min. Out After Slippage</span>
+                      <span className="text-white font-medium">
+                        {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Aperture Fee */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-white font-medium">Aperture Fee</span>
+                  <span className="text-gray-400">0.25% (&lt;$0.01)</span>
+                </div>
+
+                {/* Transaction Settings */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white font-medium text-sm">Transaction Setting</span>
+                    <button disabled className="px-3 py-1.5 rounded-lg bg-[#202020] text-gray-400 text-xs font-medium cursor-not-allowed">
+                      Change Settings
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="px-5 py-4 border-t border-white/10">
+                <button
+                  onClick={() => setSwapFlowStep('confirm')}
+                  className="px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Confirm Details Modal */}
+      {swapFlowStep === 'confirm' && swapQuote?.quote && currentSwapMetadata && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setSwapFlowStep(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-black border border-black rounded-2xl overflow-hidden max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-white/10">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold text-white mb-1">Confirm details</h3>
+                    <p className="text-xs text-gray-400">Review and accept Uniswap Labs Terms of Service & Privacy Policy to get started</p>
+                  </div>
+                  <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors ml-4">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="px-5 py-4 space-y-4">
+                {/* Terms of Service Toggles */}
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-2xl p-4 hover:bg-[#0A0A0A] transition-colors">
+                    <span className="text-sm text-white flex-1">
+                      I have read and agreed with Uniswap Labs Terms of Service
+                    </span>
+                    <div className="relative ml-4">
+                      <input
+                        type="checkbox"
+                        checked={tosAccepted}
+                        onChange={(e) => setTosAccepted(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className={`w-11 h-6 rounded-full transition-colors ${tosAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
+                      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${tosAccepted ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-2xl p-4 hover:bg-[#0A0A0A] transition-colors">
+                    <span className="text-sm text-white flex-1">
+                      I have read and agreed with Uniswap Labs Privacy Policy
+                    </span>
+                    <div className="relative ml-4">
+                      <input
+                        type="checkbox"
+                        checked={privacyAccepted}
+                        onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className={`w-11 h-6 rounded-full transition-colors ${privacyAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
+                      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${privacyAccepted ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                    </div>
+                  </label>
+                </div>
+
+              </div>
+
+              {/* Action Button */}
+              <div className="px-5 py-4 border-t border-white/10">
+                <button
+                  onClick={async () => {
+                    if (tosAccepted && privacyAccepted && currentSwapMetadata) {
+                      setSwapFlowStep(null);
+                      await forceMetaMaskWindow();
+                      await executeSwap(currentSwapMetadata);
+                    }
+                  }}
+                  disabled={!tosAccepted || !privacyAccepted || executingSwap}
+                  className="px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
+                >
+                  {executingSwap ? 'Executing...' : 'Confirm'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

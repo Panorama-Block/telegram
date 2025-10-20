@@ -188,15 +188,23 @@
 
 @font-face {
   font-family: 'SuisseIntl';
-  src: url('/fonts/Suisse_Intl_Regular.ttf') format('truetype');
-  font-weight: normal;
+  src: url('/miniapp/fonts/SuisseIntl-Light.ttf') format('truetype');
+  font-weight: 300;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
   font-family: 'SuisseIntl';
-  src: url('/fonts/Suisse_Intl_Regular.ttf') format('truetype');
+  src: url('/miniapp/fonts/fonnts.com-Suisse_Intl_Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SuisseIntl';
+  src: url('/miniapp/fonts/fonnts.com-Suisse_Intl_Regular.ttf') format('truetype');
   font-weight: 500;
   font-style: normal;
   font-display: swap;

@@ -6,11 +6,11 @@ import { useActiveAccount } from 'thirdweb/react';
 import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
+import '@/shared/ui/loader.css';
 
 export default function NewChatPage() {
   const router = useRouter();
   const account = useActiveAccount();
-  const [status, setStatus] = useState('Preparando novo chat...');
   const [error, setError] = useState<string | null>(null);
 
   const client = useMemo(() => {
@@ -32,7 +32,6 @@ export default function NewChatPage() {
         if (!client) throw new Error('Cliente thirdweb não inicializado');
 
         if (!account) {
-          setStatus('Reconectando carteira...');
           const wallet = inAppWallet();
           await wallet.autoConnect({ client });
         }
@@ -55,7 +54,6 @@ export default function NewChatPage() {
         }
         if (!account) return;
 
-        setStatus('Autenticando com backend...');
         const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
         if (!authApiBase) throw new Error('VITE_AUTH_API_BASE não configurado');
         const loginPayload = { address: account.address };
@@ -110,12 +108,20 @@ export default function NewChatPage() {
     run();
   }, [account, router]);
 
-  return (
-    <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ maxWidth: 480, width: '100%', padding: 24, background: '#0d1117', color: '#fff', borderRadius: 12, border: '1px solid rgba(6,182,212,0.3)' }}>
-        <h2 style={{ marginTop: 0, marginBottom: 12 }}>Criando novo chat</h2>
-        <p style={{ margin: 0, color: '#9ca3af' }}>{error ? `Erro: ${error}` : status}</p>
+  if (error) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ maxWidth: 480, width: '100%', padding: 24, background: '#0d1117', color: '#fff', borderRadius: 12, border: '1px solid rgba(6,182,212,0.3)' }}>
+          <h2 style={{ marginTop: 0, marginBottom: 12 }}>Erro</h2>
+          <p style={{ margin: 0, color: '#ef4444' }}>Erro: {error}</p>
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-pano-bg-primary flex items-center justify-center">
+      <div className="loader-custom"></div>
     </div>
   );
 }
