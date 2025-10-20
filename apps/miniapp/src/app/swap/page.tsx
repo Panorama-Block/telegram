@@ -546,7 +546,7 @@ export default function SwapPage() {
     }
 
     if (!hasSessionKey || !sessionKey) {
-      setError('Session Key não encontrada. Crie uma Smart Account primeiro na página DCA.');
+      setError('Session Key não encontrada. Crie uma smart wallet derivada primeiro na página Accounts.');
       return;
     }
 
@@ -678,7 +678,7 @@ export default function SwapPage() {
           lowerError.includes('have 0 want') ||
           lowerError.includes('32003') ||
           lowerError.includes('gas required exceeds allowance')) {
-        errorMessage = 'Saldo insuficiente na Smart Account. Deposite fundos na Smart Account primeiro (página DCA).';
+        errorMessage = 'Saldo insuficiente na Smart Account. Deposite fundos na smart wallet primeiro (página Accounts).';
       }
 
       if (lowerError.includes('abierrorsignaturenotfounderror') || lowerError.includes('encoded error signature')) {
