@@ -6,6 +6,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
 
   // Static files are already registered in server.ts
 
+  // (no direct proxy for /auth/login or /auth/verify — keep gateway as-is)
+
   app.post('/auth/telegram/verify', async (req, reply) => {
     try {
       const { address, sessionKeyAddress, loginPayload, signature, telegram_user_id } = req.body as {
