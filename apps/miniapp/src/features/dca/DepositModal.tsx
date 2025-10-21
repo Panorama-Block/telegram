@@ -97,7 +97,7 @@ export default function DepositModal({
     };
   }, [chainId, isTestnet]);
 
-  // Fetch session key address from smart account
+  // Fetch session key address from smart account (for display purposes only)
   useEffect(() => {
     const fetchSessionKey = async () => {
       if (!smartAccountAddress) return;
@@ -107,7 +107,8 @@ export default function DepositModal({
         if (response.ok) {
           const data = await response.json();
           setSessionKeyAddress(data.sessionKeyAddress);
-          console.log('Session Key Address:', data.sessionKeyAddress);
+          console.log('Session Key Address (signer):', data.sessionKeyAddress);
+          console.log('Smart Account Address (holds funds):', smartAccountAddress);
         }
       } catch (err) {
         console.error('Error fetching session key:', err);
@@ -491,12 +492,15 @@ export default function DepositModal({
     setTxHash(null);
 
     try {
-      // Use session key address as destination instead of smart account
-      const depositAddress = sessionKeyAddress || smartAccountAddress;
+      // IMPORTANT: Always deposit to the SMART ACCOUNT, not the session key!
+      // The smart account is a contract that holds the funds
+      // The session key only signs transactions on behalf of the smart account
+      const depositAddress = smartAccountAddress;
 
-      console.log('💰 Depositando na Session Key Wallet...');
+      console.log('💰 Depositando na Smart Account (Account Abstraction)...');
       console.log('De (sua carteira):', account.address);
-      console.log('Para (Session Key Wallet):', depositAddress);
+      console.log('Para (Smart Account - contrato):', depositAddress);
+      console.log('Assinante autorizado (Session Key):', sessionKeyAddress);
       console.log('Valor:', amount, tokenInfo.symbol);
       console.log('Rede:', currentNetwork.name);
       console.log('Chain ID:', chainId);
@@ -671,19 +675,18 @@ export default function DepositModal({
             <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-pano-text-primary">Smart wallet destino</p>
+                  <p className="text-sm font-medium text-pano-text-primary">Smart Account (Account Abstraction)</p>
                   <p className="text-xs text-pano-text-muted">
-                    Transação assinada automaticamente pela session key autorizada.
+                    Fundos são guardados no contrato da smart account, não na session key.
                   </p>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    const addressToShow = sessionKeyAddress || smartAccountAddress;
                     const explorerUrl = isTestnet
-                      ? 'https://sepolia.etherscan.io/address/' + addressToShow
-                      : 'https://etherscan.io/address/' + addressToShow;
+                      ? 'https://sepolia.etherscan.io/address/' + smartAccountAddress
+                      : 'https://etherscan.io/address/' + smartAccountAddress;
                     window.open(explorerUrl, '_blank');
                   }}
                   className="text-xs text-pano-text-accent hover:text-pano-primary"
@@ -694,11 +697,19 @@ export default function DepositModal({
 
               <div className="grid gap-2 text-xs text-pano-text-muted">
                 <div className="flex items-center justify-between gap-3">
-                  <span>Conta</span>
+                  <span>Nome</span>
                   <span className="font-mono text-pano-text-primary">{smartAccountName}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span>Session key wallet</span>
+                  <span>Smart Account (contrato)</span>
+                  <span className="font-mono text-pano-text-primary">
+                    {smartAccountAddress
+                      ? `${smartAccountAddress.slice(0, 6)}...${smartAccountAddress.slice(-4)}`
+                      : 'Carregando...'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Session Key (assinante)</span>
                   <span className="font-mono text-pano-text-primary">
                     {sessionKeyAddress
                       ? `${sessionKeyAddress.slice(0, 6)}...${sessionKeyAddress.slice(-4)}`
@@ -835,7 +846,7 @@ export default function DepositModal({
               <div className="rounded-lg border border-pano-success/40 bg-pano-success/10 px-4 py-4 text-sm text-pano-success space-y-2">
                 <div className="flex items-center gap-2 font-medium">
                   <span className="text-lg">✅</span>
-                  Depósito confirmado! A session key já possui saldo.
+                  Depósito confirmado! A smart account já possui saldo.
                 </div>
                 <a
                   className="block truncate text-xs font-mono text-pano-text-primary hover:text-pano-primary"

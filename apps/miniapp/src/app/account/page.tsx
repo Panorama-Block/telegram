@@ -155,7 +155,7 @@ function ConfigModal({
                 Criar smart wallet derivada
               </CardTitle>
               <CardDescription className="text-pano-text-secondary">
-                Defina limites e permissões para a nova carteira controlada por session key.
+                Crie um contrato inteligente que guarda fundos e é controlado por uma session key segura no backend.
               </CardDescription>
             </div>
 
@@ -352,9 +352,10 @@ function ConfigModal({
                 <div className="space-y-3 rounded-xl border border-pano-border-subtle bg-pano-surface px-4 py-4 text-sm text-pano-text-secondary">
                   <p className="font-medium text-pano-text-primary">Como funciona a smart wallet?</p>
                   <ul className="space-y-2 text-xs leading-relaxed text-pano-text-muted">
-                    <li>• O backend gera a session key de forma segura.</li>
-                    <li>• A session key assina transações dentro dos limites definidos.</li>
-                    <li>• Você pode revogar ou deletar a smart wallet a qualquer momento.</li>
+                    <li>• A smart wallet é um contrato inteligente que guarda seus fundos</li>
+                    <li>• O backend gera uma session key que pode assinar transações</li>
+                    <li>• A session key assina dentro dos limites, mas o saldo fica na smart wallet</li>
+                    <li>• Você pode revogar ou deletar a smart wallet a qualquer momento</li>
                   </ul>
                 </div>
               </div>

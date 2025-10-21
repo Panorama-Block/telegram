@@ -57,7 +57,7 @@ export default function WithdrawModal({
   }, [isOpen, smartAccountAddress]);
 
   const fetchSessionBalance = useCallback(async () => {
-    if (!sessionKeyAddress) return;
+    if (!smartAccountAddress) return;
     setIsFetchingBalance(true);
     setBalanceError(null);
     try {
@@ -65,8 +65,10 @@ export default function WithdrawModal({
         client,
         chain: defineChain(selectedChainId),
       });
+      // IMPORTANT: Fetch balance from SMART ACCOUNT, not session key!
+      // The smart account (contract) holds the funds, session key only signs
       const balanceWei = await eth_getBalance(rpcClient, {
-        address: sessionKeyAddress as Address,
+        address: smartAccountAddress as Address,
       });
       const balance = Number(balanceWei) / 1e18;
       if (Number.isFinite(balance)) {
@@ -74,20 +76,23 @@ export default function WithdrawModal({
       } else {
         setAvailableBalance('0.000000');
       }
+      console.log('💰 Smart Account Balance:', balance.toFixed(6), 'ETH');
+      console.log('Smart Account Address:', smartAccountAddress);
+      console.log('Session Key (signer):', sessionKeyAddress);
     } catch (err) {
-      console.error('Error fetching session key balance:', err);
+      console.error('Error fetching smart account balance:', err);
       setAvailableBalance('0.000000');
       setBalanceError('Não foi possível carregar o saldo. Atualize para tentar novamente.');
     } finally {
       setIsFetchingBalance(false);
     }
-  }, [client, sessionKeyAddress, selectedChainId]);
+  }, [client, smartAccountAddress, sessionKeyAddress, selectedChainId]);
 
   useEffect(() => {
-    if (isOpen && sessionKeyAddress) {
+    if (isOpen && smartAccountAddress) {
       void fetchSessionBalance();
     }
-  }, [isOpen, sessionKeyAddress, fetchSessionBalance]);
+  }, [isOpen, smartAccountAddress, fetchSessionBalance]);
 
   const handleWithdraw = async () => {
     if (!account) {
@@ -203,13 +208,27 @@ export default function WithdrawModal({
             </div>
 
             <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
+              <div className="space-y-1 mb-2">
+                <p className="text-sm font-medium text-pano-text-primary">Account Abstraction</p>
+                <p className="text-xs text-pano-text-muted">
+                  O saldo está na smart account. A session key apenas assina a transação.
+                </p>
+              </div>
               <div className="grid gap-2 text-xs text-pano-text-muted">
                 <div className="flex items-center justify-between gap-3">
-                  <span>Smart wallet</span>
+                  <span>Nome</span>
                   <span className="font-mono text-pano-text-primary">{smartAccountName}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span>Session key wallet</span>
+                  <span>Smart Account (origem)</span>
+                  <span className="font-mono text-pano-text-primary">
+                    {smartAccountAddress
+                      ? `${smartAccountAddress.slice(0, 6)}...${smartAccountAddress.slice(-4)}`
+                      : 'Carregando...'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Session Key (assinante)</span>
                   <span className="font-mono text-pano-text-primary">
                     {sessionKeyAddress
                       ? `${sessionKeyAddress.slice(0, 6)}...${sessionKeyAddress.slice(-4)}`
@@ -217,9 +236,11 @@ export default function WithdrawModal({
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span>Destino</span>
+                  <span>Destino (sua wallet)</span>
                   <span className="font-mono text-pano-text-primary">
-                    {account?.address || 'Conecte sua carteira'}
+                    {account?.address
+                      ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                      : 'Conecte sua carteira'}
                   </span>
                 </div>
               </div>
@@ -296,7 +317,12 @@ export default function WithdrawModal({
             )}
 
             <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-3 text-[11px] text-pano-text-muted">
-              O saque é assinado pelo backend usando a session key autorizada.
+              <p className="font-medium text-pano-text-primary mb-1">Como funciona o saque?</p>
+              <ul className="space-y-1">
+                <li>• A transação SAI da smart account (contrato que guarda os fundos)</li>
+                <li>• A session key apenas ASSINA a transação no backend</li>
+                <li>• O saldo vem da smart account, não da session key</li>
+              </ul>
             </div>
 
             <div className="flex flex-col gap-3 md:flex-row">
