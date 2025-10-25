@@ -57,8 +57,9 @@ const TRENDING_PROMPTS = [
 const FEATURE_CARDS = [
   { name: 'Wallet Tracking', icon: WalletIcon, path: null, prompt: null, description: 'Monitor your wallet balances across multiple chains in real-time' },
   { name: 'AI Agents on X', icon: XIcon, path: null, prompt: null, description: 'Follow our AI agents on X for insights and market analysis' },
-  { name: 'Liquid Swap', icon: SwapIcon, path: null, prompt: 'I would like to perform a token swap. Can you help me with the process and guide me through the steps?', description: 'Swap tokens across multiple chains with the best rates' },
-  { name: 'Liquid Staking', icon: BlockchainTechnology, path: null, prompt: null, description: 'Stake your assets while maintaining liquidity' },
+  { name: 'Liquid Swap', icon: SwapIcon, path: '/swap', prompt: 'I would like to perform a token swap. Can you help me with the process and guide me through the steps?', description: 'Swap tokens across multiple chains with the best rates' },
+  { name: 'DeFi Lending', icon: BlockchainTechnology, path: '/lending', prompt: 'I want to explore DeFi lending options. Can you help me understand how to supply and borrow assets?', description: 'Supply and borrow assets with competitive rates' },
+  { name: 'Liquid Staking', icon: LightningIcon, path: '/staking', prompt: 'I want to stake my assets to earn rewards. Can you guide me through the staking process?', description: 'Stake your assets while maintaining liquidity' },
   { name: 'AI MarketPlace', icon: ComboChart, path: null, prompt: null, description: 'Browse and trade AI-powered trading strategies' },
   { name: 'Portfolio', icon: Briefcase, path: null, prompt: null, description: 'Track and manage your entire DeFi portfolio in one place' },
 ];
@@ -171,6 +172,7 @@ export default function ChatPage() {
   const [bootstrapVersion, setBootstrapVersion] = useState(0);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [navigationType, setNavigationType] = useState<'swap' | 'lending' | 'staking' | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
   const { user, isLoading: authLoading } = useAuth();
@@ -258,6 +260,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (pathname !== '/chat') {
       setIsNavigating(false);
+      setNavigationType(null);
     }
   }, [pathname]);
 
@@ -948,7 +951,15 @@ export default function ChatPage() {
   return (
     <>
       <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
-      <GlobalLoader isLoading={isNavigating} message="Loading Swap..." />
+      <GlobalLoader 
+        isLoading={isNavigating} 
+        message={
+          navigationType === 'lending' ? 'Loading Lending...' :
+          navigationType === 'staking' ? 'Loading Staking...' :
+          navigationType === 'swap' ? 'Loading Swap...' :
+          'Loading...'
+        } 
+      />
       <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
       {/* Top Navbar - Horizontal across full width */}
       <header className="flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
@@ -1018,17 +1029,46 @@ export default function ChatPage() {
                             </svg>
                             Chat
                           </button>
-                          <button
-                            onClick={() => {
-                              setIsNavigating(true);
-                              setExploreDropdownOpen(false);
-                              router.push('/swap');
-                            }}
-                            className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                          >
-                            <Image src={SwapIcon} alt="Swap" width={16} height={16} />
-                            Swap
-                          </button>
+                        <button
+                          onClick={() => {
+                            setIsNavigating(true);
+                            setNavigationType('swap');
+                            setExploreDropdownOpen(false);
+                            router.push('/swap');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <Image src={SwapIcon} alt="Swap" width={16} height={16} />
+                          Swap
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsNavigating(true);
+                            setNavigationType('lending');
+                            setExploreDropdownOpen(false);
+                            router.push('/lending');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Lending
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsNavigating(true);
+                            setNavigationType('staking');
+                            setExploreDropdownOpen(false);
+                            router.push('/staking');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Staking
+                        </button>
                         </div>
                       </div>
                     </>
@@ -1217,6 +1257,14 @@ export default function ChatPage() {
                       key={idx}
                       onClick={() => {
                         if (feature.path) {
+                          setIsNavigating(true);
+                          if (feature.path === '/lending') {
+                            setNavigationType('lending');
+                          } else if (feature.path === '/staking') {
+                            setNavigationType('staking');
+                          } else if (feature.path === '/swap') {
+                            setNavigationType('swap');
+                          }
                           router.push(feature.path);
                         } else if (feature.prompt) {
                           sendMessage(feature.prompt);
