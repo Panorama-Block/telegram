@@ -55,12 +55,12 @@ const TRENDING_PROMPTS = [
 ];
 
 const FEATURE_CARDS = [
-  { name: 'Wallet Tracking', icon: WalletIcon, path: null, prompt: null, description: 'Monitor your wallet balances across multiple chains in real-time' },
-  { name: 'AI Agents on X', icon: XIcon, path: null, prompt: null, description: 'Follow our AI agents on X for insights and market analysis' },
+  { name: 'Portfolio View', icon: Briefcase, path: null, prompt: null, description: 'Track and manage your entire DeFi portfolio in one place' },
+  { name: 'Liquidity Pools', icon: ComboChart, path: null, prompt: null, description: 'Liquidity Provision Management: Manage pool entries and exits through simple prompts optimizing routes, ranges and capital across chains' },
+  { name: 'Liquid Staking', icon: BlockchainTechnology, path: null, prompt: null, description: 'Liquid Staking: Stake assets through direct commands with automated reward tracking and compounding cycles across various protocols.' },
+  { name: 'Lending', icon: WalletIcon, path: null, prompt: null, description: 'Lending & Borrowing: Access positions across protocols through easy commands managing collateral, comparing rates and adjusting exposure.' },
+  { name: 'Custom Orders', icon: LightningIcon, path: null, prompt: null, description: 'DCA & Trigger Orders: Configure multi-token DCA plans and threshold-based execution rules directly in chat.' },
   { name: 'Liquid Swap', icon: SwapIcon, path: null, prompt: 'I would like to perform a token swap. Can you help me with the process and guide me through the steps?', description: 'Swap tokens across multiple chains with the best rates' },
-  { name: 'Liquid Staking', icon: BlockchainTechnology, path: null, prompt: null, description: 'Stake your assets while maintaining liquidity' },
-  { name: 'AI MarketPlace', icon: ComboChart, path: null, prompt: null, description: 'Browse and trade AI-powered trading strategies' },
-  { name: 'Portfolio', icon: Briefcase, path: null, prompt: null, description: 'Track and manage your entire DeFi portfolio in one place' },
 ];
 
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
