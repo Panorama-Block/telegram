@@ -6,46 +6,11 @@ import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
 import { useActiveAccount } from 'thirdweb/react';
-import { useStakingApi, StakingToken, StakingPosition } from '@/features/staking/api';
+import { useStakingApi } from '@/features/staking/api';
+import { useStakingData } from '@/features/staking/useStakingData';
 
-type StakingActionType = 'stake' | 'unstake' | 'claim' | 'restake';
+type StakingActionType = 'stake' | 'unstake';
 
-// Default tokens for fallback
-const defaultTokens: StakingToken[] = [
-  {
-    symbol: 'ETH',
-    address: '0x0000000000000000000000000000000000000000',
-    decimals: 18,
-    stakingAPY: 4.2,
-    totalStaked: '0',
-    totalRewards: '0',
-    minimumStake: '1000000000000000000', // 1 ETH
-    lockPeriod: 0,
-    isActive: true,
-  },
-  {
-    symbol: 'stETH',
-    address: '0xae7ab96520de3a18e5e111b5eaab095312d7fe84',
-    decimals: 18,
-    stakingAPY: 3.8,
-    totalStaked: '0',
-    totalRewards: '0',
-    minimumStake: '1000000000000000000',
-    lockPeriod: 0,
-    isActive: true,
-  },
-  {
-    symbol: 'wstETH',
-    address: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0',
-    decimals: 18,
-    stakingAPY: 3.5,
-    totalStaked: '0',
-    totalRewards: '0',
-    minimumStake: '1000000000000000000',
-    lockPeriod: 0,
-    isActive: true,
-  },
-];
 
 function getAddressFromToken(): string | null {
   try {
@@ -89,52 +54,34 @@ export default function StakingPage() {
   const router = useRouter();
   const account = useActiveAccount();
   const stakingApi = useStakingApi();
+  
+  // Use the new hook for data management
+  const { 
+    tokens, 
+    userPosition, 
+    loading: dataLoading, 
+    error: dataError, 
+    refresh, 
+    clearCacheAndRefresh 
+  } = useStakingData();
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const userAddress = localStorage.getItem('userAddress');
   const effectiveAddress = account?.address || addressFromToken || userAddress;
 
   const [exploreDropdownOpen, setExploreDropdownOpen] = useState(false);
-  const [tokens, setTokens] = useState<StakingToken[]>(defaultTokens);
-  const [selectedToken, setSelectedToken] = useState<StakingToken>(defaultTokens[0]);
-  const [userPosition, setUserPosition] = useState<StakingPosition | null>(null);
   const [action, setAction] = useState<StakingActionType>('stake');
   const [amount, setAmount] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [initializing, setInitializing] = useState<boolean>(true);
 
-  // Load tokens and user position on mount
+  // Update initializing state
   useEffect(() => {
-    const loadData = async () => {
-      if (!account) {
-        setInitializing(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        
-        // Load available tokens
-        const availableTokens = await stakingApi.getTokens();
-        setTokens(availableTokens);
-        setSelectedToken(availableTokens[0] || defaultTokens[0]);
-        
-        // Load user position
-        const position = await stakingApi.getUserPosition();
-        setUserPosition(position);
-        
-      } catch (error) {
-        console.error('Error loading staking data:', error);
-        setError('Failed to load staking data. Using default tokens.');
-      } finally {
-        setLoading(false);
-        setInitializing(false);
-      }
-    };
-
-    loadData();
-  }, [account, stakingApi]);
+    if (account) {
+      setInitializing(false);
+    }
+  }, [account]);
 
   const handleAction = async () => {
     if (!account) {
@@ -161,18 +108,6 @@ export default function StakingPage() {
         case 'unstake':
           transaction = await stakingApi.unstake(amount);
           break;
-        case 'claim':
-          transaction = await stakingApi.claimRewards();
-          break;
-        case 'restake':
-          // For restake, we claim rewards and then stake them
-          const claimTx = await stakingApi.claimRewards();
-          if (claimTx.status === 'completed') {
-            transaction = await stakingApi.stake(amount);
-          } else {
-            throw new Error('Failed to claim rewards for restaking');
-          }
-          break;
         default:
           throw new Error('Invalid action');
       }
@@ -181,9 +116,8 @@ export default function StakingPage() {
         console.log(`${action} transaction successful:`, transaction.id);
         setAmount('');
         
-        // Reload user position
-        const position = await stakingApi.getUserPosition();
-        setUserPosition(position);
+        // Refresh data using the hook
+        refresh();
       } else {
         throw new Error('Transaction failed');
       }
@@ -200,15 +134,13 @@ export default function StakingPage() {
     switch (action) {
       case 'stake': return 'Stake';
       case 'unstake': return 'Unstake';
-      case 'claim': return 'Claim Rewards';
-      case 'restake': return 'Restake';
       default: return 'Execute';
     }
   };
 
   const canExecute = useMemo(() => {
-    return Boolean(selectedToken && amount && parseFloat(amount) > 0);
-  }, [selectedToken, amount]);
+    return Boolean(amount && parseFloat(amount) > 0);
+  }, [amount]);
 
   return (
     <div className="h-screen bg-black text-white flex flex-col overflow-hidden">
@@ -344,7 +276,7 @@ export default function StakingPage() {
       <div className="flex-1 overflow-hidden">
         {/* Staking Interface */}
         <div className="h-full flex items-center justify-center p-4">
-          {initializing ? (
+          {initializing || dataLoading ? (
             <div className="text-center">
               <div className="loader-inline-lg mb-4" />
               <p className="text-gray-400">Loading staking data...</p>
@@ -355,7 +287,18 @@ export default function StakingPage() {
             <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-2xl">
               {/* Header */}
               <div className="text-center mb-6">
-                <h2 className="text-2xl font-bold text-white mb-2">Liquid Staking</h2>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-2xl font-bold text-white">Liquid Staking</h2>
+                  <button
+                    onClick={clearCacheAndRefresh}
+                    className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
+                    title="Refresh data"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </div>
                 <p className="text-gray-400 text-sm">Stake ETH and earn rewards with Lido protocol</p>
               </div>
 
@@ -400,35 +343,36 @@ export default function StakingPage() {
                   onChange={(e) => setAction(e.target.value as StakingActionType)}
                   className="w-full px-4 py-3 rounded-lg bg-black/40 border border-white/20 text-white focus:outline-none focus:border-white/40"
                 >
-                  <option value="stake">Stake Assets</option>
-                  <option value="unstake">Unstake Assets</option>
-                  <option value="claim">Claim Rewards</option>
-                  <option value="restake">Restake Rewards</option>
+                  <option value="stake">Stake ETH → stETH</option>
+                  <option value="unstake">Unstake stETH → ETH</option>
                 </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  {action === 'stake' 
+                    ? 'Convert ETH to stETH and start earning rewards' 
+                    : 'Convert stETH back to ETH and claim rewards'
+                  }
+                </p>
               </div>
 
-              {/* Token Selection */}
+              {/* Token Display */}
               <div className="mb-4">
-                <label className="text-xs text-white uppercase tracking-wide font-medium mb-2 block">Asset</label>
-                <select
-                  value={selectedToken.address}
-                  onChange={(e) => {
-                    const token = tokens.find(t => t.address === e.target.value);
-                    if (token) setSelectedToken(token);
-                  }}
-                  className="w-full px-4 py-3 rounded-lg bg-black/40 border border-white/20 text-white focus:outline-none focus:border-white/40"
-                >
-                  {tokens.map((token) => (
-                    <option key={token.address} value={token.address}>
-                      {token.symbol}
-                    </option>
-                  ))}
-                </select>
+                <label className="text-xs text-white uppercase tracking-wide font-medium mb-2 block">Token</label>
+                <div className="px-4 py-3 rounded-lg bg-black/40 border border-white/20 text-white">
+                  {action === 'stake' ? 'ETH → stETH' : 'stETH → ETH'}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  {action === 'stake' 
+                    ? 'You will receive stETH tokens in return' 
+                    : 'You will receive ETH tokens in return'
+                  }
+                </p>
               </div>
 
               {/* Amount Input */}
               <div className="mb-6">
-                <label className="text-xs text-white uppercase tracking-wide font-medium mb-2 block">Amount</label>
+                <label className="text-xs text-white uppercase tracking-wide font-medium mb-2 block">
+                  {action === 'stake' ? 'Amount to Stake' : 'Amount to Unstake'}
+                </label>
                 <input
                   type="number"
                   min="0"
@@ -439,9 +383,11 @@ export default function StakingPage() {
                   className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-white/40"
                 />
                 <div className="flex justify-between mt-2 text-xs text-gray-400">
-                  <span>Available: {formatAmount(selectedToken.totalStaked, selectedToken.decimals)} {selectedToken.symbol}</span>
+                  <span>
+                    Available: {tokens.length > 0 ? formatAmount(tokens[0].totalStaked, tokens[0].decimals) : '0'} {action === 'stake' ? 'ETH' : 'stETH'}
+                  </span>
                   <button
-                    onClick={() => setAmount(formatAmount(selectedToken.totalStaked, selectedToken.decimals))}
+                    onClick={() => setAmount(tokens.length > 0 ? formatAmount(tokens[0].totalStaked, tokens[0].decimals) : '0')}
                     className="text-cyan-400 hover:text-cyan-300 underline"
                   >
                     Max
@@ -451,19 +397,25 @@ export default function StakingPage() {
 
               {/* Token Info */}
               <div className="bg-black/40 border border-white/10 rounded-xl p-4 mb-6">
-                <h4 className="text-white font-semibold mb-3">{selectedToken.symbol} Staking Info</h4>
+                <h4 className="text-white font-semibold mb-3">
+                  {action === 'stake' ? 'ETH Staking Info' : 'stETH Unstaking Info'}
+                </h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-400">Staking APY:</span>
-                    <span className="text-green-400 font-medium">{formatAPY(selectedToken.stakingAPY)}</span>
+                    <span className="text-green-400 font-medium">
+                      {tokens.length > 0 ? formatAPY(tokens[0].stakingAPY) : '4.2%'}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Total Staked:</span>
-                    <span className="text-white font-medium">{formatAmount(selectedToken.totalStaked, selectedToken.decimals)} {selectedToken.symbol}</span>
+                    <span className="text-white font-medium">
+                      {tokens.length > 0 ? formatAmount(tokens[0].totalStaked, tokens[0].decimals) : '0'} ETH
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Lock Period:</span>
-                    <span className="text-white font-medium">{selectedToken.lockPeriod === 0 ? 'No Lock' : `${selectedToken.lockPeriod} days`}</span>
+                    <span className="text-white font-medium">No Lock</span>
                   </div>
                 </div>
               </div>
@@ -477,10 +429,24 @@ export default function StakingPage() {
                 {loading ? 'Processing...' : getActionLabel()}
               </button>
 
-              {/* Error Message */}
+              {/* Error Messages */}
               {error && (
                 <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
                   <div className="text-sm text-red-400">{error}</div>
+                </div>
+              )}
+              
+              {dataError && (
+                <div className="mt-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                  <div className="text-sm text-yellow-400">
+                    Data loading error: {dataError}
+                    <button 
+                      onClick={refresh}
+                      className="ml-2 underline hover:no-underline"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

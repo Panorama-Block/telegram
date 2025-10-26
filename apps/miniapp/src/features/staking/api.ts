@@ -72,6 +72,11 @@ class StakingApiClient {
   private account: any;
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
+  
+  // Cache for Lido protocol data to prevent infinite loops
+  private lidoDataCache: any = null;
+  private lidoDataCacheTime: number = 0;
+  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
   constructor(account: any) {
     this.baseUrl = process.env.NEXT_PUBLIC_STAKING_API_URL || 'http://localhost:3004';
@@ -90,9 +95,13 @@ class StakingApiClient {
         body: JSON.stringify({ userAddress: this.account.address })
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const authData: AuthResponse = await response.json();
       
-      if (authData.success) {
+      if (authData.success && authData.data) {
         this.accessToken = authData.data.accessToken;
         this.refreshToken = authData.data.refreshToken;
         
@@ -100,10 +109,13 @@ class StakingApiClient {
         localStorage.setItem('staking_access_token', this.accessToken);
         localStorage.setItem('staking_refresh_token', this.refreshToken);
       } else {
-        throw new Error('Authentication failed');
+        throw new Error('Authentication failed: Invalid response from server');
       }
     } catch (error) {
       console.error('Authentication error:', error);
+      if (error instanceof Error) {
+        throw new Error(`Failed to authenticate with staking service: ${error.message}`);
+      }
       throw new Error('Failed to authenticate with staking service');
     }
   }
@@ -193,29 +205,29 @@ class StakingApiClient {
 
   async getTokens(): Promise<StakingToken[]> {
     try {
-      const protocolInfo = await this.getProtocolInfo();
-      
-      // Convert protocol info to staking tokens
+      // Get Lido protocol data from their API
+      const lidoData = await this.fetchLidoProtocolData();
+
       return [
         {
           symbol: 'ETH',
           address: '0x0000000000000000000000000000000000000000',
           decimals: 18,
-          stakingAPY: protocolInfo.currentAPY,
-          totalStaked: protocolInfo.totalStaked,
-          totalRewards: protocolInfo.totalRewards,
-          minimumStake: '0.001', // 0.001 ETH minimum
-          lockPeriod: 0, // No lock period for liquid staking
+          stakingAPY: lidoData.apy || 4.2,
+          totalStaked: lidoData.totalStaked || '0',
+          totalRewards: lidoData.totalRewards || '0',
+          minimumStake: '1000000000000000', // 0.001 ETH in wei
+          lockPeriod: 0,
           isActive: true,
         },
         {
           symbol: 'stETH',
           address: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84',
           decimals: 18,
-          stakingAPY: protocolInfo.currentAPY,
-          totalStaked: protocolInfo.totalStaked,
-          totalRewards: protocolInfo.totalRewards,
-          minimumStake: '0.001',
+          stakingAPY: lidoData.apy || 4.2,
+          totalStaked: lidoData.totalStaked || '0',
+          totalRewards: lidoData.totalRewards || '0',
+          minimumStake: '1000000000000000', // 0.001 ETH in wei
           lockPeriod: 0,
           isActive: true,
         },
@@ -223,10 +235,10 @@ class StakingApiClient {
           symbol: 'wstETH',
           address: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0',
           decimals: 18,
-          stakingAPY: protocolInfo.currentAPY,
-          totalStaked: protocolInfo.totalStaked,
-          totalRewards: protocolInfo.totalRewards,
-          minimumStake: '0.001',
+          stakingAPY: lidoData.apy || 4.2,
+          totalStaked: lidoData.totalStaked || '0',
+          totalRewards: lidoData.totalRewards || '0',
+          minimumStake: '1000000000000000', // 0.001 ETH in wei
           lockPeriod: 0,
           isActive: true,
         }
@@ -234,6 +246,97 @@ class StakingApiClient {
     } catch (error) {
       console.error('Error fetching staking tokens:', error);
       throw new Error('Failed to fetch staking tokens');
+    }
+  }
+
+  private async fetchLidoProtocolData(): Promise<any> {
+    // Check if we have valid cached data
+    const now = Date.now();
+    if (this.lidoDataCache && (now - this.lidoDataCacheTime) < this.CACHE_DURATION) {
+      console.log('Using cached Lido data');
+      return this.lidoDataCache;
+    }
+
+    try {
+      console.log('Fetching fresh Lido protocol data...');
+      
+      // Try to get Lido protocol data from their API with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetch('https://stake.lido.fi/api/stats', {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      const result = {
+        apy: data.apr || 4.2,
+        totalStaked: data.totalStaked || '0',
+        totalRewards: data.totalRewards || '0'
+      };
+      
+      // Cache the result
+      this.lidoDataCache = result;
+      this.lidoDataCacheTime = now;
+      
+      return result;
+    } catch (error) {
+      console.error('Error fetching Lido protocol data:', error);
+      
+      // If we have cached data, use it even if expired
+      if (this.lidoDataCache) {
+        console.log('Using expired cached data due to API error');
+        return this.lidoDataCache;
+      }
+      
+      // Try alternative API endpoint with timeout
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
+        const altResponse = await fetch('https://api.lido.fi/v1/protocol/staking/apr/last', {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (altResponse.ok) {
+          const altData = await altResponse.json();
+          const result = {
+            apy: altData.apr || 4.2,
+            totalStaked: '0',
+            totalRewards: '0'
+          };
+          
+          // Cache the result
+          this.lidoDataCache = result;
+          this.lidoDataCacheTime = now;
+          
+          return result;
+        }
+      } catch (altError) {
+        console.error('Error fetching alternative Lido data:', altError);
+      }
+      
+      // Return fallback data
+      const fallbackData = {
+        apy: 4.2,
+        totalStaked: '0',
+        totalRewards: '0'
+      };
+      
+      // Cache fallback data to prevent repeated failures
+      this.lidoDataCache = fallbackData;
+      this.lidoDataCacheTime = now;
+      
+      return fallbackData;
     }
   }
 
@@ -252,25 +355,15 @@ class StakingApiClient {
     }
   }
 
-  async getProtocolInfo(): Promise<ProtocolInfo> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/lido/protocol/info`);
-      const data = await response.json();
-      
-      if (data.success) {
-        return data.data;
-      } else {
-        throw new Error('Failed to fetch protocol info');
-      }
-    } catch (error) {
-      console.error('Error fetching protocol info:', error);
-      throw new Error('Failed to fetch protocol info');
-    }
-  }
-
   async stake(amount: string): Promise<StakingTransaction> {
     if (!this.account?.address) {
       throw new Error('Account not connected');
+    }
+
+    // Validate amount
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      throw new Error('Invalid amount. Please enter a positive number.');
     }
 
     try {
@@ -292,6 +385,9 @@ class StakingApiClient {
       }
     } catch (error) {
       console.error('Error staking:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
       throw new Error('Failed to stake tokens');
     }
   }
@@ -299,6 +395,12 @@ class StakingApiClient {
   async unstake(amount: string): Promise<StakingTransaction> {
     if (!this.account?.address) {
       throw new Error('Account not connected');
+    }
+
+    // Validate amount
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      throw new Error('Invalid amount. Please enter a positive number.');
     }
 
     try {
@@ -320,74 +422,41 @@ class StakingApiClient {
       }
     } catch (error) {
       console.error('Error unstaking:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
       throw new Error('Failed to unstake tokens');
     }
   }
 
-  async claimRewards(): Promise<StakingTransaction> {
-    if (!this.account?.address) {
-      throw new Error('Account not connected');
-    }
-
-    try {
-      const response = await this.makeAuthenticatedRequest(
-        `${this.baseUrl}/api/lido/claim-rewards`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            userAddress: this.account.address
-          })
-        }
-      );
-
-      if (response.success) {
-        return response.data;
-      } else {
-        throw new Error(response.message || 'Claim rewards failed');
-      }
-    } catch (error) {
-      console.error('Error claiming rewards:', error);
-      throw new Error('Failed to claim rewards');
-    }
-  }
-
-  async getTransactionHistory(limit: number = 50): Promise<StakingTransaction[]> {
-    if (!this.account?.address) return [];
-
-    try {
-      const response = await this.makeAuthenticatedRequest(
-        `${this.baseUrl}/api/lido/history/${this.account.address}?limit=${limit}`
-      );
-
-      return response.success ? response.data : [];
-    } catch (error) {
-      console.error('Error fetching transaction history:', error);
-      return [];
-    }
-  }
-
-  async getTransactionStatus(transactionHash: string): Promise<StakingTransaction | null> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/lido/transaction/${transactionHash}`);
-      const data = await response.json();
-      
-      return data.success ? data.data : null;
-    } catch (error) {
-      console.error('Error fetching transaction status:', error);
-      return null;
-    }
-  }
 
   async logout(): Promise<void> {
     try {
-      await this.makeAuthenticatedRequest(`${this.baseUrl}/api/lido/auth/logout`, {
-        method: 'POST'
-      });
+      // Clear tokens from localStorage
+      this.clearTokens();
     } catch (error) {
       console.error('Error logging out:', error);
-    } finally {
-      this.clearTokens();
     }
+  }
+
+  // Method to clear cache (useful for testing or manual refresh)
+  clearLidoDataCache(): void {
+    this.lidoDataCache = null;
+    this.lidoDataCacheTime = 0;
+    console.log('Lido data cache cleared');
+  }
+
+  // Method to get cache status (useful for debugging)
+  getCacheStatus(): { hasCache: boolean; cacheAge: number; isExpired: boolean } {
+    const now = Date.now();
+    const cacheAge = this.lidoDataCacheTime ? now - this.lidoDataCacheTime : 0;
+    const isExpired = cacheAge > this.CACHE_DURATION;
+    
+    return {
+      hasCache: !!this.lidoDataCache,
+      cacheAge,
+      isExpired
+    };
   }
 }
 
