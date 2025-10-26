@@ -6,49 +6,11 @@ import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
 import { useActiveAccount } from 'thirdweb/react';
-import { useLendingApi, LendingToken, LendingPosition } from '@/features/lending/api';
+import { useLendingApi, LendingToken } from '@/features/lending/api';
+import { useLendingData } from '@/features/lending/useLendingData';
 
 type LendingActionType = 'supply' | 'withdraw' | 'borrow' | 'repay';
 
-// Default tokens for fallback
-const defaultTokens: LendingToken[] = [
-  {
-    symbol: 'USDC',
-    address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
-    decimals: 6,
-    supplyAPY: 3.45,
-    borrowAPY: 4.12,
-    totalSupply: '0',
-    totalBorrowed: '0',
-    availableLiquidity: '0',
-    collateralFactor: 0.8,
-    isCollateral: true,
-  },
-  {
-    symbol: 'ETH',
-    address: '0x0000000000000000000000000000000000000000',
-    decimals: 18,
-    supplyAPY: 2.15,
-    borrowAPY: 3.25,
-    totalSupply: '0',
-    totalBorrowed: '0',
-    availableLiquidity: '0',
-    collateralFactor: 0.75,
-    isCollateral: true,
-  },
-  {
-    symbol: 'WBTC',
-    address: '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599',
-    decimals: 8,
-    supplyAPY: 1.85,
-    borrowAPY: 2.95,
-    totalSupply: '0',
-    totalBorrowed: '0',
-    availableLiquidity: '0',
-    collateralFactor: 0.7,
-    isCollateral: true,
-  },
-];
 
 function getAddressFromToken(): string | null {
   try {
@@ -82,55 +44,43 @@ function formatAPY(apy: number): string {
 export default function LendingPage() {
   const router = useRouter();
   const account = useActiveAccount();
-  // const clientId = THIRDWEB_CLIENT_ID || undefined;
-  // const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
   const lendingApi = useLendingApi();
+  
+  // Use the new hook for data management
+  const { 
+    tokens, 
+    userPosition, 
+    loading: dataLoading, 
+    error: dataError, 
+    refresh, 
+    clearCacheAndRefresh 
+  } = useLendingData();
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const userAddress = localStorage.getItem('userAddress');
   const effectiveAddress = account?.address || addressFromToken || userAddress;
 
   const [exploreDropdownOpen, setExploreDropdownOpen] = useState(false);
-  const [tokens, setTokens] = useState<LendingToken[]>(defaultTokens);
-  const [selectedToken, setSelectedToken] = useState<LendingToken>(defaultTokens[0]);
-  const [userPosition, setUserPosition] = useState<LendingPosition | null>(null);
+  const [selectedToken, setSelectedToken] = useState<LendingToken | null>(null);
   const [action, setAction] = useState<LendingActionType>('supply');
   const [amount, setAmount] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [initializing, setInitializing] = useState<boolean>(true);
 
-  // Load tokens and user position on mount
+  // Update selected token when tokens change
   useEffect(() => {
-    const loadData = async () => {
-      if (!account) {
-        setInitializing(false);
-        return;
-      }
+    if (tokens.length > 0 && !selectedToken) {
+      setSelectedToken(tokens[0]);
+    }
+  }, [tokens, selectedToken]);
 
-      try {
-        setLoading(true);
-        
-        // Load available tokens
-        const availableTokens = await lendingApi.getTokens();
-        setTokens(availableTokens);
-        setSelectedToken(availableTokens[0] || defaultTokens[0]);
-        
-        // Load user position
-        const position = await lendingApi.getUserPosition();
-        setUserPosition(position);
-        
-      } catch (error) {
-        console.error('Error loading lending data:', error);
-        setError('Failed to load lending data. Using default tokens.');
-      } finally {
-        setLoading(false);
-        setInitializing(false);
-      }
-    };
-
-    loadData();
-  }, [account, lendingApi]);
+  // Update initializing state
+  useEffect(() => {
+    if (account) {
+      setInitializing(false);
+    }
+  }, [account]);
 
   const handleAction = async () => {
     if (!account) {
@@ -145,6 +95,11 @@ export default function LendingPage() {
 
     setLoading(true);
     setError(null);
+
+    if (!selectedToken) {
+      setError('Please select a token');
+      return;
+    }
 
     try {
       let txData;
@@ -184,9 +139,8 @@ export default function LendingPage() {
         console.log(`${action} transaction successful`);
         setAmount('');
         
-        // Reload user position
-        const position = await lendingApi.getUserPosition();
-        setUserPosition(position);
+        // Refresh data using the hook
+        refresh();
       } else {
         throw new Error('Transaction failed');
       }
@@ -347,7 +301,7 @@ export default function LendingPage() {
       <div className="flex-1 overflow-hidden">
         {/* Lending Interface */}
         <div className="h-full flex items-center justify-center p-4">
-          {initializing ? (
+          {initializing || dataLoading ? (
             <div className="text-center">
               <div className="loader-inline-lg mb-4" />
               <p className="text-gray-400">Loading lending data...</p>
@@ -358,7 +312,18 @@ export default function LendingPage() {
             <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-2xl">
               {/* Header */}
               <div className="text-center mb-6">
-                <h2 className="text-2xl font-bold text-white mb-2">DeFi Lending</h2>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-2xl font-bold text-white">DeFi Lending</h2>
+                  <button
+                    onClick={clearCacheAndRefresh}
+                    className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
+                    title="Refresh data"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </div>
                 <p className="text-gray-400 text-sm">Supply and borrow assets with competitive rates</p>
               </div>
 
@@ -408,7 +373,7 @@ export default function LendingPage() {
               <div className="mb-4">
                 <label className="text-xs text-white uppercase tracking-wide font-medium mb-2 block">Asset</label>
                 <select
-                  value={selectedToken.address}
+                  value={selectedToken?.address || ''}
                   onChange={(e) => {
                     const token = tokens.find(t => t.address === e.target.value);
                     if (token) setSelectedToken(token);
@@ -436,9 +401,9 @@ export default function LendingPage() {
                   className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-white/40"
                 />
                 <div className="flex justify-between mt-2 text-xs text-gray-400">
-                  <span>Available: {formatAmount(selectedToken.availableLiquidity, selectedToken.decimals)} {selectedToken.symbol}</span>
+                  <span>Available: {selectedToken ? formatAmount(selectedToken.availableLiquidity, selectedToken.decimals) : '0'} {selectedToken?.symbol || ''}</span>
                   <button
-                    onClick={() => setAmount(formatAmount(selectedToken.availableLiquidity, selectedToken.decimals))}
+                    onClick={() => selectedToken && setAmount(formatAmount(selectedToken.availableLiquidity, selectedToken.decimals))}
                     className="text-cyan-400 hover:text-cyan-300 underline"
                   >
                     Max
@@ -447,23 +412,25 @@ export default function LendingPage() {
               </div>
 
               {/* Token Info */}
-              <div className="bg-black/40 border border-white/10 rounded-xl p-4 mb-6">
-                <h4 className="text-white font-semibold mb-3">{selectedToken.symbol} Market Info</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Supply APY:</span>
-                    <span className="text-green-400 font-medium">{formatAPY(selectedToken.supplyAPY)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Borrow APY:</span>
-                    <span className="text-red-400 font-medium">{formatAPY(selectedToken.borrowAPY)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Collateral Factor:</span>
-                    <span className="text-white font-medium">{(selectedToken.collateralFactor * 100).toFixed(0)}%</span>
+              {selectedToken && (
+                <div className="bg-black/40 border border-white/10 rounded-xl p-4 mb-6">
+                  <h4 className="text-white font-semibold mb-3">{selectedToken.symbol} Market Info</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Supply APY:</span>
+                      <span className="text-green-400 font-medium">{formatAPY(selectedToken.supplyAPY)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Borrow APY:</span>
+                      <span className="text-red-400 font-medium">{formatAPY(selectedToken.borrowAPY)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Collateral Factor:</span>
+                      <span className="text-white font-medium">{(selectedToken.collateralFactor * 100).toFixed(0)}%</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Action Button */}
               <button
@@ -474,10 +441,24 @@ export default function LendingPage() {
                 {loading ? 'Processing...' : getActionLabel()}
               </button>
 
-              {/* Error Message */}
+              {/* Error Messages */}
               {error && (
                 <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
                   <div className="text-sm text-red-400">{error}</div>
+                </div>
+              )}
+              
+              {dataError && (
+                <div className="mt-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                  <div className="text-sm text-yellow-400">
+                    Data loading error: {dataError}
+                    <button 
+                      onClick={refresh}
+                      className="ml-2 underline hover:no-underline"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
