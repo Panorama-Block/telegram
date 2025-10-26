@@ -288,7 +288,20 @@ export default function StakingPage() {
               {/* Header */}
               <div className="text-center mb-6">
                 <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-2xl font-bold text-white">Liquid Staking</h2>
+                  <div className="flex items-center gap-3">
+                    {/* Lido Logo */}
+                    <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center">
+                      <Image 
+                        src="https://s2.coinmarketcap.com/static/img/coins/64x64/8000.png" 
+                        alt="Lido Protocol" 
+                        width={32}
+                        height={32}
+                        className="w-full h-full object-cover"
+                        unoptimized
+                      />
+                    </div>
+                    <h2 className="text-2xl font-bold text-white">Staking Service</h2>
+                  </div>
                   <button
                     onClick={clearCacheAndRefresh}
                     className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
@@ -299,7 +312,7 @@ export default function StakingPage() {
                     </svg>
                   </button>
                 </div>
-                <p className="text-gray-400 text-sm">Stake ETH and earn rewards with Lido protocol</p>
+                <p className="text-gray-400 text-sm">Powered by Lido Protocol on Ethereum</p>
               </div>
 
               {/* User Position Summary */}

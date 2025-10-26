@@ -313,7 +313,20 @@ export default function LendingPage() {
               {/* Header */}
               <div className="text-center mb-6">
                 <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-2xl font-bold text-white">DeFi Lending</h2>
+                  <div className="flex items-center gap-3">
+                    {/* Benqi Logo */}
+                    <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center">
+                      <Image 
+                        src="https://s2.coinmarketcap.com/static/img/coins/64x64/9288.png" 
+                        alt="Benqi Protocol" 
+                        width={32}
+                        height={32}
+                        className="w-full h-full object-cover"
+                        unoptimized
+                      />
+                    </div>
+                    <h2 className="text-2xl font-bold text-white">Lending Service</h2>
+                  </div>
                   <button
                     onClick={clearCacheAndRefresh}
                     className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
@@ -324,7 +337,7 @@ export default function LendingPage() {
                     </svg>
                   </button>
                 </div>
-                <p className="text-gray-400 text-sm">Supply and borrow assets with competitive rates</p>
+                <p className="text-gray-400 text-sm">Powered by Benqi Protocol on Avalanche</p>
               </div>
 
               {/* User Position Summary */}
