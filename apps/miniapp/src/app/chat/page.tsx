@@ -902,7 +902,11 @@ export default function ChatPage() {
           chain: defineChain(t.chainId),
           client,
           data: t.data as Hex,
-          value: t.value ? BigInt(t.value as any) : 0n,
+          value: t.value != null ? BigInt(t.value as any) : 0n,
+          gas: t.gasLimit != null ? BigInt(t.gasLimit as any) : undefined,
+          maxFeePerGas: t.maxFeePerGas != null ? BigInt(t.maxFeePerGas as any) : undefined,
+          maxPriorityFeePerGas:
+            t.maxPriorityFeePerGas != null ? BigInt(t.maxPriorityFeePerGas as any) : undefined,
         });
 
         if (!account) {
@@ -1624,7 +1628,7 @@ export default function ChatPage() {
             </div>
 
             {/* Input Area - Fixed with black bg */}
-            <div className="flex-shrink-0 bg-black px-4 pb-10 pt-4">
+            <div className="flex-shrink-0 bg-black px-4 pb-6 pt-6">
               <div className="flex items-center gap-3 max-w-4xl mx-auto relative">
                 <input
                   type="text"
@@ -1633,7 +1637,7 @@ export default function ChatPage() {
                   onKeyPress={handleKeyPress}
                   placeholder="Type your message..."
                   disabled={isSending || !activeConversationId || initializing}
-                  className="flex-1 px-4 py-3 rounded-lg bg-[#202020] border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-gray-500 disabled:opacity-50"
+                  className="flex-1 px-5 py-4 rounded-2xl bg-[#1a1a1a] border border-gray-700 text-white placeholder-gray-400 focus:outline-none focus:border-gray-400 disabled:opacity-50 shadow-[0_4px_20px_rgba(0,0,0,0.35)]"
                 />
 
                 {/* Send Button - Round with white bg */}

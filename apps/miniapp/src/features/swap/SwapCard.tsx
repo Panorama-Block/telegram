@@ -416,7 +416,11 @@ export function SwapCard() {
           chain: defineChain(t.chainId),
           client,
           data: t.data as Hex,
-          value: t.value ? BigInt(t.value as any) : 0n,
+          value: t.value != null ? BigInt(t.value as any) : 0n,
+          gas: t.gasLimit != null ? BigInt(t.gasLimit as any) : undefined,
+          maxFeePerGas: t.maxFeePerGas != null ? BigInt(t.maxFeePerGas as any) : undefined,
+          maxPriorityFeePerGas:
+            t.maxPriorityFeePerGas != null ? BigInt(t.maxPriorityFeePerGas as any) : undefined,
         });
 
         if (!account) {

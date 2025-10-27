@@ -487,6 +487,10 @@ export default function SwapPage() {
           client,
           data: t.data as Hex,
           value: txValue,
+          gas: t.gasLimit != null ? BigInt(t.gasLimit as any) : undefined,
+          maxFeePerGas: t.maxFeePerGas != null ? BigInt(t.maxFeePerGas as any) : undefined,
+          maxPriorityFeePerGas:
+            t.maxPriorityFeePerGas != null ? BigInt(t.maxPriorityFeePerGas as any) : undefined,
         });
 
         console.log('Final prepared transaction value:', txValue.toString());
