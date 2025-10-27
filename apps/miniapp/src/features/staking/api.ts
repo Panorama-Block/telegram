@@ -35,6 +35,13 @@ export interface StakingTransaction {
   token: string;
   status: 'pending' | 'completed' | 'failed';
   timestamp: string;
+  transactionData?: {
+    to: string;
+    data: string;
+    value: string;
+    gasLimit: string;
+    chainId: number;
+  };
 }
 
 export interface ProtocolInfo {
@@ -81,6 +88,31 @@ class StakingApiClient {
   constructor(account: any) {
     this.baseUrl = process.env.NEXT_PUBLIC_STAKING_API_URL || 'http://localhost:3004';
     this.account = account;
+    
+    // Try to load existing tokens from localStorage
+    this.accessToken = localStorage.getItem('staking_access_token');
+    this.refreshToken = localStorage.getItem('staking_refresh_token');
+    
+    // Clear tokens if they exist but account changed
+    if (this.accessToken && account?.address) {
+      try {
+        const payload = JSON.parse(atob(this.accessToken.split('.')[1]));
+        if (payload.address !== account.address) {
+          console.log('🔄 Account changed, clearing old tokens');
+          this.clearTokens();
+        }
+      } catch {
+        console.log('🔄 Invalid token format, clearing tokens');
+        this.clearTokens();
+      }
+    }
+  }
+
+  private clearTokens(): void {
+    this.accessToken = null;
+    this.refreshToken = null;
+    localStorage.removeItem('staking_access_token');
+    localStorage.removeItem('staking_refresh_token');
   }
 
   private async authenticate(): Promise<void> {
@@ -152,13 +184,6 @@ class StakingApiClient {
     }
   }
 
-  private clearTokens(): void {
-    this.accessToken = null;
-    this.refreshToken = null;
-    localStorage.removeItem('staking_access_token');
-    localStorage.removeItem('staking_refresh_token');
-  }
-
   private async getAuthHeaders(): Promise<Record<string, string>> {
     // Try to get tokens from localStorage first
     if (!this.accessToken) {
@@ -177,24 +202,53 @@ class StakingApiClient {
     };
   }
 
+  private async generateSignature(message: string): Promise<string> {
+    if (!this.account) {
+      throw new Error('Account not connected');
+    }
+
+    try {
+      // Smart wallet signature using thirdweb
+      const signature = await this.account.signMessage({ message });
+      return signature;
+    } catch (error) {
+      console.error('Error signing message:', error);
+      throw new Error('Failed to sign message');
+    }
+  }
+
+  private async getAuthData(message: string) {
+    const signature = await this.generateSignature(message);
+    return {
+      address: this.account.address,
+      signature,
+      message,
+      timestamp: Date.now(),
+      // Smart wallet specific data
+      walletType: 'smart_wallet',
+      chainId: 1, // Ethereum mainnet
+      // No private key needed for smart wallets
+      isSmartWallet: true
+    };
+  }
+
   private async makeAuthenticatedRequest(url: string, options: RequestInit = {}): Promise<any> {
     try {
-      const headers = await this.getAuthHeaders();
+      // Generate a unique message for this request
+      const message = `Staking request at ${Date.now()}`;
+      const authData = await this.getAuthData(message);
+      
       const response = await fetch(url, {
         ...options,
-        headers: { ...headers, ...options.headers }
+        headers: { 
+          'Content-Type': 'application/json',
+          ...options.headers 
+        },
+        body: JSON.stringify({
+          ...JSON.parse(options.body?.toString() || '{}'),
+          authData
+        })
       });
-
-      // If unauthorized, try to refresh token
-      if (response.status === 401) {
-        await this.refreshAccessToken();
-        const newHeaders = await this.getAuthHeaders();
-        const retryResponse = await fetch(url, {
-          ...options,
-          headers: { ...newHeaders, ...options.headers }
-        });
-        return await retryResponse.json();
-      }
 
       return await response.json();
     } catch (error) {
@@ -216,7 +270,7 @@ class StakingApiClient {
           stakingAPY: lidoData.apy || 4.2,
           totalStaked: lidoData.totalStaked || '0',
           totalRewards: lidoData.totalRewards || '0',
-          minimumStake: '1000000000000000', // 0.001 ETH in wei
+          minimumStake: '1000000000000000000', // 1 ETH in wei
           lockPeriod: 0,
           isActive: true,
         },
@@ -344,11 +398,31 @@ class StakingApiClient {
     if (!this.account?.address) return null;
 
     try {
-      const response = await this.makeAuthenticatedRequest(
-        `${this.baseUrl}/api/lido/position/${this.account.address}`
-      );
+      // Ensure we're authenticated first
+      if (!this.accessToken) {
+        console.log('🔐 No access token found, authenticating...');
+        await this.authenticate();
+        console.log('✅ Authentication successful, token:', this.accessToken?.substring(0, 20) + '...');
+      } else {
+        console.log('🔑 Using existing token:', this.accessToken.substring(0, 20) + '...');
+      }
 
-      return response.success ? response.data : null;
+      // Create specific message for getting position
+      const message = `Get staking position\nTimestamp: ${Date.now()}`;
+      const authData = await this.getAuthData(message);
+      
+      const response = await fetch(`${this.baseUrl}/api/lido/position/${this.account.address}`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.accessToken}`
+        },
+        body: JSON.stringify({ authData })
+      });
+
+      const result = await response.json();
+
+      return result.success ? result.data : null;
     } catch (error) {
       console.error('Error fetching user position:', error);
       return null;
@@ -367,21 +441,90 @@ class StakingApiClient {
     }
 
     try {
-      const response = await this.makeAuthenticatedRequest(
-        `${this.baseUrl}/api/lido/stake`,
-        {
+      // Ensure we're authenticated first
+      if (!this.accessToken) {
+        console.log('🔐 No access token found, authenticating...');
+        await this.authenticate();
+        console.log('✅ Authentication successful, token:', this.accessToken?.substring(0, 20) + '...');
+      } else {
+        console.log('🔑 Using existing token:', this.accessToken.substring(0, 20) + '...');
+      }
+
+      // Create specific message for staking
+      const message = `Stake ${amount} ETH\nTimestamp: ${Date.now()}`;
+      const authData = await this.getAuthData(message);
+      
+      console.log('📤 Sending stake request:', {
+        url: `${this.baseUrl}/api/lido/stake`,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.accessToken?.substring(0, 20)}...`
+        },
+        body: {
+          userAddress: this.account.address,
+          amount: amount,
+          authData: {
+            address: authData.address,
+            signature: authData.signature.substring(0, 20) + '...',
+            message: authData.message,
+            timestamp: authData.timestamp,
+            walletType: authData.walletType,
+            chainId: authData.chainId,
+            isSmartWallet: authData.isSmartWallet
+          }
+        }
+      });
+
+      const response = await fetch(`${this.baseUrl}/api/lido/stake`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.accessToken}`
+        },
+        body: JSON.stringify({
+          userAddress: this.account.address,
+          amount: amount,
+          authData
+        })
+      });
+
+      console.log('📥 Stake response status:', response.status);
+
+      const result = await response.json();
+      console.log('📥 Stake response data:', result);
+
+      // If 401, try to refresh token or re-authenticate
+      if (response.status === 401) {
+        console.log('🔐 Token expired or invalid, re-authenticating...');
+        await this.authenticate();
+        
+        // Retry with new token
+        const retryResponse = await fetch(`${this.baseUrl}/api/lido/stake`, {
           method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.accessToken}`
+          },
           body: JSON.stringify({
             userAddress: this.account.address,
-            amount: amount
+            amount: amount,
+            authData
           })
+        });
+        
+        const retryResult = await retryResponse.json();
+        
+        if (retryResult.success) {
+          return retryResult.data;
+        } else {
+          throw new Error(retryResult.message || 'Staking failed after re-authentication');
         }
-      );
+      }
 
-      if (response.success) {
-        return response.data;
+      if (result.success) {
+        return result.data;
       } else {
-        throw new Error(response.message || 'Staking failed');
+        throw new Error(result.message || 'Staking failed');
       }
     } catch (error) {
       console.error('Error staking:', error);
@@ -404,21 +547,66 @@ class StakingApiClient {
     }
 
     try {
-      const response = await this.makeAuthenticatedRequest(
-        `${this.baseUrl}/api/lido/unstake`,
-        {
+      // Ensure we're authenticated first
+      if (!this.accessToken) {
+        console.log('🔐 No access token found, authenticating...');
+        await this.authenticate();
+        console.log('✅ Authentication successful, token:', this.accessToken?.substring(0, 20) + '...');
+      } else {
+        console.log('🔑 Using existing token:', this.accessToken.substring(0, 20) + '...');
+      }
+
+      // Create specific message for unstaking
+      const message = `Unstake ${amount} stETH\nTimestamp: ${Date.now()}`;
+      const authData = await this.getAuthData(message);
+      
+      const response = await fetch(`${this.baseUrl}/api/lido/unstake`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.accessToken}`
+        },
+        body: JSON.stringify({
+          userAddress: this.account.address,
+          amount: amount,
+          authData
+        })
+      });
+
+      const result = await response.json();
+
+      // If 401, try to refresh token or re-authenticate
+      if (response.status === 401) {
+        console.log('🔐 Token expired or invalid, re-authenticating...');
+        await this.authenticate();
+        
+        // Retry with new token
+        const retryResponse = await fetch(`${this.baseUrl}/api/lido/unstake`, {
           method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.accessToken}`
+          },
           body: JSON.stringify({
             userAddress: this.account.address,
-            amount: amount
+            amount: amount,
+            authData
           })
+        });
+        
+        const retryResult = await retryResponse.json();
+        
+        if (retryResult.success) {
+          return retryResult.data;
+        } else {
+          throw new Error(retryResult.message || 'Unstaking failed after re-authentication');
         }
-      );
+      }
 
-      if (response.success) {
-        return response.data;
+      if (result.success) {
+        return result.data;
       } else {
-        throw new Error(response.message || 'Unstaking failed');
+        throw new Error(result.message || 'Unstaking failed');
       }
     } catch (error) {
       console.error('Error unstaking:', error);
@@ -429,6 +617,116 @@ class StakingApiClient {
     }
   }
 
+  async executeTransaction(txData: any): Promise<string> {
+    try {
+      if (!this.account) {
+        throw new Error('Account not connected');
+      }
+
+      console.log('Raw transaction data received:', txData);
+
+      // Extract transaction data
+      const toAddress = txData.to;
+      const value = txData.value;
+      const data = txData.data;
+      const gas = txData.gasLimit || txData.gas;
+
+      console.log('Extracted transaction data:', {
+        toAddress,
+        value,
+        data,
+        gas
+      });
+
+      // Validate required fields
+      if (!toAddress || !data) {
+        throw new Error(`Invalid transaction data: missing to address (${toAddress}) or data (${data})`);
+      }
+
+      // Ensure to address is valid (42 characters starting with 0x)
+      if (!toAddress || !/^0x[a-fA-F0-9]{40}$/.test(toAddress)) {
+        throw new Error(`Invalid to address: ${toAddress}`);
+      }
+      
+      // Ensure data is valid hex
+      if (!data || !/^0x[a-fA-F0-9]+$/.test(data)) {
+        throw new Error(`Invalid data: ${data}`);
+      }
+
+      // Get current gas price from the network
+      let gasPrice;
+      try {
+        // Use a free gas price API
+        const gasPriceResponse = await fetch('https://api.etherscan.io/api?module=gastracker&action=gasoracle');
+        const gasPriceData = await gasPriceResponse.json();
+        if (gasPriceData.status === '1' && gasPriceData.result) {
+          // Use standard gas price (gwei to wei)
+          const standardGasPrice = parseInt(gasPriceData.result.Standard) * 1e9; // Convert gwei to wei
+          gasPrice = `0x${standardGasPrice.toString(16)}`;
+          console.log('Using gas price from Etherscan:', gasPriceData.result.Standard, 'gwei');
+        }
+      } catch (_error) {
+        console.log('Could not fetch gas price, using fallback');
+        // Fallback to a reasonable gas price (20 gwei)
+        const fallbackGasPrice = 20 * 1e9; // 20 gwei in wei
+        gasPrice = `0x${fallbackGasPrice.toString(16)}`;
+        console.log('Using fallback gas price: 20 gwei');
+      }
+
+      // Format transaction data for thirdweb/MetaMask
+      const formattedTxData = {
+        to: toAddress,
+        value: value ? `0x${BigInt(value).toString(16)}` : '0x0', // Convert to hex using BigInt
+        data: data,
+        gasLimit: gas ? `0x${parseInt(gas).toString(16)}` : '0x5208', // Use gasLimit instead of gas
+        ...(gasPrice && { gasPrice }) // Only add gasPrice if we have it
+      };
+
+      console.log('Formatted transaction data for thirdweb:', formattedTxData);
+
+      // Validate final transaction data
+      if (!formattedTxData.to || !formattedTxData.data) {
+        throw new Error('Invalid transaction data after formatting');
+      }
+
+      console.log('Sending transaction to thirdweb...');
+      console.log('Account address:', this.account.address);
+      console.log('Account type:', typeof this.account);
+      
+      try {
+        // Execute transaction using thirdweb
+        const tx = await this.account.sendTransaction(formattedTxData);
+        console.log('Transaction sent, waiting for receipt...', tx);
+        
+        // Check if we got a transaction hash
+        if (tx && tx.transactionHash) {
+          console.log('✅ Transaction hash received:', tx.transactionHash);
+          console.log('Transaction submitted successfully!');
+          console.log('You can check the transaction status on a block explorer.');
+          
+          return tx.transactionHash;
+        } else if (tx && typeof tx === 'string') {
+          // Sometimes thirdweb returns just the hash as a string
+          console.log('✅ Transaction hash received (string):', tx);
+          return tx;
+        } else {
+          console.error('❌ No transaction hash in response:', tx);
+          throw new Error('No transaction hash received from thirdweb');
+        }
+      } catch (txError) {
+        console.error('❌ Thirdweb transaction error:', txError);
+        console.error('Error details:', {
+          message: txError instanceof Error ? txError.message : 'Unknown error',
+          code: (txError as any)?.code,
+          data: (txError as any)?.data
+        });
+        throw txError;
+      }
+    } catch (error) {
+      console.error('Error executing transaction:', error);
+      throw new Error(`Transaction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
 
   async logout(): Promise<void> {
     try {

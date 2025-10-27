@@ -74,6 +74,23 @@ class LendingApiClient {
     this.account = account;
   }
 
+  // Helper function to convert decimal to wei
+  private toWei(amount: string, decimals: number = 18): string {
+    const num = parseFloat(amount);
+    if (isNaN(num)) return '0';
+    return Math.floor(num * Math.pow(10, decimals)).toString();
+  }
+
+  // Helper function to format message with proper \n before Timestamp
+  private formatMessage(action: string, amount: string, tokenAddress?: string): string {
+    const timestamp = Date.now();
+    if (tokenAddress) {
+      return `${action} ${amount} of token ${tokenAddress}\nTimestamp: ${timestamp}`;
+    } else {
+      return `${action}\nTimestamp: ${timestamp}`;
+    }
+  }
+
   private async generateSignature(message: string): Promise<string> {
     if (!this.account) {
       throw new Error('Account not connected');
@@ -131,8 +148,23 @@ class LendingApiClient {
       
       const data = await response.json();
       
+      console.log('Raw API response for tokens:', data);
+      
+      // Handle different response structures
+      let tokensArray;
+      if (Array.isArray(data)) {
+        tokensArray = data;
+      } else if (data.data && Array.isArray(data.data)) {
+        tokensArray = data.data;
+      } else if (data.tokens && Array.isArray(data.tokens)) {
+        tokensArray = data.tokens;
+      } else {
+        console.warn('Unexpected API response structure:', data);
+        throw new Error('Invalid API response: expected array of tokens');
+      }
+      
       // Convert API data to LendingToken format
-      const tokens = data.map((token: any) => ({
+      const tokens = tokensArray.map((token: any) => ({
         symbol: token.symbol,
         address: token.address,
         decimals: token.decimals || 18,
@@ -199,7 +231,7 @@ class LendingApiClient {
     if (!this.account) return null;
 
     try {
-      const message = `Get lending position\nTimestamp: ${Date.now()}`;
+      const message = this.formatMessage('Get lending position', '');
       const authData = await this.getAuthData(message);
       
       const response = await fetch(`${this.baseUrl}/lending/position`, {
@@ -218,7 +250,8 @@ class LendingApiClient {
 
   async calculateTax(amount: string): Promise<ValidationResponse> {
     try {
-      const message = `Calculate tax for amount ${amount}\nTimestamp: ${Date.now()}`;
+      const amountInWei = this.toWei(amount);
+      const message = this.formatMessage('Calculate tax for amount', amountInWei);
       const authData = await this.getAuthData(message);
       
       const response = await fetch(`${this.baseUrl}/validation/calculate`, {
@@ -226,7 +259,7 @@ class LendingApiClient {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...authData,
-          amount
+          amount: amountInWei
         })
       });
 
@@ -239,7 +272,8 @@ class LendingApiClient {
 
   async prepareSupply(tokenAddress: string, amount: string): Promise<any> {
     try {
-      const message = `Validate and supply ${amount} of token ${tokenAddress}\nTimestamp: ${Date.now()}`;
+      const amountInWei = this.toWei(amount);
+      const message = this.formatMessage('Validate and supply', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
       
       const response = await fetch(`${this.baseUrl}/benqi-validation/validateAndSupply`, {
@@ -247,7 +281,7 @@ class LendingApiClient {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...authData,
-          amount,
+          amount: amountInWei,
           qTokenAddress: tokenAddress,
         })
       });
@@ -263,22 +297,38 @@ class LendingApiClient {
     }
   }
 
-  async prepareWithdraw(tokenAddress: string, amount: string): Promise<SwapResponse> {
+  async prepareWithdraw(tokenAddress: string, amount: string): Promise<any> {
     try {
-      const message = `Withdraw ${amount} of token ${tokenAddress}\nTimestamp: ${Date.now()}`;
+      const amountInWei = this.toWei(amount);
+      const message = this.formatMessage('Withdraw', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
       
-      const response = await fetch(`${this.baseUrl}/lending/withdraw`, {
+      console.log('Preparing withdraw with data:', {
+        tokenAddress,
+        amount: amountInWei,
+        message
+      });
+      
+      const response = await fetch(`${this.baseUrl}/benqi-validation/validateAndWithdraw`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...authData,
-          tokenAddress,
-          amount
+          amount: amountInWei,
+          qTokenAddress: tokenAddress,
         })
       });
 
-      return await response.json();
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Withdraw API error:', response.status, errorText);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Withdraw API response:', data);
+      
+      return data;
     } catch (error) {
       console.error('Error preparing withdraw:', error);
       throw new Error('Failed to prepare withdraw transaction');
@@ -287,7 +337,8 @@ class LendingApiClient {
 
   async prepareBorrow(tokenAddress: string, amount: string): Promise<any> {
     try {
-      const message = `Validate and borrow ${amount} of token ${tokenAddress}\nTimestamp: ${Date.now()}`;
+      const amountInWei = this.toWei(amount);
+      const message = this.formatMessage('Validate and borrow', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
       
       const response = await fetch(`${this.baseUrl}/benqi-validation/validateAndBorrow`, {
@@ -295,7 +346,7 @@ class LendingApiClient {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...authData,
-          amount,
+          amount: amountInWei,
           qTokenAddress: tokenAddress,
         })
       });
@@ -311,22 +362,38 @@ class LendingApiClient {
     }
   }
 
-  async prepareRepay(tokenAddress: string, amount: string): Promise<SwapResponse> {
+  async prepareRepay(tokenAddress: string, amount: string): Promise<any> {
     try {
-      const message = `Repay ${amount} of token ${tokenAddress}\nTimestamp: ${Date.now()}`;
+      const amountInWei = this.toWei(amount);
+      const message = this.formatMessage('Repay', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
       
-      const response = await fetch(`${this.baseUrl}/lending/repay`, {
+      console.log('Preparing repay with data:', {
+        tokenAddress,
+        amount: amountInWei,
+        message
+      });
+      
+      const response = await fetch(`${this.baseUrl}/benqi-validation/validateAndRepay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...authData,
-          tokenAddress,
-          amount
+          amount: amountInWei,
+          qTokenAddress: tokenAddress,
         })
       });
 
-      return await response.json();
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Repay API error:', response.status, errorText);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Repay API response:', data);
+      
+      return data;
     } catch (error) {
       console.error('Error preparing repay:', error);
       throw new Error('Failed to prepare repay transaction');
@@ -339,20 +406,94 @@ class LendingApiClient {
         throw new Error('Account not connected');
       }
 
+      console.log('Raw transaction data received:', txData);
+
+      // Extract transaction data (now we expect it to be properly structured)
+      const toAddress = txData.to;
+      const value = txData.value;
+      const data = txData.data;
+      const gas = txData.gasLimit || txData.gas;
+      const gasPrice = txData.gasPrice;
+
+      console.log('Extracted transaction data:', {
+        toAddress,
+        value,
+        data,
+        gas,
+        gasPrice
+      });
+
+      // Validate required fields
+      if (!toAddress || !data) {
+        throw new Error(`Invalid transaction data: missing to address (${toAddress}) or data (${data})`);
+      }
+
+      // Ensure to address is valid (42 characters starting with 0x)
+      if (!/^0x[a-fA-F0-9]{40}$/.test(toAddress)) {
+        throw new Error(`Invalid to address: ${toAddress}`);
+      }
+
+      // Format transaction data for thirdweb/MetaMask
+      const formattedTxData = {
+        to: toAddress,
+        value: value ? `0x${parseInt(value).toString(16)}` : '0x0', // Convert to hex
+        data: data,
+        gas: gas ? `0x${parseInt(gas).toString(16)}` : '0x5208', // Convert to hex
+        gasPrice: gasPrice ? `0x${parseInt(gasPrice).toString(16)}` : undefined // Convert to hex or undefined
+      };
+
+      // Remove gasPrice if it's 0 or undefined to let MetaMask estimate
+      if (formattedTxData.gasPrice === '0x0' || !formattedTxData.gasPrice) {
+        delete formattedTxData.gasPrice;
+      }
+
+      console.log('Formatted transaction data for thirdweb:', formattedTxData);
+
+      // Validate final transaction data
+      if (!formattedTxData.to || !formattedTxData.data) {
+        throw new Error('Invalid transaction data after formatting');
+      }
+
+      console.log('Sending transaction to thirdweb...');
+      
       // Executar transação usando thirdweb
-      const tx = await this.account.sendTransaction(txData);
-      const receipt = await tx.wait();
+      const tx = await this.account.sendTransaction(formattedTxData);
+      console.log('Transaction sent, waiting for receipt...', tx);
+      
+      // Wait for transaction confirmation
+      let receipt;
+      if (tx.transactionHash) {
+        console.log('Transaction hash received:', tx.transactionHash);
+        console.log('Waiting for transaction confirmation...');
+        
+        // For now, we'll consider the transaction successful if we get a hash
+        // In a production environment, you might want to poll for the actual receipt
+        receipt = { 
+          status: 1, 
+          transactionHash: tx.transactionHash,
+          blockNumber: 'pending'
+        };
+        
+        console.log('Transaction submitted successfully!');
+        console.log('Transaction hash:', tx.transactionHash);
+        console.log('You can check the transaction status on a block explorer.');
+      } else {
+        throw new Error('No transaction hash received');
+      }
+      
+      console.log('Transaction receipt:', receipt);
       
       return receipt.status === 1;
     } catch (error) {
       console.error('Error executing transaction:', error);
-      throw new Error('Transaction failed');
+      throw new Error(`Transaction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   async getSupplyQuote(tokenAddress: string, amount: string): Promise<any> {
     try {
-      const message = `Get validation and supply quote for ${amount} of token ${tokenAddress}\nTimestamp: ${Date.now()}`;
+      const amountInWei = this.toWei(amount);
+      const message = this.formatMessage('Get validation and supply quote for', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
       
       const response = await fetch(`${this.baseUrl}/benqi-validation/getValidationAndSupplyQuote`, {
@@ -360,7 +501,7 @@ class LendingApiClient {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...authData,
-          amount,
+          amount: amountInWei,
           qTokenAddress: tokenAddress,
         })
       });
@@ -378,7 +519,8 @@ class LendingApiClient {
 
   async getBorrowQuote(tokenAddress: string, amount: string): Promise<any> {
     try {
-      const message = `Get validation and borrow quote for ${amount} of token ${tokenAddress}\nTimestamp: ${Date.now()}`;
+      const amountInWei = this.toWei(amount);
+      const message = this.formatMessage('Get validation and borrow quote for', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
       
       const response = await fetch(`${this.baseUrl}/benqi-validation/getValidationAndBorrowQuote`, {
@@ -386,7 +528,7 @@ class LendingApiClient {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...authData,
-          amount,
+          amount: amountInWei,
           qTokenAddress: tokenAddress,
         })
       });

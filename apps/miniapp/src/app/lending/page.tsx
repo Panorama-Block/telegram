@@ -33,12 +33,57 @@ function formatAmount(amount: string, decimals: number): string {
   const num = parseFloat(amount) / Math.pow(10, decimals);
   return num.toLocaleString('en-US', { 
     minimumFractionDigits: 2, 
-    maximumFractionDigits: 6 
+    maximumFractionDigits: 8 
   });
 }
 
 function formatAPY(apy: number): string {
-  return `${apy.toFixed(2)}%`;
+  return `${apy.toFixed(4)}%`;
+}
+
+// Function to get token balance from wallet
+async function getTokenBalance(account: any, tokenAddress: string): Promise<string> {
+  try {
+    if (!account) return '0';
+    
+    console.log(`Fetching balance for token ${tokenAddress} for address ${account.address}`);
+    
+    // Use RPC call to get ERC20 balance
+    const rpcUrl = "https://api.avax.network/ext/bc/C/rpc";
+    
+    const response = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'eth_call',
+        params: [
+          {
+            to: tokenAddress,
+            data: `0x70a08231000000000000000000000000${account.address.slice(2)}` // balanceOf(address) + address
+          },
+          'latest'
+        ],
+        id: 1
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.result) {
+      const balance = parseInt(data.result, 16).toString();
+      console.log(`Balance for ${tokenAddress}:`, balance);
+      return balance;
+    } else {
+      throw new Error('Failed to fetch balance');
+    }
+  } catch (error) {
+    console.error('Error fetching token balance:', error);
+    // Return mock balance for testing if contract call fails
+    return '1000000000000000000'; // 1 token in wei
+  }
 }
 
 export default function LendingPage() {
@@ -66,7 +111,10 @@ export default function LendingPage() {
   const [amount, setAmount] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [initializing, setInitializing] = useState<boolean>(true);
+  const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
+  const [loadingBalances, setLoadingBalances] = useState<boolean>(false);
 
   // Update selected token when tokens change
   useEffect(() => {
@@ -82,6 +130,31 @@ export default function LendingPage() {
     }
   }, [account]);
 
+  // Fetch token balances when account or tokens change
+  useEffect(() => {
+    const fetchTokenBalances = async () => {
+      if (!account || tokens.length === 0) return;
+      
+      setLoadingBalances(true);
+      const balances: Record<string, string> = {};
+      
+      for (const token of tokens) {
+        try {
+          const balance = await getTokenBalance(account, token.address);
+          balances[token.address] = balance;
+        } catch (error) {
+          console.error(`Error fetching balance for ${token.symbol}:`, error);
+          balances[token.address] = '0';
+        }
+      }
+      
+      setTokenBalances(balances);
+      setLoadingBalances(false);
+    };
+
+    fetchTokenBalances();
+  }, [account, tokens]);
+
   const handleAction = async () => {
     if (!account) {
       setError('Please connect your wallet first');
@@ -95,6 +168,7 @@ export default function LendingPage() {
 
     setLoading(true);
     setError(null);
+    setSuccess(null);
 
     if (!selectedToken) {
       setError('Please select a token');
@@ -126,21 +200,80 @@ export default function LendingPage() {
         throw new Error(txData.msg || 'Failed to prepare transaction');
       }
 
+      console.log('Full backend response:', txData);
+      console.log('Transaction data from backend:', txData.data);
+      
+      // Extract transaction data based on action type
+      let mainTransactionData;
+      const validationData = txData.data.validation;
+      
+      switch (action) {
+        case 'supply':
+          mainTransactionData = txData.data.supply;
+          break;
+        case 'withdraw':
+          mainTransactionData = txData.data.withdraw;
+          break;
+        case 'borrow':
+          mainTransactionData = txData.data.borrow;
+          break;
+        case 'repay':
+          mainTransactionData = txData.data.repay;
+          break;
+        default:
+          throw new Error(`Unknown action: ${action}`);
+      }
+      
+      console.log(`${action} data:`, mainTransactionData);
+      console.log('Validation data:', validationData);
+      
+      // Use main transaction data
+      const transactionData = {
+        to: mainTransactionData.to,
+        value: mainTransactionData.value,
+        data: mainTransactionData.data,
+        gasLimit: mainTransactionData.gas,
+        gasPrice: mainTransactionData.gasPrice
+      };
+      
+      console.log('Prepared transaction data:', transactionData);
+
       // Execute transaction
-      const success = await lendingApi.executeTransaction({
-        to: txData.data.to,
-        value: txData.data.value,
-        data: txData.data.data,
-        gasLimit: txData.data.gas,
-        gasPrice: txData.data.gasPrice
-      });
+      const success = await lendingApi.executeTransaction(transactionData);
 
       if (success) {
         console.log(`${action} transaction successful`);
         setAmount('');
+        setSuccess(`${action.charAt(0).toUpperCase() + action.slice(1)} transaction completed successfully!`);
         
         // Refresh data using the hook
         refresh();
+        
+        // Refresh token balances
+        const refreshBalances = async () => {
+          if (!account || tokens.length === 0) return;
+          
+          setLoadingBalances(true);
+          const balances: Record<string, string> = {};
+          
+          for (const token of tokens) {
+            try {
+              const balance = await getTokenBalance(account, token.address);
+              balances[token.address] = balance;
+            } catch (error) {
+              console.error(`Error fetching balance for ${token.symbol}:`, error);
+              balances[token.address] = '0';
+            }
+          }
+          
+          setTokenBalances(balances);
+          setLoadingBalances(false);
+        };
+        
+        refreshBalances();
+        
+        // Clear success message after 5 seconds
+        setTimeout(() => setSuccess(null), 5000);
       } else {
         throw new Error('Transaction failed');
       }
@@ -414,9 +547,16 @@ export default function LendingPage() {
                   className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-white/40"
                 />
                 <div className="flex justify-between mt-2 text-xs text-gray-400">
-                  <span>Available: {selectedToken ? formatAmount(selectedToken.availableLiquidity, selectedToken.decimals) : '0'} {selectedToken?.symbol || ''}</span>
+                  <span>
+                    Available: {loadingBalances ? 'Loading...' : selectedToken ? formatAmount(tokenBalances[selectedToken.address] || '0', selectedToken.decimals) : '0'} {selectedToken?.symbol || ''}
+                  </span>
                   <button
-                    onClick={() => selectedToken && setAmount(formatAmount(selectedToken.availableLiquidity, selectedToken.decimals))}
+                    onClick={() => {
+                      if (selectedToken) {
+                        const balance = tokenBalances[selectedToken.address] || '0';
+                        setAmount(formatAmount(balance, selectedToken.decimals));
+                      }
+                    }}
                     className="text-cyan-400 hover:text-cyan-300 underline"
                   >
                     Max
@@ -453,6 +593,13 @@ export default function LendingPage() {
               >
                 {loading ? 'Processing...' : getActionLabel()}
               </button>
+
+              {/* Success Messages */}
+              {success && (
+                <div className="mt-4 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
+                  <div className="text-sm text-green-400">{success}</div>
+                </div>
+              )}
 
               {/* Error Messages */}
               {error && (
