@@ -46,6 +46,10 @@ const nextConfig: NextConfig = {
 
   webpack: (config) => {
     config.resolve.fallback = { ...config.resolve.fallback, buffer: require.resolve("buffer/") };
+    config.resolve.alias = {
+      ...(config.resolve.alias ?? {}),
+      "pino-pretty": false,
+    };
     return config;
   },
 };

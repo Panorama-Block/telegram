@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/patch-loadable-chunks.mjs",
+    "patch:chunks": "node scripts/patch-loadable-chunks.mjs",
     "start": "next start",
     "lint": "eslint"
   },
