@@ -16,7 +16,7 @@
  * Run after `next build` or any time `.next/` is regenerated.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, copyFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 
 const NEXT_DIR = resolve(process.cwd(), ".next");
@@ -40,12 +40,18 @@ if (!middlewareRaw.startsWith(prefix)) {
   process.exit(0);
 }
 
-const encodedManifest = JSON.parse(middlewareRaw.slice(prefix.length));
+let manifestChunk = middlewareRaw.slice(prefix.length).trim();
+if (manifestChunk.startsWith("'") || manifestChunk.startsWith("\"")) {
+  const quote = manifestChunk[0];
+  const end = manifestChunk.lastIndexOf(quote);
+  manifestChunk = manifestChunk.slice(1, end);
+}
 
 /** @type Record<string, { id: string; files?: string[] }> */
-const middlewareManifest = JSON.parse(encodedManifest);
+const middlewareManifest = JSON.parse(manifestChunk);
 
-const created: string[] = [];
+/** @type {string[]} */
+const created = [];
 
 for (const [moduleId, middlewareEntry] of Object.entries(middlewareManifest)) {
   const middlewareFiles = middlewareEntry.files ?? [];
