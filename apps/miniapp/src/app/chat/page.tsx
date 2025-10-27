@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
-// Declaração de tipo para window.ethereum
+// Window.ethereum type declaration
 declare global {
   interface Window {
     ethereum?: {
@@ -27,12 +27,14 @@ import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import { swapApi, SwapApiError } from '@/features/swap/api';
+import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, explorerTxUrl } from '@/features/swap/utils';
 import { networks, Token } from '@/features/swap/tokens';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useActiveWallet, useDisconnect } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx, QuoteResponse } from '@/features/swap/types';
+import { Button } from '@/components/ui/button';
 
 
 interface Message {
@@ -179,6 +181,8 @@ export default function ChatPage() {
 
   // Thirdweb setup
   const account = useActiveAccount();
+  const activeWallet = useActiveWallet();
+  const { disconnect } = useDisconnect();
   const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
@@ -227,6 +231,26 @@ export default function ChatPage() {
       return false;
     }
   }, []);
+
+  const handleWalletDisconnect = useCallback(async () => {
+    try {
+      if (activeWallet) {
+        await disconnect(activeWallet);
+      }
+    } catch (error) {
+      console.error('[CHAT] Failed to disconnect wallet:', error);
+    } finally {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('authPayload');
+        localStorage.removeItem('authSignature');
+        localStorage.removeItem('telegram_user');
+        localStorage.removeItem('userAddress');
+        setSidebarOpen(false);
+        window.location.href = '/miniapp';
+      }
+    }
+  }, [activeWallet, disconnect]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -791,7 +815,7 @@ export default function ChatPage() {
     console.log('🚀 Starting swap execution with metadata:', metadata);
     
     if (!swapQuote?.quote) {
-      const errorMsg = 'Aguarde a cotação ser calculada';
+      const errorMsg = 'Please wait for the quote to finish calculating';
       console.error('❌', errorMsg);
       setSwapError(errorMsg);
       return;
@@ -1161,6 +1185,17 @@ export default function ChatPage() {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              <div className="p-4 border-t border-white/15">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleWalletDisconnect}
+                  className="w-full justify-center text-gray-300 hover:text-white hover:bg-white/5 border border-white/10 text-sm font-normal"
+                >
+                  Disconnect
+                </Button>
               </div>
             </aside>
           </>
@@ -1536,41 +1571,14 @@ export default function ChatPage() {
 
                                 {/* Success State */}
                                 {swapSuccess && (
-                                  <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-4">
-                                    <p className="text-sm text-green-400 mb-3 font-medium">✅ Swap executed successfully!</p>
-
-                                    {/* Transaction Hashes */}
-                                    {swapTxHashes.length > 0 && (
-                                      <div className="space-y-2">
-                                        <div className="text-xs text-gray-400">Transaction Hashes:</div>
-                                        {swapTxHashes.map((tx, index) => {
-                                          const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
-                                          return (
-                                            <div key={index} className="flex items-center justify-between bg-gray-800/50 rounded p-2">
-                                              <div className="flex-1 min-w-0">
-                                                <div className="text-xs text-gray-300 font-mono truncate">
-                                                  {tx.hash}
-                                                </div>
-                                                <div className="text-xs text-gray-500">
-                                                  Chain ID: {tx.chainId}
-                                                </div>
-                                              </div>
-                                              {explorerUrl && (
-                                                <a
-                                                  href={explorerUrl}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors font-medium"
-                                                >
-                                                  View
-                                                </a>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
+                                  <SwapSuccessCard
+                                    txHashes={swapTxHashes}
+                                    variant="compact"
+                                    onClose={() => {
+                                      setSwapSuccess(false);
+                                      setSwapTxHashes([]);
+                                    }}
+                                  />
                                 )}
                               </div>
                             )}

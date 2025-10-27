@@ -10,32 +10,32 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Primary - Ciano vibrante PanoramaBlock
+        // Primary - PanoramaBlock neon cyan
         primary: 'bg-pano-primary text-pano-text-inverse hover:bg-pano-primary-hover shadow-md hover:shadow-lg active:scale-[0.98] glow-primary',
 
-        // Secondary - Surface com border
+        // Secondary - Surface background with subtle border
         secondary: 'bg-pano-surface text-pano-text-primary border border-pano-border hover:bg-pano-surface-elevated hover:border-pano-primary/50 shadow-sm hover:shadow-md',
 
-        // Ghost - Transparente com hover
+        // Ghost - Transparent with hover feedback
         ghost: 'text-pano-text-primary hover:bg-pano-surface hover:text-pano-text-accent',
 
-        // Danger/Error - Vermelho para ações destrutivas
+        // Danger/Error - Red for destructive actions
         danger: 'bg-pano-error text-pano-text-inverse hover:opacity-90 shadow-md hover:shadow-lg active:scale-[0.98]',
 
-        // Outline - Apenas border com background transparente
+        // Outline - Border only with transparent background
         outline: 'border-2 border-pano-primary bg-transparent text-pano-primary hover:bg-pano-primary hover:text-pano-text-inverse shadow-sm hover:shadow-md',
 
-        // Success - Verde para confirmações
+        // Success - Green for confirmations
         success: 'bg-pano-success text-pano-text-inverse hover:opacity-90 shadow-md hover:shadow-lg active:scale-[0.98]',
 
-        // Link - Estilo de link
+        // Link - Link-like styling
         link: 'text-pano-text-accent underline-offset-4 hover:underline hover:text-pano-primary',
 
-        // Glass - Efeito glass morphism
+        // Glass - Glass morphism effect
         glass: 'glass text-pano-text-primary hover:glass-dark backdrop-blur-md border border-pano-border/30 hover:border-pano-primary/50',
       },
       size: {
-        // Tamanhos otimizados para touch e desktop
+        // Touch-friendly sizes that work on desktop as well
         xs: 'h-8 px-2 text-xs rounded-md touch-target',
         sm: 'h-10 px-3 text-sm rounded-md touch-target',
         md: 'h-11 px-4 text-sm rounded-lg touch-target-large',  // default
