@@ -1,12 +1,12 @@
 /**
- * ButtonShowcase - Demonstração do novo componente Button
+ * ButtonShowcase - Demonstration of the new Button component
  * PanoramaBlock Design System v2.0
  */
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
-// Ícones de exemplo (você pode substituir pelos ícones da sua escolha)
+// Example icons (replace with any icon set you prefer)
 const ArrowRightIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M5 12h14M12 5l7 7-7 7" />
@@ -41,7 +41,7 @@ export default function ButtonShowcase() {
             PanoramaBlock Button Component
           </h1>
           <p className="text-pano-text-secondary text-lg">
-            Demonstração do componente Button com todas as variantes e tamanhos
+            Showcase of the Button component with every variant and size option.
           </p>
         </div>
 
@@ -218,7 +218,7 @@ export default function ButtonShowcase() {
           </h2>
           <div className="bg-pano-surface rounded-lg p-6">
             <p className="text-pano-text-secondary mb-4">
-              Todos os botões usam as cores e espaçamentos do PanoramaBlock Design System v2.0
+              Every button here inherits colors and spacing from the PanoramaBlock Design System v2.0.
             </p>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
