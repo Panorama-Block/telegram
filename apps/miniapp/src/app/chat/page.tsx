@@ -30,10 +30,11 @@ import { swapApi, SwapApiError } from '@/features/swap/api';
 import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, explorerTxUrl } from '@/features/swap/utils';
 import { networks, Token } from '@/features/swap/tokens';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useActiveWallet, useDisconnect } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx, QuoteResponse } from '@/features/swap/types';
+import { Button } from '@/components/ui/button';
 
 
 interface Message {
@@ -180,6 +181,8 @@ export default function ChatPage() {
 
   // Thirdweb setup
   const account = useActiveAccount();
+  const activeWallet = useActiveWallet();
+  const { disconnect } = useDisconnect();
   const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
@@ -228,6 +231,26 @@ export default function ChatPage() {
       return false;
     }
   }, []);
+
+  const handleWalletDisconnect = useCallback(async () => {
+    try {
+      if (activeWallet) {
+        await disconnect(activeWallet);
+      }
+    } catch (error) {
+      console.error('[CHAT] Failed to disconnect wallet:', error);
+    } finally {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('authPayload');
+        localStorage.removeItem('authSignature');
+        localStorage.removeItem('telegram_user');
+        localStorage.removeItem('userAddress');
+        setSidebarOpen(false);
+        window.location.href = '/miniapp';
+      }
+    }
+  }, [activeWallet, disconnect]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -1162,6 +1185,17 @@ export default function ChatPage() {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              <div className="p-4 border-t border-white/15">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleWalletDisconnect}
+                  className="w-full justify-center text-gray-300 hover:text-white hover:bg-white/5 border border-white/10 text-sm font-normal"
+                >
+                  Disconnect
+                </Button>
               </div>
             </aside>
           </>
