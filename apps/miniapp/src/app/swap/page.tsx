@@ -9,6 +9,7 @@ import UniswapIcon from '../../../public/icons/uniswap.svg';
 import { networks, Token } from '@/features/swap/tokens';
 import { swapApi, SwapApiError } from '@/features/swap/api';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl } from '@/features/swap/utils';
+import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
 import { useActiveAccount, PayEmbed, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
@@ -487,6 +488,10 @@ export default function SwapPage() {
           client,
           data: t.data as Hex,
           value: txValue,
+          gas: t.gasLimit != null ? BigInt(t.gasLimit as any) : undefined,
+          maxFeePerGas: t.maxFeePerGas != null ? BigInt(t.maxFeePerGas as any) : undefined,
+          maxPriorityFeePerGas:
+            t.maxPriorityFeePerGas != null ? BigInt(t.maxPriorityFeePerGas as any) : undefined,
         });
 
         console.log('Final prepared transaction value:', txValue.toString());

@@ -45,6 +45,9 @@ export type PreparedTx = {
   data: string;
   value?: string | number | bigint | null;
   chainId: number;
+  gasLimit?: string | number | bigint | null;
+  maxFeePerGas?: string | number | bigint | null;
+  maxPriorityFeePerGas?: string | number | bigint | null;
 };
 
 export type PrepareResponse = {
@@ -69,4 +72,3 @@ export type StatusResponse = {
     userAddress?: string;
   };
 };
-

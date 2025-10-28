@@ -13,7 +13,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const [authMessage, setAuthMessage] = useState('');
 
   useEffect(() => {
-    // Verificar se há JWT no localStorage
+    // Check if there is a JWT persisted locally
     const authToken = localStorage.getItem('authToken');
     const authPayload = localStorage.getItem('authPayload');
     const authSignature = localStorage.getItem('authSignature');
@@ -25,20 +25,20 @@ export function AuthGuard({ children }: AuthGuardProps) {
         
         if (address) {
           setIsAuthenticated(true);
-          setAuthMessage(`✅ Autenticado: ${address.slice(0, 6)}...${address.slice(-4)}`);
+          setAuthMessage(`✅ Authenticated: ${address.slice(0, 6)}...${address.slice(-4)}`);
           
           localStorage.setItem('userAddress', address);
         } else {
-          setAuthMessage('❌ Token inválido');
+          setAuthMessage('❌ Invalid token');
         }
       } catch (error) {
-        setAuthMessage('❌ Erro ao verificar autenticação');
-        console.error('❌ [AUTH GUARD] Erro ao parsear payload:', error);
+        setAuthMessage('❌ Error verifying authentication');
+        console.error('❌ [AUTH GUARD] Failed to parse payload:', error);
       }
     } else {
-      setAuthMessage('❌ Não autenticado - redirecionando para dashboard');
+      setAuthMessage('❌ Not authenticated — redirecting to dashboard');
       
-      // Redirecionar para dashboard após um pequeno delay
+      // Redirect to dashboard after a short delay
       setTimeout(() => {
         window.location.href = '/miniapp/dashboard';
       }, 2000);
@@ -51,7 +51,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
     return (
       <Card style={{ marginBottom: 16, padding: 16, textAlign: 'center' }}>
         <div style={{ fontSize: 14, color: 'var(--tg-theme-hint-color, #687280)' }}>
-          🔄 Verificando autenticação...
+          🔄 Checking authentication...
         </div>
       </Card>
     );
@@ -64,7 +64,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
           {authMessage}
         </div>
         <div style={{ fontSize: 12, color: 'var(--tg-theme-hint-color, #687280)' }}>
-          Redirecionando para dashboard...
+          Redirecting to dashboard...
         </div>
       </Card>
     );
@@ -76,7 +76,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
         {authMessage}
       </div>
       <div style={{ fontSize: 12, color: 'var(--tg-theme-hint-color, #687280)' }}>
-        Pronto para executar transações
+        Ready to execute transactions
       </div>
       {children}
     </Card>

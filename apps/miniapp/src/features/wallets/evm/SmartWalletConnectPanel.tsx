@@ -40,7 +40,7 @@ function shortAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-// Função para extrair endereço do JWT
+// Helper to extract the wallet address from the JWT
 function getAddressFromToken(): string | null {
   try {
     const token = localStorage.getItem('authToken');
@@ -115,13 +115,13 @@ export function SmartWalletConnectPanel() {
 
   const authenticateWithBackend = async () => {
     if (!account || !client) {
-      setAuthMessage('❌ Conecte sua wallet primeiro');
+      setAuthMessage('❌ Connect your wallet first');
       return;
     }
 
     try {
       setIsAuthenticating(true);
-      setAuthMessage('🔄 Autenticando...');
+      setAuthMessage('🔄 Authenticating...');
 
       // 1. Obter payload do backend
       const normalizedAddress = account.address;
@@ -130,7 +130,7 @@ export function SmartWalletConnectPanel() {
 
       const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
       if (!authApiBase) {
-        throw new Error('VITE_AUTH_API_BASE não configurado');
+        throw new Error('VITE_AUTH_API_BASE not configured');
       }
       const loginResponse = await fetch(`${authApiBase}/auth/login`, {
         method: 'POST',
@@ -147,14 +147,14 @@ export function SmartWalletConnectPanel() {
         } catch {
           error = { error: errorText };
         }
-        throw new Error(error.error || 'Erro ao gerar payload');
+        throw new Error(error.error || 'Failed to generate payload');
       }
 
       const { payload } = await loginResponse.json();
 
-      // Verificar se os endereços batem
+      // Ensure the addresses match
       if (account.address.toLowerCase() !== payload.address.toLowerCase()) {
-        throw new Error(`Endereço da wallet (${account.address}) não confere com o payload (${payload.address})`);
+        throw new Error(`Wallet address (${account.address}) does not match payload (${payload.address})`);
       }
 
       // 2. Assinar a mensagem com a wallet
@@ -171,12 +171,12 @@ export function SmartWalletConnectPanel() {
         } else if (signResult && signResult.signature) {
           signature = signResult.signature;
         } else {
-          throw new Error('Formato de assinatura inválido');
+          throw new Error('Invalid signature format');
         }
 
       } catch (error) {
-        console.error('❌ [AUTH AUTO] Erro na assinatura:', error);
-        throw new Error(`Erro na assinatura: ${error}`);
+        console.error('❌ [AUTH AUTO] Signature error:', error);
+        throw new Error(`Signature error: ${error}`);
       }
 
       // 3. Verificar assinatura no backend
@@ -197,7 +197,7 @@ export function SmartWalletConnectPanel() {
         } catch {
           error = { error: errorText };
         }
-        throw new Error(error.error || 'Erro na verificação');
+        throw new Error(error.error || 'Verification error');
       }
 
       const verifyResult = await verifyResponse.json();
@@ -212,18 +212,18 @@ export function SmartWalletConnectPanel() {
       localStorage.setItem('authToken', authToken);
       setIsAuthenticated(true);
       setJwtToken(authToken);
-      setAuthMessage('Autenticado com sucesso!');
+      setAuthMessage('Authenticated successfully!');
 
     } catch (err: any) {
       console.error('❌ [AUTH AUTO] Authentication failed:', err);
-      setAuthMessage(`❌ Erro: ${err.message}`);
+      setAuthMessage(`❌ Error: ${err.message}`);
       setIsAuthenticated(false);
     } finally {
       setIsAuthenticating(false);
     }
   };
 
-  // Se já está autenticado e não tem conta ativa, mostrar apenas status
+  // If already authenticated but there is no active wallet, only show status
   if (isAlreadyAuthenticated && !account) {
     return (
       <Card style={{ padding: 16, marginBottom: 16 }}>
@@ -231,13 +231,13 @@ export function SmartWalletConnectPanel() {
           <WalletIcon size={24} />
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>
-              Carteira Autenticada
+              Wallet Authenticated
             </div>
             <div style={{ fontSize: 14, color: 'var(--tg-theme-hint-color, #687280)' }}>
               {shortAddress(addressFromToken)}
             </div>
             <div style={{ fontSize: 12, color: 'var(--tg-theme-hint-color, #687280)', marginTop: 4 }}>
-              Conecte para executar transações
+              Connect to execute transactions
             </div>
           </div>
           {client && !isAuthenticated && !isAuthenticating && (
@@ -246,11 +246,11 @@ export function SmartWalletConnectPanel() {
               wallets={wallets}
               connectModal={{
                 size: 'compact',
-                title: 'Conectar Carteira',
+                title: 'Connect Wallet',
                 showThirdwebBranding: false,
               }}
               connectButton={{
-                label: 'Conectar',
+                label: 'Connect',
                 style: {
                   padding: '8px 16px',
                   borderRadius: 8,
@@ -266,7 +266,7 @@ export function SmartWalletConnectPanel() {
     );
   }
 
-  // Se tem conta ativa, mostrar status completo
+  // If there is an active account, show the full status block
   if (account) {
     return (
       <Card style={{ padding: 16, marginBottom: 16 }}>
@@ -274,16 +274,16 @@ export function SmartWalletConnectPanel() {
           <WalletIcon size={24} />
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>
-              Carteira Conectada
+              Wallet Connected
             </div>
             <div style={{ fontSize: 14, color: 'var(--tg-theme-hint-color, #687280)' }}>
               {shortAddress(account.address)}
             </div>
             <div style={{ fontSize: 12, color: 'var(--tg-theme-hint-color, #687280)', marginTop: 4 }}>
-              {isAuthenticating ? 'Autenticando...' : isAuthenticated ? 'Autenticado com sucesso!' : 'Conecte para autenticar'}
+              {isAuthenticating ? 'Authenticating...' : isAuthenticated ? 'Authenticated successfully!' : 'Connect to authenticate'}
             </div>
             {authMessage && (
-              <div style={{ fontSize: 12, color: authMessage.includes('Autenticado com sucesso!') ? '#10b981' : '#ef4444', marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: authMessage.includes('Authenticated successfully!') ? '#10b981' : '#ef4444', marginTop: 4 }}>
                 {authMessage}
               </div>
             )}
@@ -312,17 +312,17 @@ export function SmartWalletConnectPanel() {
             }}
             style={{ padding: '8px 16px', fontSize: 14 }}
           >
-            Desconectar
+            Disconnect
           </Button>
         </div>
         
-        {/* Botão para ir para o swap - só aparece se autenticado */}
+        {/* Swap shortcut button - visible only when authenticated */}
         {isAuthenticated && (
           <Button
             variant="primary"
             size="lg"
             onClick={() => {
-              // Navegar para a página de swap
+              // Navigate to the swap page
               window.location.href = '/miniapp/swap';
             }}
             style={{ 
@@ -336,23 +336,23 @@ export function SmartWalletConnectPanel() {
               borderRadius: 12,
             }}
           >
-            🚀 Ir para Swap
+            🚀 Go to Swap
           </Button>
         )}
       </Card>
     );
   }
 
-  // Se não está autenticado, mostrar botão de conexão
+  // If not authenticated, show the connect button
   return (
     <Card style={{ padding: 16, marginBottom: 16 }}>
       <div style={{ textAlign: 'center' }}>
         <WalletIcon size={32} style={{ marginBottom: 12, opacity: 0.6 }} />
         <div style={{ fontWeight: 600, marginBottom: 8 }}>
-          Conectar Carteira
+          Connect Wallet
         </div>
         <div style={{ fontSize: 14, color: 'var(--tg-theme-hint-color, #687280)', marginBottom: 16 }}>
-          Conecte sua carteira para executar transações
+          Connect your wallet to execute transactions
         </div>
         {client && !isAuthenticated && !isAuthenticating && (
           <ConnectButton
@@ -360,11 +360,11 @@ export function SmartWalletConnectPanel() {
             wallets={wallets}
             connectModal={{
               size: 'compact',
-              title: 'Conectar Carteira',
+              title: 'Connect Wallet',
               showThirdwebBranding: false,
             }}
             connectButton={{
-              label: 'Conectar Carteira',
+              label: 'Connect Wallet',
               style: {
                 width: '100%',
                 padding: '12px 20px',
@@ -384,7 +384,7 @@ export function SmartWalletConnectPanel() {
             color: 'var(--tg-theme-hint-color, #687280)',
             fontSize: 14
           }}>
-            🔄 Autenticando automaticamente...
+            🔄 Authenticating automatically...
           </div>
         )}
       </div>

@@ -8,7 +8,7 @@ import { signLoginPayload } from 'thirdweb/auth';
 
 export default function WalletExternalPage() {
   const search = useSearchParams();
-  const [status, setStatus] = useState('Abrindo carteira...');
+  const [status, setStatus] = useState('Opening wallet...');
   const [error, setError] = useState<string | null>(null);
   const [deepLinkUrl, setDeepLinkUrl] = useState<string | null>(null);
 
@@ -21,38 +21,38 @@ export default function WalletExternalPage() {
   useEffect(() => {
     (async () => {
       try {
-        if (!clientId || !client) throw new Error('THIRDWEB_CLIENT_ID ausente');
-        if (!authApiBase) throw new Error('AUTH_API_BASE ausente');
+        if (!clientId || !client) throw new Error('Missing THIRDWEB_CLIENT_ID');
+        if (!authApiBase) throw new Error('AUTH_API_BASE missing');
         const walletId = (search.get('wallet') || 'metamask').toLowerCase();
 
-        setStatus('Conectando carteira...');
+        setStatus('Connecting wallet...');
         let accountAddress: string | undefined;
         let connectedAccount: any | undefined;
 
         if (walletId === 'metamask') {
-          // Tentar injeção no in-app browser da MetaMask
+          // Attempt injection inside MetaMask's in-app browser
           const mm = createWallet('io.metamask', { preferDeepLink: true });
           try {
             const acc = await mm.connect({ client });
             connectedAccount = acc;
             accountAddress = acc.address;
           } catch {
-            // Se estiver fora do app da MetaMask, oferecer deep link
+            // If we are outside the MetaMask app, provide a deep link
             const dappUrl = `${window.location.origin}/miniapp/auth/wallet-external?wallet=metamask`;
             const deep = `https://metamask.app.link/dapp/${dappUrl.replace(/^https?:\/\//, '')}`;
-            setStatus('Abra o MetaMask para continuar...');
+            setStatus('Open MetaMask to continue...');
             setDeepLinkUrl(deep);
             return;
           }
         } else {
-          // Fallback genérico via WalletConnect poderia ser adicionado aqui
-          throw new Error('Wallet não suportada');
+          // Generic WalletConnect fallback could be added here
+          throw new Error('Unsupported wallet');
         }
 
-        if (!accountAddress) throw new Error('Conta não conectada');
+        if (!accountAddress) throw new Error('Account not connected');
 
-        // Autenticar com backend
-        setStatus('Autenticando com backend...');
+        // Authenticate with backend
+        setStatus('Authenticating with backend...');
         const loginPayload = { address: accountAddress };
 
         const loginResponse = await fetch(`${authApiBase}/auth/login`, {
@@ -62,7 +62,7 @@ export default function WalletExternalPage() {
         });
         if (!loginResponse.ok) {
           const errorText = await loginResponse.text();
-          throw new Error(`Erro ao gerar payload: ${errorText}`);
+          throw new Error(`Error generating payload: ${errorText}`);
         }
         const { payload } = await loginResponse.json();
 
@@ -71,7 +71,7 @@ export default function WalletExternalPage() {
           const res = await signLoginPayload({ account: connectedAccount, payload });
           signature = typeof res === 'string' ? res : (res as any).signature;
         } catch {
-          throw new Error('Falha ao assinar payload');
+          throw new Error('Failed to sign payload');
         }
 
         const verifyResponse = await fetch(`${authApiBase}/auth/verify`, {
@@ -81,12 +81,12 @@ export default function WalletExternalPage() {
         });
         if (!verifyResponse.ok) {
           const errorText = await verifyResponse.text();
-          throw new Error(`Erro na verificação: ${errorText}`);
+          throw new Error(`Verification error: ${errorText}`);
         }
         const { token } = await verifyResponse.json();
         localStorage.setItem('authToken', token);
 
-        // Criar sessão para retorno ao Telegram
+        // Create a session so Telegram can resume the flow
         if (bot) {
           try {
             const clientKey = `walletToken-${clientId}`;
@@ -100,16 +100,16 @@ export default function WalletExternalPage() {
               const { nonce } = await createResp.json();
               const deep = `https://t.me/${bot}?startapp=code:${encodeURIComponent(nonce)}`;
               setDeepLinkUrl(deep);
-              setStatus('Autenticação concluída. Volte ao Telegram.');
+              setStatus('Authentication complete. Return to Telegram.');
               return;
             }
           } catch {}
         }
 
-        setStatus('Concluído. Você pode voltar ao Telegram.');
+        setStatus('Finished. You can return to Telegram.');
       } catch (err: any) {
         console.error('[WALLET EXTERNAL] error:', err);
-        setError(err?.message || 'Falha');
+        setError(err?.message || 'Failed');
       }
     })();
   }, [client, clientId, authApiBase, bot, search]);
@@ -117,16 +117,16 @@ export default function WalletExternalPage() {
   return (
     <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ maxWidth: 480, width: '100%', padding: 24, background: '#0d1117', color: '#fff', borderRadius: 12, border: '1px solid rgba(6,182,212,0.3)' }}>
-        <h2 style={{ marginTop: 0, marginBottom: 12 }}>Conectar Carteira</h2>
+        <h2 style={{ marginTop: 0, marginBottom: 12 }}>Connect Wallet</h2>
         <p style={{ margin: 0, color: '#9ca3af' }}>{status}</p>
-        {error && <p style={{ marginTop: 12, color: '#ef4444' }}>Erro: {error}</p>}
+        {error && <p style={{ marginTop: 12, color: '#ef4444' }}>Error: {error}</p>}
         {!error && deepLinkUrl && (
           <div style={{ marginTop: 16 }}>
             <a
               href={deepLinkUrl}
               style={{ display: 'inline-block', padding: '12px 16px', background: '#2481cc', color: '#fff', borderRadius: 10, fontWeight: 600, textDecoration: 'none' }}
             >
-              Abrir MetaMask
+              Open MetaMask
             </a>
           </div>
         )}
