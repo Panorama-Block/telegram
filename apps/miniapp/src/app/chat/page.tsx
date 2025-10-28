@@ -23,6 +23,7 @@ import SwapIcon from '../../../public/icons/Swap.svg';
 import WalletIcon from '../../../public/icons/Wallet.svg';
 import ChatIcon from '../../../public/icons/chat.svg';
 import LightningIcon from '../../../public/icons/lightning.svg';
+import UniswapIcon from '../../../public/icons/uniswap.svg';
 import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
@@ -951,7 +952,7 @@ export default function ChatPage() {
       <GlobalLoader isLoading={isNavigating} message="Loading Swap..." />
       <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
       {/* Top Navbar - Horizontal across full width */}
-      <header className="flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
+      <header className="sticky top-0 flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
         <div className="flex items-center justify-between max-w-[1920px] mx-auto">
           {/* Left: Menu toggle (mobile only) + Logo (desktop only) + Navigation */}
           <div className="flex items-center gap-8">
@@ -1211,7 +1212,7 @@ export default function ChatPage() {
                 </h2>
 
                 {/* Feature Cards Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2 md:gap-2.5 lg:gap-3 xl:gap-4 2xl:gap-5 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-2 md:gap-2.5 lg:gap-3 xl:gap-4 2xl:gap-5 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
                   {FEATURE_CARDS.map((feature, idx) => (
                     <button
                       key={idx}
@@ -1223,28 +1224,28 @@ export default function ChatPage() {
                         }
                       }}
                       disabled={!feature.path && !feature.prompt}
-                      className={`flex flex-col p-1.5 sm:p-2 md:p-2.5 lg:p-3 xl:p-4 2xl:p-5 rounded-lg md:rounded-xl bg-black/80 backdrop-blur-md border border-white/15 transition-all shadow-lg text-left ${
+                      className={`flex flex-col p-3 sm:p-2 md:p-2.5 lg:p-3 xl:p-4 2xl:p-5 rounded-lg md:rounded-xl bg-black/80 backdrop-blur-md border border-white/15 transition-all shadow-lg text-left ${
                         !feature.path && !feature.prompt ? 'opacity-50 cursor-not-allowed' : 'hover:border-white/30 cursor-pointer'
                       }`}
                     >
                       {/* Icon */}
-                      <div className="mb-0.5 sm:mb-1 md:mb-1.5 lg:mb-2 xl:mb-2.5">
+                      <div className="mb-1.5 sm:mb-1 md:mb-1.5 lg:mb-2 xl:mb-2.5">
                         <Image
                           src={feature.icon}
                           alt={feature.name}
                           width={48}
                           height={48}
-                          className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 xl:w-10 xl:h-10 2xl:w-12 2xl:h-12"
+                          className="w-7 h-7 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 xl:w-10 xl:h-10 2xl:w-12 2xl:h-12"
                         />
                       </div>
 
                       {/* Title */}
-                      <h3 className="text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base text-white font-semibold mb-0.5 sm:mb-0.5 md:mb-1 lg:mb-1.5">
+                      <h3 className="text-[11px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base text-white font-semibold mb-1 sm:mb-0.5 md:mb-1 lg:mb-1.5">
                         {feature.name}
                       </h3>
 
                       {/* Description */}
-                      <p className="text-[7px] sm:text-[8px] md:text-[9px] lg:text-[10px] xl:text-xs 2xl:text-sm text-gray-400 leading-tight mb-1 sm:mb-1.5 md:mb-2 lg:mb-2.5 xl:mb-3 flex-1 line-clamp-2">
+                      <p className="text-[9px] sm:text-[8px] md:text-[9px] lg:text-[10px] xl:text-xs 2xl:text-sm text-gray-400 leading-snug mb-2 sm:mb-1.5 md:mb-2 lg:mb-2.5 xl:mb-3 flex-1 line-clamp-3 sm:line-clamp-2">
                         {feature.description}
                       </p>
 
@@ -1625,7 +1626,7 @@ export default function ChatPage() {
                   onKeyPress={handleKeyPress}
                   placeholder="Type your message..."
                   disabled={isSending || !activeConversationId || initializing}
-                  className="flex-1 px-4 py-3 rounded-lg bg-[#202020] border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-gray-500 disabled:opacity-50"
+                  className="flex-1 px-4 py-3 rounded-3xl bg-[#202020] border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-gray-500 disabled:opacity-50"
                 />
 
                 {/* Send Button - Round with white bg */}
@@ -1649,11 +1650,11 @@ export default function ChatPage() {
       {swapFlowStep === 'routing' && swapQuote?.quote && currentSwapMetadata && (
         <>
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setSwapFlowStep(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-black border border-black rounded-2xl overflow-hidden max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               {/* Header */}
-              <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Order Routing</h3>
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
+                <h3 className="text-base sm:text-lg font-semibold text-white">Order Routing</h3>
                 <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1662,60 +1663,60 @@ export default function ChatPage() {
               </div>
 
               {/* Content */}
-              <div className="px-5 py-5 space-y-4">
+              <div className="px-4 py-4 sm:px-5 sm:py-5 space-y-3 sm:space-y-4">
                 {/* Select Swap API Label */}
-                <div className="text-sm font-medium text-white">Select Swap API</div>
+                <div className="text-xs sm:text-sm font-medium text-white">Select Swap API</div>
 
                 {/* Routing Option Card */}
-                <div className="bg-[#0A0A0A] border border-white/10 rounded-xl p-4">
-                  <div className="flex items-start gap-3">
+                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3">
                     {/* Radio Button + Label */}
-                    <div className="flex flex-col pt-1">
+                    <div className="flex flex-col">
                       <div className="flex items-center gap-2 mb-1">
-                        <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center flex-shrink-0">
-                          <div className="w-2 h-2 rounded-full bg-black"></div>
+                        <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white flex items-center justify-center flex-shrink-0">
+                          <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-black"></div>
                         </div>
                         <div className="flex items-center gap-1">
-                          <span className="text-white font-semibold text-sm">UNI V3</span>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
+                          <span className="text-white font-semibold text-xs sm:text-sm">UNI V3</span>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
                             <circle cx="12" cy="12" r="10" strokeWidth={2} />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
                           </svg>
                         </div>
                       </div>
-                      <div className="text-xs text-gray-400 ml-7">Est. Price Impact 1.1%</div>
+                      <div className="text-[10px] sm:text-xs text-gray-400 ml-6 sm:ml-7">Est. Price Impact 1.1%</div>
                     </div>
 
                     {/* Swap Info */}
-                    <div className="flex-1 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="text-base font-medium text-white">
+                    <div className="flex-1 space-y-2 sm:space-y-3">
+                      <div className="flex items-start sm:items-center justify-between gap-2">
+                        <div className="text-sm sm:text-base font-medium text-white break-words">
                           Swap {String(currentSwapMetadata?.from_token)} to {String(currentSwapMetadata?.to_token)}
                         </div>
-                        <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-xs font-semibold rounded flex items-center gap-1">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                        <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1 flex-shrink-0">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
                           </svg>
                           Suggested
                         </div>
                       </div>
 
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
+                      <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                        <div className="flex justify-between gap-2">
                           <span className="text-gray-400">Amount in</span>
-                          <span className="text-white font-medium">
+                          <span className="text-white font-medium text-right break-words">
                             {String(currentSwapMetadata?.amount)} {String(currentSwapMetadata?.from_token)}
                           </span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex justify-between gap-2">
                           <span className="text-gray-400">Expected Amount Out</span>
-                          <span className="text-white font-medium">
+                          <span className="text-white font-medium text-right break-words">
                             {formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)} {String(currentSwapMetadata?.to_token)}
                           </span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Min. Out After Slippage</span>
-                          <span className="text-white font-medium">
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
+                          <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
                             {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
                           </span>
                         </div>
@@ -1726,29 +1727,23 @@ export default function ChatPage() {
               </div>
 
               {/* Action Button */}
-              <div className="px-5 py-4 border-t border-white/10">
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
                 <button
                   onClick={() => setSwapFlowStep('details')}
-                  className="px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors"
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors"
                 >
                   Continue
                 </button>
-                <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-400">
-                  <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center">
-                    <svg width="20" height="20" viewBox="0 0 600 600" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <g transform="translate(0,600) scale(0.1,-0.1)" fill="#FC007A">
-                        <path d="M2780 5613 c-361 -36 -647 -117 -951 -268 -715 -356 -1231 -1027 -1398 -1815 -39 -186 -54 -368 -48 -595 3 -115 13 -257 22 -315 85 -556 326 -1042 714 -1443 429 -442 976 -712 1591 -783 174 -20 505 -15 670 11 556 85 1042 326 1443 714 442 429 712 976 783 1591 20 174 15 505 -11 670 -85 556 -326 1042 -714 1443 -426 439 -977 712 -1581 781 -121 14 -418 19 -520 9z m576 -152 c269 -40 492 -109 739 -230 757 -371 1266 -1089 1377 -1941 18 -141 15 -470 -6 -615 -40 -282 -114 -524 -235 -770 -373 -758 -1089 -1266 -1941 -1377 -141 -18 -470 -15 -615 6 -282 40 -524 114 -770 235 -758 373 -1266 1089 -1377 1941 -18 141 -15 470 6 615 40 282 114 524 235 770 385 783 1151 1308 2021 1384 146 13 410 5 566 -18z"/>
-                        <path d="M1601 4605 c40 -49 251 -308 469 -575 572 -700 590 -723 590 -738 0 -46 -72 -91 -147 -92 -73 0 -90 21 -378 470 -75 118 -142 220 -148 225 -12 12 -26 38 140 -260 177 -316 223 -404 223 -425 0 -9 -18 -41 -40 -71 -45 -59 -64 -115 -80 -227 -21 -154 -65 -243 -211 -430 -111 -141 -137 -194 -145 -293 -8 -111 20 -207 100 -339 35 -58 67 -116 71 -129 7 -21 11 -23 55 -17 143 19 326 112 389 198 27 37 31 50 31 107 0 82 -19 115 -97 173 -32 24 -83 68 -114 99 -48 47 -59 65 -69 111 -15 65 -3 115 59 249 48 105 57 138 71 257 11 99 28 145 60 162 10 5 52 17 92 24 96 19 139 38 186 83 39 37 62 90 62 142 0 16 -26 53 -77 110 -207 229 -1083 1191 -1121 1231 -24 25 -11 5 29 -45z m462 -2396 c47 -21 56 -80 19 -121 -33 -39 -89 -8 -71 39 7 20 6 30 -8 45 -17 19 -17 20 2 34 23 17 27 17 58 3z"/>
-                        <path d="M2685 3954 c118 -25 203 -65 292 -137 63 -51 134 -130 255 -288 136 -176 213 -244 328 -289 81 -32 172 -48 367 -64 233 -20 271 -32 344 -106 l56 -57 -9 46 c-13 66 -90 217 -140 274 l-41 49 -17 -54 c-35 -112 -78 -161 -125 -140 -35 16 -38 43 -15 113 29 84 21 189 -17 226 -33 34 -172 97 -268 123 -99 27 -300 37 -400 21 l-70 -11 -45 52 c-131 151 -315 249 -460 247 -30 -1 -46 -3 -35 -5z"/>
-                        <path d="M2636 3864 c-31 -80 43 -325 130 -431 61 -74 174 -137 227 -125 24 5 22 10 -23 88 -27 48 -47 102 -65 179 -44 190 -78 239 -193 284 -63 25 -68 25 -76 5z"/>
-                        <path d="M4031 3820 c-6 -28 -11 -68 -11 -90 0 -47 -8 -70 -24 -70 -7 0 -39 11 -72 24 -101 40 -125 40 -49 -1 158 -85 174 -111 176 -278 1 -105 2 -108 14 -70 8 22 14 68 14 103 1 35 6 72 11 83 13 24 32 16 108 -48 28 -25 52 -42 52 -38 0 4 -36 46 -81 93 -45 48 -87 99 -95 114 -18 34 -33 141 -26 191 6 54 -5 45 -17 -13z"/>
-                        <path d="M3440 3167 c0 -56 21 -149 42 -192 30 -59 123 -144 212 -194 43 -24 157 -77 254 -118 237 -100 340 -154 397 -211 54 -53 95 -130 95 -179 0 -103 68 70 76 196 11 162 -40 295 -154 403 -106 99 -245 154 -467 188 -244 36 -345 65 -412 116 -17 13 -34 24 -37 24 -3 0 -6 -15 -6 -33z"/>
-                        <path d="M2810 3043 c-50 -26 -80 -76 -80 -134 0 -40 4 -51 28 -69 50 -41 198 -14 244 44 23 28 22 62 -2 101 -41 66 -125 92 -190 58z m118 -19 c45 -31 12 -86 -53 -86 -37 0 -75 24 -75 49 0 44 83 69 128 37z"/>
-                        <path d="M3661 2675 c7 -16 12 -68 13 -115 1 -69 -4 -95 -23 -137 -48 -108 -148 -169 -331 -202 -189 -35 -251 -52 -328 -88 -41 -19 -72 -36 -70 -38 2 -2 39 5 83 16 43 10 147 24 230 30 82 6 182 19 221 29 174 45 273 161 274 320 0 76 -22 143 -64 195 -15 19 -16 18 -5 -10z"/>
-                        <path d="M3806 2615 c-14 -36 -17 -115 -7 -170 15 -83 54 -160 159 -319 116 -174 156 -246 177 -320 22 -75 16 -173 -14 -240 -12 -27 -19 -51 -17 -53 8 -9 112 65 159 113 117 119 174 335 132 499 -43 162 -122 245 -360 380 -66 38 -141 81 -168 97 -55 33 -53 32 -61 13z"/>
-                        <path d="M2921 1979 c-141 -27 -370 -145 -444 -226 -17 -19 -16 -20 69 -37 122 -24 163 -47 281 -157 80 -75 117 -102 155 -115 72 -24 130 -13 181 36 38 35 41 42 45 102 4 61 2 68 -25 98 -25 28 -38 34 -84 38 -45 3 -59 0 -81 -18 -16 -12 -28 -29 -27 -38 0 -13 3 -12 11 5 16 34 68 47 111 29 42 -17 57 -41 57 -93 0 -48 -22 -81 -67 -99 -45 -19 -106 -3 -149 40 -44 44 -52 91 -26 149 28 62 82 91 161 85 124 -9 187 -68 282 -265 100 -208 155 -258 289 -258 62 0 84 5 127 28 67 35 76 50 18 30 -30 -10 -70 -14 -118 -12 -129 7 -163 53 -203 276 -40 219 -91 300 -228 364 -99 46 -222 60 -335 38z"/>
-                      </g>
-                    </svg>
+                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
                   </div>
                   <span>Powered by Uniswap</span>
                 </div>
@@ -1762,11 +1757,11 @@ export default function ChatPage() {
       {swapFlowStep === 'details' && swapQuote?.quote && currentSwapMetadata && (
         <>
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setSwapFlowStep(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-black border border-black rounded-2xl overflow-hidden max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               {/* Header */}
-              <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Swap Details</h3>
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
+                <h3 className="text-base sm:text-lg font-semibold text-white">Swap Details</h3>
                 <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -1775,62 +1770,62 @@ export default function ChatPage() {
               </div>
 
               {/* Content */}
-              <div className="px-5 py-5 space-y-4">
+              <div className="px-4 py-4 sm:px-5 sm:py-5 space-y-3 sm:space-y-4">
                 {/* Select Swap API */}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-white">Select Swap API</span>
-                  <button disabled className="px-3 py-1.5 rounded-lg bg-[#202020] text-gray-400 text-xs font-medium cursor-not-allowed">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs sm:text-sm font-medium text-white">Select Swap API</span>
+                  <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
                     Change API
                   </button>
                 </div>
 
                 {/* Routing */}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-400">Routing</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full bg-white flex items-center justify-center">
-                      <div className="w-1.5 h-1.5 rounded-full bg-black"></div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs sm:text-sm text-gray-400">Routing</span>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-white flex items-center justify-center">
+                      <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-black"></div>
                     </div>
-                    <span className="text-sm text-white">UNI V3</span>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
+                    <span className="text-xs sm:text-sm text-white">UNI V3</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
                       <circle cx="12" cy="12" r="10" strokeWidth={2} />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
                     </svg>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-xs font-semibold rounded flex items-center gap-1">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
                     </svg>
                     Suggested
                   </div>
-                  <span className="text-xs text-gray-400">Est. Price Impact 1.1%</span>
+                  <span className="text-[10px] sm:text-xs text-gray-400">Est. Price Impact 1.1%</span>
                 </div>
 
                 {/* Swap Details Card */}
-                <div className="bg-[#0A0A0A] border border-white/10 rounded-xl p-4">
-                  <div className="text-base font-semibold text-white mb-4">
+                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                  <div className="text-sm sm:text-base font-semibold text-white mb-3 sm:mb-4 break-words">
                     Swap {String(currentSwapMetadata?.from_token)} to {String(currentSwapMetadata?.to_token)}
                   </div>
 
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
+                  <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                    <div className="flex justify-between gap-2">
                       <span className="text-gray-400">Amount in</span>
-                      <span className="text-white font-medium">
+                      <span className="text-white font-medium text-right break-words">
                         {String(currentSwapMetadata?.amount)} {String(currentSwapMetadata?.from_token)}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Expected Amount Out</span>
-                      <span className="text-white font-medium">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-gray-400 text-[11px] sm:text-xs">Expected Amount Out</span>
+                      <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
                         {formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)} {String(currentSwapMetadata?.to_token)}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Min. Out After Slippage</span>
-                      <span className="text-white font-medium">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
+                      <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
                         {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
                       </span>
                     </div>
@@ -1838,16 +1833,16 @@ export default function ChatPage() {
                 </div>
 
                 {/* Aperture Fee */}
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between text-xs sm:text-sm">
                   <span className="text-white font-medium">Aperture Fee</span>
                   <span className="text-gray-400">0.25% (&lt;$0.01)</span>
                 </div>
 
                 {/* Transaction Settings */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-white font-medium text-sm">Transaction Setting</span>
-                    <button disabled className="px-3 py-1.5 rounded-lg bg-[#202020] text-gray-400 text-xs font-medium cursor-not-allowed">
+                <div className="space-y-2 sm:space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-white font-medium text-xs sm:text-sm">Transaction Setting</span>
+                    <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
                       Change Settings
                     </button>
                   </div>
@@ -1855,29 +1850,23 @@ export default function ChatPage() {
               </div>
 
               {/* Action Button */}
-              <div className="px-5 py-4 border-t border-white/10">
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
                 <button
                   onClick={() => setSwapFlowStep('confirm')}
-                  className="px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors"
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors"
                 >
                   Continue
                 </button>
-                <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-400">
-                  <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center">
-                    <svg width="20" height="20" viewBox="0 0 600 600" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <g transform="translate(0,600) scale(0.1,-0.1)" fill="#FC007A">
-                        <path d="M2780 5613 c-361 -36 -647 -117 -951 -268 -715 -356 -1231 -1027 -1398 -1815 -39 -186 -54 -368 -48 -595 3 -115 13 -257 22 -315 85 -556 326 -1042 714 -1443 429 -442 976 -712 1591 -783 174 -20 505 -15 670 11 556 85 1042 326 1443 714 442 429 712 976 783 1591 20 174 15 505 -11 670 -85 556 -326 1042 -714 1443 -426 439 -977 712 -1581 781 -121 14 -418 19 -520 9z m576 -152 c269 -40 492 -109 739 -230 757 -371 1266 -1089 1377 -1941 18 -141 15 -470 -6 -615 -40 -282 -114 -524 -235 -770 -373 -758 -1089 -1266 -1941 -1377 -141 -18 -470 -15 -615 6 -282 40 -524 114 -770 235 -758 373 -1266 1089 -1377 1941 -18 141 -15 470 6 615 40 282 114 524 235 770 385 783 1151 1308 2021 1384 146 13 410 5 566 -18z"/>
-                        <path d="M1601 4605 c40 -49 251 -308 469 -575 572 -700 590 -723 590 -738 0 -46 -72 -91 -147 -92 -73 0 -90 21 -378 470 -75 118 -142 220 -148 225 -12 12 -26 38 140 -260 177 -316 223 -404 223 -425 0 -9 -18 -41 -40 -71 -45 -59 -64 -115 -80 -227 -21 -154 -65 -243 -211 -430 -111 -141 -137 -194 -145 -293 -8 -111 20 -207 100 -339 35 -58 67 -116 71 -129 7 -21 11 -23 55 -17 143 19 326 112 389 198 27 37 31 50 31 107 0 82 -19 115 -97 173 -32 24 -83 68 -114 99 -48 47 -59 65 -69 111 -15 65 -3 115 59 249 48 105 57 138 71 257 11 99 28 145 60 162 10 5 52 17 92 24 96 19 139 38 186 83 39 37 62 90 62 142 0 16 -26 53 -77 110 -207 229 -1083 1191 -1121 1231 -24 25 -11 5 29 -45z m462 -2396 c47 -21 56 -80 19 -121 -33 -39 -89 -8 -71 39 7 20 6 30 -8 45 -17 19 -17 20 2 34 23 17 27 17 58 3z"/>
-                        <path d="M2685 3954 c118 -25 203 -65 292 -137 63 -51 134 -130 255 -288 136 -176 213 -244 328 -289 81 -32 172 -48 367 -64 233 -20 271 -32 344 -106 l56 -57 -9 46 c-13 66 -90 217 -140 274 l-41 49 -17 -54 c-35 -112 -78 -161 -125 -140 -35 16 -38 43 -15 113 29 84 21 189 -17 226 -33 34 -172 97 -268 123 -99 27 -300 37 -400 21 l-70 -11 -45 52 c-131 151 -315 249 -460 247 -30 -1 -46 -3 -35 -5z"/>
-                        <path d="M2636 3864 c-31 -80 43 -325 130 -431 61 -74 174 -137 227 -125 24 5 22 10 -23 88 -27 48 -47 102 -65 179 -44 190 -78 239 -193 284 -63 25 -68 25 -76 5z"/>
-                        <path d="M4031 3820 c-6 -28 -11 -68 -11 -90 0 -47 -8 -70 -24 -70 -7 0 -39 11 -72 24 -101 40 -125 40 -49 -1 158 -85 174 -111 176 -278 1 -105 2 -108 14 -70 8 22 14 68 14 103 1 35 6 72 11 83 13 24 32 16 108 -48 28 -25 52 -42 52 -38 0 4 -36 46 -81 93 -45 48 -87 99 -95 114 -18 34 -33 141 -26 191 6 54 -5 45 -17 -13z"/>
-                        <path d="M3440 3167 c0 -56 21 -149 42 -192 30 -59 123 -144 212 -194 43 -24 157 -77 254 -118 237 -100 340 -154 397 -211 54 -53 95 -130 95 -179 0 -103 68 70 76 196 11 162 -40 295 -154 403 -106 99 -245 154 -467 188 -244 36 -345 65 -412 116 -17 13 -34 24 -37 24 -3 0 -6 -15 -6 -33z"/>
-                        <path d="M2810 3043 c-50 -26 -80 -76 -80 -134 0 -40 4 -51 28 -69 50 -41 198 -14 244 44 23 28 22 62 -2 101 -41 66 -125 92 -190 58z m118 -19 c45 -31 12 -86 -53 -86 -37 0 -75 24 -75 49 0 44 83 69 128 37z"/>
-                        <path d="M3661 2675 c7 -16 12 -68 13 -115 1 -69 -4 -95 -23 -137 -48 -108 -148 -169 -331 -202 -189 -35 -251 -52 -328 -88 -41 -19 -72 -36 -70 -38 2 -2 39 5 83 16 43 10 147 24 230 30 82 6 182 19 221 29 174 45 273 161 274 320 0 76 -22 143 -64 195 -15 19 -16 18 -5 -10z"/>
-                        <path d="M3806 2615 c-14 -36 -17 -115 -7 -170 15 -83 54 -160 159 -319 116 -174 156 -246 177 -320 22 -75 16 -173 -14 -240 -12 -27 -19 -51 -17 -53 8 -9 112 65 159 113 117 119 174 335 132 499 -43 162 -122 245 -360 380 -66 38 -141 81 -168 97 -55 33 -53 32 -61 13z"/>
-                        <path d="M2921 1979 c-141 -27 -370 -145 -444 -226 -17 -19 -16 -20 69 -37 122 -24 163 -47 281 -157 80 -75 117 -102 155 -115 72 -24 130 -13 181 36 38 35 41 42 45 102 4 61 2 68 -25 98 -25 28 -38 34 -84 38 -45 3 -59 0 -81 -18 -16 -12 -28 -29 -27 -38 0 -13 3 -12 11 5 16 34 68 47 111 29 42 -17 57 -41 57 -93 0 -48 -22 -81 -67 -99 -45 -19 -106 -3 -149 40 -44 44 -52 91 -26 149 28 62 82 91 161 85 124 -9 187 -68 282 -265 100 -208 155 -258 289 -258 62 0 84 5 127 28 67 35 76 50 18 30 -30 -10 -70 -14 -118 -12 -129 7 -163 53 -203 276 -40 219 -91 300 -228 364 -99 46 -222 60 -335 38z"/>
-                      </g>
-                    </svg>
+                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
                   </div>
                   <span>Powered by Uniswap</span>
                 </div>
@@ -1891,16 +1880,16 @@ export default function ChatPage() {
       {swapFlowStep === 'confirm' && swapQuote?.quote && currentSwapMetadata && (
         <>
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setSwapFlowStep(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-black border border-black rounded-2xl overflow-hidden max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-sm w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               {/* Header */}
-              <div className="px-5 py-4 border-b border-white/10">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="text-base font-semibold text-white mb-1">Confirm details</h3>
-                    <p className="text-xs text-gray-400">Review and accept Uniswap Labs Terms of Service & Privacy Policy to get started</p>
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 sticky top-0 bg-black z-10">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <h3 className="text-sm sm:text-base font-semibold text-white mb-1">Confirm details</h3>
+                    <p className="text-[10px] sm:text-xs text-gray-400 pr-2">Review and accept Uniswap Labs Terms of Service & Privacy Policy to get started</p>
                   </div>
-                  <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors ml-4">
+                  <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors flex-shrink-0">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -1909,38 +1898,38 @@ export default function ChatPage() {
               </div>
 
               {/* Content */}
-              <div className="px-5 py-4 space-y-4">
+              <div className="px-4 py-3 sm:px-5 sm:py-4 space-y-3 sm:space-y-4">
                 {/* Terms of Service Toggles */}
-                <div className="space-y-3">
-                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-2xl p-4 hover:bg-[#0A0A0A] transition-colors">
-                    <span className="text-sm text-white flex-1">
+                <div className="space-y-2 sm:space-y-3">
+                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
+                    <span className="text-xs sm:text-sm text-white flex-1 pr-2">
                       I have read and agreed with Uniswap Labs Terms of Service
                     </span>
-                    <div className="relative ml-4">
+                    <div className="relative ml-2 sm:ml-4 flex-shrink-0">
                       <input
                         type="checkbox"
                         checked={tosAccepted}
                         onChange={(e) => setTosAccepted(e.target.checked)}
                         className="sr-only peer"
                       />
-                      <div className={`w-11 h-6 rounded-full transition-colors ${tosAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
-                      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${tosAccepted ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                      <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${tosAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${tosAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
                     </div>
                   </label>
 
-                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-2xl p-4 hover:bg-[#0A0A0A] transition-colors">
-                    <span className="text-sm text-white flex-1">
+                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
+                    <span className="text-xs sm:text-sm text-white flex-1 pr-2">
                       I have read and agreed with Uniswap Labs Privacy Policy
                     </span>
-                    <div className="relative ml-4">
+                    <div className="relative ml-2 sm:ml-4 flex-shrink-0">
                       <input
                         type="checkbox"
                         checked={privacyAccepted}
                         onChange={(e) => setPrivacyAccepted(e.target.checked)}
                         className="sr-only peer"
                       />
-                      <div className={`w-11 h-6 rounded-full transition-colors ${privacyAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
-                      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${privacyAccepted ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                      <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${privacyAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${privacyAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
                     </div>
                   </label>
                 </div>
@@ -1948,7 +1937,7 @@ export default function ChatPage() {
               </div>
 
               {/* Action Button */}
-              <div className="px-5 py-4 border-t border-white/10">
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
                 <button
                   onClick={async () => {
                     if (tosAccepted && privacyAccepted && currentSwapMetadata) {
@@ -1958,26 +1947,20 @@ export default function ChatPage() {
                     }
                   }}
                   disabled={!tosAccepted || !privacyAccepted || executingSwap}
-                  className="px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
                 >
                   {executingSwap ? 'Executing...' : 'Confirm'}
                 </button>
-                <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-400">
-                  <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center">
-                    <svg width="20" height="20" viewBox="0 0 600 600" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <g transform="translate(0,600) scale(0.1,-0.1)" fill="#FC007A">
-                        <path d="M2780 5613 c-361 -36 -647 -117 -951 -268 -715 -356 -1231 -1027 -1398 -1815 -39 -186 -54 -368 -48 -595 3 -115 13 -257 22 -315 85 -556 326 -1042 714 -1443 429 -442 976 -712 1591 -783 174 -20 505 -15 670 11 556 85 1042 326 1443 714 442 429 712 976 783 1591 20 174 15 505 -11 670 -85 556 -326 1042 -714 1443 -426 439 -977 712 -1581 781 -121 14 -418 19 -520 9z m576 -152 c269 -40 492 -109 739 -230 757 -371 1266 -1089 1377 -1941 18 -141 15 -470 -6 -615 -40 -282 -114 -524 -235 -770 -373 -758 -1089 -1266 -1941 -1377 -141 -18 -470 -15 -615 6 -282 40 -524 114 -770 235 -758 373 -1266 1089 -1377 1941 -18 141 -15 470 6 615 40 282 114 524 235 770 385 783 1151 1308 2021 1384 146 13 410 5 566 -18z"/>
-                        <path d="M1601 4605 c40 -49 251 -308 469 -575 572 -700 590 -723 590 -738 0 -46 -72 -91 -147 -92 -73 0 -90 21 -378 470 -75 118 -142 220 -148 225 -12 12 -26 38 140 -260 177 -316 223 -404 223 -425 0 -9 -18 -41 -40 -71 -45 -59 -64 -115 -80 -227 -21 -154 -65 -243 -211 -430 -111 -141 -137 -194 -145 -293 -8 -111 20 -207 100 -339 35 -58 67 -116 71 -129 7 -21 11 -23 55 -17 143 19 326 112 389 198 27 37 31 50 31 107 0 82 -19 115 -97 173 -32 24 -83 68 -114 99 -48 47 -59 65 -69 111 -15 65 -3 115 59 249 48 105 57 138 71 257 11 99 28 145 60 162 10 5 52 17 92 24 96 19 139 38 186 83 39 37 62 90 62 142 0 16 -26 53 -77 110 -207 229 -1083 1191 -1121 1231 -24 25 -11 5 29 -45z m462 -2396 c47 -21 56 -80 19 -121 -33 -39 -89 -8 -71 39 7 20 6 30 -8 45 -17 19 -17 20 2 34 23 17 27 17 58 3z"/>
-                        <path d="M2685 3954 c118 -25 203 -65 292 -137 63 -51 134 -130 255 -288 136 -176 213 -244 328 -289 81 -32 172 -48 367 -64 233 -20 271 -32 344 -106 l56 -57 -9 46 c-13 66 -90 217 -140 274 l-41 49 -17 -54 c-35 -112 -78 -161 -125 -140 -35 16 -38 43 -15 113 29 84 21 189 -17 226 -33 34 -172 97 -268 123 -99 27 -300 37 -400 21 l-70 -11 -45 52 c-131 151 -315 249 -460 247 -30 -1 -46 -3 -35 -5z"/>
-                        <path d="M2636 3864 c-31 -80 43 -325 130 -431 61 -74 174 -137 227 -125 24 5 22 10 -23 88 -27 48 -47 102 -65 179 -44 190 -78 239 -193 284 -63 25 -68 25 -76 5z"/>
-                        <path d="M4031 3820 c-6 -28 -11 -68 -11 -90 0 -47 -8 -70 -24 -70 -7 0 -39 11 -72 24 -101 40 -125 40 -49 -1 158 -85 174 -111 176 -278 1 -105 2 -108 14 -70 8 22 14 68 14 103 1 35 6 72 11 83 13 24 32 16 108 -48 28 -25 52 -42 52 -38 0 4 -36 46 -81 93 -45 48 -87 99 -95 114 -18 34 -33 141 -26 191 6 54 -5 45 -17 -13z"/>
-                        <path d="M3440 3167 c0 -56 21 -149 42 -192 30 -59 123 -144 212 -194 43 -24 157 -77 254 -118 237 -100 340 -154 397 -211 54 -53 95 -130 95 -179 0 -103 68 70 76 196 11 162 -40 295 -154 403 -106 99 -245 154 -467 188 -244 36 -345 65 -412 116 -17 13 -34 24 -37 24 -3 0 -6 -15 -6 -33z"/>
-                        <path d="M2810 3043 c-50 -26 -80 -76 -80 -134 0 -40 4 -51 28 -69 50 -41 198 -14 244 44 23 28 22 62 -2 101 -41 66 -125 92 -190 58z m118 -19 c45 -31 12 -86 -53 -86 -37 0 -75 24 -75 49 0 44 83 69 128 37z"/>
-                        <path d="M3661 2675 c7 -16 12 -68 13 -115 1 -69 -4 -95 -23 -137 -48 -108 -148 -169 -331 -202 -189 -35 -251 -52 -328 -88 -41 -19 -72 -36 -70 -38 2 -2 39 5 83 16 43 10 147 24 230 30 82 6 182 19 221 29 174 45 273 161 274 320 0 76 -22 143 -64 195 -15 19 -16 18 -5 -10z"/>
-                        <path d="M3806 2615 c-14 -36 -17 -115 -7 -170 15 -83 54 -160 159 -319 116 -174 156 -246 177 -320 22 -75 16 -173 -14 -240 -12 -27 -19 -51 -17 -53 8 -9 112 65 159 113 117 119 174 335 132 499 -43 162 -122 245 -360 380 -66 38 -141 81 -168 97 -55 33 -53 32 -61 13z"/>
-                        <path d="M2921 1979 c-141 -27 -370 -145 -444 -226 -17 -19 -16 -20 69 -37 122 -24 163 -47 281 -157 80 -75 117 -102 155 -115 72 -24 130 -13 181 36 38 35 41 42 45 102 4 61 2 68 -25 98 -25 28 -38 34 -84 38 -45 3 -59 0 -81 -18 -16 -12 -28 -29 -27 -38 0 -13 3 -12 11 5 16 34 68 47 111 29 42 -17 57 -41 57 -93 0 -48 -22 -81 -67 -99 -45 -19 -106 -3 -149 40 -44 44 -52 91 -26 149 28 62 82 91 161 85 124 -9 187 -68 282 -265 100 -208 155 -258 289 -258 62 0 84 5 127 28 67 35 76 50 18 30 -30 -10 -70 -14 -118 -12 -129 7 -163 53 -203 276 -40 219 -91 300 -228 364 -99 46 -222 60 -335 38z"/>
-                      </g>
-                    </svg>
+                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
                   </div>
                   <span>Powered by Uniswap</span>
                 </div>

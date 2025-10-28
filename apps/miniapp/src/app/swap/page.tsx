@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
+import UniswapIcon from '../../../public/icons/uniswap.svg';
 import { networks, Token } from '@/features/swap/tokens';
 import { swapApi, SwapApiError } from '@/features/swap/api';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl } from '@/features/swap/utils';
@@ -678,45 +679,39 @@ export default function SwapPage() {
       <div className="flex-1 overflow-hidden">
         {/* Swap Interface */}
         <div className="h-full flex items-center justify-center p-4">
-          <div className="w-full max-w-md">
+          <div className="w-full max-w-xs">
             {/* Swap Card */}
-            <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-2xl">
+            <div className="bg-[#1A1A1A] rounded-2xl p-4 shadow-2xl">
               {/* Sell Section */}
-              <div className="mb-3">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-xs text-white uppercase tracking-wide font-medium">Sell</label>
-                  <div className="text-xs text-white/70">
-                    {networks.find(n => n.chainId === fromChainId)?.name || 'Base'}
-                  </div>
-                </div>
-                <div className="space-y-3">
+              <div className="mb-2">
+                <label className="text-xs text-gray-400 mb-2 block">Sell</label>
+                <div className="bg-[#252525] rounded-xl p-3 border border-white/10">
                   <input
                     type="text"
                     value={sellAmount}
                     onChange={(e) => setSellAmount(e.target.value)}
-                    placeholder="1.290"
-                    className="bg-transparent text-3xl sm:text-4xl font-light text-white outline-none w-full"
+                    placeholder="0"
+                    className="bg-transparent text-3xl font-light text-white outline-none w-full mb-2"
                   />
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm text-white/50 flex-shrink-0">0 USD</div>
+                  <div className="flex items-center justify-end">
                     <button
                       onClick={() => setShowSellSelector(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-black hover:bg-white/90 transition-colors flex-shrink-0 font-medium"
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-black hover:bg-gray-200 transition-colors text-sm"
                     >
                       <Image
                         src={sellToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
                         alt={sellToken.symbol}
-                        width={18}
-                        height={18}
-                        className="w-[18px] h-[18px] rounded-full flex-shrink-0"
+                        width={20}
+                        height={20}
+                        className="w-5 h-5 rounded-full"
                         unoptimized
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
                         }}
                       />
-                      <span className="font-medium text-sm whitespace-nowrap">{sellToken.symbol}</span>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="flex-shrink-0">
+                      <span className="font-medium">{sellToken.symbol}</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
@@ -725,10 +720,10 @@ export default function SwapPage() {
               </div>
 
               {/* Swap Button */}
-              <div className="flex justify-center my-3">
+              <div className="flex justify-center -my-1 relative z-10">
                 <button
                   onClick={handleSwapTokens}
-                  className="bg-white/10 border border-white/20 rounded-full p-2.5 hover:bg-white/20 transition-colors"
+                  className="bg-[#252525] border border-white/10 rounded-lg p-1.5 hover:bg-[#2A2A2A] transition-colors"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-white">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
@@ -737,47 +732,42 @@ export default function SwapPage() {
               </div>
 
               {/* Buy Section */}
-              <div className="mb-5">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-xs text-white uppercase tracking-wide font-medium">Buy</label>
-                  <div className="text-xs text-white/70">
-                    {networks.find(n => n.chainId === toChainId)?.name || 'Arbitrum'}
-                  </div>
-                </div>
-                <div className="space-y-3">
+              <div className="mb-3">
+                <label className="text-xs text-gray-400 mb-2 block">Buy</label>
+                <div className="bg-[#252525] rounded-xl p-3 border border-white/10">
                   <input
                     type="text"
                     value={buyAmount}
                     onChange={(e) => setBuyAmount(e.target.value)}
                     placeholder="0"
-                    className="bg-transparent text-3xl sm:text-4xl font-light text-white outline-none w-full"
+                    className="bg-transparent text-3xl font-light text-white outline-none w-full mb-2"
                     readOnly
                   />
                   <div className="flex items-center justify-end">
                     <button
                       onClick={() => setShowBuySelector(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors flex-shrink-0 bg-white text-black hover:bg-white/90 font-medium"
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-black hover:bg-gray-200 transition-colors text-sm"
                     >
                       {buyToken ? (
                         <>
                           <Image
                             src={buyToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
                             alt={buyToken.symbol}
-                            width={18}
-                            height={18}
-                            className="w-[18px] h-[18px] rounded-full flex-shrink-0"
+                            width={20}
+                            height={20}
+                            className="w-5 h-5 rounded-full"
                             unoptimized
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
                               target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
                             }}
                           />
-                          <span className="font-medium text-sm whitespace-nowrap">{buyToken.symbol}</span>
+                          <span className="font-medium">{buyToken.symbol}</span>
                         </>
                       ) : (
-                        <span className="font-medium text-sm whitespace-nowrap">Select Token</span>
+                        <span className="font-medium">Select token</span>
                       )}
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="flex-shrink-0">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
@@ -789,7 +779,7 @@ export default function SwapPage() {
               <button
                 onClick={handleStartSwap}
                 disabled={!quote || quoting || preparing || executing}
-                className="w-full py-4 rounded-xl font-semibold text-base transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-white/90"
+                className="w-full py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-gray-100"
               >
                 {executing
                   ? 'Executing swap...'
@@ -798,20 +788,40 @@ export default function SwapPage() {
                     : quoting
                       ? 'Getting quote...'
                       : quote
-                        ? 'Start Swap'
-                        : 'Waiting for quote...'}
+                        ? 'Get started'
+                        : 'Get started'}
               </button>
+
+              {/* Description */}
+              <div className="mt-3 text-center">
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  Buy and sell crypto on 15+ networks including Ethereum, Base, and Arbitrum
+                </p>
+              </div>
+
+              {/* Powered by Uniswap */}
+              <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-400">
+                <Image
+                  src={UniswapIcon}
+                  alt="Uniswap"
+                  width={44}
+                  height={44}
+                  className="w-11 h-11"
+                  style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                />
+                <span>Powered by Uniswap</span>
+              </div>
 
               {/* Error Message */}
               {error && (
-                <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                <div className="mt-4 p-3 rounded-lg bg-red-500/10 backdrop-blur-sm border border-red-500/30">
                   <div className="text-sm text-red-400">{error}</div>
                 </div>
               )}
 
               {/* Success Message */}
               {success && (
-                <div className="mt-4 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
+                <div className="mt-4 p-3 rounded-lg bg-green-500/10 backdrop-blur-sm border border-green-500/30">
                   <div className="text-sm text-green-400 mb-3">✅ Swap executed successfully!</div>
                   
                   {/* Transaction Hashes */}
