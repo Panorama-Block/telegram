@@ -8,3 +8,4 @@ export * from './SignatureApprovalButton';
 export * from './Spinner';
 export * from './Sidebar';
 export * from './GlobalLoader';
+export * from './ErrorStateCard';

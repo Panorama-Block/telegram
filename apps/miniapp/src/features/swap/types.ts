@@ -1,3 +1,64 @@
+export type SwapErrorCode =
+  | 'INVALID_TOKEN_ADDRESS'
+  | 'INVALID_AMOUNT'
+  | 'INVALID_CHAIN'
+  | 'INVALID_SLIPPAGE'
+  | 'INVALID_DEADLINE'
+  | 'MISSING_REQUIRED_PARAMS'
+  | 'INVALID_REQUEST'
+  | 'NO_ROUTE_FOUND'
+  | 'INSUFFICIENT_LIQUIDITY'
+  | 'UNSUPPORTED_CHAIN'
+  | 'UNSUPPORTED_TOKEN'
+  | 'PRICE_IMPACT_TOO_HIGH'
+  | 'SLIPPAGE_TOO_HIGH'
+  | 'APPROVAL_REQUIRED'
+  | 'INSUFFICIENT_BALANCE'
+  | 'RATE_LIMIT_EXCEEDED'
+  | 'QUOTA_EXCEEDED'
+  | 'PROVIDER_ERROR'
+  | 'RPC_ERROR'
+  | 'TIMEOUT'
+  | 'CACHE_ERROR'
+  | 'DATABASE_ERROR'
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'SERVICE_UNAVAILABLE'
+  | 'MAINTENANCE'
+  | 'UNKNOWN_ERROR'
+  | (string & {});
+
+export type UserFacingErrorCategory = 'user-action' | 'temporary' | 'blocked' | 'unknown';
+
+export type UserFacingErrorActions = {
+  primary: {
+    type: 'retry';
+    label: string;
+    disabledUntil?: string;
+  };
+  secondary?: {
+    type: 'support' | 'docs';
+    label: string;
+    href?: string;
+  };
+};
+
+export type UserFacingErrorDetails = {
+  code: SwapErrorCode;
+  category: UserFacingErrorCategory;
+  title: string;
+  description: string;
+  actions: UserFacingErrorActions;
+  traceId: string;
+  canRetry: boolean;
+  retryAfterSeconds?: number;
+};
+
+export type UserFacingErrorResponse = {
+  success: false;
+  error: UserFacingErrorDetails;
+};
+
 export type QuoteRequest = {
   fromChainId: number;
   toChainId: number;

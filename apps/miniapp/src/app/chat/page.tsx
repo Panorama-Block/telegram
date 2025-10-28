@@ -30,7 +30,7 @@ import { swapApi, SwapApiError } from '@/features/swap/api';
 import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, explorerTxUrl } from '@/features/swap/utils';
 import { networks, Token } from '@/features/swap/tokens';
-import { useActiveAccount, useActiveWallet, useDisconnect } from 'thirdweb/react';
+import { useActiveAccount, useActiveWallet, useDisconnect, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx, QuoteResponse } from '@/features/swap/types';
@@ -183,6 +183,7 @@ export default function ChatPage() {
   const account = useActiveAccount();
   const activeWallet = useActiveWallet();
   const { disconnect } = useDisconnect();
+  const switchChain = useSwitchActiveWalletChain();
   const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
@@ -193,6 +194,7 @@ export default function ChatPage() {
   const [swapSuccess, setSwapSuccess] = useState(false);
   const [executingSwap, setExecutingSwap] = useState(false);
   const [swapTxHashes, setSwapTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
+  const [swapStatusMessage, setSwapStatusMessage] = useState<string | null>(null);
 
   // Swap flow states
   const [swapFlowStep, setSwapFlowStep] = useState<'preview' | 'routing' | 'details' | 'confirm' | null>(null);
@@ -844,6 +846,7 @@ export default function ChatPage() {
 
     try {
       setExecutingSwap(true);
+      setSwapStatusMessage('Preparing swap transaction...');
       console.log('🔄 Preparing swap transaction...');
 
       const { amount, from_network, from_token, to_network, to_token } = metadata;
@@ -887,10 +890,28 @@ export default function ChatPage() {
       });
 
       const seq = flattenPrepared(prep.prepared);
-      
+
       if (!seq.length) throw new Error('No transactions returned by prepare');
 
+      // Switch to the correct chain FIRST, before executing transactions
+      if (account && switchChain) {
+        const networkName = fromNetwork.name || `Chain ${fromNetwork.chainId}`;
+        console.log('🔄 Switching to source chain before executing swap...');
+        console.log('Target chain:', fromNetwork.chainId, networkName);
+
+        setSwapStatusMessage(`Switching to ${networkName}...`);
+
+        try {
+          await switchChain(defineChain(fromNetwork.chainId));
+          console.log('✅ Chain switched successfully to:', fromNetwork.chainId);
+        } catch (e: any) {
+          console.error('❌ Failed to switch chain:', e);
+          throw new Error(`Please approve the network switch to ${networkName} in your wallet.`);
+        }
+      }
+
       setSwapTxHashes([]); // Reset transaction hashes
+      setSwapStatusMessage('Please confirm the transaction in your wallet...');
 
       for (const t of seq) {
         if (t.chainId !== fromNetwork.chainId) {
@@ -917,6 +938,7 @@ export default function ChatPage() {
 
         // Force MetaMask window to open
         await forceMetaMaskWindow();
+        setSwapStatusMessage('Waiting for wallet confirmation...');
 
         const result = await safeExecuteTransactionV2(async () => {
           return await sendTransaction({ account, transaction: tx });
@@ -932,15 +954,19 @@ export default function ChatPage() {
 
         // Store transaction hash
         setSwapTxHashes(prev => [...prev, { hash: result.transactionHash!, chainId: t.chainId }]);
+        setSwapStatusMessage('Transaction submitted. Waiting for confirmation...');
       }
 
       setSwapSuccess(true);
       setSwapQuote(null);
+      setSwapStatusMessage(null);
     } catch (error) {
       console.error('❌ Error executing swap:', error);
       setSwapError(error instanceof Error ? error.message : 'Failed to execute swap');
+      setSwapStatusMessage(null);
     } finally {
       setExecutingSwap(false);
+      setSwapStatusMessage(null);
     }
   }, [swapQuote, client, account, clientId, getWalletAddress]);
 
@@ -1371,6 +1397,15 @@ export default function ChatPage() {
                                     <div className="flex items-center gap-2 text-gray-300">
                                       <div className="loader-inline-sm" />
                                       <span className="text-sm">Getting quote...</span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {swapStatusMessage && (
+                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5 mt-3">
+                                    <div className="flex items-center gap-2 text-gray-300">
+                                      {executingSwap && <div className="loader-inline-sm" />}
+                                      <span className="text-sm">{swapStatusMessage}</span>
                                     </div>
                                   </div>
                                 )}
