@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
+import UniswapIcon from '../../../public/icons/uniswap.svg';
 import { networks, Token } from '@/features/swap/tokens';
 import { swapApi, SwapApiError } from '@/features/swap/api';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl } from '@/features/swap/utils';
@@ -683,45 +684,39 @@ export default function SwapPage() {
       <div className="flex-1 overflow-hidden">
         {/* Swap Interface */}
         <div className="h-full flex items-center justify-center p-4">
-          <div className="w-full max-w-md">
+          <div className="w-full max-w-xs">
             {/* Swap Card */}
-            <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-2xl">
+            <div className="bg-[#1A1A1A] rounded-2xl p-4 shadow-2xl">
               {/* Sell Section */}
-              <div className="mb-3">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-xs text-white uppercase tracking-wide font-medium">Sell</label>
-                  <div className="text-xs text-white/70">
-                    {networks.find(n => n.chainId === fromChainId)?.name || 'Base'}
-                  </div>
-                </div>
-                <div className="space-y-3">
+              <div className="mb-2">
+                <label className="text-xs text-gray-400 mb-2 block">Sell</label>
+                <div className="bg-[#252525] rounded-xl p-3 border border-white/10">
                   <input
                     type="text"
                     value={sellAmount}
                     onChange={(e) => setSellAmount(e.target.value)}
-                    placeholder="1.290"
-                    className="bg-transparent text-3xl sm:text-4xl font-light text-white outline-none w-full"
+                    placeholder="0"
+                    className="bg-transparent text-3xl font-light text-white outline-none w-full mb-2"
                   />
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm text-white/50 flex-shrink-0">0 USD</div>
+                  <div className="flex items-center justify-end">
                     <button
                       onClick={() => setShowSellSelector(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-black hover:bg-white/90 transition-colors flex-shrink-0 font-medium"
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-black hover:bg-gray-200 transition-colors text-sm"
                     >
                       <Image
                         src={sellToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
                         alt={sellToken.symbol}
-                        width={18}
-                        height={18}
-                        className="w-[18px] h-[18px] rounded-full flex-shrink-0"
+                        width={20}
+                        height={20}
+                        className="w-5 h-5 rounded-full"
                         unoptimized
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
                         }}
                       />
-                      <span className="font-medium text-sm whitespace-nowrap">{sellToken.symbol}</span>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="flex-shrink-0">
+                      <span className="font-medium">{sellToken.symbol}</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
@@ -730,10 +725,10 @@ export default function SwapPage() {
               </div>
 
               {/* Swap Button */}
-              <div className="flex justify-center my-3">
+              <div className="flex justify-center -my-1 relative z-10">
                 <button
                   onClick={handleSwapTokens}
-                  className="bg-white/10 border border-white/20 rounded-full p-2.5 hover:bg-white/20 transition-colors"
+                  className="bg-[#252525] border border-white/10 rounded-lg p-1.5 hover:bg-[#2A2A2A] transition-colors"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-white">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
@@ -742,47 +737,42 @@ export default function SwapPage() {
               </div>
 
               {/* Buy Section */}
-              <div className="mb-5">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-xs text-white uppercase tracking-wide font-medium">Buy</label>
-                  <div className="text-xs text-white/70">
-                    {networks.find(n => n.chainId === toChainId)?.name || 'Arbitrum'}
-                  </div>
-                </div>
-                <div className="space-y-3">
+              <div className="mb-3">
+                <label className="text-xs text-gray-400 mb-2 block">Buy</label>
+                <div className="bg-[#252525] rounded-xl p-3 border border-white/10">
                   <input
                     type="text"
                     value={buyAmount}
                     onChange={(e) => setBuyAmount(e.target.value)}
                     placeholder="0"
-                    className="bg-transparent text-3xl sm:text-4xl font-light text-white outline-none w-full"
+                    className="bg-transparent text-3xl font-light text-white outline-none w-full mb-2"
                     readOnly
                   />
                   <div className="flex items-center justify-end">
                     <button
                       onClick={() => setShowBuySelector(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors flex-shrink-0 bg-white text-black hover:bg-white/90 font-medium"
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-black hover:bg-gray-200 transition-colors text-sm"
                     >
                       {buyToken ? (
                         <>
                           <Image
                             src={buyToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
                             alt={buyToken.symbol}
-                            width={18}
-                            height={18}
-                            className="w-[18px] h-[18px] rounded-full flex-shrink-0"
+                            width={20}
+                            height={20}
+                            className="w-5 h-5 rounded-full"
                             unoptimized
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
                               target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
                             }}
                           />
-                          <span className="font-medium text-sm whitespace-nowrap">{buyToken.symbol}</span>
+                          <span className="font-medium">{buyToken.symbol}</span>
                         </>
                       ) : (
-                        <span className="font-medium text-sm whitespace-nowrap">Select Token</span>
+                        <span className="font-medium">Select token</span>
                       )}
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="flex-shrink-0">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
@@ -794,7 +784,7 @@ export default function SwapPage() {
               <button
                 onClick={handleStartSwap}
                 disabled={!quote || quoting || preparing || executing}
-                className="w-full py-4 rounded-xl font-semibold text-base transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-white/90"
+                className="w-full py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-gray-100"
               >
                 {executing
                   ? 'Executing swap...'
@@ -803,48 +793,73 @@ export default function SwapPage() {
                     : quoting
                       ? 'Getting quote...'
                       : quote
-                        ? 'Start Swap'
-                        : 'Waiting for quote...'}
+                        ? 'Get started'
+                        : 'Get started'}
               </button>
 
-              <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-400">
-                <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center">
-                  <svg width="20" height="20" viewBox="0 0 600 600" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <g transform="translate(0,600) scale(0.1,-0.1)" fill="#FC007A">
-                      <path d="M2780 5613 c-361 -36 -647 -117 -951 -268 -715 -356 -1231 -1027 -1398 -1815 -39 -186 -54 -368 -48 -595 3 -115 13 -257 22 -315 85 -556 326 -1042 714 -1443 429 -442 976 -712 1591 -783 174 -20 505 -15 670 11 556 85 1042 326 1443 714 442 429 712 976 783 1591 20 174 15 505 -11 670 -85 556 -326 1042 -714 1443 -426 439 -977 712 -1581 781 -121 14 -418 19 -520 9z m576 -152 c269 -40 492 -109 739 -230 757 -371 1266 -1089 1377 -1941 18 -141 15 -470 -6 -615 -40 -282 -114 -524 -235 -770 -373 -758 -1089 -1266 -1941 -1377 -141 -18 -470 -15 -615 6 -282 40 -524 114 -770 235 -758 373 -1266 1089 -1377 1941 -18 141 -15 470 6 615 40 282 114 524 235 770 385 783 1151 1308 2021 1384 146 13 410 5 566 -18z"/>
-                      <path d="M1601 4605 c40 -49 251 -308 469 -575 572 -700 590 -723 590 -738 0 -46 -72 -91 -147 -92 -73 0 -90 21 -378 470 -75 118 -142 220 -148 225 -12 12 -26 38 140 -260 177 -316 223 -404 223 -425 0 -9 -18 -41 -40 -71 -45 -59 -64 -115 -80 -227 -21 -154 -65 -243 -211 -430 -111 -141 -137 -194 -145 -293 -8 -111 20 -207 100 -339 35 -58 67 -116 71 -129 7 -21 11 -23 55 -17 143 19 326 112 389 198 27 37 31 50 31 107 0 82 -19 115 -97 173 -32 24 -83 68 -114 99 -48 47 -59 65 -69 111 -15 65 -3 115 59 249 48 105 57 138 71 257 11 99 28 145 60 162 10 5 52 17 92 24 96 19 139 38 186 83 39 37 62 90 62 142 0 16 -26 53 -77 110 -207 229 -1083 1191 -1121 1231 -24 25 -11 5 29 -45z m462 -2396 c47 -21 56 -80 19 -121 -33 -39 -89 -8 -71 39 7 20 6 30 -8 45 -17 19 -17 20 2 34 23 17 27 17 58 3z"/>
-                      <path d="M2685 3954 c118 -25 203 -65 292 -137 63 -51 134 -130 255 -288 136 -176 213 -244 328 -289 81 -32 172 -48 367 -64 233 -20 271 -32 344 -106 l56 -57 -9 46 c-13 66 -90 217 -140 274 l-41 49 -17 -54 c-35 -112 -78 -161 -125 -140 -35 16 -38 43 -15 113 29 84 21 189 -17 226 -33 34 -172 97 -268 123 -99 27 -300 37 -400 21 l-70 -11 -45 52 c-131 151 -315 249 -460 247 -30 -1 -46 -3 -35 -5z"/>
-                      <path d="M2636 3864 c-31 -80 43 -325 130 -431 61 -74 174 -137 227 -125 24 5 22 10 -23 88 -27 48 -47 102 -65 179 -44 190 -78 239 -193 284 -63 25 -68 25 -76 5z"/>
-                      <path d="M4031 3820 c-6 -28 -11 -68 -11 -90 0 -47 -8 -70 -24 -70 -7 0 -39 11 -72 24 -101 40 -125 40 -49 -1 158 -85 174 -111 176 -278 1 -105 2 -108 14 -70 8 22 14 68 14 103 1 35 6 72 11 83 13 24 32 16 108 -48 28 -25 52 -42 52 -38 0 4 -36 46 -81 93 -45 48 -87 99 -95 114 -18 34 -33 141 -26 191 6 54 -5 45 -17 -13z"/>
-                      <path d="M3440 3167 c0 -56 21 -149 42 -192 30 -59 123 -144 212 -194 43 -24 157 -77 254 -118 237 -100 340 -154 397 -211 54 -53 95 -130 95 -179 0 -103 68 70 76 196 11 162 -40 295 -154 403 -106 99 -245 154 -467 188 -244 36 -345 65 -412 116 -17 13 -34 24 -37 24 -3 0 -6 -15 -6 -33z"/>
-                      <path d="M2810 3043 c-50 -26 -80 -76 -80 -134 0 -40 4 -51 28 -69 50 -41 198 -14 244 44 23 28 22 62 -2 101 -41 66 -125 92 -190 58z m118 -19 c45 -31 12 -86 -53 -86 -37 0 -75 24 -75 49 0 44 83 69 128 37z"/>
-                      <path d="M3661 2675 c7 -16 12 -68 13 -115 1 -69 -4 -95 -23 -137 -48 -108 -148 -169 -331 -202 -189 -35 -251 -52 -328 -88 -41 -19 -72 -36 -70 -38 2 -2 39 5 83 16 43 10 147 24 230 30 82 6 182 19 221 29 174 45 273 161 274 320 0 76 -22 143 -64 195 -15 19 -16 18 -5 -10z"/>
-                      <path d="M3806 2615 c-14 -36 -17 -115 -7 -170 15 -83 54 -160 159 -319 116 -174 156 -246 177 -320 22 -75 16 -173 -14 -240 -12 -27 -19 -51 -17 -53 8 -9 112 65 159 113 117 119 174 335 132 499 -43 162 -122 245 -360 380 -66 38 -141 81 -168 97 -55 33 -53 32 -61 13z"/>
-                      <path d="M2921 1979 c-141 -27 -370 -145 -444 -226 -17 -19 -16 -20 69 -37 122 -24 163 -47 281 -157 80 -75 117 -102 155 -115 72 -24 130 -13 181 36 38 35 41 42 45 102 4 61 2 68 -25 98 -25 28 -38 34 -84 38 -45 3 -59 0 -81 -18 -16 -12 -28 -29 -27 -38 0 -13 3 -12 11 5 16 34 68 47 111 29 42 -17 57 -41 57 -93 0 -48 -22 -81 -67 -99 -45 -19 -106 -3 -149 40 -44 44 -52 91 -26 149 28 62 82 91 161 85 124 -9 187 -68 282 -265 100 -208 155 -258 289 -258 62 0 84 5 127 28 67 35 76 50 18 30 -30 -10 -70 -14 -118 -12 -129 7 -163 53 -203 276 -40 219 -91 300 -228 364 -99 46 -222 60 -335 38z"/>
-                    </g>
-                  </svg>
-                </div>
+              {/* Description */}
+              <div className="mt-3 text-center">
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  Buy and sell crypto on 15+ networks including Ethereum, Base, and Arbitrum
+                </p>
+              </div>
+
+              {/* Powered by Uniswap */}
+              <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-400">
+                <Image
+                  src={UniswapIcon}
+                  alt="Uniswap"
+                  width={44}
+                  height={44}
+                  className="w-11 h-11"
+                  style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                />
                 <span>Powered by Uniswap</span>
               </div>
 
               {/* Error Message */}
               {error && (
-                <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                <div className="mt-4 p-3 rounded-lg bg-red-500/10 backdrop-blur-sm border border-red-500/30">
                   <div className="text-sm text-red-400">{error}</div>
                 </div>
               )}
 
               {/* Success Message */}
-              {success && txHashes.length > 0 && (
-                <div className="mt-4">
-                  <SwapSuccessCard
-                    txHashes={txHashes}
-                    onClose={() => {
-                      setSuccess(false);
-                      setTxHashes([]);
-                    }}
-                    variant="compact"
-                  />
+              {success && (
+                <div className="mt-4 p-3 rounded-lg bg-green-500/10 backdrop-blur-sm border border-green-500/30">
+                  <div className="text-sm text-green-400 mb-3">✅ Swap executed successfully!</div>
+                  
+                  {/* Transaction Hashes */}
+                  {txHashes.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs text-gray-400">Transaction Hashes:</div>
+                      {txHashes.map((tx, index) => {
+                        const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
+                        return (
+                          <div key={index} className="flex items-center justify-between bg-gray-800/50 rounded p-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs text-gray-300 font-mono truncate">
+                                {tx.hash}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                Chain ID: {tx.chainId}
+                              </div>
+                            </div>
+                            {explorerUrl && (
+                              <a
+                                href={explorerUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors"
+                              >
+                                View
+                              </a>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
