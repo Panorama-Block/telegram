@@ -160,6 +160,30 @@ export async function createServer(): Promise<FastifyInstance> {
 
   app.log.info({ NEXTJS_URL }, 'Miniapp proxying to Next.js server');
 
+  // ===== SWAP SERVICE PROXY =====
+  const SWAP_SERVICE_URL = process.env.SWAP_SERVICE_URL || 'http://localhost:3002';
+
+  app.all('/swap/*', async (req, reply) => {
+    try {
+      const targetUrl = `${SWAP_SERVICE_URL}${req.url}`;
+      console.log(`[Gateway] → Swap: ${targetUrl}`);
+
+      const response = await fetch(targetUrl, {
+        method: req.method,
+        headers: { ...req.headers, 'content-type': 'application/json' } as any,
+        body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
+      });
+
+      reply.code(response.status);
+      return reply.send(await response.json());
+    } catch (err) {
+      app.log.error({ err, url: req.url }, 'Swap proxy failed');
+      return reply.code(502).send({ success: false, error: { code: 'SWAP_UNAVAILABLE', message: 'Swap service down' } });
+    }
+  });
+
+  app.log.info({ SWAP_SERVICE_URL }, 'Swap proxy configured');
+
   // Debug: log miniapp requests and expose a probe
   app.addHook('onRequest', async (req) => {
     if (req.url.startsWith('/miniapp') || req.url.startsWith('/webapp')) {

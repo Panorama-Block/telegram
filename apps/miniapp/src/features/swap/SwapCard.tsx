@@ -15,6 +15,7 @@ import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 
 import { Button, Card, Input, Label, Select } from '../../shared/ui';
+import { SwapSuccessCard } from '../../components/ui/SwapSuccessCard';
 import { networks, type Network } from './tokens';
 import {
   explorerTxUrl,
@@ -113,21 +114,21 @@ function resolveUserFacingError(err: unknown, setShowFundWallet?: (show: boolean
     if (setShowFundWallet) {
       setShowFundWallet(true);
     }
-    return 'Saldo insuficiente para cobrir o valor da transação e as taxas de rede.';
+    return 'Insufficient balance to cover the transaction value and network fees.';
   }
   if (lower.includes('gas required exceeds allowance')) {
     if (setShowFundWallet) {
       setShowFundWallet(true);
     }
-    return 'A transação exige mais gas do que está disponível.';
+    return 'The transaction requires more gas than is currently available.';
   }
   if (lower.includes('user rejected') || lower.includes('user denied')) {
-    return 'Assinatura recusada pelo usuário.';
+    return 'Signature rejected by the user.';
   }
 
   // viem/thirdweb sometimes cannot decode revert reason signatures
   if (lower.includes('abierrorsignaturenotfounderror') || lower.includes('encoded error signature')) {
-    return 'Transação revertida pelo contrato (sem motivo detalhado).';
+    return 'Transaction reverted by the contract (no detailed reason provided).';
   }
 
   return message;
@@ -146,7 +147,7 @@ const selectGrid: React.CSSProperties = {
   gap: 12,
 };
 
-// Função para extrair endereço do JWT
+// Utility to extract the wallet address from the JWT
 function getAddressFromToken(): string | null {
   try {
     const token = localStorage.getItem('authToken');
@@ -415,7 +416,11 @@ export function SwapCard() {
           chain: defineChain(t.chainId),
           client,
           data: t.data as Hex,
-          value: t.value ? BigInt(t.value as any) : 0n,
+          value: t.value != null ? BigInt(t.value as any) : 0n,
+          gas: t.gasLimit != null ? BigInt(t.gasLimit as any) : undefined,
+          maxFeePerGas: t.maxFeePerGas != null ? BigInt(t.maxFeePerGas as any) : undefined,
+          maxPriorityFeePerGas:
+            t.maxPriorityFeePerGas != null ? BigInt(t.maxPriorityFeePerGas as any) : undefined,
         });
 
         if (!account) {
@@ -508,8 +513,8 @@ export function SwapCard() {
           ? 'Connect Wallet to Swap'
           : 'Swap Tokens'
     : quoting
-      ? 'Calculando cotação…'
-      : 'Aguardando cotação…';
+      ? 'Calculating quote…'
+      : 'Waiting for quote…';
 
   const primaryVariant = quote ? 'accent' : 'primary';
   const isTelegram = typeof window !== 'undefined' && (window as any).Telegram?.WebApp;
@@ -683,7 +688,7 @@ export function SwapCard() {
             )}
             <div style={{ marginTop: 8, padding: 8, background: 'rgba(34, 197, 94, 0.1)', borderRadius: 8, border: '1px solid rgba(34, 197, 94, 0.2)' }}>
               <p style={{ margin: 0, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
-                ✅ Quote válida - Pronto para executar
+                ✅ Quote ready — you can execute the swap
               </p>
             </div>
           </div>
@@ -832,31 +837,17 @@ export function SwapCard() {
 
       {txHashes.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600 }}>Transactions</h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {txHashes.map(({ hash, chainId }) => (
-              <a
-                key={hash}
-                href={explorerTxUrl(chainId, hash) || ''}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                  color: 'var(--tg-theme-button-color, #007acc)',
-                }}
-              >
-                {hash}
-              </a>
-            ))}
-          </div>
+          <SwapSuccessCard
+            txHashes={txHashes}
+            onClose={() => setTxHashes([])}
+          />
         </div>
       )}
 
       {showFundWallet && (
         <div style={{ marginTop: 16, padding: 16, background: 'rgba(255, 193, 7, 0.1)', borderRadius: 12, border: '1px solid rgba(255, 193, 7, 0.3)' }}>
           <h4 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 600, color: '#ff6b35' }}>
-            💰 Adicionar Fundos
+            💰 Add Funds
           </h4>
           <p style={{ margin: '0 0 12px', fontSize: 14, color: 'var(--tg-theme-text-color, #333)' }}>
           </p>
@@ -866,11 +857,11 @@ export function SwapCard() {
               wallets={wallets}
               connectModal={{
                 size: 'compact',
-                title: 'Adicionar Fundos',
+                title: 'Add Funds',
                 showThirdwebBranding: false,
               }}
               connectButton={{
-                label: '💰 Adicionar ETH',
+                label: '💰 Add ETH',
                 style: {
                   width: '100%',
                   padding: '12px 20px',
@@ -889,7 +880,7 @@ export function SwapCard() {
               onClick={() => setShowFundWallet(false)}
               style={{ width: '100%' }}
             >
-              Fechar
+              Close
             </Button>
           </div>
         </div>
