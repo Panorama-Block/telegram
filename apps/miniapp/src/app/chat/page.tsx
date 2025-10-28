@@ -1835,7 +1835,7 @@ export default function ChatPage() {
                 {/* Aperture Fee */}
                 <div className="flex items-center justify-between text-xs sm:text-sm">
                   <span className="text-white font-medium">Aperture Fee</span>
-                  <span className="text-gray-400">0.25% (&lt;$0.01)</span>
+                  <span className="text-gray-400">0.9% (&lt;$0.01)</span>
                 </div>
 
                 {/* Transaction Settings */}
