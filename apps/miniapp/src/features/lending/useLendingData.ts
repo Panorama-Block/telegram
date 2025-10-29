@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useLendingApi, LendingToken, LendingPosition } from './api';
+import { useLendingApi } from './api';
+import { LendingToken, LendingPosition } from './types';
 
 export const useLendingData = () => {
   const lendingApi = useLendingApi();
@@ -44,7 +45,7 @@ export const useLendingData = () => {
     } finally {
       setLoading(false);
     }
-  }, [lendingApi, lastFetchTime]);
+  }, [lendingApi, lastFetchTime, MIN_FETCH_INTERVAL]);
 
   // Initial load
   useEffect(() => {

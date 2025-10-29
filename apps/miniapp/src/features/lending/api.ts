@@ -1,87 +1,32 @@
 'use client';
 
 import { useActiveAccount } from 'thirdweb/react';
-
-export interface LendingToken {
-  symbol: string;
-  address: string;
-  icon?: string;
-  decimals: number;
-  supplyAPY: number;
-  borrowAPY: number;
-  totalSupply: string;
-  totalBorrowed: string;
-  availableLiquidity: string;
-  collateralFactor: number;
-  isCollateral: boolean;
-}
-
-export interface LendingPosition {
-  token: LendingToken;
-  suppliedAmount: string;
-  borrowedAmount: string;
-  collateralValue: string;
-  borrowValue: string;
-  healthFactor: number;
-  liquidationThreshold: number;
-}
-
-export interface LendingAction {
-  action: 'supply' | 'withdraw' | 'borrow' | 'repay';
-  token: string;
-  amount: string;
-}
-
-export interface ValidationResponse {
-  status: number;
-  msg: string;
-  data: {
-    amount: string;
-    taxAmount: string;
-    taxRate: string;
-    restAmount: string;
-  };
-}
-
-export interface SwapResponse {
-  status: number;
-  msg: string;
-  data: {
-    chainId: string;
-    from: string;
-    to: string;
-    value: string;
-    gas: string;
-    data: string;
-    gasPrice: string;
-    referenceId: string;
-    status: string;
-    note: string;
-  };
-}
+import {
+  LendingToken,
+  LendingPosition,
+  ValidationResponse,
+  CacheStatus
+} from './types';
+import { LENDING_CONFIG, API_ENDPOINTS, FALLBACK_TOKENS } from './config';
 
 class LendingApiClient {
   private baseUrl: string;
   private account: any;
-  
-  // Cache for lending data to prevent infinite loops
   private lendingDataCache: any = null;
   private lendingDataCacheTime: number = 0;
-  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private readonly CACHE_DURATION = LENDING_CONFIG.CACHE_DURATION;
 
   constructor(account: any) {
-    this.baseUrl = process.env.NEXT_PUBLIC_LENDING_API_URL || 'http://localhost:3001';
+    this.baseUrl = process.env.NEXT_PUBLIC_LENDING_API_URL || LENDING_CONFIG.DEFAULT_API_URL;
     this.account = account;
   }
 
-  // Helper function to convert decimal to wei
   private toWei(amount: string, decimals: number = 18): string {
     const num = parseFloat(amount);
     if (isNaN(num)) return '0';
     return Math.floor(num * Math.pow(10, decimals)).toString();
   }
 
-  // Helper function to format message with proper \n before Timestamp
   private formatMessage(action: string, amount: string, tokenAddress?: string): string {
     const timestamp = Date.now();
     if (tokenAddress) {
@@ -97,7 +42,6 @@ class LendingApiClient {
     }
 
     try {
-      // Smart wallet signature using thirdweb
       const signature = await this.account.signMessage({ message });
       return signature;
     } catch (error) {
@@ -113,30 +57,23 @@ class LendingApiClient {
       signature,
       message,
       timestamp: Date.now(),
-      // Smart wallet specific data
       walletType: 'smart_wallet',
-      chainId: 43114, // Avalanche mainnet
-      // No private key needed for smart wallets
+      chainId: 43114,
       isSmartWallet: true
     };
   }
 
   async getTokens(): Promise<LendingToken[]> {
-    // Check if we have valid cached data
     const now = Date.now();
     if (this.lendingDataCache && (now - this.lendingDataCacheTime) < this.CACHE_DURATION) {
-      console.log('Using cached lending data');
       return this.lendingDataCache;
     }
 
     try {
-      console.log('Fetching fresh lending data...');
-      
-      // Try to get tokens from the API with timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
-      const response = await fetch(`${this.baseUrl}/dex/tokens`, {
+      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.TOKENS}`, {
         signal: controller.signal
       });
       
@@ -148,9 +85,6 @@ class LendingApiClient {
       
       const data = await response.json();
       
-      console.log('Raw API response for tokens:', data);
-      
-      // Handle different response structures
       let tokensArray;
       if (Array.isArray(data)) {
         tokensArray = data;
@@ -159,11 +93,9 @@ class LendingApiClient {
       } else if (data.tokens && Array.isArray(data.tokens)) {
         tokensArray = data.tokens;
       } else {
-        console.warn('Unexpected API response structure:', data);
         throw new Error('Invalid API response: expected array of tokens');
       }
       
-      // Convert API data to LendingToken format
       const tokens = tokensArray.map((token: any) => ({
         symbol: token.symbol,
         address: token.address,
@@ -177,7 +109,6 @@ class LendingApiClient {
         isCollateral: token.isCollateral || true
       }));
       
-      // Cache the result
       this.lendingDataCache = tokens;
       this.lendingDataCacheTime = now;
       
@@ -185,41 +116,12 @@ class LendingApiClient {
     } catch (error) {
       console.error('Error fetching lending tokens:', error);
       
-      // If we have cached data, use it even if expired
       if (this.lendingDataCache) {
-        console.log('Using expired cached data due to API error');
         return this.lendingDataCache;
       }
       
-      // Return fallback data
-      const fallbackTokens = [
-        {
-          symbol: 'AVAX',
-          address: '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7',
-          decimals: 18,
-          supplyAPY: 3.5,
-          borrowAPY: 5.2,
-          totalSupply: '0',
-          totalBorrowed: '0',
-          availableLiquidity: '0',
-          collateralFactor: 0.8,
-          isCollateral: true
-        },
-        {
-          symbol: 'USDC',
-          address: '0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664',
-          decimals: 6,
-          supplyAPY: 2.8,
-          borrowAPY: 4.5,
-          totalSupply: '0',
-          totalBorrowed: '0',
-          availableLiquidity: '0',
-          collateralFactor: 0.9,
-          isCollateral: true
-        }
-      ];
+      const fallbackTokens = [...FALLBACK_TOKENS];
       
-      // Cache fallback data to prevent repeated failures
       this.lendingDataCache = fallbackTokens;
       this.lendingDataCacheTime = now;
       
@@ -234,7 +136,7 @@ class LendingApiClient {
       const message = this.formatMessage('Get lending position', '');
       const authData = await this.getAuthData(message);
       
-      const response = await fetch(`${this.baseUrl}/lending/position`, {
+      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.POSITION}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(authData)
@@ -254,7 +156,7 @@ class LendingApiClient {
       const message = this.formatMessage('Calculate tax for amount', amountInWei);
       const authData = await this.getAuthData(message);
       
-      const response = await fetch(`${this.baseUrl}/validation/calculate`, {
+      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.CALCULATE_TAX}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -276,7 +178,7 @@ class LendingApiClient {
       const message = this.formatMessage('Validate and supply', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
       
-      const response = await fetch(`${this.baseUrl}/benqi-validation/validateAndSupply`, {
+      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.PREPARE_SUPPLY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -303,13 +205,7 @@ class LendingApiClient {
       const message = this.formatMessage('Withdraw', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
       
-      console.log('Preparing withdraw with data:', {
-        tokenAddress,
-        amount: amountInWei,
-        message
-      });
-      
-      const response = await fetch(`${this.baseUrl}/benqi-validation/validateAndWithdraw`, {
+      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.PREPARE_WITHDRAW}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -325,10 +221,7 @@ class LendingApiClient {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
-      console.log('Withdraw API response:', data);
-      
-      return data;
+      return await response.json();
     } catch (error) {
       console.error('Error preparing withdraw:', error);
       throw new Error('Failed to prepare withdraw transaction');
@@ -341,7 +234,7 @@ class LendingApiClient {
       const message = this.formatMessage('Validate and borrow', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
       
-      const response = await fetch(`${this.baseUrl}/benqi-validation/validateAndBorrow`, {
+      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.PREPARE_BORROW}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -368,13 +261,7 @@ class LendingApiClient {
       const message = this.formatMessage('Repay', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
       
-      console.log('Preparing repay with data:', {
-        tokenAddress,
-        amount: amountInWei,
-        message
-      });
-      
-      const response = await fetch(`${this.baseUrl}/benqi-validation/validateAndRepay`, {
+      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.PREPARE_REPAY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -390,10 +277,7 @@ class LendingApiClient {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
-      console.log('Repay API response:', data);
-      
-      return data;
+      return await response.json();
     } catch (error) {
       console.error('Error preparing repay:', error);
       throw new Error('Failed to prepare repay transaction');
@@ -406,84 +290,43 @@ class LendingApiClient {
         throw new Error('Account not connected');
       }
 
-      console.log('Raw transaction data received:', txData);
-
-      // Extract transaction data (now we expect it to be properly structured)
       const toAddress = txData.to;
       const value = txData.value;
       const data = txData.data;
       const gas = txData.gasLimit || txData.gas;
       const gasPrice = txData.gasPrice;
 
-      console.log('Extracted transaction data:', {
-        toAddress,
-        value,
-        data,
-        gas,
-        gasPrice
-      });
-
-      // Validate required fields
       if (!toAddress || !data) {
         throw new Error(`Invalid transaction data: missing to address (${toAddress}) or data (${data})`);
       }
 
-      // Ensure to address is valid (42 characters starting with 0x)
       if (!/^0x[a-fA-F0-9]{40}$/.test(toAddress)) {
         throw new Error(`Invalid to address: ${toAddress}`);
       }
 
-      // Format transaction data for thirdweb/MetaMask
       const formattedTxData = {
         to: toAddress,
-        value: value ? `0x${parseInt(value).toString(16)}` : '0x0', // Convert to hex
+        value: value ? `0x${parseInt(value).toString(16)}` : '0x0',
         data: data,
-        gas: gas ? `0x${parseInt(gas).toString(16)}` : '0x5208', // Convert to hex
-        gasPrice: gasPrice ? `0x${parseInt(gasPrice).toString(16)}` : undefined // Convert to hex or undefined
+        gas: gas ? `0x${parseInt(gas).toString(16)}` : '0x5208',
+        gasPrice: gasPrice ? `0x${parseInt(gasPrice).toString(16)}` : undefined
       };
 
-      // Remove gasPrice if it's 0 or undefined to let MetaMask estimate
       if (formattedTxData.gasPrice === '0x0' || !formattedTxData.gasPrice) {
         delete formattedTxData.gasPrice;
       }
 
-      console.log('Formatted transaction data for thirdweb:', formattedTxData);
-
-      // Validate final transaction data
       if (!formattedTxData.to || !formattedTxData.data) {
         throw new Error('Invalid transaction data after formatting');
       }
 
-      console.log('Sending transaction to thirdweb...');
-      
-      // Executar transação usando thirdweb
       const tx = await this.account.sendTransaction(formattedTxData);
-      console.log('Transaction sent, waiting for receipt...', tx);
       
-      // Wait for transaction confirmation
-      let receipt;
       if (tx.transactionHash) {
-        console.log('Transaction hash received:', tx.transactionHash);
-        console.log('Waiting for transaction confirmation...');
-        
-        // For now, we'll consider the transaction successful if we get a hash
-        // In a production environment, you might want to poll for the actual receipt
-        receipt = { 
-          status: 1, 
-          transactionHash: tx.transactionHash,
-          blockNumber: 'pending'
-        };
-        
-        console.log('Transaction submitted successfully!');
-        console.log('Transaction hash:', tx.transactionHash);
-        console.log('You can check the transaction status on a block explorer.');
+        return true;
       } else {
         throw new Error('No transaction hash received');
       }
-      
-      console.log('Transaction receipt:', receipt);
-      
-      return receipt.status === 1;
     } catch (error) {
       console.error('Error executing transaction:', error);
       throw new Error(`Transaction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -496,7 +339,7 @@ class LendingApiClient {
       const message = this.formatMessage('Get validation and supply quote for', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
       
-      const response = await fetch(`${this.baseUrl}/benqi-validation/getValidationAndSupplyQuote`, {
+      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.SUPPLY_QUOTE}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -523,7 +366,7 @@ class LendingApiClient {
       const message = this.formatMessage('Get validation and borrow quote for', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
       
-      const response = await fetch(`${this.baseUrl}/benqi-validation/getValidationAndBorrowQuote`, {
+      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.BORROW_QUOTE}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -544,15 +387,12 @@ class LendingApiClient {
     }
   }
 
-  // Method to clear cache (useful for testing or manual refresh)
   clearLendingDataCache(): void {
     this.lendingDataCache = null;
     this.lendingDataCacheTime = 0;
-    console.log('Lending data cache cleared');
   }
 
-  // Method to get cache status (useful for debugging)
-  getCacheStatus(): { hasCache: boolean; cacheAge: number; isExpired: boolean } {
+  getCacheStatus(): CacheStatus {
     const now = Date.now();
     const cacheAge = this.lendingDataCacheTime ? now - this.lendingDataCacheTime : 0;
     const isExpired = cacheAge > this.CACHE_DURATION;
@@ -565,7 +405,6 @@ class LendingApiClient {
   }
 
   private calculateAPY(rate: number): number {
-    // Converter taxa anual para APY
     return rate * 100;
   }
 }

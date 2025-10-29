@@ -6,8 +6,10 @@ import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
 import { useActiveAccount } from 'thirdweb/react';
-import { useLendingApi, LendingToken } from '@/features/lending/api';
+import { useLendingApi } from '@/features/lending/api';
 import { useLendingData } from '@/features/lending/useLendingData';
+import { VALIDATION_FEE } from '@/features/lending/config';
+import { LendingToken } from '@/features/lending/types';
 
 type LendingActionType = 'supply' | 'withdraw' | 'borrow' | 'repay';
 
@@ -563,6 +565,35 @@ export default function LendingPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Validation Fee Information */}
+              {amount && parseFloat(amount) > 0 && selectedToken && (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-6">
+                  <div className="flex items-start gap-2 mb-2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-yellow-400 mt-0.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <h4 className="text-yellow-400 font-semibold text-sm">Validation Fee</h4>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">Total Amount:</span>
+                      <span className="text-white font-medium">{amount} {selectedToken.symbol}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">Validation Fee ({VALIDATION_FEE.PERCENTAGE}%):</span>
+                      <span className="text-yellow-400 font-medium">{(parseFloat(amount) * VALIDATION_FEE.RATE).toFixed(8)} {selectedToken.symbol}</span>
+                    </div>
+                    <div className="flex justify-between pt-2 border-t border-yellow-500/20">
+                      <span className="text-gray-300 font-medium">Net Amount:</span>
+                      <span className="text-white font-semibold">{(parseFloat(amount) * VALIDATION_FEE.NET_RATE).toFixed(8)} {selectedToken.symbol}</span>
+                    </div>
+                    <p className="text-yellow-400/80 text-xs mt-2">
+                      The validation contract charges a {VALIDATION_FEE.PERCENTAGE}% fee. Only {VALIDATION_FEE.NET_PERCENTAGE}% of your amount will be used for the {action} operation.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Token Info */}
               {selectedToken && (
