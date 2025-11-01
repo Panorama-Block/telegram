@@ -36,6 +36,7 @@ import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction,
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx, QuoteResponse } from '@/features/swap/types';
 import { Button } from '@/components/ui/button';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 
 
 interface Message {
@@ -975,7 +976,7 @@ export default function ChatPage() {
   }
 
   return (
-    <>
+    <ProtectedRoute>
       <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
       <GlobalLoader isLoading={isNavigating} message="Loading Swap..." />
       <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
@@ -1042,7 +1043,7 @@ export default function ChatPage() {
                             }}
                             className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
                           >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4BC3C5" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                             </svg>
                             Chat
@@ -1083,7 +1084,7 @@ export default function ChatPage() {
             </button>
 
             {/* Wallet Address Display */}
-            {(account?.address || getWalletAddress()) ? (
+            {(account?.address || getWalletAddress()) && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
                 <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
                 <span className="text-white text-xs font-mono">
@@ -1094,13 +1095,6 @@ export default function ChatPage() {
                       : ''}
                 </span>
               </div>
-            ) : (
-              <button
-                onClick={() => router.push('/auth')}
-                className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-medium transition-colors"
-              >
-                Connect Wallet
-              </button>
             )}
           </div>
         </div>
@@ -1981,6 +1975,6 @@ export default function ChatPage() {
           </div>
         </>
       )}
-    </>
+    </ProtectedRoute>
   );
 }

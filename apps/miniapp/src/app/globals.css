@@ -388,6 +388,36 @@ body {
   background: rgba(107, 114, 128, 0.7);
 }
 
+/* Custom scrollbar for modal - Modern & Clean */
+.custom-scrollbar-modal {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scroll-behavior: smooth;
+}
+
+.custom-scrollbar-modal::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar-modal::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  margin: 4px 0;
+}
+
+.custom-scrollbar-modal::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.2s ease;
+}
+
+.custom-scrollbar-modal::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+  background-clip: padding-box;
+}
+
 /* PanoramaBlock Design System v2.0 Utility Classes */
 
 /* Glass morphism effect */
