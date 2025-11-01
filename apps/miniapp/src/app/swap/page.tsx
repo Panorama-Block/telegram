@@ -15,6 +15,8 @@ import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction,
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx } from '@/features/swap/types';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
 
 interface TokenSelectorProps {
   isOpen: boolean;
@@ -29,26 +31,6 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
   const [selectedChain, setSelectedChain] = useState<number | null>(currentChainId);
 
   if (!isOpen) return null;
-
-  // Popular tokens (using token logos from public CDN)
-  const getTokenIcon = (symbol: string) => {
-    const iconMap: Record<string, string> = {
-      'ETH': 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
-      'USDC': 'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
-      'USDT': 'https://assets.coingecko.com/coins/images/325/small/Tether.png',
-      'WBTC': 'https://assets.coingecko.com/coins/images/7598/small/wrapped_bitcoin_wbtc.png',
-      'WETH': 'https://assets.coingecko.com/coins/images/2518/small/weth.png',
-    };
-    return iconMap[symbol] || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
-  };
-
-  const popularTokens = [
-    { symbol: 'ETH', icon: getTokenIcon('ETH') },
-    { symbol: 'USDC', icon: getTokenIcon('USDC') },
-    { symbol: 'USDT', icon: getTokenIcon('USDT') },
-    { symbol: 'WBTC', icon: getTokenIcon('WBTC') },
-    { symbol: 'WETH', icon: getTokenIcon('WETH') },
-  ];
 
   // Get all tokens from selected chain or all chains
   const allTokens = selectedChain
@@ -70,55 +52,56 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
   return (
     <>
       <div
-        className="fixed inset-0 bg-black/80 backdrop-blur-md z-50"
+        className="fixed inset-0 bg-black/40 backdrop-blur-md z-50 animate-fadeIn"
         onClick={onClose}
       />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center z-50 p-4">
-        <div className="bg-black border border-white/20 rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden shadow-2xl">
+      <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+        <div className="bg-[#1A1A1A]/95 backdrop-blur-2xl border border-white/10 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-scaleIn">
           {/* Header */}
-          <div className="p-4 border-b border-white/10 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">{title}</h2>
+          <div className="p-5 border-b border-white/5 flex items-center justify-between bg-[#252525]/30">
+            <h2 className="text-xl font-semibold text-white">{title}</h2>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors"
+              className="text-gray-400 hover:text-white transition-all hover:rotate-90 duration-300 p-1 rounded-lg hover:bg-white/5"
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
 
           {/* Search */}
-          <div className="p-4 border-b border-white/10">
+          <div className="p-5 border-b border-white/5">
             <div className="relative">
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search tokens"
-                className="w-full px-4 py-3 pl-10 rounded-lg bg-white/5 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-white/40"
+                placeholder="Search tokens by name or address..."
+                className="w-full px-4 py-3.5 pl-11 rounded-xl bg-[#252525] border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-white/30 focus:bg-[#2A2A2A] transition-all"
               />
               <svg
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-500"
                 width="20"
                 height="20"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
+                strokeWidth={2}
               >
-                <circle cx="11" cy="11" r="8" strokeWidth={2} />
-                <path strokeLinecap="round" strokeWidth={2} d="m21 21-4.35-4.35" />
+                <circle cx="11" cy="11" r="8" />
+                <path strokeLinecap="round" d="m21 21-4.35-4.35" />
               </svg>
             </div>
 
             {/* Chain selector */}
-            <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-2 custom-scrollbar">
+            <div className="flex items-center gap-2 mt-4 overflow-x-auto pb-2 scrollbar-hide">
               <button
                 onClick={() => setSelectedChain(null)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
+                className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 ${
                   selectedChain === null
                     ? 'bg-white text-black'
-                    : 'bg-white/10 text-white hover:bg-white/20'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
                 }`}
               >
                 All Chains
@@ -127,10 +110,10 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
                 <button
                   key={network.chainId}
                   onClick={() => setSelectedChain(network.chainId)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
+                  className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 ${
                     selectedChain === network.chainId
                       ? 'bg-white text-black'
-                      : 'bg-white/10 text-white hover:bg-white/20'
+                      : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
                   }`}
                 >
                   {network.name}
@@ -139,48 +122,13 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
             </div>
           </div>
 
-          {/* Popular Tokens */}
-          {!search && (
-            <div className="px-4 py-3 border-b border-white/10">
-              <div className="grid grid-cols-3 gap-2">
-                {popularTokens.slice(0, 6).map((token) => (
-                  <button
-                    key={token.symbol}
-                    onClick={() => {
-                      const fullToken = allTokens.find(t => t.symbol === token.symbol);
-                      if (fullToken) {
-                        onSelect(fullToken, selectedChain || currentChainId);
-                        onClose();
-                      }
-                    }}
-                    className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
-                  >
-                    <Image
-                      src={token.icon}
-                      alt={token.symbol}
-                      width={24}
-                      height={24}
-                      className="w-6 h-6 rounded-full"
-                      unoptimized
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
-                      }}
-                    />
-                    <span className="text-xs font-medium text-white truncate w-full text-center">{token.symbol}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Token List */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
-            <div className="p-2">
+          <div className="flex-1 overflow-y-auto custom-scrollbar-modal">
+            <div className="p-3">
               {!search && (
-                <div className="px-2 py-2 flex items-center gap-2 text-xs text-gray-400">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                <div className="px-3 py-2.5 flex items-center gap-2 text-xs text-gray-500 mb-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                   </svg>
                   Tokens by 24H volume
                 </div>
@@ -192,14 +140,14 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
                     onSelect(token, selectedChain || currentChainId);
                     onClose();
                   }}
-                  className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/5 transition-colors text-left min-w-0"
+                  className="w-full flex items-center gap-3.5 px-3.5 py-3.5 rounded-xl hover:bg-[#252525] transition-all text-left min-w-0 border border-transparent hover:border-white/10 group"
                 >
                   <Image
                     src={token.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
                     alt={token.symbol}
-                    width={32}
-                    height={32}
-                    className="w-8 h-8 rounded-full flex-shrink-0"
+                    width={36}
+                    height={36}
+                    className="w-9 h-9 rounded-full flex-shrink-0 group-hover:scale-105 transition-transform"
                     unoptimized
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
@@ -207,11 +155,20 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
                     }}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-white truncate">{token.symbol}</div>
-                    <div className="text-xs text-gray-400 truncate">
+                    <div className="text-sm font-semibold text-white truncate">{token.symbol}</div>
+                    <div className="text-xs text-gray-500 truncate font-mono">
                       {token.address.slice(0, 6)}...{token.address.slice(-4)}
                     </div>
                   </div>
+                  <svg
+                    className="w-5 h-5 text-gray-600 group-hover:text-gray-400 transition-colors flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
                 </button>
               ))}
             </div>
@@ -575,14 +532,18 @@ export default function SwapPage() {
   };
 
   return (
-    <div className="h-screen bg-black text-white flex flex-col overflow-hidden">
+    <ProtectedRoute>
+      <div className="h-screen text-white flex flex-col overflow-hidden relative">
+      {/* Animated Background */}
+      <AnimatedBackground />
+
       {/* Top Navbar - Same as chat */}
-      <header className="flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
+      <header className="flex-shrink-0 bg-black/40 backdrop-blur-md border-b-2 border-white/15 px-6 py-3 z-50">
         <div className="flex items-center justify-between max-w-[1920px] mx-auto">
           {/* Left: Logo */}
           <div className="flex items-center gap-2">
             <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
-            <span className="text-white font-semibold text-sm tracking-wide">PANORAMA BLOCK</span>
+            <span className="text-white font-semibold text-sm tracking-wide hidden md:inline">PANORAMA BLOCK</span>
           </div>
 
           {/* Right: Explore + Docs + Notifications + Wallet Address */}
@@ -617,8 +578,8 @@ export default function SwapPage() {
                           }}
                           className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
                         >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" stroke="#4BC3C5" fill="none" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                           </svg>
                           Chat
                         </button>
@@ -629,7 +590,9 @@ export default function SwapPage() {
                           }}
                           className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
                         >
-                          <Image src={SwapIcon} alt="Swap" width={16} height={16} />
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" stroke="#4BC3C5" fill="none" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                          </svg>
                           Swap
                         </button>
                       </div>
@@ -657,7 +620,7 @@ export default function SwapPage() {
             </button>
 
             {/* Wallet Address Display */}
-            {(account?.address || getWalletAddress()) ? (
+            {(account?.address || getWalletAddress()) && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
                 <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
                 <span className="text-white text-xs font-mono">
@@ -668,13 +631,6 @@ export default function SwapPage() {
                       : ''}
                 </span>
               </div>
-            ) : (
-              <button
-                onClick={() => router.push('/auth')}
-                className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-medium transition-colors"
-              >
-                Connect Wallet
-              </button>
             )}
           </div>
         </div>
@@ -686,7 +642,7 @@ export default function SwapPage() {
         <div className="h-full flex items-center justify-center p-4">
           <div className="w-full max-w-xs">
             {/* Swap Card */}
-            <div className="bg-[#1A1A1A] rounded-2xl p-4 shadow-2xl">
+            <div className="bg-[#1A1A1A]/90 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/5">
               {/* Sell Section */}
               <div className="mb-2">
                 <label className="text-xs text-gray-400 mb-2 block">Sell</label>
@@ -865,8 +821,8 @@ export default function SwapPage() {
 
               {/* Fund Wallet Modal */}
               {showFundWallet && client && (
-                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-                  <div className="bg-[#1a1a1a] border border-cyan-500/30 rounded-2xl max-w-md w-full p-6 relative">
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-lg z-50 flex items-center justify-center p-4">
+                  <div className="bg-[#1a1a1a]/90 backdrop-blur-2xl border border-cyan-500/30 rounded-2xl max-w-md w-full p-6 relative shadow-2xl">
                     <button
                       onClick={() => setShowFundWallet(false)}
                       className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
@@ -939,6 +895,7 @@ export default function SwapPage() {
         title="Select a token to buy"
         currentChainId={toChainId}
       />
-    </div>
+      </div>
+    </ProtectedRoute>
   );
 }
