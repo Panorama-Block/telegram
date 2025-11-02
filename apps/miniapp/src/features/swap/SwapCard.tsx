@@ -14,7 +14,7 @@ import { inAppWallet, createWallet } from 'thirdweb/wallets';
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 
-import { Button, Card, Input, Label, Select } from '../../shared/ui';
+import { Button, Card, Input, Label, Select, ErrorStateCard } from '../../shared/ui';
 import { SwapSuccessCard } from '../../components/ui/SwapSuccessCard';
 import { networks, type Network } from './tokens';
 import {
@@ -97,7 +97,7 @@ function formatForDebug(value: unknown): string {
   }
 }
 
-function resolveUserFacingError(err: unknown, setShowFundWallet?: (show: boolean) => void): string {
+function resolveGenericErrorMessage(err: unknown, setShowFundWallet?: (show: boolean) => void): string {
   const message = (() => {
     if (!err) return 'Erro desconhecido';
     if (err instanceof Error) return err.message;
@@ -165,6 +165,22 @@ function getAddressFromToken(): string | null {
   }
 }
 
+type UiErrorState = {
+  title: string;
+  description: string;
+  category: 'user-action' | 'temporary' | 'blocked' | 'unknown';
+  primaryLabel: string;
+  canRetry: boolean;
+  traceId?: string;
+  retryAfterSeconds?: number;
+  retryAvailableAt?: number;
+  secondaryAction?: {
+    type: 'support' | 'docs';
+    label: string;
+    href?: string;
+  };
+};
+
 export function SwapCard() {
   const account = useActiveAccount();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
@@ -224,12 +240,14 @@ export function SwapCard() {
   const [amount, setAmount] = useState<string>('');
 
   const [quoting, setQuoting] = useState(false);
-  const [quote, setQuote] = useState<any | null>(null);
-  const [preparing, setPreparing] = useState(false);
-  const [executing, setExecuting] = useState(false);
-  const [txHashes, setTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [showFundWallet, setShowFundWallet] = useState(false);
+const [quote, setQuote] = useState<any | null>(null);
+const [preparing, setPreparing] = useState(false);
+const [executing, setExecuting] = useState(false);
+const [txHashes, setTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
+const [errorState, setErrorState] = useState<UiErrorState | null>(null);
+const retryHandlerRef = useRef<(() => void) | null>(null);
+const [, setRetryRefreshTick] = useState(0);
+const [showFundWallet, setShowFundWallet] = useState(false);
   const [debugInfo, setDebugInfo] = useState<{
     context: 'quote' | 'prepare';
     url?: string;
@@ -238,8 +256,19 @@ export function SwapCard() {
     response?: unknown;
     causeMessage?: string;
   } | null>(null);
-  const quoteRequestRef = useRef(0);
-  const [toTokenDecimals, setToTokenDecimals] = useState<number>(18);
+const quoteRequestRef = useRef(0);
+const [toTokenDecimals, setToTokenDecimals] = useState<number>(18);
+
+useEffect(() => {
+  if (typeof window === 'undefined') return;
+  if (!errorState?.retryAvailableAt) return;
+  const diff = errorState.retryAvailableAt - Date.now();
+  if (diff <= 0) return;
+  const timer = window.setTimeout(() => {
+    setRetryRefreshTick((tick) => tick + 1);
+  }, diff + 25);
+  return () => window.clearTimeout(timer);
+}, [errorState?.retryAvailableAt]);
 
   useEffect(() => {
     const next = networks.find((n) => n.chainId === fromChainId);
@@ -294,8 +323,8 @@ export function SwapCard() {
     return Boolean(fromChainId && toChainId && fromToken && toToken && amount && Number(amount) > 0);
   }, [fromChainId, toChainId, fromToken, toToken, amount]);
 
-  useEffect(() => {
-    const requestId = ++quoteRequestRef.current;
+useEffect(() => {
+  const requestId = ++quoteRequestRef.current;
 
     if (!canSubmit) {
       setQuote(null);
@@ -315,9 +344,65 @@ export function SwapCard() {
     };
   }, [canSubmit, fromChainId, toChainId, fromToken, toToken, amount, effectiveAddress]);
 
+  function clearErrorState() {
+    setErrorState(null);
+    retryHandlerRef.current = null;
+  }
+
+  function pushErrorState(state: UiErrorState, onRetry: () => void) {
+    setErrorState(state);
+    retryHandlerRef.current = onRetry;
+  }
+
+  function applyThrowableAsError(
+    throwable: unknown,
+    contextTitle: string,
+    onRetry: () => void
+  ) {
+    if (throwable instanceof SwapApiError && throwable.userFacingError) {
+      const data = throwable.userFacingError;
+
+      if (data.code === 'INSUFFICIENT_BALANCE') {
+        setShowFundWallet(true);
+      }
+
+      const disabledUntilRaw = data.actions?.primary?.disabledUntil;
+      const disabledUntil = disabledUntilRaw ? Date.parse(disabledUntilRaw) : undefined;
+
+      pushErrorState(
+        {
+          title: data.title,
+          description: data.description,
+          category: data.category as UiErrorState['category'],
+          primaryLabel: data.actions?.primary?.label || 'Tentar novamente',
+          canRetry: data.canRetry !== false,
+          traceId: throwable.traceId || data.traceId,
+          retryAfterSeconds: data.retryAfterSeconds,
+          retryAvailableAt: Number.isFinite(disabledUntil) ? disabledUntil : undefined,
+          secondaryAction: data.actions?.secondary,
+        },
+        onRetry
+      );
+      return;
+    }
+
+    const message = resolveGenericErrorMessage(throwable, setShowFundWallet);
+    pushErrorState(
+      {
+        title: contextTitle,
+        description: message,
+        category: 'unknown',
+        primaryLabel: 'Tentar novamente',
+        canRetry: true,
+        traceId: throwable instanceof SwapApiError ? throwable.traceId : undefined,
+      },
+      onRetry
+    );
+  }
+
   async function performQuote(requestId: number) {
     if (!canSubmit) return;
-    setError(null);
+    clearErrorState();
     setDebugInfo(null);
     try {
       setQuoting(true);
@@ -354,7 +439,14 @@ export function SwapCard() {
           causeMessage: e.cause instanceof Error ? e.cause.message : undefined,
         });
       }
-      setError(resolveUserFacingError(e, setShowFundWallet));
+      applyThrowableAsError(
+        e,
+        'Não foi possível calcular a cotação',
+        () => {
+          const nextId = ++quoteRequestRef.current;
+          void performQuote(nextId);
+        }
+      );
     } finally {
       if (quoteRequestRef.current === requestId) {
         setQuoting(false);
@@ -375,14 +467,32 @@ export function SwapCard() {
   }
 
   async function onSwap() {
-    setError(null);
+    clearErrorState();
     setTxHashes([]);
     if (!effectiveAddress) {
-      setError('Authentication required. Please ensure you are logged in.');
+      pushErrorState(
+        {
+          title: 'Autenticação necessária',
+          description: 'Authentication required. Please ensure you are logged in.',
+          category: 'blocked',
+          primaryLabel: 'Tentar novamente',
+          canRetry: true,
+        },
+        onSwap
+      );
       return;
     }
     if (!clientId || !client) {
-      setError('Missing THIRDWEB client configuration.');
+      pushErrorState(
+        {
+          title: 'Configuração incompleta',
+          description: 'Missing THIRDWEB client configuration.',
+          category: 'blocked',
+          primaryLabel: 'Tentar novamente',
+          canRetry: true,
+        },
+        onSwap
+      );
       return;
     }
     setDebugInfo(null);
@@ -454,7 +564,11 @@ export function SwapCard() {
           causeMessage: e.cause instanceof Error ? e.cause.message : undefined,
         });
       }
-      setError(resolveUserFacingError(e, setShowFundWallet));
+      applyThrowableAsError(
+        e,
+        'Não foi possível preparar ou executar o swap',
+        onSwap
+      );
     } finally {
       setPreparing(false);
       setExecuting(false);
@@ -519,6 +633,23 @@ export function SwapCard() {
   const primaryVariant = quote ? 'accent' : 'primary';
   const isTelegram = typeof window !== 'undefined' && (window as any).Telegram?.WebApp;
   const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isRetryCoolingDown =
+    !!(errorState?.retryAvailableAt && errorState.retryAvailableAt > Date.now());
+  const retryDisabled =
+    !errorState?.canRetry || isRetryCoolingDown;
+  const retrySecondsHint = errorState
+    ? (errorState.retryAvailableAt
+        ? Math.max(0, Math.ceil((errorState.retryAvailableAt - Date.now()) / 1000))
+        : errorState.retryAfterSeconds)
+    : undefined;
+
+  const handleErrorRetry = () => {
+    if (retryDisabled) return;
+    const retry = retryHandlerRef.current;
+    if (!retry) return;
+    clearErrorState();
+    retry();
+  };
 
   return (
     <Card padding={20} tone="muted">
@@ -743,10 +874,18 @@ export function SwapCard() {
         )}
       </div>
 
-      {error && (
-        <div style={{ color: '#ef4444', marginTop: 16, fontSize: 13 }}>
-          {error}
-        </div>
+      {errorState && (
+        <ErrorStateCard
+          title={errorState.title}
+          description={errorState.description}
+          category={errorState.category}
+          primaryLabel={errorState.primaryLabel}
+          onPrimaryAction={handleErrorRetry}
+          primaryDisabled={retryDisabled}
+          secondaryAction={errorState.secondaryAction}
+          traceId={errorState.traceId}
+          retryAfterSeconds={retrySecondsHint}
+        />
       )}
 
       {quote && isTelegram && isiOS && (
