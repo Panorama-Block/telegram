@@ -88,6 +88,7 @@ export type QuoteResponse = {
       totalFee?: string;
       totalFeeUsd?: string;
     };
+    provider?: string; // Provider used for quote (e.g., 'uniswap-trading-api')
   };
   message?: string;
 };
@@ -99,6 +100,7 @@ export type PrepareRequest = {
   toToken: string;
   amount: string; // wei string
   sender?: string;
+  provider?: string; // Optional: force specific provider (from quote response)
 };
 
 export type PreparedTx = {
@@ -120,7 +122,9 @@ export type PrepareResponse = {
       transactions: PreparedTx[];
     }>;
     estimatedExecutionTimeMs?: number;
+    metadata?: Record<string, any>;
   };
+  provider?: string; // Provider name (e.g., 'uniswap-smart-router', 'thirdweb')
   message?: string;
 };
 
