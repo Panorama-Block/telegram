@@ -1873,7 +1873,7 @@ export default function ChatPage() {
                 {/* Transaction Settings */}
                 <div className="space-y-2 sm:space-y-3">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-white font-medium text-xs sm:text-sm">Transaction Setting</span>
+                    <span className="text-white font-medium text-xs sm:text-sm">Transaction Settings</span>
                     <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
                       Change Settings
                     </button>
