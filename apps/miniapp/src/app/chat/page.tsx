@@ -1304,7 +1304,7 @@ export default function ChatPage() {
                       </h3>
 
                       {/* Description */}
-                      <p className="text-[9px] sm:text-[8px] md:text-[9px] lg:text-[10px] xl:text-xs 2xl:text-sm text-gray-400 leading-snug mb-2 sm:mb-1.5 md:mb-2 lg:mb-2.5 xl:mb-3 flex-1 line-clamp-3 sm:line-clamp-2">
+                      <p className="text-[9px] sm:text-[8px] md:text-[9px] lg:text-[10px] xl:text-xs 2xl:text-sm text-gray-400 leading-snug mb-2 sm:mb-1.5 md:mb-2 lg:mb-2.5 xl:mb-3 flex-1">
                         {feature.description}
                       </p>
 
