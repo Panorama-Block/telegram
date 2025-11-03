@@ -232,6 +232,11 @@ export default function SwapPage() {
   const [txHashes, setTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
   const quoteRequestRef = useRef(0);
 
+  // Swap flow states
+  const [swapFlowStep, setSwapFlowStep] = useState<'routing' | 'details' | 'confirm' | null>(null);
+  const [tosAccepted, setTosAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+
   // Check if we can request quote
   const canQuote = useMemo(() => {
     return Boolean(sellToken && buyToken && sellAmount && Number(sellAmount) > 0);
@@ -330,7 +335,29 @@ export default function SwapPage() {
     return out;
   }
 
-  async function handleStartSwap() {
+  // Function to start swap flow - opens first modal
+  function handleStartSwap() {
+    if (!quote) {
+      setError('Please wait for the quote to be calculated');
+      return;
+    }
+
+    if (!effectiveAddress) {
+      setError('Authentication required. Please ensure you are logged in.');
+      return;
+    }
+
+    if (!clientId || !client) {
+      setError('Missing THIRDWEB client configuration.');
+      return;
+    }
+
+    // Open the first modal in the flow
+    setSwapFlowStep('routing');
+  }
+
+  // Function to execute swap after confirmation
+  async function executeSwap() {
     if (!quote) {
       setError('Please wait for the quote to be calculated');
       return;
@@ -348,6 +375,7 @@ export default function SwapPage() {
 
     setError(null);
     setSuccess(false);
+    setSwapFlowStep(null);
 
     try {
       // Switch to the correct chain FIRST, before doing anything else
@@ -953,6 +981,311 @@ export default function SwapPage() {
         title="Select a token to buy"
         currentChainId={toChainId}
       />
+
+      {/* Order Routing Modal */}
+      {swapFlowStep === 'routing' && quote && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+            // Just close the modal, keep swap state so user can resume
+            setSwapFlowStep(null);
+          }} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
+                <h3 className="text-base sm:text-lg font-semibold text-white">Order Routing</h3>
+                <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4">
+                {/* Route Info */}
+                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-3 sm:mb-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-5 h-5 rounded-full bg-cyan-400 flex items-center justify-center">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="text-xs sm:text-sm text-cyan-400 font-semibold">Best price route</span>
+                  </div>
+
+                  <div className="space-y-2 sm:space-y-3">
+                    <div className="space-y-2">
+                      <div className="flex items-start sm:items-center justify-between gap-2">
+                        <div className="text-sm sm:text-base font-medium text-white break-words">
+                          Swap {sellToken.symbol} to {buyToken?.symbol || 'Token'}
+                        </div>
+                        <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1 flex-shrink-0">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          FAST
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs sm:text-sm">
+                        <span className="text-gray-400">Amount in</span>
+                        <span className="text-white font-medium text-right break-words">
+                          {sellAmount} {sellToken.symbol}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs sm:text-sm">
+                        <span className="text-gray-400">Expected Amount Out</span>
+                        <span className="text-white font-medium text-right break-words">
+                          {buyAmount} {buyToken?.symbol || ''}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] sm:text-xs">
+                        <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
+                        <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
+                          {(parseFloat(buyAmount || '0') * 0.99).toFixed(6)} {buyToken?.symbol || ''}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
+                <button
+                  onClick={() => setSwapFlowStep('details')}
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors"
+                >
+                  Continue
+                </button>
+                <div className="mt-2 sm:mt-3 flex items-center justify-center gap-2 text-xs sm:text-sm text-gray-400">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
+                  </div>
+                  <span>Powered by Uniswap</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Swap Details Modal */}
+      {swapFlowStep === 'details' && quote && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+            // Just close the modal, keep swap state so user can resume
+            setSwapFlowStep(null);
+          }} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
+                <h3 className="text-base sm:text-lg font-semibold text-white">Swap Details</h3>
+                <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 space-y-3 sm:space-y-4">
+                {/* Swap Summary */}
+                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                  <div className="text-sm sm:text-base font-semibold text-white mb-3 sm:mb-4 break-words">
+                    Swap {sellToken.symbol} to {buyToken?.symbol || 'Token'}
+                  </div>
+
+                  <div className="space-y-2 sm:space-y-2.5">
+                    <div className="flex items-center justify-between text-xs sm:text-sm">
+                      <span className="text-gray-400">Amount in</span>
+                      <span className="text-white font-medium text-right break-words">
+                        {sellAmount} {sellToken.symbol}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] sm:text-xs">
+                      <span className="text-gray-400 text-[11px] sm:text-xs">Expected Amount Out</span>
+                      <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
+                        {buyAmount} {buyToken?.symbol || ''}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] sm:text-xs">
+                      <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
+                      <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
+                        {(parseFloat(buyAmount || '0') * 0.99).toFixed(6)} {buyToken?.symbol || ''}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Network Info */}
+                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                  <div className="text-xs sm:text-sm font-semibold text-white mb-2 sm:mb-3">Network Information</div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px] sm:text-xs">
+                      <span className="text-gray-400">From Chain</span>
+                      <span className="text-white font-medium">
+                        {networks.find(n => n.chainId === fromChainId)?.name || `Chain ${fromChainId}`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] sm:text-xs">
+                      <span className="text-gray-400">To Chain</span>
+                      <span className="text-white font-medium">
+                        {networks.find(n => n.chainId === toChainId)?.name || `Chain ${toChainId}`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
+                <button
+                  onClick={() => setSwapFlowStep('confirm')}
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors"
+                >
+                  Continue
+                </button>
+                <div className="mt-2 sm:mt-3 flex items-center justify-center gap-2 text-xs sm:text-sm text-gray-400">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
+                  </div>
+                  <span>Powered by Uniswap</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Confirm Details Modal */}
+      {swapFlowStep === 'confirm' && quote && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+            // Just close the modal, keep swap state so user can resume
+            setSwapFlowStep(null);
+          }} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-sm w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 sticky top-0 bg-black z-10">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <h3 className="text-sm sm:text-base font-semibold text-white mb-1">Confirm details</h3>
+                    <p className="text-[10px] sm:text-xs text-gray-400 pr-2">Review and accept Uniswap Labs Terms of Service & Privacy Policy to get started</p>
+                  </div>
+                  <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors flex-shrink-0">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 space-y-3 sm:space-y-4">
+                {/* Terms of Service Toggles */}
+                <div className="space-y-2 sm:space-y-3">
+                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
+                    <span className="text-xs sm:text-sm text-white flex-1 pr-2">
+                      I have read and agreed with{' '}
+                      <a
+                        href="https://support.uniswap.org/hc/en-us/articles/30935100859661-Uniswap-Labs-Terms-of-Service"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-cyan-400 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Uniswap Labs Terms of Service
+                      </a>
+                    </span>
+                    <div className="relative ml-2 sm:ml-4 flex-shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={tosAccepted}
+                        onChange={(e) => setTosAccepted(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${tosAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${tosAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
+                    <span className="text-xs sm:text-sm text-white flex-1 pr-2">
+                      I have read and agreed with{' '}
+                      <a
+                        href="https://support.uniswap.org/hc/en-us/articles/40074102704141-Uniswap-Labs-Privacy-Policy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-cyan-400 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Uniswap Labs Privacy Policy
+                      </a>
+                    </span>
+                    <div className="relative ml-2 sm:ml-4 flex-shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={privacyAccepted}
+                        onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${privacyAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${privacyAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
+                    </div>
+                  </label>
+                </div>
+
+              </div>
+
+              {/* Action Button */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
+                <button
+                  onClick={async () => {
+                    if (tosAccepted && privacyAccepted) {
+                      await executeSwap();
+                    }
+                  }}
+                  disabled={!tosAccepted || !privacyAccepted || executing}
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
+                >
+                  {executing ? 'Executing...' : 'Confirm'}
+                </button>
+                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
+                  </div>
+                  <span>Powered by Uniswap</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
       </div>
     </ProtectedRoute>
   );

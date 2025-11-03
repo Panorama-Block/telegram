@@ -60,10 +60,10 @@ const TRENDING_PROMPTS = [
 
 const FEATURE_CARDS = [
   { name: 'Portfolio View', icon: Briefcase, path: null, prompt: null, description: 'Track and manage your entire DeFi portfolio in one place' },
-  { name: 'Liquidity Pools', icon: ComboChart, path: null, prompt: null, description: 'Liquidity Provision Management: Manage pool entries and exits through simple prompts optimizing routes, ranges and capital across chains' },
-  { name: 'Liquid Staking', icon: BlockchainTechnology, path: null, prompt: null, description: 'Liquid Staking: Stake assets through direct commands with automated reward tracking and compounding cycles across various protocols.' },
-  { name: 'Lending', icon: WalletIcon, path: null, prompt: null, description: 'Lending & Borrowing: Access positions across protocols through easy commands managing collateral, comparing rates and adjusting exposure.' },
-  { name: 'Custom Orders', icon: LightningIcon, path: null, prompt: null, description: 'DCA & Trigger Orders: Configure multi-token DCA plans and threshold-based execution rules directly in chat.' },
+  { name: 'Liquidity Provision Management', icon: ComboChart, path: null, prompt: null, description: 'Manage pool entries and exits through simple prompts optimizing routes, ranges and capital across chains' },
+  { name: 'Liquid Staking', icon: BlockchainTechnology, path: null, prompt: null, description: 'Stake assets through direct commands with automated reward tracking and compounding cycles across various protocols.' },
+  { name: 'Lending & Borrowing', icon: WalletIcon, path: null, prompt: null, description: 'Access positions across protocols through easy commands managing collateral, comparing rates and adjusting exposure.' },
+  { name: 'DCA & Trigger Orders', icon: LightningIcon, path: null, prompt: null, description: 'Configure multi-token DCA plans and threshold-based execution rules directly in chat.' },
   { name: 'Liquid Swap', icon: SwapIcon, path: null, prompt: 'I would like to perform a token swap. Can you help me with the process and guide me through the steps?', description: 'Swap tokens across multiple chains with the best rates' },
 ];
 
@@ -1412,6 +1412,32 @@ export default function ChatPage() {
                                   </div>
                                 )}
 
+                                {/* Resume Swap Button - Shows when swap quote exists but no modal is open */}
+                                {swapQuote?.quote && !swapFlowStep && !swapSuccess && !swapLoading && (
+                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex-1">
+                                        <p className="text-sm text-white font-medium mb-1">
+                                          Swap {String(message.metadata?.from_token)} → {String(message.metadata?.to_token)}
+                                        </p>
+                                        <p className="text-xs text-gray-400">
+                                          Quote ready. Click to continue with your swap.
+                                        </p>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
+                                          setSwapFlowStep('routing');
+                                        }}
+                                        disabled={executingSwap}
+                                        className="px-4 py-2 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                      >
+                                        Resume Swap
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Swap Preview Card - Hidden, modal flow is used instead */}
                                 {false && swapQuote?.quote && !swapSuccess && (
                                   <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden max-w-sm">
@@ -1690,7 +1716,10 @@ export default function ChatPage() {
       {/* Order Routing Modal */}
       {swapFlowStep === 'routing' && swapQuote?.quote && currentSwapMetadata && (
         <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setSwapFlowStep(null)} />
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+            // Just close the modal, keep swap state so user can resume
+            setSwapFlowStep(null);
+          }} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
             <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               {/* Header */}
@@ -1797,7 +1826,10 @@ export default function ChatPage() {
       {/* Swap Details Modal */}
       {swapFlowStep === 'details' && swapQuote?.quote && currentSwapMetadata && (
         <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setSwapFlowStep(null)} />
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+            // Just close the modal, keep swap state so user can resume
+            setSwapFlowStep(null);
+          }} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
             <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               {/* Header */}
@@ -1873,12 +1905,6 @@ export default function ChatPage() {
                   </div>
                 </div>
 
-                {/* Aperture Fee */}
-                <div className="flex items-center justify-between text-xs sm:text-sm">
-                  <span className="text-white font-medium">Aperture Fee</span>
-                  <span className="text-gray-400">0.9% (&lt;$0.01)</span>
-                </div>
-
                 {/* Transaction Settings */}
                 <div className="space-y-2 sm:space-y-3">
                   <div className="flex items-center justify-between gap-2">
@@ -1920,7 +1946,10 @@ export default function ChatPage() {
       {/* Confirm Details Modal */}
       {swapFlowStep === 'confirm' && swapQuote?.quote && currentSwapMetadata && (
         <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setSwapFlowStep(null)} />
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+            // Just close the modal, keep swap state so user can resume
+            setSwapFlowStep(null);
+          }} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
             <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-sm w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               {/* Header */}
@@ -1944,7 +1973,16 @@ export default function ChatPage() {
                 <div className="space-y-2 sm:space-y-3">
                   <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
                     <span className="text-xs sm:text-sm text-white flex-1 pr-2">
-                      I have read and agreed with Uniswap Labs Terms of Service
+                      I have read and agreed with{' '}
+                      <a
+                        href="https://support.uniswap.org/hc/en-us/articles/30935100859661-Uniswap-Labs-Terms-of-Service"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-cyan-400 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Uniswap Labs Terms of Service
+                      </a>
                     </span>
                     <div className="relative ml-2 sm:ml-4 flex-shrink-0">
                       <input
@@ -1960,7 +1998,16 @@ export default function ChatPage() {
 
                   <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
                     <span className="text-xs sm:text-sm text-white flex-1 pr-2">
-                      I have read and agreed with Uniswap Labs Privacy Policy
+                      I have read and agreed with{' '}
+                      <a
+                        href="https://support.uniswap.org/hc/en-us/articles/40074102704141-Uniswap-Labs-Privacy-Policy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-cyan-400 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Uniswap Labs Privacy Policy
+                      </a>
                     </span>
                     <div className="relative ml-2 sm:ml-4 flex-shrink-0">
                       <input
