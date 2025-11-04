@@ -1,15 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import zicoBlue from '../../../../public/icons/zico_blue.svg'
-import AuthModal from '../auth-modal'
 import Banner from '../banner'
 
 const Hero = () => {
+  const router = useRouter()
   const [currentWord, setCurrentWord] = useState(0)
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
 
   const words = [
     'Composable DeFi Strategies',
@@ -44,7 +44,7 @@ const Hero = () => {
 
       <div className="flex flex-col items-center mx-auto w-fit mt-8 gap-8 z-50">
         <Button
-          onClick={() => setIsAuthModalOpen(true)}
+          onClick={() => router.push('/newchat')}
           className="min-w-[180px] h-14 rounded-[30px] bg-white text-black hover:bg-gray-100 text-lg font-semibold"
         >
           Launch App
@@ -70,12 +70,6 @@ const Hero = () => {
           className="relative h-28 w-28 sm:h-32 sm:w-32 lg:h-40 lg:w-40"
         />
       </div>
-
-      {/* Auth Modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-      />
     </div>
   )
 }

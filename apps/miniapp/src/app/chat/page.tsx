@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
-// Declaração de tipo para window.ethereum
+// Window.ethereum type declaration
 declare global {
   interface Window {
     ethereum?: {
@@ -23,16 +23,20 @@ import SwapIcon from '../../../public/icons/Swap.svg';
 import WalletIcon from '../../../public/icons/Wallet.svg';
 import ChatIcon from '../../../public/icons/chat.svg';
 import LightningIcon from '../../../public/icons/lightning.svg';
+import UniswapIcon from '../../../public/icons/uniswap.svg';
 import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import { swapApi, SwapApiError } from '@/features/swap/api';
+import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, explorerTxUrl } from '@/features/swap/utils';
 import { networks, Token } from '@/features/swap/tokens';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useActiveWallet, useDisconnect, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx, QuoteResponse } from '@/features/swap/types';
+import { Button } from '@/components/ui/button';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 
 
 interface Message {
@@ -55,13 +59,12 @@ const TRENDING_PROMPTS = [
 ];
 
 const FEATURE_CARDS = [
-  { name: 'Wallet Tracking', icon: WalletIcon, path: null, prompt: null, description: 'Monitor your wallet balances across multiple chains in real-time' },
-  { name: 'AI Agents on X', icon: XIcon, path: null, prompt: null, description: 'Follow our AI agents on X for insights and market analysis' },
+  { name: 'Portfolio View', icon: Briefcase, path: null, prompt: null, description: 'Track and manage your entire DeFi portfolio in one place' },
   { name: 'Liquid Swap', icon: SwapIcon, path: '/swap', prompt: 'I would like to perform a token swap. Can you help me with the process and guide me through the steps?', description: 'Swap tokens across multiple chains with the best rates' },
-  { name: 'DeFi Lending', icon: BlockchainTechnology, path: '/lending', prompt: 'I want to explore DeFi lending options. Can you help me understand how to supply and borrow assets?', description: 'Supply and borrow assets with competitive rates' },
+  { name: 'Lending & Borrowing', icon: BlockchainTechnology, path: '/lending', prompt: 'I want to explore DeFi lending options. Can you help me understand how to supply and borrow assets?', description: 'Access positions across protocols through easy commands managing collateral, comparing rates and adjusting exposure.' },
   { name: 'Liquid Staking', icon: LightningIcon, path: '/staking', prompt: 'I want to stake my assets to earn rewards. Can you guide me through the staking process?', description: 'Stake your assets while maintaining liquidity' },
-  { name: 'AI MarketPlace', icon: ComboChart, path: null, prompt: null, description: 'Browse and trade AI-powered trading strategies' },
-  { name: 'Portfolio', icon: Briefcase, path: null, prompt: null, description: 'Track and manage your entire DeFi portfolio in one place' },
+  { name: 'Liquidity Provision Management', icon: ComboChart, path: null, prompt: null, description: 'Manage pool entries and exits through simple prompts optimizing routes, ranges and capital across chains' },
+  { name: 'DCA & Trigger Orders', icon: LightningIcon, path: null, prompt: null, description: 'Configure multi-token DCA plans and threshold-based execution rules directly in chat.' },
 ];
 
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
@@ -181,6 +184,9 @@ export default function ChatPage() {
 
   // Thirdweb setup
   const account = useActiveAccount();
+  const activeWallet = useActiveWallet();
+  const { disconnect } = useDisconnect();
+  const switchChain = useSwitchActiveWalletChain();
   const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
@@ -191,6 +197,7 @@ export default function ChatPage() {
   const [swapSuccess, setSwapSuccess] = useState(false);
   const [executingSwap, setExecutingSwap] = useState(false);
   const [swapTxHashes, setSwapTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
+  const [swapStatusMessage, setSwapStatusMessage] = useState<string | null>(null);
 
   // Swap flow states
   const [swapFlowStep, setSwapFlowStep] = useState<'preview' | 'routing' | 'details' | 'confirm' | null>(null);
@@ -229,6 +236,26 @@ export default function ChatPage() {
       return false;
     }
   }, []);
+
+  const handleWalletDisconnect = useCallback(async () => {
+    try {
+      if (activeWallet) {
+        await disconnect(activeWallet);
+      }
+    } catch (error) {
+      console.error('[CHAT] Failed to disconnect wallet:', error);
+    } finally {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('authPayload');
+        localStorage.removeItem('authSignature');
+        localStorage.removeItem('telegram_user');
+        localStorage.removeItem('userAddress');
+        setSidebarOpen(false);
+        window.location.href = '/miniapp';
+      }
+    }
+  }, [activeWallet, disconnect]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -794,7 +821,7 @@ export default function ChatPage() {
     console.log('🚀 Starting swap execution with metadata:', metadata);
     
     if (!swapQuote?.quote) {
-      const errorMsg = 'Aguarde a cotação ser calculada';
+      const errorMsg = 'Please wait for the quote to finish calculating';
       console.error('❌', errorMsg);
       setSwapError(errorMsg);
       return;
@@ -823,6 +850,7 @@ export default function ChatPage() {
 
     try {
       setExecutingSwap(true);
+      setSwapStatusMessage('Preparing swap transaction...');
       console.log('🔄 Preparing swap transaction...');
 
       const { amount, from_network, from_token, to_network, to_token } = metadata;
@@ -866,10 +894,28 @@ export default function ChatPage() {
       });
 
       const seq = flattenPrepared(prep.prepared);
-      
+
       if (!seq.length) throw new Error('No transactions returned by prepare');
 
+      // Switch to the correct chain FIRST, before executing transactions
+      if (account && switchChain) {
+        const networkName = fromNetwork.name || `Chain ${fromNetwork.chainId}`;
+        console.log('🔄 Switching to source chain before executing swap...');
+        console.log('Target chain:', fromNetwork.chainId, networkName);
+
+        setSwapStatusMessage(`Switching to ${networkName}...`);
+
+        try {
+          await switchChain(defineChain(fromNetwork.chainId));
+          console.log('✅ Chain switched successfully to:', fromNetwork.chainId);
+        } catch (e: any) {
+          console.error('❌ Failed to switch chain:', e);
+          throw new Error(`Please approve the network switch to ${networkName} in your wallet.`);
+        }
+      }
+
       setSwapTxHashes([]); // Reset transaction hashes
+      setSwapStatusMessage('Please confirm the transaction in your wallet...');
 
       for (const t of seq) {
         if (t.chainId !== fromNetwork.chainId) {
@@ -881,7 +927,11 @@ export default function ChatPage() {
           chain: defineChain(t.chainId),
           client,
           data: t.data as Hex,
-          value: t.value ? BigInt(t.value as any) : 0n,
+          value: t.value != null ? BigInt(t.value as any) : 0n,
+          gas: t.gasLimit != null ? BigInt(t.gasLimit as any) : undefined,
+          maxFeePerGas: t.maxFeePerGas != null ? BigInt(t.maxFeePerGas as any) : undefined,
+          maxPriorityFeePerGas:
+            t.maxPriorityFeePerGas != null ? BigInt(t.maxPriorityFeePerGas as any) : undefined,
         });
 
         if (!account) {
@@ -892,6 +942,7 @@ export default function ChatPage() {
 
         // Force MetaMask window to open
         await forceMetaMaskWindow();
+        setSwapStatusMessage('Waiting for wallet confirmation...');
 
         const result = await safeExecuteTransactionV2(async () => {
           return await sendTransaction({ account, transaction: tx });
@@ -907,15 +958,19 @@ export default function ChatPage() {
 
         // Store transaction hash
         setSwapTxHashes(prev => [...prev, { hash: result.transactionHash!, chainId: t.chainId }]);
+        setSwapStatusMessage('Transaction submitted. Waiting for confirmation...');
       }
 
       setSwapSuccess(true);
       setSwapQuote(null);
+      setSwapStatusMessage(null);
     } catch (error) {
       console.error('❌ Error executing swap:', error);
       setSwapError(error instanceof Error ? error.message : 'Failed to execute swap');
+      setSwapStatusMessage(null);
     } finally {
       setExecutingSwap(false);
+      setSwapStatusMessage(null);
     }
   }, [swapQuote, client, account, clientId, getWalletAddress]);
 
@@ -949,7 +1004,7 @@ export default function ChatPage() {
   }
 
   return (
-    <>
+    <ProtectedRoute>
       <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
       <GlobalLoader 
         isLoading={isNavigating} 
@@ -962,7 +1017,7 @@ export default function ChatPage() {
       />
       <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
       {/* Top Navbar - Horizontal across full width */}
-      <header className="flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
+      <header className="sticky top-0 flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
         <div className="flex items-center justify-between max-w-[1920px] mx-auto">
           {/* Left: Menu toggle (mobile only) + Logo (desktop only) + Navigation */}
           <div className="flex items-center gap-8">
@@ -1024,7 +1079,7 @@ export default function ChatPage() {
                             }}
                             className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
                           >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4BC3C5" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                             </svg>
                             Chat
@@ -1094,7 +1149,7 @@ export default function ChatPage() {
             </button>
 
             {/* Wallet Address Display */}
-            {(account?.address || getWalletAddress()) ? (
+            {(account?.address || getWalletAddress()) && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
                 <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
                 <span className="text-white text-xs font-mono">
@@ -1105,13 +1160,6 @@ export default function ChatPage() {
                       : ''}
                 </span>
               </div>
-            ) : (
-              <button
-                onClick={() => router.push('/auth')}
-                className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-medium transition-colors"
-              >
-                Connect Wallet
-              </button>
             )}
           </div>
         </div>
@@ -1202,6 +1250,17 @@ export default function ChatPage() {
                   </div>
                 </div>
               </div>
+
+              <div className="p-4 border-t border-white/15">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleWalletDisconnect}
+                  className="w-full justify-center text-gray-300 hover:text-white hover:bg-white/5 border border-white/10 text-sm font-normal"
+                >
+                  Disconnect
+                </Button>
+              </div>
             </aside>
           </>
         )}
@@ -1251,7 +1310,7 @@ export default function ChatPage() {
                 </h2>
 
                 {/* Feature Cards Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2 md:gap-2.5 lg:gap-3 xl:gap-4 2xl:gap-5 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-2 md:gap-2.5 lg:gap-3 xl:gap-4 2xl:gap-5 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
                   {FEATURE_CARDS.map((feature, idx) => (
                     <button
                       key={idx}
@@ -1271,28 +1330,28 @@ export default function ChatPage() {
                         }
                       }}
                       disabled={!feature.path && !feature.prompt}
-                      className={`flex flex-col p-1.5 sm:p-2 md:p-2.5 lg:p-3 xl:p-4 2xl:p-5 rounded-lg md:rounded-xl bg-black/80 backdrop-blur-md border border-white/15 transition-all shadow-lg text-left ${
+                      className={`flex flex-col p-3 sm:p-2 md:p-2.5 lg:p-3 xl:p-4 2xl:p-5 rounded-lg md:rounded-xl bg-black/80 backdrop-blur-md border border-white/15 transition-all shadow-lg text-left ${
                         !feature.path && !feature.prompt ? 'opacity-50 cursor-not-allowed' : 'hover:border-white/30 cursor-pointer'
                       }`}
                     >
                       {/* Icon */}
-                      <div className="mb-0.5 sm:mb-1 md:mb-1.5 lg:mb-2 xl:mb-2.5">
+                      <div className="mb-1.5 sm:mb-1 md:mb-1.5 lg:mb-2 xl:mb-2.5">
                         <Image
                           src={feature.icon}
                           alt={feature.name}
                           width={48}
                           height={48}
-                          className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 xl:w-10 xl:h-10 2xl:w-12 2xl:h-12"
+                          className="w-7 h-7 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 xl:w-10 xl:h-10 2xl:w-12 2xl:h-12"
                         />
                       </div>
 
                       {/* Title */}
-                      <h3 className="text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base text-white font-semibold mb-0.5 sm:mb-0.5 md:mb-1 lg:mb-1.5">
+                      <h3 className="text-[11px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base text-white font-semibold mb-1 sm:mb-0.5 md:mb-1 lg:mb-1.5">
                         {feature.name}
                       </h3>
 
                       {/* Description */}
-                      <p className="text-[7px] sm:text-[8px] md:text-[9px] lg:text-[10px] xl:text-xs 2xl:text-sm text-gray-400 leading-tight mb-1 sm:mb-1.5 md:mb-2 lg:mb-2.5 xl:mb-3 flex-1 line-clamp-2">
+                      <p className="text-[9px] sm:text-[8px] md:text-[9px] lg:text-[10px] xl:text-xs 2xl:text-sm text-gray-400 leading-snug mb-2 sm:mb-1.5 md:mb-2 lg:mb-2.5 xl:mb-3 flex-1">
                         {feature.description}
                       </p>
 
@@ -1384,10 +1443,45 @@ export default function ChatPage() {
                                   </div>
                                 )}
 
+                                {swapStatusMessage && (
+                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5 mt-3">
+                                    <div className="flex items-center gap-2 text-gray-300">
+                                      {executingSwap && <div className="loader-inline-sm" />}
+                                      <span className="text-sm">{swapStatusMessage}</span>
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Error State */}
                                 {swapError && !swapLoading && (
                                   <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4">
                                     <p className="text-sm text-red-400">❌ {swapError}</p>
+                                  </div>
+                                )}
+
+                                {/* Resume Swap Button - Shows when swap quote exists but no modal is open */}
+                                {swapQuote?.quote && !swapFlowStep && !swapSuccess && !swapLoading && (
+                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex-1">
+                                        <p className="text-sm text-white font-medium mb-1">
+                                          Swap {String(message.metadata?.from_token)} → {String(message.metadata?.to_token)}
+                                        </p>
+                                        <p className="text-xs text-gray-400">
+                                          Quote ready. Click to continue with your swap.
+                                        </p>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
+                                          setSwapFlowStep('routing');
+                                        }}
+                                        disabled={executingSwap}
+                                        className="px-4 py-2 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                      >
+                                        Resume Swap
+                                      </button>
+                                    </div>
                                   </div>
                                 )}
 
@@ -1584,41 +1678,14 @@ export default function ChatPage() {
 
                                 {/* Success State */}
                                 {swapSuccess && (
-                                  <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-4">
-                                    <p className="text-sm text-green-400 mb-3 font-medium">✅ Swap executed successfully!</p>
-
-                                    {/* Transaction Hashes */}
-                                    {swapTxHashes.length > 0 && (
-                                      <div className="space-y-2">
-                                        <div className="text-xs text-gray-400">Transaction Hashes:</div>
-                                        {swapTxHashes.map((tx, index) => {
-                                          const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
-                                          return (
-                                            <div key={index} className="flex items-center justify-between bg-gray-800/50 rounded p-2">
-                                              <div className="flex-1 min-w-0">
-                                                <div className="text-xs text-gray-300 font-mono truncate">
-                                                  {tx.hash}
-                                                </div>
-                                                <div className="text-xs text-gray-500">
-                                                  Chain ID: {tx.chainId}
-                                                </div>
-                                              </div>
-                                              {explorerUrl && (
-                                                <a
-                                                  href={explorerUrl}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors font-medium"
-                                                >
-                                                  View
-                                                </a>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
+                                  <SwapSuccessCard
+                                    txHashes={swapTxHashes}
+                                    variant="compact"
+                                    onClose={() => {
+                                      setSwapSuccess(false);
+                                      setSwapTxHashes([]);
+                                    }}
+                                  />
                                 )}
                               </div>
                             )}
@@ -1664,7 +1731,7 @@ export default function ChatPage() {
             </div>
 
             {/* Input Area - Fixed with black bg */}
-            <div className="flex-shrink-0 bg-black px-4 pb-10 pt-4">
+            <div className="flex-shrink-0 bg-black px-4 pb-6 pt-6">
               <div className="flex items-center gap-3 max-w-4xl mx-auto relative">
                 <input
                   type="text"
@@ -1673,7 +1740,7 @@ export default function ChatPage() {
                   onKeyPress={handleKeyPress}
                   placeholder="Type your message..."
                   disabled={isSending || !activeConversationId || initializing}
-                  className="flex-1 px-4 py-3 rounded-lg bg-[#202020] border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-gray-500 disabled:opacity-50"
+                  className="flex-1 px-4 py-3 rounded-3xl bg-[#202020] border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-gray-500 disabled:opacity-50"
                 />
 
                 {/* Send Button - Round with white bg */}
@@ -1696,12 +1763,15 @@ export default function ChatPage() {
       {/* Order Routing Modal */}
       {swapFlowStep === 'routing' && swapQuote?.quote && currentSwapMetadata && (
         <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setSwapFlowStep(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-black border border-black rounded-2xl overflow-hidden max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+            // Just close the modal, keep swap state so user can resume
+            setSwapFlowStep(null);
+          }} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               {/* Header */}
-              <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Order Routing</h3>
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
+                <h3 className="text-base sm:text-lg font-semibold text-white">Order Routing</h3>
                 <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1710,60 +1780,60 @@ export default function ChatPage() {
               </div>
 
               {/* Content */}
-              <div className="px-5 py-5 space-y-4">
+              <div className="px-4 py-4 sm:px-5 sm:py-5 space-y-3 sm:space-y-4">
                 {/* Select Swap API Label */}
-                <div className="text-sm font-medium text-white">Select Swap API</div>
+                <div className="text-xs sm:text-sm font-medium text-white">Select Swap API</div>
 
                 {/* Routing Option Card */}
-                <div className="bg-[#0A0A0A] border border-white/10 rounded-xl p-4">
-                  <div className="flex items-start gap-3">
+                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3">
                     {/* Radio Button + Label */}
-                    <div className="flex flex-col pt-1">
+                    <div className="flex flex-col">
                       <div className="flex items-center gap-2 mb-1">
-                        <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center flex-shrink-0">
-                          <div className="w-2 h-2 rounded-full bg-black"></div>
+                        <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white flex items-center justify-center flex-shrink-0">
+                          <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-black"></div>
                         </div>
                         <div className="flex items-center gap-1">
-                          <span className="text-white font-semibold text-sm">UNI V3</span>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
+                          <span className="text-white font-semibold text-xs sm:text-sm">UNI V3</span>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
                             <circle cx="12" cy="12" r="10" strokeWidth={2} />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
                           </svg>
                         </div>
                       </div>
-                      <div className="text-xs text-gray-400 ml-7">Est. Price Impact 1.1%</div>
+                      <div className="text-[10px] sm:text-xs text-gray-400 ml-6 sm:ml-7">Est. Price Impact 1.1%</div>
                     </div>
 
                     {/* Swap Info */}
-                    <div className="flex-1 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="text-base font-medium text-white">
+                    <div className="flex-1 space-y-2 sm:space-y-3">
+                      <div className="flex items-start sm:items-center justify-between gap-2">
+                        <div className="text-sm sm:text-base font-medium text-white break-words">
                           Swap {String(currentSwapMetadata?.from_token)} to {String(currentSwapMetadata?.to_token)}
                         </div>
-                        <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-xs font-semibold rounded flex items-center gap-1">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                        <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1 flex-shrink-0">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
                           </svg>
                           Suggested
                         </div>
                       </div>
 
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
+                      <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                        <div className="flex justify-between gap-2">
                           <span className="text-gray-400">Amount in</span>
-                          <span className="text-white font-medium">
+                          <span className="text-white font-medium text-right break-words">
                             {String(currentSwapMetadata?.amount)} {String(currentSwapMetadata?.from_token)}
                           </span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex justify-between gap-2">
                           <span className="text-gray-400">Expected Amount Out</span>
-                          <span className="text-white font-medium">
+                          <span className="text-white font-medium text-right break-words">
                             {formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)} {String(currentSwapMetadata?.to_token)}
                           </span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Min. Out After Slippage</span>
-                          <span className="text-white font-medium">
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
+                          <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
                             {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
                           </span>
                         </div>
@@ -1774,13 +1844,26 @@ export default function ChatPage() {
               </div>
 
               {/* Action Button */}
-              <div className="px-5 py-4 border-t border-white/10">
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
                 <button
                   onClick={() => setSwapFlowStep('details')}
-                  className="px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors"
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors"
                 >
                   Continue
                 </button>
+                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
+                  </div>
+                  <span>Powered by Uniswap</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1790,12 +1873,15 @@ export default function ChatPage() {
       {/* Swap Details Modal */}
       {swapFlowStep === 'details' && swapQuote?.quote && currentSwapMetadata && (
         <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setSwapFlowStep(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-black border border-black rounded-2xl overflow-hidden max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+            // Just close the modal, keep swap state so user can resume
+            setSwapFlowStep(null);
+          }} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               {/* Header */}
-              <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Swap Details</h3>
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
+                <h3 className="text-base sm:text-lg font-semibold text-white">Swap Details</h3>
                 <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -1804,79 +1890,73 @@ export default function ChatPage() {
               </div>
 
               {/* Content */}
-              <div className="px-5 py-5 space-y-4">
+              <div className="px-4 py-4 sm:px-5 sm:py-5 space-y-3 sm:space-y-4">
                 {/* Select Swap API */}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-white">Select Swap API</span>
-                  <button disabled className="px-3 py-1.5 rounded-lg bg-[#202020] text-gray-400 text-xs font-medium cursor-not-allowed">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs sm:text-sm font-medium text-white">Select Swap API</span>
+                  <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
                     Change API
                   </button>
                 </div>
 
                 {/* Routing */}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-400">Routing</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full bg-white flex items-center justify-center">
-                      <div className="w-1.5 h-1.5 rounded-full bg-black"></div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs sm:text-sm text-gray-400">Routing</span>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-white flex items-center justify-center">
+                      <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-black"></div>
                     </div>
-                    <span className="text-sm text-white">UNI V3</span>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
+                    <span className="text-xs sm:text-sm text-white">UNI V3</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
                       <circle cx="12" cy="12" r="10" strokeWidth={2} />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
                     </svg>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-xs font-semibold rounded flex items-center gap-1">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
                     </svg>
                     Suggested
                   </div>
-                  <span className="text-xs text-gray-400">Est. Price Impact 1.1%</span>
+                  <span className="text-[10px] sm:text-xs text-gray-400">Est. Price Impact 1.1%</span>
                 </div>
 
                 {/* Swap Details Card */}
-                <div className="bg-[#0A0A0A] border border-white/10 rounded-xl p-4">
-                  <div className="text-base font-semibold text-white mb-4">
+                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                  <div className="text-sm sm:text-base font-semibold text-white mb-3 sm:mb-4 break-words">
                     Swap {String(currentSwapMetadata?.from_token)} to {String(currentSwapMetadata?.to_token)}
                   </div>
 
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
+                  <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                    <div className="flex justify-between gap-2">
                       <span className="text-gray-400">Amount in</span>
-                      <span className="text-white font-medium">
+                      <span className="text-white font-medium text-right break-words">
                         {String(currentSwapMetadata?.amount)} {String(currentSwapMetadata?.from_token)}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Expected Amount Out</span>
-                      <span className="text-white font-medium">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-gray-400 text-[11px] sm:text-xs">Expected Amount Out</span>
+                      <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
                         {formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)} {String(currentSwapMetadata?.to_token)}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Min. Out After Slippage</span>
-                      <span className="text-white font-medium">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
+                      <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
                         {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Aperture Fee */}
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-white font-medium">Aperture Fee</span>
-                  <span className="text-gray-400">0.25% (&lt;$0.01)</span>
-                </div>
-
                 {/* Transaction Settings */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-white font-medium text-sm">Transaction Setting</span>
-                    <button disabled className="px-3 py-1.5 rounded-lg bg-[#202020] text-gray-400 text-xs font-medium cursor-not-allowed">
+                <div className="space-y-2 sm:space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-white font-medium text-xs sm:text-sm">Transaction Settings</span>
+                    <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
                       Change Settings
                     </button>
                   </div>
@@ -1884,13 +1964,26 @@ export default function ChatPage() {
               </div>
 
               {/* Action Button */}
-              <div className="px-5 py-4 border-t border-white/10">
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
                 <button
                   onClick={() => setSwapFlowStep('confirm')}
-                  className="px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors"
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors"
                 >
                   Continue
                 </button>
+                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
+                  </div>
+                  <span>Powered by Uniswap</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1900,17 +1993,20 @@ export default function ChatPage() {
       {/* Confirm Details Modal */}
       {swapFlowStep === 'confirm' && swapQuote?.quote && currentSwapMetadata && (
         <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setSwapFlowStep(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-black border border-black rounded-2xl overflow-hidden max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+            // Just close the modal, keep swap state so user can resume
+            setSwapFlowStep(null);
+          }} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-sm w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               {/* Header */}
-              <div className="px-5 py-4 border-b border-white/10">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="text-base font-semibold text-white mb-1">Confirm details</h3>
-                    <p className="text-xs text-gray-400">Review and accept Uniswap Labs Terms of Service & Privacy Policy to get started</p>
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 sticky top-0 bg-black z-10">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <h3 className="text-sm sm:text-base font-semibold text-white mb-1">Confirm details</h3>
+                    <p className="text-[10px] sm:text-xs text-gray-400 pr-2">Review and accept Uniswap Labs Terms of Service & Privacy Policy to get started</p>
                   </div>
-                  <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors ml-4">
+                  <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors flex-shrink-0">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -1919,38 +2015,56 @@ export default function ChatPage() {
               </div>
 
               {/* Content */}
-              <div className="px-5 py-4 space-y-4">
+              <div className="px-4 py-3 sm:px-5 sm:py-4 space-y-3 sm:space-y-4">
                 {/* Terms of Service Toggles */}
-                <div className="space-y-3">
-                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-2xl p-4 hover:bg-[#0A0A0A] transition-colors">
-                    <span className="text-sm text-white flex-1">
-                      I have read and agreed with Uniswap Labs Terms of Service
+                <div className="space-y-2 sm:space-y-3">
+                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
+                    <span className="text-xs sm:text-sm text-white flex-1 pr-2">
+                      I have read and agreed with{' '}
+                      <a
+                        href="https://support.uniswap.org/hc/en-us/articles/30935100859661-Uniswap-Labs-Terms-of-Service"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-cyan-400 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Uniswap Labs Terms of Service
+                      </a>
                     </span>
-                    <div className="relative ml-4">
+                    <div className="relative ml-2 sm:ml-4 flex-shrink-0">
                       <input
                         type="checkbox"
                         checked={tosAccepted}
                         onChange={(e) => setTosAccepted(e.target.checked)}
                         className="sr-only peer"
                       />
-                      <div className={`w-11 h-6 rounded-full transition-colors ${tosAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
-                      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${tosAccepted ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                      <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${tosAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${tosAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
                     </div>
                   </label>
 
-                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-2xl p-4 hover:bg-[#0A0A0A] transition-colors">
-                    <span className="text-sm text-white flex-1">
-                      I have read and agreed with Uniswap Labs Privacy Policy
+                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
+                    <span className="text-xs sm:text-sm text-white flex-1 pr-2">
+                      I have read and agreed with{' '}
+                      <a
+                        href="https://support.uniswap.org/hc/en-us/articles/40074102704141-Uniswap-Labs-Privacy-Policy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-cyan-400 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Uniswap Labs Privacy Policy
+                      </a>
                     </span>
-                    <div className="relative ml-4">
+                    <div className="relative ml-2 sm:ml-4 flex-shrink-0">
                       <input
                         type="checkbox"
                         checked={privacyAccepted}
                         onChange={(e) => setPrivacyAccepted(e.target.checked)}
                         className="sr-only peer"
                       />
-                      <div className={`w-11 h-6 rounded-full transition-colors ${privacyAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
-                      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${privacyAccepted ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                      <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${privacyAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${privacyAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
                     </div>
                   </label>
                 </div>
@@ -1958,7 +2072,7 @@ export default function ChatPage() {
               </div>
 
               {/* Action Button */}
-              <div className="px-5 py-4 border-t border-white/10">
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
                 <button
                   onClick={async () => {
                     if (tosAccepted && privacyAccepted && currentSwapMetadata) {
@@ -1968,15 +2082,28 @@ export default function ChatPage() {
                     }
                   }}
                   disabled={!tosAccepted || !privacyAccepted || executingSwap}
-                  className="px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
                 >
                   {executingSwap ? 'Executing...' : 'Confirm'}
                 </button>
+                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
+                  </div>
+                  <span>Powered by Uniswap</span>
+                </div>
               </div>
             </div>
           </div>
         </>
       )}
-    </>
+    </ProtectedRoute>
   );
 }

@@ -6,8 +6,8 @@ import avax from '../../../../public/landing/partners/avax.svg'
 import stacks from '../../../../public/landing/partners/stacks.svg'
 import morpheus from '../../../../public/landing/partners/morpheus.svg'
 import inteli from '../../../../public/landing/partners/inteli.svg'
-import uclaBlockchain from '../../../../public/landing/partners/ucla.svg'
 import lmu from '../../../../public/landing/partners/lmu.svg'
+import uniswap from '../../../../public/landing/partners/uniswap.svg'
 
 const images = [
   { src: icp, alt: 'Internet Computer' },
@@ -17,8 +17,8 @@ const images = [
   { src: stacks, alt: 'Stacks' },
   { src: morpheus, alt: 'Morpheus' },
   { src: inteli, alt: 'Inteli' },
-  { src: uclaBlockchain, alt: 'UCLA Blockchain' },
   { src: lmu, alt: 'LMU' },
+  { src: uniswap, alt: 'Uniswap' },
 ]
 
 const Partners = () => {
@@ -28,26 +28,26 @@ const Partners = () => {
       <div className="relative flex overflow-x-hidden">
         <div className="animate-marquee whitespace-nowrap flex my-8 gap-16 pr-16">
           {images.map((image, index) => (
-            <div key={index} className="min-w-[150px]">
-              <Image src={image.src} alt={image.alt} className="h-20 sm:h-32 lg:h-24 w-auto object-contain" width={150} height={96} />
+            <div key={index} className="flex items-center justify-center w-[180px] h-24">
+              <Image src={image.src} alt={image.alt} className="max-h-20 sm:max-h-32 lg:max-h-24 w-auto object-contain" width={180} height={96} />
             </div>
           ))}
           {images.map((image, index) => (
-            <div key={`second-${index}`} className="min-w-[150px]">
-              <Image src={image.src} alt={image.alt} className="h-20 sm:h-32 lg:h-24 w-auto object-contain" width={150} height={96} />
+            <div key={`second-${index}`} className="flex items-center justify-center w-[180px] h-24">
+              <Image src={image.src} alt={image.alt} className="max-h-20 sm:max-h-32 lg:max-h-24 w-auto object-contain" width={180} height={96} />
             </div>
           ))}
         </div>
 
         <div className="absolute top-0 animate-marquee2 whitespace-nowrap flex my-8 gap-16 pr-16">
           {images.map((image, index) => (
-            <div key={`second-${index}`} className="min-w-[150px]">
-              <Image src={image.src} alt={image.alt} className="h-20 sm:h-32 lg:h-24 w-auto object-contain" width={150} height={96} />
+            <div key={`second-${index}`} className="flex items-center justify-center w-[180px] h-24">
+              <Image src={image.src} alt={image.alt} className="max-h-20 sm:max-h-32 lg:max-h-24 w-auto object-contain" width={180} height={96} />
             </div>
           ))}
           {images.map((image, index) => (
-            <div key={`third-${index}`} className="min-w-[150px]">
-              <Image src={image.src} alt={image.alt} className="h-20 sm:h-32 lg:h-24 w-auto object-contain" width={150} height={96} />
+            <div key={`third-${index}`} className="flex items-center justify-center w-[180px] h-24">
+              <Image src={image.src} alt={image.alt} className="max-h-20 sm:max-h-32 lg:max-h-24 w-auto object-contain" width={180} height={96} />
             </div>
           ))}
         </div>
