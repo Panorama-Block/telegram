@@ -37,6 +37,10 @@ import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2'
 import type { PreparedTx, QuoteResponse } from '@/features/swap/types';
 import { Button } from '@/components/ui/button';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+// Liquidity imports
+import { useLiquidityFlow } from '@/features/liquidity/useLiquidityFlow';
+import { LiquidityPreviewCard } from '@/components/ui/LiquidityPreviewCard';
+import { LiquiditySuccessCard } from '@/components/ui/LiquiditySuccessCard';
 
 
 interface Message {
@@ -60,7 +64,7 @@ const TRENDING_PROMPTS = [
 
 const FEATURE_CARDS = [
   { name: 'Portfolio View', icon: Briefcase, path: null, prompt: null, description: 'Track and manage your entire DeFi portfolio in one place' },
-  { name: 'Liquidity Provision Management', icon: ComboChart, path: null, prompt: null, description: 'Manage pool entries and exits through simple prompts optimizing routes, ranges and capital across chains' },
+  { name: 'Liquidity Provision Management', icon: ComboChart, path: null, prompt: 'I want to add liquidity to a pool. Can you help me provide liquidity and earn fees?', description: 'Manage pool entries and exits through simple prompts optimizing routes, ranges and capital across chains' },
   { name: 'Liquid Staking', icon: BlockchainTechnology, path: null, prompt: null, description: 'Stake assets through direct commands with automated reward tracking and compounding cycles across various protocols.' },
   { name: 'Lending & Borrowing', icon: WalletIcon, path: null, prompt: null, description: 'Access positions across protocols through easy commands managing collateral, comparing rates and adjusting exposure.' },
   { name: 'DCA & Trigger Orders', icon: LightningIcon, path: null, prompt: null, description: 'Configure multi-token DCA plans and threshold-based execution rules directly in chat.' },
@@ -201,6 +205,22 @@ export default function ChatPage() {
   const [tosAccepted, setTosAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [currentSwapMetadata, setCurrentSwapMetadata] = useState<Record<string, unknown> | null>(null);
+
+  // Liquidity flow hook
+  const liquidity = useLiquidityFlow({
+    accountAddress: account?.address,
+    activeConversationId,
+    onAddMessage: (message) => {
+      if (activeConversationId) {
+        setMessagesByConversation((prev) => ({
+          ...prev,
+          [activeConversationId]: [...(prev[activeConversationId] || []), message],
+        }));
+      }
+    },
+    getNetworkByName,
+  });
+
   const debug = useCallback(
     (event: string, details?: Record<string, unknown>) => {
       if (!DEBUG_CHAT_ENABLED) return;
@@ -1289,6 +1309,17 @@ export default function ChatPage() {
                     </button>
                   ))}
                 </div>
+
+                {/* Test Button - Liquidity Mock */}
+                <div className="mt-6 flex justify-center">
+                  <a
+                    href="/miniapp/test-liquidity"
+                    className="px-6 py-3 bg-pano-primary text-pano-text-inverse rounded-lg font-semibold text-sm hover:bg-pano-primary-hover transition-all shadow-md hover:shadow-lg flex items-center gap-2 no-underline"
+                  >
+                    <span>🧪</span>
+                    <span>Test Liquidity Flow</span>
+                  </a>
+                </div>
               </div>
             ) : (
               <div className="py-6">
@@ -1604,6 +1635,51 @@ export default function ChatPage() {
                                       setSwapTxHashes([]);
                                     }}
                                   />
+                                )}
+
+                                {/* Liquidity Flow - Only show for messages with liquidity intent */}
+                                {message.metadata?.event === 'liquidity_intent_ready' && (
+                                  <div className="mt-4">
+                                    {/* Loading State */}
+                                    {liquidity.liquidityLoading && !liquidity.liquidityQuote && (
+                                      <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
+                                        <div className="flex items-center gap-2 text-gray-300">
+                                          <div className="loader-inline-sm" />
+                                          <span className="text-sm">Fetching liquidity quote...</span>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Liquidity Preview Card */}
+                                    {liquidity.liquidityQuote && !liquidity.liquiditySuccess && (
+                                      <LiquidityPreviewCard
+                                        quote={liquidity.liquidityQuote}
+                                        onConfirm={liquidity.handleConfirmLiquidity}
+                                        onCancel={liquidity.handleCancelLiquidity}
+                                        isLoading={liquidity.executingLiquidity}
+                                      />
+                                    )}
+
+                                    {/* Liquidity Success Card */}
+                                    {liquidity.liquiditySuccess && liquidity.liquidityTxHashes.length > 0 && (
+                                      <LiquiditySuccessCard
+                                        txHashes={liquidity.liquidityTxHashes}
+                                        positionId="12345"
+                                        token0Symbol={liquidity.liquidityQuote?.token0.symbol || liquidity.currentLiquidityMetadata?.token0 as string || 'ETH'}
+                                        token1Symbol={liquidity.liquidityQuote?.token1.symbol || liquidity.currentLiquidityMetadata?.token1 as string || 'TOKEN'}
+                                        onClose={liquidity.handleCloseLiquiditySuccess}
+                                        variant="compact"
+                                      />
+                                    )}
+
+                                    {/* Liquidity Error */}
+                                    {liquidity.liquidityError && (
+                                      <div className="rounded-xl border border-pano-error/20 bg-pano-error/5 p-4">
+                                        <p className="text-sm font-semibold text-pano-error">Liquidity Error</p>
+                                        <p className="text-xs text-pano-text-secondary mt-1">{liquidity.liquidityError}</p>
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             )}
