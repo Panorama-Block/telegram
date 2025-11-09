@@ -712,8 +712,8 @@ export default function LendingPage() {
                     <div className="flex-1 min-w-0">
                       <h4 className="text-orange-400 font-semibold text-xs mb-0.5">Wallet Connection Required</h4>
                       <p className="text-orange-200/80 text-xs leading-snug">
-                        You're authenticated with JWT, but to execute blockchain transactions you need to connect MetaMask.
-                        Click <span className="font-semibold text-orange-300">"Connect Wallet"</span> in the top right corner.
+                        You&apos;re authenticated with JWT, but to execute blockchain transactions you need to connect MetaMask.
+                        Click <span className="font-semibold text-orange-300">&quot;Connect Wallet&quot;</span> in the top right corner.
                       </p>
                     </div>
                   </div>
