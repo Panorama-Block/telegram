@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useActiveWallet } from 'thirdweb/react';
 import { useLendingApi } from '@/features/lending/api';
 import { useLendingData } from '@/features/lending/useLendingData';
 import { VALIDATION_FEE } from '@/features/lending/config';
 import { LendingToken } from '@/features/lending/types';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
 
 type LendingActionType = 'supply' | 'withdraw' | 'borrow' | 'repay';
 
@@ -91,21 +93,72 @@ async function getTokenBalance(account: any, tokenAddress: string): Promise<stri
 export default function LendingPage() {
   const router = useRouter();
   const account = useActiveAccount();
+  const activeWallet = useActiveWallet();
   const lendingApi = useLendingApi();
-  
+
   // Use the new hook for data management
-  const { 
-    tokens, 
-    userPosition, 
-    loading: dataLoading, 
-    error: dataError, 
-    refresh, 
-    clearCacheAndRefresh 
+  const {
+    tokens,
+    userPosition,
+    loading: dataLoading,
+    error: dataError,
+    refresh,
+    clearCacheAndRefresh
   } = useLendingData();
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const userAddress = localStorage.getItem('userAddress');
   const effectiveAddress = account?.address || addressFromToken || userAddress;
+
+  // Auto-reconnect logic - wait for ThirdwebProvider to reconnect wallet
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  useEffect(() => {
+    console.log('[Lending] Initialization check:', {
+      hasAccount: !!account,
+      accountAddress: account?.address,
+      hasActiveWallet: !!activeWallet,
+      walletId: activeWallet?.id
+    });
+
+    // If we have an account OR no active wallet, stop initializing
+    if (account || !activeWallet) {
+      console.log('[Lending] Stopping initialization:', {
+        reason: account ? 'account connected' : 'no active wallet'
+      });
+      setIsInitializing(false);
+      return;
+    }
+
+    // If we have activeWallet but no account yet, wait a bit for auto-connect
+    console.log('[Lending] Active wallet detected, waiting for account...');
+    const timer = setTimeout(() => {
+      console.log('[Lending] Wait timeout - showing interface');
+      setIsInitializing(false);
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [account, activeWallet]);
+
+  // When account connects, stop initializing immediately
+  useEffect(() => {
+    if (account && isInitializing) {
+      console.log('[Lending] Account connected during initialization!', account.address);
+      setIsInitializing(false);
+    }
+  }, [account, isInitializing]);
+
+  // Log account status for debugging
+  useEffect(() => {
+    if (!isInitializing) {
+      console.log('[Lending] Current state:', {
+        hasAccount: !!account,
+        accountAddress: account?.address,
+        effectiveAddress,
+        isAuthenticated: !!effectiveAddress
+      });
+    }
+  }, [account, effectiveAddress, isInitializing]);
 
   const [exploreDropdownOpen, setExploreDropdownOpen] = useState(false);
   const [selectedToken, setSelectedToken] = useState<LendingToken | null>(null);
@@ -114,7 +167,6 @@ export default function LendingPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [initializing, setInitializing] = useState<boolean>(true);
   const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
   const [loadingBalances, setLoadingBalances] = useState<boolean>(false);
 
@@ -125,21 +177,24 @@ export default function LendingPage() {
     }
   }, [tokens, selectedToken]);
 
-  // Update initializing state
-  useEffect(() => {
-    if (account) {
-      setInitializing(false);
-    }
-  }, [account]);
-
   // Fetch token balances when account or tokens change
   useEffect(() => {
     const fetchTokenBalances = async () => {
-      if (!account || tokens.length === 0) return;
-      
+      // Only fetch balances if we have an account object (MetaMask connected)
+      // For JWT-only users, we'll show 0 balances or fetch differently
+      if (!account || tokens.length === 0) {
+        // Set default balances to 0 for JWT users
+        const defaultBalances: Record<string, string> = {};
+        tokens.forEach(token => {
+          defaultBalances[token.address] = '0';
+        });
+        setTokenBalances(defaultBalances);
+        return;
+      }
+
       setLoadingBalances(true);
       const balances: Record<string, string> = {};
-      
+
       for (const token of tokens) {
         try {
           const balance = await getTokenBalance(account, token.address);
@@ -149,7 +204,7 @@ export default function LendingPage() {
           balances[token.address] = '0';
         }
       }
-      
+
       setTokenBalances(balances);
       setLoadingBalances(false);
     };
@@ -158,13 +213,35 @@ export default function LendingPage() {
   }, [account, tokens]);
 
   const handleAction = async () => {
-    if (!account) {
-      setError('Please connect your wallet first');
+    // Capture current action state to avoid race conditions
+    const currentAction = action;
+    const currentToken = selectedToken;
+    const currentAmount = amount;
+
+    console.log('🎯 [LENDING] handleAction called:', {
+      action: currentAction,
+      token: currentToken?.symbol,
+      amount: currentAmount
+    });
+
+    if (!account && !effectiveAddress) {
+      setError('Please connect your wallet or authenticate first');
       return;
     }
 
-    if (!amount || parseFloat(amount) <= 0) {
+    if (!currentAmount || parseFloat(currentAmount) <= 0) {
       setError('Please enter a valid amount');
+      return;
+    }
+
+    if (!currentToken) {
+      setError('Please select a token');
+      return;
+    }
+
+    // Check if account is available for transaction execution
+    if (!account) {
+      setError('To execute blockchain transactions, you need to connect MetaMask. Click "Connect Wallet" in the top right corner, then try again.');
       return;
     }
 
@@ -172,30 +249,31 @@ export default function LendingPage() {
     setError(null);
     setSuccess(null);
 
-    if (!selectedToken) {
-      setError('Please select a token');
-      return;
-    }
-
     try {
       let txData;
-      
-      // Prepare transaction based on action
-      switch (action) {
+
+      console.log('🔄 [LENDING] Preparing transaction:', currentAction);
+
+      // Prepare transaction based on action (use captured state)
+      switch (currentAction) {
         case 'supply':
-          txData = await lendingApi.prepareSupply(selectedToken.address, amount);
+          console.log('📤 [LENDING] Calling prepareSupply');
+          txData = await lendingApi.prepareSupply(currentToken.address, currentAmount);
           break;
         case 'withdraw':
-          txData = await lendingApi.prepareWithdraw(selectedToken.address, amount);
+          console.log('📥 [LENDING] Calling prepareWithdraw');
+          txData = await lendingApi.prepareWithdraw(currentToken.address, currentAmount);
           break;
         case 'borrow':
-          txData = await lendingApi.prepareBorrow(selectedToken.address, amount);
+          console.log('💰 [LENDING] Calling prepareBorrow');
+          txData = await lendingApi.prepareBorrow(currentToken.address, currentAmount);
           break;
         case 'repay':
-          txData = await lendingApi.prepareRepay(selectedToken.address, amount);
+          console.log('💸 [LENDING] Calling prepareRepay');
+          txData = await lendingApi.prepareRepay(currentToken.address, currentAmount);
           break;
         default:
-          throw new Error('Invalid action');
+          throw new Error(`Invalid action: ${currentAction}`);
       }
 
       if (txData.status !== 200) {
@@ -303,9 +381,12 @@ export default function LendingPage() {
   }, [selectedToken, amount]);
 
   return (
-    <div className="h-screen bg-black text-white flex flex-col overflow-hidden">
+    <div className="h-screen text-white flex flex-col overflow-hidden relative">
+      {/* Animated Background */}
+      <AnimatedBackground />
+
       {/* Top Navbar - Same as swap */}
-      <header className="flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
+      <header className="flex-shrink-0 bg-black/40 backdrop-blur-md border-b-2 border-white/15 px-6 py-3 z-50">
         <div className="flex items-center justify-between max-w-[1920px] mx-auto">
           {/* Left: Logo */}
           <div className="flex items-center gap-2">
@@ -410,15 +491,30 @@ export default function LendingPage() {
 
             {/* Wallet Address Display */}
             {(account?.address || effectiveAddress) ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
-                <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
-                <span className="text-white text-xs font-mono">
-                  {account?.address
-                    ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
-                    : effectiveAddress
-                      ? `${effectiveAddress.slice(0, 6)}...${effectiveAddress.slice(-4)}`
-                      : ''}
-                </span>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
+                  <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
+                  <span className="text-white text-xs font-mono">
+                    {account?.address
+                      ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                      : effectiveAddress
+                        ? `${effectiveAddress.slice(0, 6)}...${effectiveAddress.slice(-4)}`
+                        : ''}
+                  </span>
+                </div>
+                {/* Show MetaMask connect button if JWT-only */}
+                {!account && effectiveAddress && (
+                  <button
+                    onClick={() => router.push('/newchat')}
+                    className="px-3 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium transition-colors flex items-center gap-2"
+                    title="Connect MetaMask for transactions"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Connect MetaMask
+                  </button>
+                )}
               </div>
             ) : (
               <button
@@ -435,64 +531,50 @@ export default function LendingPage() {
       {/* Main Content */}
       <div className="flex-1 overflow-hidden">
         {/* Lending Interface */}
-        <div className="h-full flex items-center justify-center p-4">
-          {initializing || dataLoading ? (
+        <div className="h-full flex items-center justify-center p-3 sm:p-4">
+          {(isInitializing || dataLoading) ? (
             <div className="text-center">
               <div className="loader-inline-lg mb-4" />
-              <p className="text-gray-400">Loading lending data...</p>
+              <p className="text-gray-400 text-sm">
+                {isInitializing ? 'Initializing...' : 'Loading lending data...'}
+              </p>
             </div>
           ) : (
-            <div className="w-full max-w-md">
+            <div className="w-full max-w-[90vw] sm:max-w-sm">
             {/* Lending Card */}
-            <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-2xl">
+            <div className="bg-[#202020]/75 backdrop-blur-xl border border-white/10 rounded-[25px] p-3 shadow-[0px_16px_57.7px_0px_rgba(0,0,0,0.42)]">
               {/* Header */}
-              <div className="text-center mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    {/* Benqi Logo */}
-                    <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center">
-                      <Image 
-                        src="https://s2.coinmarketcap.com/static/img/coins/64x64/9288.png" 
-                        alt="Benqi Protocol" 
-                        width={32}
-                        height={32}
-                        className="w-full h-full object-cover"
-                        unoptimized
-                      />
-                    </div>
-                    <h2 className="text-2xl font-bold text-white">Lending Service</h2>
-                  </div>
-                  <button
-                    onClick={clearCacheAndRefresh}
-                    className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
-                    title="Refresh data"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  </button>
-                </div>
-                <p className="text-gray-400 text-sm">Powered by Benqi Protocol on Avalanche</p>
+              <div className="flex items-center justify-between mb-1.5">
+                <h2 className="text-base sm:text-lg font-bold text-white">Lending Service</h2>
+                <button
+                  onClick={clearCacheAndRefresh}
+                  className="p-1.5 rounded-lg bg-[#2A2A2A]/80 border border-white/10 hover:bg-[#343434]/80 transition-colors flex-shrink-0"
+                  title="Refresh data"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-white">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
               </div>
 
               {/* User Position Summary */}
               {userPosition && (
-                <div className="bg-black/40 border border-white/10 rounded-xl p-4 mb-6">
-                  <h3 className="text-white font-semibold mb-3">Your Position</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
+                <div className="bg-[#2A2A2A]/80 border border-white/10 rounded-xl p-2.5 mb-1.5">
+                  <h3 className="text-white font-semibold mb-1.5 text-xs">Your Position</h3>
+                  <div className="space-y-0.5 text-xs">
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-400">Supplied:</span>
-                      <span className="text-white font-medium">
+                      <span className="text-white font-medium truncate ml-2">
                         {formatAmount(userPosition.suppliedAmount, userPosition.token.decimals)} {userPosition.token.symbol}
                       </span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-400">Borrowed:</span>
-                      <span className="text-white font-medium">
+                      <span className="text-white font-medium truncate ml-2">
                         {formatAmount(userPosition.borrowedAmount, userPosition.token.decimals)} {userPosition.token.symbol}
                       </span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-400">Health Factor:</span>
                       <span className={`font-medium ${userPosition.healthFactor > 1.5 ? 'text-green-400' : 'text-red-400'}`}>
                         {userPosition.healthFactor.toFixed(2)}
@@ -503,12 +585,16 @@ export default function LendingPage() {
               )}
 
               {/* Action Selection */}
-              <div className="mb-4">
-                <label className="text-xs text-white uppercase tracking-wide font-medium mb-2 block">Action</label>
+              <div className="mb-1.5">
+                <label className="text-xs text-gray-400 mb-1.5 block">Action</label>
                 <select
                   value={action}
-                  onChange={(e) => setAction(e.target.value as LendingActionType)}
-                  className="w-full px-4 py-3 rounded-lg bg-black/40 border border-white/20 text-white focus:outline-none focus:border-white/40"
+                  onChange={(e) => {
+                    const newAction = e.target.value as LendingActionType;
+                    console.log('🔀 [LENDING] Action changed:', action, '→', newAction);
+                    setAction(newAction);
+                  }}
+                  className="w-full px-3 py-2 text-sm rounded-xl bg-[#2A2A2A]/80 border border-white/10 text-white focus:outline-none focus:border-white/20"
                 >
                   <option value="supply">Supply Assets</option>
                   <option value="withdraw">Withdraw Assets</option>
@@ -518,15 +604,15 @@ export default function LendingPage() {
               </div>
 
               {/* Token Selection */}
-              <div className="mb-4">
-                <label className="text-xs text-white uppercase tracking-wide font-medium mb-2 block">Asset</label>
+              <div className="mb-1.5">
+                <label className="text-xs text-gray-400 mb-1.5 block">Asset</label>
                 <select
                   value={selectedToken?.address || ''}
                   onChange={(e) => {
                     const token = tokens.find(t => t.address === e.target.value);
                     if (token) setSelectedToken(token);
                   }}
-                  className="w-full px-4 py-3 rounded-lg bg-black/40 border border-white/20 text-white focus:outline-none focus:border-white/40"
+                  className="w-full px-3 py-2 text-sm rounded-xl bg-[#2A2A2A]/80 border border-white/10 text-white focus:outline-none focus:border-white/20"
                 >
                   {tokens.map((token) => (
                     <option key={token.address} value={token.address}>
@@ -537,8 +623,8 @@ export default function LendingPage() {
               </div>
 
               {/* Amount Input */}
-              <div className="mb-6">
-                <label className="text-xs text-white uppercase tracking-wide font-medium mb-2 block">Amount</label>
+              <div className="mb-1.5">
+                <label className="text-xs text-gray-400 mb-1.5 block">Amount</label>
                 <input
                   type="number"
                   min="0"
@@ -546,9 +632,9 @@ export default function LendingPage() {
                   placeholder="0.0"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-white/40"
+                  className="w-full px-3 py-2 text-sm rounded-xl bg-[#252525] border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:border-white/20"
                 />
-                <div className="flex justify-between mt-2 text-xs text-gray-400">
+                <div className="flex justify-between mt-1 text-xs text-gray-400">
                   <span>
                     Available: {loadingBalances ? 'Loading...' : selectedToken ? formatAmount(tokenBalances[selectedToken.address] || '0', selectedToken.decimals) : '0'} {selectedToken?.symbol || ''}
                   </span>
@@ -559,7 +645,7 @@ export default function LendingPage() {
                         setAmount(formatAmount(balance, selectedToken.decimals));
                       }
                     }}
-                    className="text-cyan-400 hover:text-cyan-300 underline"
+                    className="text-[#4BDEDD] hover:text-[#4BDEDD]/80 underline font-medium"
                   >
                     Max
                   </button>
@@ -568,28 +654,28 @@ export default function LendingPage() {
 
               {/* Validation Fee Information */}
               {amount && parseFloat(amount) > 0 && selectedToken && (
-                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-6">
-                  <div className="flex items-start gap-2 mb-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-yellow-400 mt-0.5">
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-2.5 mb-1.5">
+                  <div className="flex items-start gap-2 mb-1.5">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-yellow-400 mt-0.5 flex-shrink-0">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <h4 className="text-yellow-400 font-semibold text-sm">Validation Fee</h4>
+                    <h4 className="text-yellow-400 font-semibold text-xs">Validation Fee</h4>
                   </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-300">Total Amount:</span>
-                      <span className="text-white font-medium">{amount} {selectedToken.symbol}</span>
+                      <span className="text-white font-medium truncate ml-2">{amount} {selectedToken.symbol}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">Validation Fee ({VALIDATION_FEE.PERCENTAGE}%):</span>
-                      <span className="text-yellow-400 font-medium">{(parseFloat(amount) * VALIDATION_FEE.RATE).toFixed(8)} {selectedToken.symbol}</span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-300 truncate mr-2">Fee ({VALIDATION_FEE.PERCENTAGE}%):</span>
+                      <span className="text-yellow-400 font-medium truncate">{(parseFloat(amount) * VALIDATION_FEE.RATE).toFixed(6)} {selectedToken.symbol}</span>
                     </div>
-                    <div className="flex justify-between pt-2 border-t border-yellow-500/20">
+                    <div className="flex justify-between items-center pt-1 border-t border-yellow-500/20">
                       <span className="text-gray-300 font-medium">Net Amount:</span>
-                      <span className="text-white font-semibold">{(parseFloat(amount) * VALIDATION_FEE.NET_RATE).toFixed(8)} {selectedToken.symbol}</span>
+                      <span className="text-white font-semibold truncate ml-2">{(parseFloat(amount) * VALIDATION_FEE.NET_RATE).toFixed(6)} {selectedToken.symbol}</span>
                     </div>
-                    <p className="text-yellow-400/80 text-xs mt-2">
-                      The validation contract charges a {VALIDATION_FEE.PERCENTAGE}% fee. Only {VALIDATION_FEE.NET_PERCENTAGE}% of your amount will be used for the {action} operation.
+                    <p className="text-yellow-400/80 text-xs mt-1 leading-snug">
+                      Validation contract charges {VALIDATION_FEE.PERCENTAGE}% fee. Only {VALIDATION_FEE.NET_PERCENTAGE}% will be used for {action}.
                     </p>
                   </div>
                 </div>
@@ -597,20 +683,38 @@ export default function LendingPage() {
 
               {/* Token Info */}
               {selectedToken && (
-                <div className="bg-black/40 border border-white/10 rounded-xl p-4 mb-6">
-                  <h4 className="text-white font-semibold mb-3">{selectedToken.symbol} Market Info</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
+                <div className="bg-[#2A2A2A]/80 border border-white/10 rounded-xl p-2.5 mb-1.5">
+                  <h4 className="text-white font-semibold mb-1.5 text-xs">{selectedToken.symbol} Market Info</h4>
+                  <div className="space-y-0.5 text-xs">
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-400">Supply APY:</span>
                       <span className="text-green-400 font-medium">{formatAPY(selectedToken.supplyAPY)}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-400">Borrow APY:</span>
                       <span className="text-red-400 font-medium">{formatAPY(selectedToken.borrowAPY)}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-400">Collateral Factor:</span>
                       <span className="text-white font-medium">{(selectedToken.collateralFactor * 100).toFixed(0)}%</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* MetaMask Connection Warning */}
+              {!account && effectiveAddress && (
+                <div className="mb-1.5 p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/30">
+                  <div className="flex items-start gap-2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-orange-400 mt-0.5 flex-shrink-0">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-orange-400 font-semibold text-xs mb-0.5">Wallet Connection Required</h4>
+                      <p className="text-orange-200/80 text-xs leading-snug">
+                        You're authenticated with JWT, but to execute blockchain transactions you need to connect MetaMask.
+                        Click <span className="font-semibold text-orange-300">"Connect Wallet"</span> in the top right corner.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -620,30 +724,56 @@ export default function LendingPage() {
               <button
                 onClick={handleAction}
                 disabled={!canExecute || loading}
-                className="w-full py-4 rounded-xl font-semibold text-base transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-white/90"
+                className="w-full py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-gray-200"
+                data-action={action}
               >
-                {loading ? 'Processing...' : getActionLabel()}
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Processing {getActionLabel()}...
+                  </span>
+                ) : (
+                  `${getActionLabel()}`
+                )}
               </button>
+
+              {/* Powered by Benqi */}
+              <div className="flex items-center justify-center gap-2 mt-2 pt-2 border-t border-white/5">
+                <div className="w-5 h-5 rounded overflow-hidden flex items-center justify-center flex-shrink-0">
+                  <Image
+                    src="https://s2.coinmarketcap.com/static/img/coins/64x64/9288.png"
+                    alt="Benqi Protocol"
+                    width={20}
+                    height={20}
+                    className="w-full h-full object-cover"
+                    unoptimized
+                  />
+                </div>
+                <p className="text-gray-400 text-xs">Powered by Benqi Protocol on Avalanche</p>
+              </div>
 
               {/* Success Messages */}
               {success && (
-                <div className="mt-4 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
-                  <div className="text-sm text-green-400">{success}</div>
+                <div className="mt-1.5 p-2.5 rounded-xl bg-green-500/10 border border-green-500/30">
+                  <div className="text-xs text-green-400">{success}</div>
                 </div>
               )}
 
               {/* Error Messages */}
               {error && (
-                <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
-                  <div className="text-sm text-red-400">{error}</div>
+                <div className="mt-1.5 p-2.5 rounded-xl bg-red-500/10 border border-red-500/30">
+                  <div className="text-xs text-red-400 break-words">{error}</div>
                 </div>
               )}
-              
+
               {dataError && (
-                <div className="mt-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-                  <div className="text-sm text-yellow-400">
-                    Data loading error: {dataError}
-                    <button 
+                <div className="mt-1.5 p-2.5 rounded-xl bg-yellow-500/10 border border-yellow-500/30">
+                  <div className="text-xs text-yellow-400">
+                    Data error: {dataError}
+                    <button
                       onClick={refresh}
                       className="ml-2 underline hover:no-underline"
                     >

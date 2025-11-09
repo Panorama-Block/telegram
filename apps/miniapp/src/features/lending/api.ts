@@ -36,30 +36,65 @@ class LendingApiClient {
     }
   }
 
+  private getAddressFromToken(): string | null {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) return null;
+
+      const parts = token.split('.');
+      if (parts.length !== 3) return null;
+
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+
+      return payload.sub || payload.address || null;
+    } catch (error) {
+      console.error('Error parsing JWT:', error);
+      return null;
+    }
+  }
+
   private async generateSignature(message: string): Promise<string> {
-    if (!this.account) {
-      throw new Error('Account not connected');
+    // Check if we have a JWT token first
+    const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+
+    // If we have a JWT token, use placeholder signature (backend will validate JWT)
+    if (authToken) {
+      console.log('Using JWT authentication - skipping signature');
+      return '0x0000000000000000000000000000000000000000000000000000000000000000';
     }
 
-    try {
-      const signature = await this.account.signMessage({ message });
-      return signature;
-    } catch (error) {
-      console.error('Error signing message:', error);
-      throw new Error('Failed to sign message');
+    // Only try to sign with account if we don't have JWT (pure MetaMask users)
+    if (this.account) {
+      try {
+        console.log('Using MetaMask signature');
+        const signature = await this.account.signMessage({ message });
+        return signature;
+      } catch (error) {
+        console.error('Error signing message:', error);
+        throw new Error('Failed to sign message');
+      }
     }
+
+    // No auth method available
+    throw new Error('No authentication method available. Please authenticate first.');
   }
 
   private async getAuthData(message: string) {
     const signature = await this.generateSignature(message);
+    const userAddress = this.account?.address || this.getAddressFromToken() || '';
+
+    if (!userAddress) {
+      throw new Error('User address not found. Please connect wallet or authenticate.');
+    }
+
     return {
-      address: this.account.address,
+      address: userAddress,
       signature,
       message,
       timestamp: Date.now(),
-      walletType: 'smart_wallet',
+      walletType: this.account ? 'smart_wallet' : 'jwt',
       chainId: 43114,
-      isSmartWallet: true
+      isSmartWallet: !!this.account
     };
   }
 
@@ -72,11 +107,18 @@ class LendingApiClient {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
+
+      const authToken = localStorage.getItem('authToken');
+      const headers: Record<string, string> = {};
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.TOKENS}`, {
-        signal: controller.signal
+        signal: controller.signal,
+        headers
       });
-      
+
       clearTimeout(timeoutId);
       
       if (!response.ok) {
@@ -130,15 +172,22 @@ class LendingApiClient {
   }
 
   async getUserPosition(): Promise<LendingPosition | null> {
-    if (!this.account) return null;
+    const userAddress = this.account?.address || this.getAddressFromToken();
+    if (!userAddress) return null;
 
     try {
       const message = this.formatMessage('Get lending position', '');
       const authData = await this.getAuthData(message);
-      
+
+      const authToken = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.POSITION}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(authData)
       });
 
@@ -155,10 +204,16 @@ class LendingApiClient {
       const amountInWei = this.toWei(amount);
       const message = this.formatMessage('Calculate tax for amount', amountInWei);
       const authData = await this.getAuthData(message);
-      
+
+      const authToken = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.CALCULATE_TAX}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...authData,
           amount: amountInWei
@@ -177,10 +232,16 @@ class LendingApiClient {
       const amountInWei = this.toWei(amount);
       const message = this.formatMessage('Validate and supply', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
-      
+
+      const authToken = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.PREPARE_SUPPLY}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...authData,
           amount: amountInWei,
@@ -204,10 +265,16 @@ class LendingApiClient {
       const amountInWei = this.toWei(amount);
       const message = this.formatMessage('Withdraw', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
-      
+
+      const authToken = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.PREPARE_WITHDRAW}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...authData,
           amount: amountInWei,
@@ -233,10 +300,16 @@ class LendingApiClient {
       const amountInWei = this.toWei(amount);
       const message = this.formatMessage('Validate and borrow', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
-      
+
+      const authToken = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.PREPARE_BORROW}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...authData,
           amount: amountInWei,
@@ -260,10 +333,16 @@ class LendingApiClient {
       const amountInWei = this.toWei(amount);
       const message = this.formatMessage('Repay', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
-      
+
+      const authToken = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.PREPARE_REPAY}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...authData,
           amount: amountInWei,
@@ -287,7 +366,7 @@ class LendingApiClient {
   async executeTransaction(txData: any): Promise<boolean> {
     try {
       if (!this.account) {
-        throw new Error('Account not connected');
+        throw new Error('Please connect your wallet to execute blockchain transactions. Click "Connect Wallet" in the top right corner.');
       }
 
       const toAddress = txData.to;
@@ -338,10 +417,16 @@ class LendingApiClient {
       const amountInWei = this.toWei(amount);
       const message = this.formatMessage('Get validation and supply quote for', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
-      
+
+      const authToken = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.SUPPLY_QUOTE}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...authData,
           amount: amountInWei,
@@ -365,10 +450,16 @@ class LendingApiClient {
       const amountInWei = this.toWei(amount);
       const message = this.formatMessage('Get validation and borrow quote for', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
-      
+
+      const authToken = localStorage.getItem('authToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.BORROW_QUOTE}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...authData,
           amount: amountInWei,

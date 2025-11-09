@@ -13,9 +13,9 @@ export const useLendingData = () => {
   // Minimum interval between fetches (2 minutes)
   const MIN_FETCH_INTERVAL = 2 * 60 * 1000;
 
-  const fetchData = useCallback(async (forceRefresh = false) => {
+  const fetchData = useCallback(async (forceRefresh = false, includePosition = false) => {
     const now = Date.now();
-    
+
     // Don't fetch if we recently fetched and it's not a forced refresh
     if (!forceRefresh && (now - lastFetchTime) < MIN_FETCH_INTERVAL) {
       console.log('Skipping lending fetch - too recent');
@@ -27,17 +27,19 @@ export const useLendingData = () => {
 
     try {
       console.log('Fetching lending data...');
-      
-      // Fetch tokens and user position in parallel
-      const [availableTokens, position] = await Promise.all([
-        lendingApi.getTokens(),
-        lendingApi.getUserPosition()
-      ]);
 
+      // Always fetch tokens
+      const availableTokens = await lendingApi.getTokens();
       setTokens(availableTokens);
-      setUserPosition(position);
+
+      // Only fetch user position if explicitly requested (to avoid signature popup on load)
+      if (includePosition) {
+        const position = await lendingApi.getUserPosition();
+        setUserPosition(position);
+      }
+
       setLastFetchTime(now);
-      
+
       console.log('Lending data fetched successfully');
     } catch (err) {
       console.error('Error fetching lending data:', err);
@@ -55,15 +57,26 @@ export const useLendingData = () => {
   // Refresh function for manual updates
   const refresh = useCallback(() => {
     console.log('Manual lending refresh triggered');
-    fetchData(true);
+    fetchData(true, true); // Include position on manual refresh
   }, [fetchData]);
 
   // Clear cache and refresh
   const clearCacheAndRefresh = useCallback(() => {
     console.log('Clearing lending cache and refreshing...');
     lendingApi.clearLendingDataCache();
-    fetchData(true);
+    fetchData(true, true); // Include position on manual refresh
   }, [lendingApi, fetchData]);
+
+  // Function to fetch position separately (can be called when needed)
+  const fetchPosition = useCallback(async () => {
+    try {
+      console.log('Fetching user position...');
+      const position = await lendingApi.getUserPosition();
+      setUserPosition(position);
+    } catch (err) {
+      console.error('Error fetching user position:', err);
+    }
+  }, [lendingApi]);
 
   return {
     tokens,
@@ -72,6 +85,7 @@ export const useLendingData = () => {
     error,
     refresh,
     clearCacheAndRefresh,
+    fetchPosition,
     lastFetchTime
   };
 };

@@ -752,11 +752,11 @@ export default function SwapPage() {
         <div className="h-full flex items-center justify-center p-4">
           <div className="w-full max-w-xs">
             {/* Swap Card */}
-            <div className="bg-[#1A1A1A]/90 backdrop-blur-xl rounded-2xl p-4 shadow-2xl border border-white/5">
+            <div className="bg-[#202020]/75 backdrop-blur-xl rounded-[25px] p-4 shadow-[0px_16px_57.7px_0px_rgba(0,0,0,0.42)] border border-white/10">
               {/* Sell Section */}
               <div className="mb-2">
                 <label className="text-xs text-gray-400 mb-2 block">Sell</label>
-                <div className="bg-[#252525] rounded-xl p-3 border border-white/10">
+                <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10">
                   <input
                     type="text"
                     value={sellAmount}
@@ -794,7 +794,7 @@ export default function SwapPage() {
               <div className="flex justify-center -my-1 relative z-10">
                 <button
                   onClick={handleSwapTokens}
-                  className="bg-[#252525] border border-white/10 rounded-lg p-1.5 hover:bg-[#2A2A2A] transition-colors"
+                  className="bg-[#2A2A2A]/80 border border-white/10 rounded-lg p-1.5 hover:bg-[#343434]/80 transition-colors"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-white">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
@@ -805,7 +805,7 @@ export default function SwapPage() {
               {/* Buy Section */}
               <div className="mb-3">
                 <label className="text-xs text-gray-400 mb-2 block">Buy</label>
-                <div className="bg-[#252525] rounded-xl p-3 border border-white/10">
+                <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10">
                   <input
                     type="text"
                     value={buyAmount}
