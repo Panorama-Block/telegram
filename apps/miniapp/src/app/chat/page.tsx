@@ -1315,7 +1315,9 @@ export default function ChatPage() {
                     <button
                       key={idx}
                       onClick={() => {
-                        if (feature.path) {
+                        if (feature.prompt) {
+                          sendMessage(feature.prompt);
+                        } else if (feature.path) {
                           setIsNavigating(true);
                           if (feature.path === '/lending') {
                             setNavigationType('lending');
@@ -1325,8 +1327,6 @@ export default function ChatPage() {
                             setNavigationType('swap');
                           }
                           router.push(feature.path);
-                        } else if (feature.prompt) {
-                          sendMessage(feature.prompt);
                         }
                       }}
                       disabled={!feature.path && !feature.prompt}
