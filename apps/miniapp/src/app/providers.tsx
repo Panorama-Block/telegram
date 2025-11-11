@@ -118,17 +118,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
           return (
             <AuthProvider>
               <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
-                <thirdwebReact.ThirdwebProvider
-                  supportedChains={[
-                    thirdwebChains.avalanche,
-                    thirdwebChains.ethereum,
-                    thirdwebChains.polygon,
-                    thirdwebChains.base,
-                    thirdwebChains.arbitrum,
-                    thirdwebChains.optimism,
-                    thirdwebChains.bsc,
-                  ]}
-                >
+                <thirdwebReact.ThirdwebProvider>
                   <AuthGuard>
                     {children}
                     {/* PWA Components */}
