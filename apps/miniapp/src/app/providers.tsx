@@ -19,11 +19,13 @@ export function ClientProviders({ children }: ClientProvidersProps) {
           { default: WebApp },
           tonConnect,
           thirdwebReact,
+          thirdwebChains,
           bufferModule,
         ] = await Promise.all([
           import('@twa-dev/sdk'),
           import('@tonconnect/ui-react'),
           import('thirdweb/react'),
+          import('thirdweb/chains'),
           import('buffer'),
         ]);
 
@@ -116,7 +118,17 @@ export function ClientProviders({ children }: ClientProvidersProps) {
           return (
             <AuthProvider>
               <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
-                <thirdwebReact.ThirdwebProvider>
+                <thirdwebReact.ThirdwebProvider
+                  supportedChains={[
+                    thirdwebChains.avalanche,
+                    thirdwebChains.ethereum,
+                    thirdwebChains.polygon,
+                    thirdwebChains.base,
+                    thirdwebChains.arbitrum,
+                    thirdwebChains.optimism,
+                    thirdwebChains.bsc,
+                  ]}
+                >
                   <AuthGuard>
                     {children}
                     {/* PWA Components */}
