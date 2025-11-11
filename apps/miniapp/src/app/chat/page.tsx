@@ -64,7 +64,7 @@ const FEATURE_CARDS = [
   { name: 'Lending & Borrowing', icon: BlockchainTechnology, path: '/lending', prompt: 'I want to explore DeFi lending options. Can you help me understand how to supply and borrow assets?', description: 'Access positions across protocols through easy commands managing collateral, comparing rates and adjusting exposure.' },
   { name: 'Liquid Staking', icon: LightningIcon, path: '/staking', prompt: 'I want to stake my assets to earn rewards. Can you guide me through the staking process?', description: 'Stake your assets while maintaining liquidity' },
   { name: 'Liquidity Provision Management', icon: ComboChart, path: null, prompt: null, description: 'Manage pool entries and exits through simple prompts optimizing routes, ranges and capital across chains' },
-  { name: 'DCA & Trigger Orders', icon: LightningIcon, path: null, prompt: null, description: 'Configure multi-token DCA plans and threshold-based execution rules directly in chat.' },
+  { name: 'DCA & Trigger Orders', icon: LightningIcon, path: '/dca', prompt: 'I want to set up a Dollar Cost Averaging strategy for my crypto investments. Can you help me configure automated recurring purchases?', description: 'Configure multi-token DCA plans and threshold-based execution rules directly in chat.' },
 ];
 
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
@@ -175,7 +175,7 @@ export default function ChatPage() {
   const [bootstrapVersion, setBootstrapVersion] = useState(0);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
-  const [navigationType, setNavigationType] = useState<'swap' | 'lending' | 'staking' | null>(null);
+  const [navigationType, setNavigationType] = useState<'swap' | 'lending' | 'staking' | 'dca' | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
   const { user, isLoading: authLoading } = useAuth();
@@ -1006,14 +1006,15 @@ export default function ChatPage() {
   return (
     <ProtectedRoute>
       <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
-      <GlobalLoader 
-        isLoading={isNavigating} 
+      <GlobalLoader
+        isLoading={isNavigating}
         message={
           navigationType === 'lending' ? 'Loading Lending...' :
           navigationType === 'staking' ? 'Loading Staking...' :
           navigationType === 'swap' ? 'Loading Swap...' :
+          navigationType === 'dca' ? 'Loading DCA...' :
           'Loading...'
-        } 
+        }
       />
       <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
       {/* Top Navbar - Horizontal across full width */}
@@ -1138,6 +1139,8 @@ export default function ChatPage() {
                         </button>
                         <button
                           onClick={() => {
+                            setIsNavigating(true);
+                            setNavigationType('dca');
                             setExploreDropdownOpen(false);
                             router.push('/dca');
                           }}
@@ -1363,6 +1366,8 @@ export default function ChatPage() {
                             setNavigationType('staking');
                           } else if (feature.path === '/swap') {
                             setNavigationType('swap');
+                          } else if (feature.path === '/dca') {
+                            setNavigationType('dca');
                           }
                           router.push(feature.path);
                         }

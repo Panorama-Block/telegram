@@ -6,14 +6,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useActiveAccount, useActiveWalletChain } from 'thirdweb/react';
-import { sendTransaction, prepareTransaction, toWei, getContract, defineChain } from 'thirdweb';
+import { sendTransaction, prepareTransaction, toWei, defineChain } from 'thirdweb';
 import { createThirdwebClient, type Address } from 'thirdweb';
-import { approve, allowance } from 'thirdweb/extensions/erc20';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { networks, Token } from '@/features/swap/tokens';
 import { Button } from '@/components/ui/button';
-import { TokenSelector } from '@/components/ui/TokenSelector';
-import { parseAmountToWei } from '@/features/swap/utils';
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -45,18 +42,8 @@ export default function DepositModal({
   const account = useActiveAccount();
   const activeChain = useActiveWalletChain();
   const [chainId, setChainId] = useState<number>(8453); // Base default
-  const [selectedToken, setSelectedToken] = useState<Token>({
-    symbol: 'ETH',
-    address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-    icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
-    decimals: 18,
-    name: 'Ethereum'
-  });
   const [amount, setAmount] = useState('0.01');
-  const [showTokenSelector, setShowTokenSelector] = useState(false);
   const [isDepositing, setIsDepositing] = useState(false);
-  const [isApproving, setIsApproving] = useState(false);
-  const [needsApproval, setNeedsApproval] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [sessionKeyAddress, setSessionKeyAddress] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +71,17 @@ export default function DepositModal({
     return found;
   }, [chainId]);
 
+  // Get native token for current network
+  const nativeToken = useMemo(() => {
+    return currentNetwork?.nativeCurrency || {
+      symbol: 'ETH',
+      address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+      icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+      decimals: 18,
+      name: 'Ethereum'
+    };
+  }, [currentNetwork]);
+
   // Fetch session key address from smart account (for display purposes only)
   useEffect(() => {
     const fetchSessionKey = async () => {
@@ -106,12 +104,6 @@ export default function DepositModal({
       fetchSessionKey();
     }
   }, [isOpen, smartAccountAddress]);
-
-  // Check if token is native (ETH, AVAX, etc)
-  const isNativeToken = useMemo(() => {
-    return selectedToken.address === '0x0000000000000000000000000000000000000000' ||
-           selectedToken.address === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
-  }, [selectedToken]);
 
   // Check if wallet is on wrong network
   const isWrongNetwork = useMemo(() => {
@@ -138,88 +130,19 @@ export default function DepositModal({
       setIsCheckingBalance(false);
       return;
 
-      if (isNativeToken) {
-        // For native tokens (ETH on Ethereum)
-        console.log('🔍 Checking native token balance for:', { chainId });
+      // For native tokens
+      console.log('🔍 Checking native token balance for:', { chainId });
 
-        // const balance = await getBalance({
-        //   client,
-        //   chain: defineChain(chainId),
-        //   address: activeAccount.address as Address,
-        // });
+      // const balance = await getBalance({
+      //   client,
+      //   chain: defineChain(chainId),
+      //   address: activeAccount.address as Address,
+      // });
 
-        // // Convert from wei to readable format
-        // const balanceInTokens = (Number(balance.value) / Math.pow(10, 18)).toFixed(6);
-        // console.log('💰 Native token balance found:', balanceInTokens);
-        // setWalletBalance(balanceInTokens);
-      } else {
-        // For ERC20 tokens (Ethereum only)
-        if (chainId !== 1) {
-          console.warn('ERC20 tokens only supported on Ethereum');
-          setWalletBalance('0');
-          return;
-        }
-
-        if (!selectedToken.address || selectedToken.address === '0x0000000000000000000000000000000000000000') {
-          console.warn('No valid token selected for ERC20 balance check');
-          setWalletBalance('0');
-          return;
-        }
-
-        console.log('🔍 Checking ERC20 balance for token:', selectedToken.address, 'on Ethereum');
-
-        // Validate token address
-        if (!selectedToken.address || selectedToken.address.length !== 42 || !selectedToken.address.startsWith('0x')) {
-          throw new Error(`Invalid token address: ${selectedToken.address}`);
-        }
-
-        const contract = getContract({
-          client,
-          chain: defineChain(1),
-          address: selectedToken.address as Address,
-        });
-
-        const { balanceOf } = await import('thirdweb/extensions/erc20');
-        const balance = await balanceOf({
-          contract,
-          address: activeAccount.address as Address,
-        });
-
-        console.log('🔍 Raw balance response:', balance);
-
-        // Handle different response formats
-        let balanceValue: bigint;
-        if (typeof balance === 'bigint') {
-          balanceValue = balance;
-        } else if (balance && typeof balance === 'object') {
-          // Handle object with value property
-          const balanceObj = balance as any;
-          if (balanceObj.value !== undefined && typeof balanceObj.value === 'bigint') {
-            balanceValue = balanceObj.value;
-          } else {
-            console.error('Invalid balance response format:', balance);
-            setWalletBalance('0');
-            return;
-          }
-        } else {
-          console.error('Invalid balance response format:', balance);
-          setWalletBalance('0');
-          return;
-        }
-
-        const balanceInWei = BigInt(balanceValue);
-        const balanceInTokens = (Number(balanceInWei) / Math.pow(10, 18)).toFixed(6);
-        
-        // Validate the balance
-        if (isNaN(Number(balanceInTokens))) {
-          console.error('Invalid balance conversion:', { balanceValue: balanceValue.toString(), balanceInWei: balanceInWei.toString() });
-          setWalletBalance('0');
-          return;
-        }
-        
-        console.log('💰 ERC20 balance found:', balanceInTokens, 'wei:', balanceInWei.toString());
-        setWalletBalance(balanceInTokens);
-      }
+      // // Convert from wei to readable format
+      // const balanceInTokens = (Number(balance.value) / Math.pow(10, 18)).toFixed(6);
+      // console.log('💰 Native token balance found:', balanceInTokens);
+      // setWalletBalance(balanceInTokens);
     } catch (err) {
       console.error('Error checking balance:', err);
       setWalletBalance('0');
@@ -230,13 +153,13 @@ export default function DepositModal({
 
   // Check wallet balance when component mounts or chain changes
   useEffect(() => {
-    if (isOpen && account && currentNetwork && selectedToken) {
-      console.log('🔄 Checking balance for:', { token: selectedToken.address, chainId, isNativeToken });
+    if (isOpen && account && currentNetwork) {
+      console.log('🔄 Checking balance for:', { token: nativeToken.symbol, chainId });
       // Reset balance first
       setWalletBalance('0');
       checkWalletBalance();
     }
-  }, [isOpen, account, chainId, currentNetwork, selectedToken.address, isNativeToken]);
+  }, [isOpen, account, chainId, currentNetwork]);
 
   // Ensure wallet is on selected network when modal opens or selection changes
   useEffect(() => {
@@ -331,129 +254,6 @@ export default function DepositModal({
     }
   };
 
-  // Check if approval is needed for ERC20 tokens
-  useEffect(() => {
-    async function checkApproval() {
-      if (!account || !selectedToken || isNativeToken || !amount || parseFloat(amount) <= 0) {
-        setNeedsApproval(false);
-        return;
-      }
-
-      try {
-        const contract = getContract({
-          client,
-          chain: defineChain(chainId),
-          address: selectedToken.address as Address,
-        });
-
-        const currentAllowance = await allowance({
-          contract,
-          owner: account.address,
-          spender: smartAccountAddress as Address,
-        });
-
-        // Get token decimals
-        const tokenDecimals = selectedToken.decimals || 18;
-
-        // Convert amount to token's decimals using safe parseAmountToWei
-        const amountInTokenUnits = parseAmountToWei(amount, tokenDecimals);
-
-        console.log('🔍 Checking approval:', {
-          token: selectedToken.symbol,
-          decimals: tokenDecimals,
-          currentAllowance: currentAllowance.toString(),
-          requiredAmount: amountInTokenUnits.toString(),
-          needsApproval: currentAllowance < amountInTokenUnits
-        });
-
-        setNeedsApproval(currentAllowance < amountInTokenUnits);
-      } catch (err) {
-        console.error('Error checking allowance:', err);
-        setNeedsApproval(true);
-      }
-    }
-
-    void checkApproval();
-  }, [account, selectedToken.address, amount, isNativeToken, chainId, smartAccountAddress, client]);
-
-  const handleApprove = async () => {
-    if (!account || !selectedToken || isNativeToken) {
-      return;
-    }
-
-    setIsApproving(true);
-    setError(null);
-
-    try {
-      console.log('🔓 Aprovando token...');
-
-      // Get token decimals
-      const tokenDecimals = selectedToken.decimals || 18;
-
-      // Convert amount to token's decimals using safe parseAmountToWei
-      const amountInTokenUnits = parseAmountToWei(amount, tokenDecimals);
-
-      // UNI and some other tokens use uint96 for amounts
-      // For these tokens, we approve max uint96 to avoid issues
-      // Max value for uint96: 2^96 - 1 = 0xffffffffffffffffffffffff (96 bits)
-      const MAX_UINT96 = (BigInt(1) << BigInt(96)) - BigInt(1);
-
-      // List of tokens known to use uint96
-      const UINT96_TOKENS = ['UNI', 'COMP'];
-      const isUint96Token = UINT96_TOKENS.includes(selectedToken.symbol.toUpperCase());
-
-      // For uint96 tokens, approve max uint96 instead of exact amount to avoid gas estimation issues
-      const approvalAmount = isUint96Token ? MAX_UINT96 : amountInTokenUnits;
-
-      console.log('📊 Approval details:', {
-        token: selectedToken.symbol,
-        decimals: tokenDecimals,
-        amountHuman: amount,
-        requestedAmount: amountInTokenUnits.toString(),
-        approvalAmount: approvalAmount.toString(),
-        isUint96Token,
-        approvalAmountHex: '0x' + approvalAmount.toString(16),
-        spender: smartAccountAddress
-      });
-
-      // ERC20 approve function signature: approve(address spender, uint256 amount)
-      // Function selector: 0x095ea7b3
-      const approveData = `0x095ea7b3${
-        smartAccountAddress.slice(2).padStart(64, '0')
-      }${approvalAmount.toString(16).padStart(64, '0')}`;
-
-      console.log('📋 Manual approval transaction data:', {
-        to: selectedToken.address,
-        data: approveData,
-        value: '0x0'
-      });
-
-      const transaction = prepareTransaction({
-        to: selectedToken.address as Address,
-        chain: defineChain(chainId),
-        client,
-        data: approveData as any,
-        value: 0n,
-      });
-
-      const result = await sendTransaction({
-        transaction,
-        account,
-      });
-
-      console.log('✅ Token aprovado!');
-      console.log('Transaction Hash:', result.transactionHash);
-
-      // Recheck approval status
-      setNeedsApproval(false);
-    } catch (err: any) {
-      console.error('❌ Erro ao aprovar token:', err);
-      setError(err.message || 'Erro ao aprovar token. Tente novamente.');
-    } finally {
-      setIsApproving(false);
-    }
-  };
-
   const handleDeposit = async () => {
     if (!account) {
       setError('Conecte sua carteira primeiro!');
@@ -465,8 +265,8 @@ export default function DepositModal({
       return;
     }
 
-    if (!currentNetwork || !selectedToken) {
-      setError('Selecione uma rede e token válidos');
+    if (!currentNetwork) {
+      setError('Selecione uma rede válida');
       return;
     }
 
@@ -487,16 +287,6 @@ export default function DepositModal({
       return;
     }
 
-    // Balance validation removed - let wallet handle it during transaction
-
-    // For ERC20 tokens (including WAVAX), check if approval is needed
-    if (!isNativeToken && needsApproval) {
-      setError('Token precisa ser aprovado primeiro. Clique em "Aprovar Token" antes de depositar.');
-      return;
-    }
-
-    // Balance validation removed for ERC20 tokens - let wallet handle it
-
     setIsDepositing(true);
     setError(null);
     setTxHash(null);
@@ -511,95 +301,36 @@ export default function DepositModal({
       console.log('De (sua carteira):', account.address);
       console.log('Para (Smart Account - contrato):', depositAddress);
       console.log('Assinante autorizado (Session Key):', sessionKeyAddress);
-      console.log('Valor:', amount, selectedToken.symbol);
+      console.log('Valor:', amount, nativeToken.symbol);
       console.log('Rede:', currentNetwork.name);
       console.log('Chain ID:', chainId);
-      console.log('Token Address:', selectedToken.address);
 
-      if (isNativeToken) {
-        // Native token transfer
-        console.log('🔄 Fazendo transferência de token nativo...', { chainId });
+      // Native token transfer
+      console.log('🔄 Fazendo transferência de token nativo...', { chainId });
 
-        const transaction = prepareTransaction({
-          to: depositAddress as Address,
-          value: toWei(amount),
-          chain: defineChain(chainId),
-          client,
-        });
+      const transaction = prepareTransaction({
+        to: depositAddress as Address,
+        value: toWei(amount),
+        chain: defineChain(chainId),
+        client,
+      });
 
-        const result = await sendTransaction({
-          transaction,
-          account,
-        });
+      const result = await sendTransaction({
+        transaction,
+        account,
+      });
 
-        console.log('✅ Depósito de token nativo realizado!');
-        console.log('Transaction Hash:', result.transactionHash);
-        setTxHash(result.transactionHash);
+      console.log('✅ Depósito de token nativo realizado!');
+      console.log('Transaction Hash:', result.transactionHash);
+      setTxHash(result.transactionHash);
 
-        // Scroll to success message
-        setTimeout(() => {
-          const successElement = document.querySelector('.bg-green-500\\/10');
-          if (successElement) {
-            successElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }, 100);
-      } else {
-        // ERC20 token transfer
-        console.log('🔄 Fazendo transferência ERC20...');
-
-        const contract = getContract({
-          client,
-          chain: defineChain(chainId),
-          address: selectedToken.address as Address,
-        });
-
-        // Use transfer function from ERC20 extension
-        const { transfer } = await import('thirdweb/extensions/erc20');
-
-        // Get token decimals
-        const tokenDecimals = selectedToken.decimals || 18;
-
-        // Convert amount to token's decimals using safe parseAmountToWei
-        const amountInTokenUnits = parseAmountToWei(amount, tokenDecimals);
-
-        console.log('💰 Amount details:', {
-          symbol: selectedToken.symbol,
-          decimals: tokenDecimals,
-          amountHuman: amount,
-          amountInUnits: amountInTokenUnits.toString(),
-          amountInUnitsHex: '0x' + amountInTokenUnits.toString(16)
-        });
-
-        const transaction = transfer({
-          contract,
-          to: depositAddress as Address,
-          amount: amountInTokenUnits.toString(),
-        });
-
-        console.log('📤 Enviando transação ERC20...');
-        console.log('📋 Transaction details:', {
-          to: depositAddress,
-          amount: amountInTokenUnits.toString(),
-          token: selectedToken.address
-        });
-        
-        const result = await sendTransaction({
-          transaction,
-          account,
-        });
-
-        console.log('✅ Depósito ERC20 realizado!');
-        console.log('Transaction Hash:', result.transactionHash);
-        setTxHash(result.transactionHash);
-
-        // Scroll to success message
-        setTimeout(() => {
-          const successElement = document.querySelector('.bg-green-500\\/10');
-          if (successElement) {
-            successElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }, 100);
-      }
+      // Scroll to success message
+      setTimeout(() => {
+        const successElement = document.querySelector('.bg-green-500\\/10');
+        if (successElement) {
+          successElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
 
       // After successful deposit to smart account, show session key funding step
       setTimeout(() => {
@@ -613,7 +344,7 @@ export default function DepositModal({
       
       if (err.message) {
         if (err.message.includes('insufficient funds') || err.message.includes('transfer amount exceeds balance')) {
-          errorMessage = `❌ Saldo insuficiente na ${currentNetwork?.name}!\n\nVocê não tem ${amount} ${selectedToken.symbol} disponível na sua carteira.\n\nPor favor:\n• Adicione fundos à sua carteira\n• Ou tente um valor menor`;
+          errorMessage = `❌ Saldo insuficiente na ${currentNetwork?.name}!\n\nVocê não tem ${amount} ${nativeToken.symbol} disponível na sua carteira.\n\nPor favor:\n• Adicione fundos à sua carteira\n• Ou tente um valor menor`;
         } else if (err.message.includes('user rejected')) {
           errorMessage = 'Transação cancelada pelo usuário.';
         } else if (err.message.includes('gas')) {
@@ -967,7 +698,7 @@ export default function DepositModal({
                 <select
                   value={chainId}
                   onChange={(e) => setChainId(Number(e.target.value))}
-                  disabled={isDepositing || isApproving}
+                  disabled={isDepositing}
                   className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40 disabled:opacity-50"
                 >
                   {networks.map((network) => (
@@ -980,16 +711,12 @@ export default function DepositModal({
 
               <div className="space-y-2">
                 <label className="text-xs font-medium text-pano-text-secondary">Token</label>
-                <button
-                  onClick={() => setShowTokenSelector(true)}
-                  disabled={isDepositing || isApproving}
-                  className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated hover:bg-pano-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <div className="w-full flex items-center gap-2 px-4 py-3 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated">
                   <div className="flex items-center gap-2">
-                    {selectedToken.icon && (
+                    {nativeToken.icon && (
                       <img
-                        src={selectedToken.icon}
-                        alt={selectedToken.symbol}
+                        src={nativeToken.icon}
+                        alt={nativeToken.symbol}
                         className="w-6 h-6 rounded-full"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
@@ -998,14 +725,11 @@ export default function DepositModal({
                       />
                     )}
                     <div className="text-left">
-                      <div className="text-sm font-medium text-pano-text-primary">{selectedToken.symbol}</div>
-                      <div className="text-xs text-pano-text-muted">{selectedToken.name}</div>
+                      <div className="text-sm font-medium text-pano-text-primary">{nativeToken.symbol}</div>
+                      <div className="text-xs text-pano-text-muted">{nativeToken.name}</div>
                     </div>
                   </div>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-pano-text-muted">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
+                </div>
               </div>
             </div>
 
@@ -1021,10 +745,10 @@ export default function DepositModal({
                     onChange={(e) => setAmount(e.target.value)}
                     className="flex-1 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40 disabled:opacity-50"
                     placeholder="0.01"
-                    disabled={isDepositing || isApproving}
+                    disabled={isDepositing}
                   />
                   <div className="flex items-center rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 text-sm font-medium text-pano-text-muted">
-                    {selectedToken.symbol}
+                    {nativeToken.symbol}
                   </div>
                 </div>
                 <p className="mt-1 text-[11px] text-pano-text-muted">
@@ -1038,10 +762,10 @@ export default function DepositModal({
                     key={preset}
                     type="button"
                     onClick={() => setAmount(preset)}
-                    disabled={isDepositing || isApproving}
+                    disabled={isDepositing}
                     className="rounded-md border border-pano-border-subtle px-3 py-1.5 text-xs text-pano-text-secondary transition-colors hover:border-pano-primary/60 hover:text-pano-text-primary disabled:opacity-50"
                   >
-                    {preset} {selectedToken.symbol}
+                    {preset} {nativeToken.symbol}
                   </button>
                 ))}
               </div>
@@ -1058,7 +782,7 @@ export default function DepositModal({
                     ) : (
                       <>
                         <span className="font-medium">
-                          {walletBalance} {selectedToken.symbol}
+                          {walletBalance} {nativeToken.symbol}
                         </span>
                         <button
                           type="button"
@@ -1074,24 +798,14 @@ export default function DepositModal({
                   </div>
                 </div>
                 <p className="mt-1 text-[11px] text-pano-text-muted">
-                  {isNativeToken
-                    ? 'Reserve uma fração de ETH para pagar o gas desta e de futuras transações.'
-                    : 'O saldo considera o token ERC20 selecionado.'}
+                  Reserve uma fração de {nativeToken.symbol} para pagar o gas desta e de futuras transações.
                 </p>
               </div>
             </div>
 
-            {isNativeToken && (
-              <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-4 py-3 text-[11px] text-pano-warning">
-                Para evitar erros de gas, deixe pelo menos 0.001 ETH disponível após o depósito.
-              </div>
-            )}
-
-            {needsApproval && !isNativeToken && (
-              <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-4 py-3 text-[11px] text-pano-warning">
-                Tokens ERC20 exigem aprovação antes do depósito. Execute a aprovação e, em seguida, confirme o envio.
-              </div>
-            )}
+            <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-4 py-3 text-[11px] text-pano-warning">
+              Para evitar erros de gas, deixe pelo menos 0.001 {nativeToken.symbol} disponível após o depósito.
+            </div>
 
             {txHash && (
               <div className="rounded-lg border border-pano-success/40 bg-pano-success/10 px-4 py-4 text-sm text-pano-success space-y-2">
@@ -1146,54 +860,29 @@ export default function DepositModal({
                 size="md"
                 fullWidth
                 onClick={onClose}
-                disabled={isDepositing || isApproving}
+                disabled={isDepositing}
               >
                 Cancelar
               </Button>
 
-              {needsApproval && !isNativeToken ? (
-                <Button
-                  variant="secondary"
-                  size="md"
-                  fullWidth
-                  onClick={handleApprove}
-                  disabled={isApproving || !account || !amount || parseFloat(amount) <= 0}
-                  loading={isApproving}
-                >
-                  Aprovar {selectedToken.symbol}
-                </Button>
-              ) : (
-                <Button
-                  variant="primary"
-                  size="md"
-                  fullWidth
-                  onClick={handleDeposit}
-                  disabled={isDepositing || !account || !amount || parseFloat(amount) <= 0 || isWrongNetwork}
-                  loading={isDepositing}
-                >
-                  {isWrongNetwork
-                    ? `Troque para ${currentNetwork?.name || 'rede correta'}`
-                    : `Depositar ${amount} ${selectedToken.symbol}`}
-                </Button>
-              )}
+              <Button
+                variant="primary"
+                size="md"
+                fullWidth
+                onClick={handleDeposit}
+                disabled={isDepositing || !account || !amount || parseFloat(amount) <= 0 || isWrongNetwork}
+                loading={isDepositing}
+              >
+                {isWrongNetwork
+                  ? `Troque para ${currentNetwork?.name || 'rede correta'}`
+                  : `Depositar ${amount} ${nativeToken.symbol}`}
+              </Button>
             </div>
               </>
             )}
           </div>
         </div>
       </div>
-
-      {/* Token Selector Modal */}
-      <TokenSelector
-        isOpen={showTokenSelector}
-        onClose={() => setShowTokenSelector(false)}
-        onSelect={(token, chainId) => {
-          setSelectedToken(token);
-          setChainId(chainId);
-        }}
-        title="Selecione um token para depositar"
-        currentChainId={chainId}
-      />
     </>
   );
 }

@@ -6,13 +6,17 @@ export type Token = {
   name?: string;
 };
 export type Network = {
-  nativeCurrency?: any; chainId: number; name: string; tokens: Token[]
+  nativeCurrency: Token;
+  chainId: number;
+  name: string;
+  tokens: Token[]
 };
 
 export const networks: Network[] = [
   {
     chainId: 43114,
     name: 'Avalanche',
+    nativeCurrency: { symbol: 'AVAX', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png', decimals: 18, name: 'Avalanche' },
     tokens: [
       { symbol: 'AVAX', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png', decimals: 18, name: 'Avalanche' },
       { symbol: 'WAVAX', address: '0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7', icon: 'https://assets.coingecko.com/coins/images/15075/small/wrapped-avax.png', decimals: 18, name: 'Wrapped AVAX' },
@@ -28,6 +32,7 @@ export const networks: Network[] = [
   {
     chainId: 1,
     name: 'Ethereum',
+    nativeCurrency: { symbol: 'ETH', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
     tokens: [
       { symbol: 'ETH', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
       { symbol: 'USDC', address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
@@ -43,6 +48,7 @@ export const networks: Network[] = [
   {
     chainId: 56,
     name: 'Binance Smart Chain',
+    nativeCurrency: { symbol: 'BNB', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png', decimals: 18, name: 'BNB' },
     tokens: [
       { symbol: 'USDT', address: '0x55d398326f99059ff775485246999027b3197955', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 18, name: 'Tether USD' },
       { symbol: 'USDC', address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 18, name: 'USD Coin' },
@@ -57,6 +63,7 @@ export const networks: Network[] = [
   {
     chainId: 137,
     name: 'Polygon',
+    nativeCurrency: { symbol: 'MATIC', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/4713/small/matic-token-icon.png', decimals: 18, name: 'Polygon' },
     tokens: [
       { symbol: 'USDT', address: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
       { symbol: 'USDC', address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
@@ -70,6 +77,7 @@ export const networks: Network[] = [
   {
     chainId: 42161,
     name: 'Arbitrum',
+    nativeCurrency: { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
     tokens: [
       { symbol: 'ARB', address: '0x912CE59144191C1204E64559FE8253a0e49E6548', icon: 'https://assets.coingecko.com/coins/images/16547/small/photo_2023-03-29_21.47.00.jpeg', decimals: 18, name: 'Arbitrum' },
       { symbol: 'USDT', address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
@@ -81,6 +89,7 @@ export const networks: Network[] = [
   {
     chainId: 8453,
     name: 'Base',
+    nativeCurrency: { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
     tokens: [
       { symbol: 'USDC', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
       { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
@@ -91,6 +100,7 @@ export const networks: Network[] = [
   {
     chainId: 10,
     name: 'Optimism',
+    nativeCurrency: { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
     tokens: [
       { symbol: 'USDC', address: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
       { symbol: 'USDT', address: '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
