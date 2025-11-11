@@ -39,6 +39,7 @@ export interface CreateAccountResponse {
 }
 
 export interface DCAStrategy {
+  strategyId?: string; // Optional for backwards compatibility
   smartAccountId: string;
   fromToken: string;
   toToken: string;
