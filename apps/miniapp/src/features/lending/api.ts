@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useActiveAccount } from 'thirdweb/react';
 import {
   LendingToken,
@@ -17,8 +18,32 @@ class LendingApiClient {
   private readonly CACHE_DURATION = LENDING_CONFIG.CACHE_DURATION;
 
   constructor(account: any) {
-    this.baseUrl = process.env.NEXT_PUBLIC_LENDING_API_URL || LENDING_CONFIG.DEFAULT_API_URL;
+    // Use same pattern as swap API - try specific env var first, then gateway fallback
+    const direct = process.env.VITE_LENDING_API_BASE || process.env.NEXT_PUBLIC_LENDING_API_URL;
+    if (direct && direct.length > 0) {
+      this.baseUrl = direct.replace(/\/+$/, '');
+    } else {
+      // Check if running on localhost (development)
+      const isLocalhost = typeof window !== 'undefined' &&
+                         (window.location.hostname === 'localhost' ||
+                          window.location.hostname === '127.0.0.1');
+
+      if (isLocalhost) {
+        // Use Next.js proxy to avoid CORS issues in development
+        this.baseUrl = '/api/lending';
+      } else {
+        // Production: use gateway directly
+        const gw = process.env.VITE_GATEWAY_BASE;
+        if (gw && gw.length > 0) {
+          this.baseUrl = `${gw.replace(/\/+$/, '')}/lending`;
+        } else {
+          // Fallback to same-origin
+          this.baseUrl = '/lending';
+        }
+      }
+    }
     this.account = account;
+    console.log('[LENDING API] Using baseUrl:', this.baseUrl);
   }
 
   private toWei(amount: string, decimals: number = 18): string {
@@ -229,9 +254,20 @@ class LendingApiClient {
 
   async prepareSupply(tokenAddress: string, amount: string): Promise<any> {
     try {
+      console.log('[LENDING API] prepareSupply called:', { tokenAddress, amount });
+
       const amountInWei = this.toWei(amount);
+      console.log('[LENDING API] Amount in wei:', amountInWei);
+
       const message = this.formatMessage('Validate and supply', amountInWei, tokenAddress);
+      console.log('[LENDING API] Message formatted:', message);
+
       const authData = await this.getAuthData(message);
+      console.log('[LENDING API] Auth data generated:', {
+        address: authData.address,
+        hasSignature: !!authData.signature,
+        walletType: authData.walletType
+      });
 
       const authToken = localStorage.getItem('authToken');
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -239,7 +275,15 @@ class LendingApiClient {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
 
-      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.PREPARE_SUPPLY}`, {
+      const url = `${this.baseUrl}${API_ENDPOINTS.PREPARE_SUPPLY}`;
+      console.log('[LENDING API] Fetching:', url);
+      console.log('[LENDING API] Request body:', {
+        ...authData,
+        amount: amountInWei,
+        qTokenAddress: tokenAddress,
+      });
+
+      const response = await fetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -249,14 +293,21 @@ class LendingApiClient {
         })
       });
 
+      console.log('[LENDING API] Response status:', response.status);
+      console.log('[LENDING API] Response ok:', response.ok);
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('[LENDING API] Error response:', errorText);
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
 
-      return await response.json();
+      const data = await response.json();
+      console.log('[LENDING API] Response data:', data);
+      return data;
     } catch (error) {
-      console.error('Error preparing supply:', error);
-      throw new Error('Failed to prepare supply transaction');
+      console.error('[LENDING API] Error preparing supply:', error);
+      throw new Error('Failed to prepare supply transaction: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   }
 
@@ -502,7 +553,7 @@ class LendingApiClient {
 
 export const useLendingApi = () => {
   const account = useActiveAccount();
-  return new LendingApiClient(account);
+  return useMemo(() => new LendingApiClient(account), [account]);
 };
 
 export default LendingApiClient;

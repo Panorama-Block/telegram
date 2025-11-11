@@ -5,13 +5,14 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
-import { useActiveAccount, useActiveWallet } from 'thirdweb/react';
+import { useActiveAccount } from 'thirdweb/react';
 import { useLendingApi } from '@/features/lending/api';
 import { useLendingData } from '@/features/lending/useLendingData';
 import { VALIDATION_FEE } from '@/features/lending/config';
 import { LendingToken } from '@/features/lending/types';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 
 type LendingActionType = 'supply' | 'withdraw' | 'borrow' | 'repay';
 
@@ -93,7 +94,6 @@ async function getTokenBalance(account: any, tokenAddress: string): Promise<stri
 export default function LendingPage() {
   const router = useRouter();
   const account = useActiveAccount();
-  const activeWallet = useActiveWallet();
   const lendingApi = useLendingApi();
 
   // Use the new hook for data management
@@ -109,56 +109,6 @@ export default function LendingPage() {
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const userAddress = localStorage.getItem('userAddress');
   const effectiveAddress = account?.address || addressFromToken || userAddress;
-
-  // Auto-reconnect logic - wait for ThirdwebProvider to reconnect wallet
-  const [isInitializing, setIsInitializing] = useState(true);
-
-  useEffect(() => {
-    console.log('[Lending] Initialization check:', {
-      hasAccount: !!account,
-      accountAddress: account?.address,
-      hasActiveWallet: !!activeWallet,
-      walletId: activeWallet?.id
-    });
-
-    // If we have an account OR no active wallet, stop initializing
-    if (account || !activeWallet) {
-      console.log('[Lending] Stopping initialization:', {
-        reason: account ? 'account connected' : 'no active wallet'
-      });
-      setIsInitializing(false);
-      return;
-    }
-
-    // If we have activeWallet but no account yet, wait a bit for auto-connect
-    console.log('[Lending] Active wallet detected, waiting for account...');
-    const timer = setTimeout(() => {
-      console.log('[Lending] Wait timeout - showing interface');
-      setIsInitializing(false);
-    }, 1500);
-
-    return () => clearTimeout(timer);
-  }, [account, activeWallet]);
-
-  // When account connects, stop initializing immediately
-  useEffect(() => {
-    if (account && isInitializing) {
-      console.log('[Lending] Account connected during initialization!', account.address);
-      setIsInitializing(false);
-    }
-  }, [account, isInitializing]);
-
-  // Log account status for debugging
-  useEffect(() => {
-    if (!isInitializing) {
-      console.log('[Lending] Current state:', {
-        hasAccount: !!account,
-        accountAddress: account?.address,
-        effectiveAddress,
-        isAuthenticated: !!effectiveAddress
-      });
-    }
-  }, [account, effectiveAddress, isInitializing]);
 
   const [exploreDropdownOpen, setExploreDropdownOpen] = useState(false);
   const [selectedToken, setSelectedToken] = useState<LendingToken | null>(null);
@@ -221,30 +171,32 @@ export default function LendingPage() {
     console.log('🎯 [LENDING] handleAction called:', {
       action: currentAction,
       token: currentToken?.symbol,
-      amount: currentAmount
+      amount: currentAmount,
+      hasAccount: !!account,
+      accountAddress: account?.address
     });
 
-    if (!account && !effectiveAddress) {
-      setError('Please connect your wallet or authenticate first');
-      return;
-    }
-
+    // Validações
     if (!currentAmount || parseFloat(currentAmount) <= 0) {
+      console.error('❌ [LENDING] Invalid amount:', currentAmount);
       setError('Please enter a valid amount');
       return;
     }
 
     if (!currentToken) {
+      console.error('❌ [LENDING] No token selected');
       setError('Please select a token');
       return;
     }
 
-    // Check if account is available for transaction execution
+    // Account is guaranteed by ProtectedRoute
     if (!account) {
-      setError('To execute blockchain transactions, you need to connect MetaMask. Click "Connect Wallet" in the top right corner, then try again.');
+      console.error('❌ [LENDING] No account connected');
+      setError('Account not connected. Please refresh the page.');
       return;
     }
 
+    console.log('✅ [LENDING] All validations passed, starting transaction...');
     setLoading(true);
     setError(null);
     setSuccess(null);
@@ -357,11 +309,15 @@ export default function LendingPage() {
       } else {
         throw new Error('Transaction failed');
       }
-      
+
     } catch (err) {
-      console.error('Transaction error:', err);
-      setError(err instanceof Error ? err.message : 'Transaction failed. Please try again.');
+      console.error('❌ [LENDING] Transaction error:', err);
+      console.error('❌ [LENDING] Error stack:', err instanceof Error ? err.stack : 'No stack');
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed. Please try again.';
+      console.error('❌ [LENDING] Error message:', errorMessage);
+      setError(errorMessage);
     } finally {
+      console.log('🏁 [LENDING] Transaction flow completed, setting loading to false');
       setLoading(false);
     }
   };
@@ -381,9 +337,10 @@ export default function LendingPage() {
   }, [selectedToken, amount]);
 
   return (
-    <div className="h-screen text-white flex flex-col overflow-hidden relative">
-      {/* Animated Background */}
-      <AnimatedBackground />
+    <ProtectedRoute>
+      <div className="h-screen text-white flex flex-col overflow-hidden relative">
+        {/* Animated Background */}
+        <AnimatedBackground />
 
       {/* Top Navbar - Same as swap */}
       <header className="flex-shrink-0 bg-black/40 backdrop-blur-md border-b-2 border-white/15 px-6 py-3 z-50">
@@ -490,39 +447,17 @@ export default function LendingPage() {
             </button>
 
             {/* Wallet Address Display */}
-            {(account?.address || effectiveAddress) ? (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
-                  <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
-                  <span className="text-white text-xs font-mono">
-                    {account?.address
-                      ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
-                      : effectiveAddress
-                        ? `${effectiveAddress.slice(0, 6)}...${effectiveAddress.slice(-4)}`
-                        : ''}
-                  </span>
-                </div>
-                {/* Show MetaMask connect button if JWT-only */}
-                {!account && effectiveAddress && (
-                  <button
-                    onClick={() => router.push('/newchat')}
-                    className="px-3 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium transition-colors flex items-center gap-2"
-                    title="Connect MetaMask for transactions"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    Connect MetaMask
-                  </button>
-                )}
+            {(account?.address || effectiveAddress) && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
+                <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
+                <span className="text-white text-xs font-mono">
+                  {account?.address
+                    ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                    : effectiveAddress
+                      ? `${effectiveAddress.slice(0, 6)}...${effectiveAddress.slice(-4)}`
+                      : ''}
+                </span>
               </div>
-            ) : (
-              <button
-                onClick={() => router.push('/auth')}
-                className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-medium transition-colors"
-              >
-                Connect Wallet
-              </button>
             )}
           </div>
         </div>
@@ -532,12 +467,10 @@ export default function LendingPage() {
       <div className="flex-1 overflow-hidden">
         {/* Lending Interface */}
         <div className="h-full flex items-center justify-center p-3 sm:p-4">
-          {(isInitializing || dataLoading) ? (
+          {dataLoading ? (
             <div className="text-center">
               <div className="loader-inline-lg mb-4" />
-              <p className="text-gray-400 text-sm">
-                {isInitializing ? 'Initializing...' : 'Loading lending data...'}
-              </p>
+              <p className="text-gray-400 text-sm">Loading lending data...</p>
             </div>
           ) : (
             <div className="w-full max-w-[90vw] sm:max-w-sm">
@@ -702,24 +635,6 @@ export default function LendingPage() {
                 </div>
               )}
 
-              {/* MetaMask Connection Warning */}
-              {!account && effectiveAddress && (
-                <div className="mb-1.5 p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/30">
-                  <div className="flex items-start gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-orange-400 mt-0.5 flex-shrink-0">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-orange-400 font-semibold text-xs mb-0.5">Wallet Connection Required</h4>
-                      <p className="text-orange-200/80 text-xs leading-snug">
-                        You&apos;re authenticated with JWT, but to execute blockchain transactions you need to connect MetaMask.
-                        Click <span className="font-semibold text-orange-300">&quot;Connect Wallet&quot;</span> in the top right corner.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Action Button */}
               <button
                 onClick={handleAction}
@@ -788,5 +703,6 @@ export default function LendingPage() {
         </div>
       </div>
     </div>
+    </ProtectedRoute>
   );
 }

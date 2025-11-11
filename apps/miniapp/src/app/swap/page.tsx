@@ -6,6 +6,7 @@ import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
 import UniswapIcon from '../../../public/icons/uniswap.svg';
+import AvalancheIcon from '../../../public/icons/Avalanche_Blockchain_Logo.svg';
 import { networks, Token } from '@/features/swap/tokens';
 import { swapApi, SwapApiError } from '@/features/swap/api';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl } from '@/features/swap/utils';
@@ -236,6 +237,16 @@ export default function SwapPage() {
   const [swapFlowStep, setSwapFlowStep] = useState<'routing' | 'details' | 'confirm' | null>(null);
   const [tosAccepted, setTosAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
+
+  // Helper to check if swap involves Avalanche
+  const isAvalancheSwap = useMemo(() => {
+    const isAvalancheChain = fromChainId === 43114 || toChainId === 43114;
+    const isAvaxToken = sellToken?.symbol?.toUpperCase() === 'AVAX' ||
+                        sellToken?.symbol?.toUpperCase() === 'WAVAX' ||
+                        buyToken?.symbol?.toUpperCase() === 'AVAX' ||
+                        buyToken?.symbol?.toUpperCase() === 'WAVAX';
+    return isAvalancheChain || isAvaxToken;
+  }, [fromChainId, toChainId, sellToken, buyToken]);
 
   // Check if we can request quote
   const canQuote = useMemo(() => {
@@ -870,17 +881,32 @@ export default function SwapPage() {
                 </p>
               </div>
 
-              {/* Powered by Uniswap */}
+              {/* Powered by Uniswap/Avalanche */}
               <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-400">
-                <Image
-                  src={UniswapIcon}
-                  alt="Uniswap"
-                  width={44}
-                  height={44}
-                  className="w-11 h-11"
-                  style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
-                />
-                <span>Powered by Uniswap</span>
+                {isAvalancheSwap ? (
+                  <>
+                    <Image
+                      src={AvalancheIcon}
+                      alt="Avalanche"
+                      width={28}
+                      height={28}
+                      className="w-7 h-7"
+                    />
+                    <span>Powered by Avalanche</span>
+                  </>
+                ) : (
+                  <>
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
+                    <span>Powered by Uniswap</span>
+                  </>
+                )}
               </div>
 
               {/* Error Message */}
@@ -1085,16 +1111,26 @@ export default function SwapPage() {
                 </button>
                 <div className="mt-2 sm:mt-3 flex items-center justify-center gap-2 text-xs sm:text-sm text-gray-400">
                   <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
-                    <Image
-                      src={UniswapIcon}
-                      alt="Uniswap"
-                      width={44}
-                      height={44}
-                      className="w-11 h-11"
-                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
-                    />
+                    {isAvalancheSwap ? (
+                      <Image
+                        src={AvalancheIcon}
+                        alt="Avalanche"
+                        width={28}
+                        height={28}
+                        className="w-7 h-7"
+                      />
+                    ) : (
+                      <Image
+                        src={UniswapIcon}
+                        alt="Uniswap"
+                        width={44}
+                        height={44}
+                        className="w-11 h-11"
+                        style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                      />
+                    )}
                   </div>
-                  <span>Powered by Uniswap</span>
+                  <span>{isAvalancheSwap ? 'Powered by Avalanche' : 'Powered by Uniswap'}</span>
                 </div>
               </div>
             </div>
@@ -1122,27 +1158,69 @@ export default function SwapPage() {
               </div>
 
               {/* Content */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 space-y-3 sm:space-y-4">
-                {/* Swap Summary */}
+              <div className="px-4 py-4 sm:px-5 sm:py-5 space-y-3 sm:space-y-4">
+                {/* Select Swap API */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs sm:text-sm font-medium text-white">Select Swap API</span>
+                  <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
+                    Change API
+                  </button>
+                </div>
+
+                {/* Routing */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs sm:text-sm text-gray-400">Routing</span>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    {isAvalancheSwap ? (
+                      <>
+                        <Image src={AvalancheIcon} alt="Avalanche" width={16} height={16} className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <span className="text-xs sm:text-sm text-white">Avalanche C-chain</span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-white flex items-center justify-center">
+                          <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-black"></div>
+                        </div>
+                        <span className="text-xs sm:text-sm text-white">UNI V3</span>
+                      </>
+                    )}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
+                      <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
+                    </svg>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                    </svg>
+                    Suggested
+                  </div>
+                  <span className="text-[10px] sm:text-xs text-gray-400">Est. Price Impact 1.1%</span>
+                </div>
+
+                {/* Swap Details Card */}
                 <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
                   <div className="text-sm sm:text-base font-semibold text-white mb-3 sm:mb-4 break-words">
                     Swap {sellToken.symbol} to {buyToken?.symbol || 'Token'}
                   </div>
 
-                  <div className="space-y-2 sm:space-y-2.5">
-                    <div className="flex items-center justify-between text-xs sm:text-sm">
+                  <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                    <div className="flex justify-between gap-2">
                       <span className="text-gray-400">Amount in</span>
                       <span className="text-white font-medium text-right break-words">
                         {sellAmount} {sellToken.symbol}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-[11px] sm:text-xs">
+                    <div className="flex justify-between gap-2">
                       <span className="text-gray-400 text-[11px] sm:text-xs">Expected Amount Out</span>
                       <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
                         {buyAmount} {buyToken?.symbol || ''}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-[11px] sm:text-xs">
+                    <div className="flex justify-between gap-2">
                       <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
                       <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
                         {(parseFloat(buyAmount || '0') * 0.99).toFixed(6)} {buyToken?.symbol || ''}
@@ -1151,22 +1229,17 @@ export default function SwapPage() {
                   </div>
                 </div>
 
-                {/* Network Info */}
-                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
-                  <div className="text-xs sm:text-sm font-semibold text-white mb-2 sm:mb-3">Network Information</div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-[11px] sm:text-xs">
-                      <span className="text-gray-400">From Chain</span>
-                      <span className="text-white font-medium">
-                        {networks.find(n => n.chainId === fromChainId)?.name || `Chain ${fromChainId}`}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] sm:text-xs">
-                      <span className="text-gray-400">To Chain</span>
-                      <span className="text-white font-medium">
-                        {networks.find(n => n.chainId === toChainId)?.name || `Chain ${toChainId}`}
-                      </span>
-                    </div>
+                {/* Aperture Fee & Transaction Settings */}
+                <div className="space-y-2 sm:space-y-3">
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
+                    <span className="text-gray-400">Aperture Fee</span>
+                    <span className="text-white font-medium">0.9% {'(<$0.01)'}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-white font-medium text-xs sm:text-sm">Transaction Setting</span>
+                    <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
+                      Change Settings
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1174,23 +1247,43 @@ export default function SwapPage() {
               {/* Action Button */}
               <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
                 <button
-                  onClick={() => setSwapFlowStep('confirm')}
-                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors"
+                  onClick={async () => {
+                    if (isAvalancheSwap) {
+                      // For Avalanche, execute swap directly without confirmation modal
+                      setSwapFlowStep(null);
+                      await executeSwap();
+                    } else {
+                      // For Uniswap, go to confirmation modal
+                      setSwapFlowStep('confirm');
+                    }
+                  }}
+                  disabled={executing}
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Continue
+                  {executing ? 'Executing...' : 'Continue'}
                 </button>
                 <div className="mt-2 sm:mt-3 flex items-center justify-center gap-2 text-xs sm:text-sm text-gray-400">
                   <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
-                    <Image
-                      src={UniswapIcon}
-                      alt="Uniswap"
-                      width={44}
-                      height={44}
-                      className="w-11 h-11"
-                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
-                    />
+                    {isAvalancheSwap ? (
+                      <Image
+                        src={AvalancheIcon}
+                        alt="Avalanche"
+                        width={28}
+                        height={28}
+                        className="w-7 h-7"
+                      />
+                    ) : (
+                      <Image
+                        src={UniswapIcon}
+                        alt="Uniswap"
+                        width={44}
+                        height={44}
+                        className="w-11 h-11"
+                        style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                      />
+                    )}
                   </div>
-                  <span>Powered by Uniswap</span>
+                  <span>{isAvalancheSwap ? 'Powered by Avalanche' : 'Powered by Uniswap'}</span>
                 </div>
               </div>
             </div>
@@ -1198,8 +1291,8 @@ export default function SwapPage() {
         </>
       )}
 
-      {/* Confirm Details Modal */}
-      {swapFlowStep === 'confirm' && quote && (
+      {/* Confirm Details Modal - Only show for non-Avalanche swaps */}
+      {swapFlowStep === 'confirm' && quote && !isAvalancheSwap && (
         <>
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
             // Just close the modal, keep swap state so user can resume
@@ -1294,16 +1387,26 @@ export default function SwapPage() {
                 </button>
                 <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
                   <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
-                    <Image
-                      src={UniswapIcon}
-                      alt="Uniswap"
-                      width={44}
-                      height={44}
-                      className="w-11 h-11"
-                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
-                    />
+                    {isAvalancheSwap ? (
+                      <Image
+                        src={AvalancheIcon}
+                        alt="Avalanche"
+                        width={28}
+                        height={28}
+                        className="w-7 h-7"
+                      />
+                    ) : (
+                      <Image
+                        src={UniswapIcon}
+                        alt="Uniswap"
+                        width={44}
+                        height={44}
+                        className="w-11 h-11"
+                        style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                      />
+                    )}
                   </div>
-                  <span>Powered by Uniswap</span>
+                  <span>{isAvalancheSwap ? 'Powered by Avalanche' : 'Powered by Uniswap'}</span>
                 </div>
               </div>
             </div>

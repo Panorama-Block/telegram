@@ -22,6 +22,25 @@ const nextConfig: NextConfig = {
     ];
   },
 
+  async rewrites() {
+    const gatewayBase = process.env.PUBLIC_GATEWAY_URL || process.env.VITE_GATEWAY_BASE || "";
+
+    if (!gatewayBase) {
+      console.warn('[Next.js] Gateway base URL not configured, proxy will not work');
+      return [];
+    }
+
+    return [
+      // Proxy lending API to avoid CORS issues in development
+      // Note: source is relative to basePath, so /api/lending maps to /miniapp/api/lending
+      {
+        source: "/api/lending/:path*",
+        destination: `${gatewayBase.replace(/\/+$/, '')}/lending/:path*`,
+        basePath: false, // Important: bypass basePath for API routes
+      },
+    ];
+  },
+
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "assets.coingecko.com", pathname: "/coins/images/**" },
