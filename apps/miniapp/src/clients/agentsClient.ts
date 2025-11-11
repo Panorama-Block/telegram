@@ -57,7 +57,7 @@ export class AgentsClient {
   private debugEnabled: boolean;
 
   constructor() {
-    // Usar variáveis de ambiente do Next.js
+    // Read environment variables provided by Next.js
     this.baseUrl = process.env.AGENTS_API_BASE;
     this.messagePath = process.env.AGENTS_RESPONSE_MESSAGE_PATH;
     const debugFlag = process.env.AGENTS_DEBUG_SHAPE;
@@ -69,7 +69,7 @@ export class AgentsClient {
   }
 
   private ensureConfigured() {
-    if (!this.baseUrl) throw new Error('AGENTS_API_BASE não configurado');
+    if (!this.baseUrl) throw new Error('AGENTS_API_BASE not configured');
   }
 
   private logDebug(event: string, payload?: Record<string, unknown>) {
@@ -148,7 +148,7 @@ export class AgentsClient {
     }
     if (!message && Array.isArray(data?.messages)) {
       const msgs = data.messages as any[];
-      // pegar a última mensagem do assistente, senão a última
+      // Prefer the last assistant response, otherwise fall back to the final message
       const assistant = [...msgs].reverse().find((m) => m?.role === 'assistant') ?? msgs[msgs.length - 1];
       if (assistant) {
         message = AgentsClient.joinContent(assistant.content ?? assistant.text ?? assistant.message);
@@ -234,7 +234,7 @@ export class AgentsClient {
     if (!res.ok) {
       const text = await res.text();
       this.logDebug('chat:error', { status: res.status, body, response: text });
-      throw new Error(`Agents chat falhou: ${res.status} ${text}`);
+      throw new Error(`Agents chat failed: ${res.status} ${text}`);
     }
 
     this.logDebug('chat:success', { conversationId: req.conversation_id, userId: req.user_id });
@@ -259,7 +259,7 @@ export class AgentsClient {
     };
     
     if (this.debugShape && !final.message) {
-      // Log leve de formato para diagnóstico (sem conteúdo)
+      // Lightweight shape log for diagnostics (no content included)
       const root: any = data || {};
       const keys = Object.keys(root);
       const hasMessages = Array.isArray(root.messages);

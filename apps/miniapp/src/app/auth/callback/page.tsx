@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
+import '@/shared/ui/loader.css';
 
 function decodeAuthResult(value: string) {
   try {
@@ -23,34 +24,32 @@ function decodeAuthResult(value: string) {
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const [status, setStatus] = useState('Inicializando...');
   const [error, setError] = useState<string | null>(null);
   const [deepLinkUrl, setDeepLinkUrl] = useState<string | null>(null);
 
   useEffect(() => {
     async function run() {
       try {
-        setStatus('Processando retorno de autenticação...');
         const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
         if (!clientId) {
-          throw new Error('THIRDWEB_CLIENT_ID ausente');
+          throw new Error('THIRDWEB_CLIENT_ID missing');
         }
 
-        // 1) Parse authResult (se presente) e persistir token localmente
+        // 1) Parse authResult (when present) and persist the token locally
         const url = new URL(window.location.href);
         const authResultParam = url.searchParams.get('authResult');
         if (!authResultParam) {
-          // Sem authResult, seguimos tentando auto-conexão se já existir sessão local
-          console.warn('[AUTH CALLBACK] Parametro authResult ausente');
+          // Without authResult we attempt auto-connect if a local session already exists
+          console.warn('[AUTH CALLBACK] Missing authResult parameter');
         } else {
           const authResult = decodeAuthResult(authResultParam);
           if (!authResult || !authResult.storedToken || !authResult.storedToken.cookieString) {
-            throw new Error('AuthResult inválido no retorno do OAuth');
+            throw new Error('Invalid authResult returned from OAuth');
           }
           const cookie = authResult.storedToken.cookieString as string;
-          // Persistir para o storage esperado pelo SDK (walletToken-<clientId>)
+          // Persist to the storage expected by the SDK (walletToken-<clientId>)
           localStorage.setItem(`walletToken-${clientId}`, cookie);
-          // Opcional: persistir userWalletId para futuras ações
+          // Optionally persist userWalletId for future actions
           try {
             const userId = authResult?.storedToken?.authDetails?.userWalletId;
             if (userId) {
@@ -59,20 +58,17 @@ export default function AuthCallbackPage() {
           } catch {}
         }
 
-        // 2) Auto-conectar a wallet usando o token salvo
-        setStatus('Conectando carteira...');
+        // 2) Auto-connect the wallet using the stored token
         const client = createThirdwebClient({ clientId });
         const wallet = inAppWallet();
         const account = await wallet.autoConnect({ client });
 
         if (!account) {
-          throw new Error('Falha ao conectar a carteira após OAuth');
+          throw new Error('Failed to connect the wallet after OAuth');
         }
 
-        // 3) Autenticar no backend (gerar JWT da sua plataforma)
-        setStatus('Autenticando com backend...');
-        const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
-        if (!authApiBase) throw new Error('VITE_AUTH_API_BASE não configurado');
+        // 3) Authenticate with the backend (issue your platform JWT)
+        const authApiBase = (process.env.VITE_AUTH_API_BASE || 'http://localhost:3001').replace(/\/+$/, '');
 
         const loginPayload = { address: account.address };
         const loginResponse = await fetch(`${authApiBase}/auth/login`, {
@@ -82,12 +78,12 @@ export default function AuthCallbackPage() {
         });
         if (!loginResponse.ok) {
           const errorText = await loginResponse.text();
-          throw new Error(`Erro ao gerar payload: ${errorText}`);
+          throw new Error(`Error generating payload: ${errorText}`);
         }
         const { payload } = await loginResponse.json();
 
         if (account.address.toLowerCase() !== payload.address.toLowerCase()) {
-          throw new Error('Endereço retornado não confere com o payload');
+          throw new Error('Wallet address returned by backend does not match the payload');
         }
 
         let signature: string = '';
@@ -95,10 +91,10 @@ export default function AuthCallbackPage() {
           const signResult = await signLoginPayload({ account, payload });
           if (typeof signResult === 'string') signature = signResult;
           else if (signResult && (signResult as any).signature) signature = (signResult as any).signature;
-          else throw new Error('Formato de assinatura inválido');
+          else throw new Error('Invalid signature format');
         } catch (err) {
-          console.error('[AUTH CALLBACK] Erro na assinatura do payload', err);
-          throw new Error('Falha ao assinar payload');
+          console.error('[AUTH CALLBACK] Error signing payload', err);
+          throw new Error('Failed to sign payload');
         }
 
         const verifyResponse = await fetch(`${authApiBase}/auth/verify`, {
@@ -108,13 +104,13 @@ export default function AuthCallbackPage() {
         });
         if (!verifyResponse.ok) {
           const errorText = await verifyResponse.text();
-          throw new Error(`Erro na verificação: ${errorText}`);
+          throw new Error(`Verification error: ${errorText}`);
         }
         const verifyResult = await verifyResponse.json();
         const { token: authToken } = verifyResult;
-        if (!authToken) throw new Error('Token de autenticação ausente na resposta');
+        if (!authToken) throw new Error('Authentication token missing in backend response');
 
-        // Persistir token da sua plataforma
+        // Persist your platform token locally
         localStorage.setItem('authToken', authToken);
         localStorage.setItem('authPayload', JSON.stringify(payload));
         localStorage.setItem('authSignature', signature);
@@ -122,8 +118,7 @@ export default function AuthCallbackPage() {
         const isTelegram = (window as any).Telegram?.WebApp;
         const bot = process.env.VITE_TELEGRAM_BOT_USERNAME || '';
         if (!isTelegram && bot) {
-          // Criar sessão one-time para retorno ao Mini App via deep link
-          setStatus('Preparando retorno ao Telegram...');
+          // Create a one-time session so the Mini App can resume via deep link
           try {
             const createResp = await fetch(`${authApiBase}/auth/miniapp/session/create`, {
               method: 'POST',
@@ -134,34 +129,40 @@ export default function AuthCallbackPage() {
               const { nonce } = await createResp.json();
               const deepLink = `https://t.me/${bot}?startapp=code:${encodeURIComponent(nonce)}`;
               setDeepLinkUrl(deepLink);
-              setStatus('Abra no Telegram para continuar.');
-              return; // não redireciona dentro do Safari
+              return; // do not redirect inside Safari
             }
           } catch (e) {
-            console.warn('[AUTH CALLBACK] Falha ao criar sessão para deep link', e);
+            console.warn('[AUTH CALLBACK] Failed to create deep-link session', e);
           }
         }
 
-        setStatus('Autenticação concluída. Redirecionando...');
         router.replace('/newchat');
       } catch (e: any) {
-        console.error('[AUTH CALLBACK] Erro:', e);
-        setError(e?.message || 'Falha na autenticação');
+        console.error('[AUTH CALLBACK] Error:', e);
+        setError(e?.message || 'Authentication failed');
       }
     }
 
     run();
   }, [router]);
 
-  return (
-    <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ maxWidth: 480, width: '100%', padding: 24, background: '#0d1117', color: '#fff', borderRadius: 12, border: '1px solid rgba(6,182,212,0.3)' }}>
-        <h2 style={{ marginTop: 0, marginBottom: 12 }}>Finalizando login</h2>
-        <p style={{ margin: 0, color: '#9ca3af' }}>{status}</p>
-        {error && (
-          <p style={{ marginTop: 12, color: '#ef4444' }}>Erro: {error}</p>
-        )}
-        {!error && deepLinkUrl && (
+  if (error) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ maxWidth: 480, width: '100%', padding: 24, background: '#0d1117', color: '#fff', borderRadius: 12, border: '1px solid rgba(6,182,212,0.3)' }}>
+          <h2 style={{ marginTop: 0, marginBottom: 12 }}>Authentication Error</h2>
+          <p style={{ marginTop: 12, color: '#ef4444' }}>Error: {error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (deepLinkUrl) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ maxWidth: 480, width: '100%', padding: 24, background: '#0d1117', color: '#fff', borderRadius: 12, border: '1px solid rgba(6,182,212,0.3)' }}>
+          <h2 style={{ marginTop: 0, marginBottom: 12 }}>Authentication complete</h2>
+          <p style={{ margin: 0, color: '#9ca3af' }}>Open Telegram to continue.</p>
           <div style={{ marginTop: 16 }}>
             <a
               href={deepLinkUrl}
@@ -175,11 +176,17 @@ export default function AuthCallbackPage() {
                 textDecoration: 'none',
               }}
             >
-              Voltar ao Telegram
+              Return to Telegram
             </a>
           </div>
-        )}
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-pano-bg-primary flex items-center justify-center">
+      <div className="loader-custom"></div>
     </div>
   );
 }

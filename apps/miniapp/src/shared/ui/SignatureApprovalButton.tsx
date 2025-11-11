@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import './loader.css';
 
 interface SignatureApprovalButtonProps {
   onApprove: () => void;
@@ -48,7 +49,7 @@ export function SignatureApprovalButton({ onApprove, onReject, disabled = false 
         >
           {isProcessing ? (
             <div className="flex items-center justify-center gap-2">
-              <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="loader-inline-sm" />
               Approving...
             </div>
           ) : (

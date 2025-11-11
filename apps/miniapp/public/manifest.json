@@ -2,60 +2,60 @@
   "name": "Panorama Block - AI DeFi Assistant",
   "short_name": "PanoramaBlock",
   "description": "AI-powered DeFi tools and analytics platform for smart trading insights",
-  "start_url": "/",
+  "start_url": "/miniapp",
   "display": "standalone",
   "background_color": "#050505",
   "theme_color": "#00d9ff",
   "orientation": "portrait-primary",
-  "scope": "/",
+  "scope": "/miniapp",
   "categories": ["finance", "productivity", "business"],
   "lang": "en",
   "dir": "ltr",
   "icons": [
     {
-      "src": "/icons/icon-72x72.png",
+      "src": "/miniapp/icons/icon-72x72.png",
       "sizes": "72x72",
       "type": "image/png",
       "purpose": "maskable any"
     },
     {
-      "src": "/icons/icon-96x96.png",
+      "src": "/miniapp/icons/icon-96x96.png",
       "sizes": "96x96",
       "type": "image/png",
       "purpose": "maskable any"
     },
     {
-      "src": "/icons/icon-128x128.png",
+      "src": "/miniapp/icons/icon-128x128.png",
       "sizes": "128x128",
       "type": "image/png",
       "purpose": "maskable any"
     },
     {
-      "src": "/icons/icon-144x144.png",
+      "src": "/miniapp/icons/icon-144x144.png",
       "sizes": "144x144",
       "type": "image/png",
       "purpose": "maskable any"
     },
     {
-      "src": "/icons/icon-152x152.png",
+      "src": "/miniapp/icons/icon-152x152.png",
       "sizes": "152x152",
       "type": "image/png",
       "purpose": "maskable any"
     },
     {
-      "src": "/icons/icon-192x192.png",
+      "src": "/miniapp/icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable any"
     },
     {
-      "src": "/icons/icon-384x384.png",
+      "src": "/miniapp/icons/icon-384x384.png",
       "sizes": "384x384",
       "type": "image/png",
       "purpose": "maskable any"
     },
     {
-      "src": "/icons/icon-512x512.png",
+      "src": "/miniapp/icons/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable any"
@@ -63,19 +63,19 @@
   ],
   "screenshots": [
     {
-      "src": "/screenshots/mobile-auth.png",
+      "src": "/miniapp/screenshots/mobile-auth.png",
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow"
     },
     {
-      "src": "/screenshots/mobile-chat.png",
+      "src": "/miniapp/screenshots/mobile-chat.png",
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow"
     },
     {
-      "src": "/screenshots/desktop-dashboard.png",
+      "src": "/miniapp/screenshots/desktop-dashboard.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide"
@@ -86,10 +86,10 @@
       "name": "Chat with AI",
       "short_name": "Chat",
       "description": "Start a conversation with AI assistant",
-      "url": "/chat",
+      "url": "/miniapp/chat",
       "icons": [
         {
-          "src": "/icons/chat-icon.png",
+          "src": "/miniapp/icons/chat-icon.png",
           "sizes": "96x96"
         }
       ]
@@ -98,10 +98,10 @@
       "name": "Token Swap",
       "short_name": "Swap",
       "description": "Exchange tokens with AI insights",
-      "url": "/swap",
+      "url": "/miniapp/swap",
       "icons": [
         {
-          "src": "/icons/swap-icon.png",
+          "src": "/miniapp/icons/swap-icon.png",
           "sizes": "96x96"
         }
       ]

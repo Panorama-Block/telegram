@@ -1,14 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import zicoBlue from '../../../../public/icons/zico_blue.svg'
-import AuthModal from '../auth-modal'
+import Banner from '../banner'
 
 const Hero = () => {
+  const router = useRouter()
   const [currentWord, setCurrentWord] = useState(0)
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
 
   const words = [
     'Composable DeFi Strategies',
@@ -37,36 +38,38 @@ const Hero = () => {
           <div className="flex mx-auto w-fit h-8 mt-6" />
         </span>
       </h1>
-      <span className="text-landing-text text-xl mx-auto text-center w-[90%] md:max-w-[600px] mt-4 lg:mt-0">
+      <span className="text-white text-xl mx-auto text-center w-[90%] md:max-w-[600px] mt-4 lg:mt-0">
         Fusing multi-chain data pipelines with AI reasoning frameworks to empower decentralized, composable financial automation.
       </span>
 
       <div className="flex flex-col items-center mx-auto w-fit mt-8 gap-8 z-50">
         <Button
-          onClick={() => setIsAuthModalOpen(true)}
-          className="min-w-[180px] h-14 rounded-[30px] hover:bg-gray-100"
+          onClick={() => router.push('/newchat')}
+          className="min-w-[180px] h-14 rounded-[30px] bg-white text-black hover:bg-gray-100 text-lg font-semibold"
         >
           Launch App
         </Button>
-
-        {/* Zico Blue Logo */}
-        <div className="relative">
-          <div className="absolute inset-0 bg-cyan-400/20 blur-3xl rounded-full" />
-          <Image
-            src={zicoBlue}
-            alt="Zico Blue"
-            width={192}
-            height={192}
-            className="relative h-28 w-28 sm:h-32 sm:w-32 lg:h-40 lg:w-40"
-          />
-        </div>
       </div>
 
-      {/* Auth Modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-      />
+      {/* Prompt Banner */}
+      <div className="w-full mt-12 mb-8">
+        <Banner />
+      </div>
+
+      {/* Zico Blue Logo */}
+      <div className="relative mt-8 mb-16">
+        {/* Multiple layered blur effects for stronger glow */}
+        <div className="absolute inset-0 bg-cyan-400/30 blur-3xl rounded-full animate-pulse" />
+        <div className="absolute inset-0 bg-landing-highlight/20 blur-2xl rounded-full" style={{ animationDelay: '0.5s' }} />
+        <div className="absolute -inset-4 bg-cyan-500/15 blur-3xl rounded-full animate-pulse" style={{ animationDelay: '1s' }} />
+        <Image
+          src={zicoBlue}
+          alt="Zico Blue"
+          width={192}
+          height={192}
+          className="relative h-28 w-28 sm:h-32 sm:w-32 lg:h-40 lg:w-40"
+        />
+      </div>
     </div>
   )
 }

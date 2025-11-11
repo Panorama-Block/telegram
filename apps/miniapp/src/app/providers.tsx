@@ -37,7 +37,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
 
         WebApp?.ready?.();
 
-        // Consumir start_param (deep link) para recuperar sessão criada externamente
+        // Consume start_param (deep link) to recover sessions created outside the app
         try {
           const isTelegram = (WebApp as any)?.initDataUnsafe;
           const startParam = (WebApp as any)?.initDataUnsafe?.start_param
@@ -184,19 +184,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
   }, []);
 
   if (!isReady || !Providers) {
-    return (
-      <div style={{ padding: 40, textAlign: 'center' }}>
-        <div style={{
-          width: 32,
-          height: 32,
-          border: '3px solid #e0e0e0',
-          borderTop: '3px solid #007aff',
-          borderRadius: '50%',
-          animation: 'spin 1s linear infinite',
-          margin: '0 auto'
-        }} />
-      </div>
-    );
+    return null;
   }
 
   return <Providers>{children}</Providers>;

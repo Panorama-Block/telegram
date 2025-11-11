@@ -11,7 +11,7 @@ const Footer = () => {
           <div className="flex flex-col gap-6 px-6 md:px-8 lg:px-12 md:w-2/5 lg:w-1/2 mx-auto md:mx-0">
             <Image src={logo} alt="Panorama Block" width={140} height={105} className="mx-auto md:mx-0" />
             <p className="text-base text-landing-text leading-relaxed text-center md:text-left max-w-md">
-              Building the future of cross-chain AI automation for Web3.
+               Building the future of cross-chain Agentic Yield Strategies
             </p>
           </div>
 

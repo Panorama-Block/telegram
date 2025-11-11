@@ -2,6 +2,15 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ClientProviders } from "./providers";
 
+const BASE_PATH = "/miniapp";
+
+const withBase = (path: string) => {
+  if (!path.startsWith("/")) {
+    return `${BASE_PATH}/${path}`;
+  }
+  return `${BASE_PATH}${path}`;
+};
+
 export const metadata: Metadata = {
   title: "Panorama Block - AI DeFi Assistant",
   description: "AI-powered DeFi tools and analytics platform for smart trading insights",
@@ -29,7 +38,7 @@ export const metadata: Metadata = {
     url: "https://panoramablock.com/miniapp",
     images: [
       {
-        url: "/og-image.png",
+        url: withBase("/og-image.png"),
         width: 1200,
         height: 630,
         alt: "Panorama Block - AI DeFi Assistant",
@@ -43,7 +52,7 @@ export const metadata: Metadata = {
     creator: "@panoramablock",
     title: "Panorama Block - AI DeFi Assistant",
     description: "AI-powered DeFi tools and analytics platform for smart trading insights",
-    images: ["/twitter-image.png"],
+    images: [withBase("/twitter-image.png")],
   },
   robots: {
     index: true,
@@ -57,55 +66,44 @@ export const metadata: Metadata = {
     },
   },
   icons: {
-    // Ensure favicon uses our brand icon (Next.js also serves /icon.svg automatically)
-    icon: [
-      { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/logos/pblok_nav.svg", type: "image/svg+xml" },
-    ],
-    // Apple touch icon falls back to an existing PNG logo
-    apple: [
-      { url: "/landing/logo-horse.png", sizes: "180x180", type: "image/png" },
-    ],
-    other: [
-      { rel: "mask-icon", url: "/logos/pblok_nav.svg", color: "#00d9ff" },
-    ],
+    apple: [{ url: withBase("/landing/logo-horse.png"), sizes: "180x180", type: "image/png" }],
   },
-  manifest: "/manifest.json",
+  manifest: withBase("/manifest.json"),
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "Panorama Block",
     startupImage: [
       {
-        url: "/splash/apple-splash-2048-2732.png",
+        url: withBase("/splash/apple-splash-2048-2732.png"),
         media: "(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
       },
       {
-        url: "/splash/apple-splash-1668-2388.png",
+        url: withBase("/splash/apple-splash-1668-2388.png"),
         media: "(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
       },
       {
-        url: "/splash/apple-splash-1536-2048.png",
+        url: withBase("/splash/apple-splash-1536-2048.png"),
         media: "(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
       },
       {
-        url: "/splash/apple-splash-1284-2778.png",
+        url: withBase("/splash/apple-splash-1284-2778.png"),
         media: "(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
       },
       {
-        url: "/splash/apple-splash-1170-2532.png",
+        url: withBase("/splash/apple-splash-1170-2532.png"),
         media: "(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
       },
       {
-        url: "/splash/apple-splash-1125-2436.png",
+        url: withBase("/splash/apple-splash-1125-2436.png"),
         media: "(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
       },
       {
-        url: "/splash/apple-splash-828-1792.png",
+        url: withBase("/splash/apple-splash-828-1792.png"),
         media: "(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
       },
       {
-        url: "/splash/apple-splash-750-1334.png",
+        url: withBase("/splash/apple-splash-750-1334.png"),
         media: "(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
       },
     ],
@@ -117,8 +115,8 @@ export const metadata: Metadata = {
     "apple-mobile-web-app-title": "Panorama Block",
     "application-name": "Panorama Block",
     "msapplication-TileColor": "#00d9ff",
-    "msapplication-TileImage": "/icons/mstile-144x144.png",
-    "msapplication-config": "/browserconfig.xml",
+    "msapplication-TileImage": withBase("/icons/mstile-144x144.png"),
+    "msapplication-config": withBase("/browserconfig.xml"),
     "theme-color": "#00d9ff",
   },
 };
@@ -140,6 +138,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-touch-fullscreen" content="yes" />
         <meta name="format-detection" content="telephone=no, email=no, address=no" />
+        <link rel="icon" href={withBase("/favicon.ico")} sizes="any" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://api.panoramablock.com" />

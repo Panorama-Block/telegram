@@ -8,6 +8,7 @@ import { signLoginPayload } from 'thirdweb/auth';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../../public/icons/zico_blue.svg';
+import '../../../shared/ui/loader.css';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -87,7 +88,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
     const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
     if (!authApiBase) {
-      throw new Error('VITE_AUTH_API_BASE não configurado');
+      throw new Error('VITE_AUTH_API_BASE not configured');
     }
 
     try {
@@ -98,7 +99,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       const normalizedAddress = account.address;
       const loginPayload = { address: normalizedAddress };
 
-      console.log('🔍 [AUTH MODAL] Autenticando com:', authApiBase);
+      console.log('🔍 [AUTH MODAL] Authenticating with:', authApiBase);
 
       const loginResponse = await fetch(`${authApiBase}/auth/login`, {
         method: 'POST',
@@ -114,17 +115,17 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         } catch {
           error = { error: errorText };
         }
-        throw new Error(error.error || 'Erro ao gerar payload');
+        throw new Error(error.error || 'Failed to generate payload');
       }
 
       const { payload } = await loginResponse.json();
 
-      // Verificar se os endereços batem
+      // Ensure the addresses match
       if (account.address.toLowerCase() !== payload.address.toLowerCase()) {
-        throw new Error(`Endereço da wallet (${account.address}) não confere com o payload (${payload.address})`);
+        throw new Error(`Wallet address (${account.address}) does not match payload (${payload.address})`);
       }
 
-      // 2. Assinar payload usando Thirdweb
+      // 2. Sign the payload using Thirdweb
       let signature;
 
       try {
@@ -142,30 +143,30 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           if (possibleSignature) {
             signature = possibleSignature;
           } else {
-            throw new Error('Formato de assinatura inválido - nenhuma assinatura encontrada');
+            throw new Error('Invalid signature format - no signature found');
           }
         } else {
-          throw new Error('Formato de assinatura inválido');
+          throw new Error('Invalid signature format');
         }
 
       } catch (error) {
-        console.error('❌ [AUTH MODAL] Erro na assinatura via Thirdweb:', error);
+        console.error('❌ [AUTH MODAL] Thirdweb signature error:', error);
 
-        // Fallback para método direto se signLoginPayload falhar
+        // Fallback to direct signing if signLoginPayload fails
         try {
           if (activeWallet && typeof (activeWallet as any).signMessage === 'function') {
             const messageToSign = JSON.stringify(payload);
             signature = await (activeWallet as any).signMessage({ message: messageToSign });
           } else {
-            throw new Error('Método de assinatura não disponível');
+            throw new Error('Signature method not available');
           }
         } catch (fallbackError) {
-          console.error('❌ [AUTH MODAL] Fallback também falhou:', fallbackError);
-          throw new Error(`Erro na assinatura: ${error}. Fallback: ${fallbackError}`);
+          console.error('❌ [AUTH MODAL] Fallback also failed:', fallbackError);
+          throw new Error(`Signing error: ${error}. Fallback: ${fallbackError}`);
         }
       }
 
-      // 3. Verificar assinatura no backend
+      // 3. Verify the signature with the backend
       const verifyPayload = { payload, signature };
 
       const verifyResponse = await fetch(`${authApiBase}/auth/verify`, {
@@ -182,22 +183,22 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         } catch {
           error = { error: errorText };
         }
-        throw new Error(error.error || 'Erro na verificação');
+        throw new Error(error.error || 'Verification error');
       }
 
       const verifyResult = await verifyResponse.json();
       const { token: authToken } = verifyResult;
 
-      // 4. Salvar dados de autenticação
+      // 4. Persist auth data locally
       localStorage.setItem('authPayload', JSON.stringify(payload));
       localStorage.setItem('authSignature', signature);
       localStorage.setItem('authToken', authToken);
 
       setIsAuthenticated(true);
 
-      console.log('✅ [AUTH MODAL] Autenticação bem-sucedida! Redirecionando para /newchat...');
+      console.log('✅ [AUTH MODAL] Authentication succeeded! Redirecting to /newchat...');
 
-      // 5. Redirecionar para /newchat (página que cria conversa e abre o Chat)
+      // 5. Redirect to /newchat (page that creates a conversation and opens chat)
       setTimeout(() => {
         router.push('/newchat');
       }, 500);
@@ -205,10 +206,10 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     } catch (err: any) {
       console.error('❌ [AUTH MODAL] Authentication failed:', err);
 
-      let errorMessage = err?.message || 'Falha na autenticação';
+      let errorMessage = err?.message || 'Authentication failed';
 
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        errorMessage = `Erro de conexão com ${authApiBase}. Verifique se o servidor está rodando e acessível.`;
+        errorMessage = `Connection error with ${authApiBase}. Make sure the server is running and reachable.`;
       }
 
       setError(errorMessage);
@@ -221,7 +222,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   // prevent infinite retries: only one auto-attempt per account address
   const lastTriedAddressRef = useRef<string | null>(null);
 
-  // Autenticação automática quando a conta estiver conectada
+  // Automatically authenticate when the account is connected
   useEffect(() => {
     if (!account || !client || isAuthenticated || isAuthenticating) return;
     if (lastTriedAddressRef.current === account.address) return;
@@ -258,7 +259,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       />
 
       {/* Modal */}
-      <div className="relative bg-[#0d1117] border border-cyan-500/30 rounded-2xl p-8 max-w-md w-full mx-4 shadow-xl shadow-cyan-500/10">
+      <div className="relative bg-[#202020]/80 backdrop-blur-lg border border-white/10 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-xl shadow-black/50">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -310,12 +311,12 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   label: 'Connect Wallet',
                   style: {
                     width: '100%',
-                    padding: '16px 24px',
-                    borderRadius: 12,
+                    padding: '12px 20px',
+                    borderRadius: 6,
                     fontWeight: 600,
                     fontSize: 16,
-                    background: '#06b6d4',
-                    color: '#fff',
+                    background: '#ffffff',
+                    color: '#000000',
                     border: 'none',
                     cursor: 'pointer',
                   },
@@ -329,33 +330,33 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             )
           ) : (
             <div className="space-y-4">
-              <div className="border border-cyan-500/30 bg-[#1a1a1a] rounded-xl p-4">
-                <p className="text-xs text-gray-400 mb-1">Connected wallet</p>
-                <p className="font-mono text-sm text-cyan-400 font-semibold">
+              <div className="border border-white/10 bg-black/40 backdrop-blur-md rounded-xl p-4">
+                <p className="text-xs text-white mb-1">Connected wallet</p>
+                <p className="font-mono text-sm text-white font-semibold">
                   {shortAddress(account!.address)}
                 </p>
                 <div className="text-sm mt-2">
                   {isAuthenticating ? (
-                    <div className="flex items-center gap-2 text-cyan-400">
-                      <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                    <div className="flex items-center gap-2 text-white">
+                      <div className="loader-inline-sm" />
                       <span>Authenticating...</span>
                     </div>
                   ) : isAuthenticated ? (
-                    <div className="flex items-center gap-2 text-green-400">
+                    <div className="flex items-center gap-2 text-white">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                       <span>Authenticated! Redirecting...</span>
                     </div>
                   ) : (
-                    <span className="text-gray-400">Waiting for authentication</span>
+                    <span className="text-white">Waiting for authentication</span>
                   )}
                 </div>
               </div>
 
               <button
                 onClick={handleDisconnect}
-                className="w-full px-4 py-3 rounded-lg bg-transparent text-red-400 border border-red-400 hover:bg-red-500/10 transition-all font-medium"
+                className="w-full px-4 py-3 rounded-lg bg-white text-black border-none hover:bg-gray-100 transition-all font-medium"
               >
                 Disconnect
               </button>

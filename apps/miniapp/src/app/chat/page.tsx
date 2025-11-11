@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
-// Declaração de tipo para window.ethereum
+// Window.ethereum type declaration
 declare global {
   interface Window {
     ethereum?: {
@@ -10,9 +10,10 @@ declare global {
     };
   }
 }
-import { Sidebar, SignatureApprovalButton } from '@/shared/ui';
+import { Sidebar, SignatureApprovalButton, GlobalLoader } from '@/shared/ui';
 import MarkdownMessage from '@/shared/ui/MarkdownMessage';
 import Image from 'next/image';
+import '../../shared/ui/loader.css';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import XIcon from '../../../public/icons/X.svg';
 import BlockchainTechnology from '../../../public/icons/BlockchainTechnology.svg';
@@ -20,16 +21,22 @@ import Briefcase from '../../../public/icons/Briefcase.svg';
 import ComboChart from '../../../public/icons/ComboChart.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
 import WalletIcon from '../../../public/icons/Wallet.svg';
+import ChatIcon from '../../../public/icons/chat.svg';
+import LightningIcon from '../../../public/icons/lightning.svg';
+import UniswapIcon from '../../../public/icons/uniswap.svg';
 import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { swapApi, SwapApiError } from '@/features/swap/api';
+import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, explorerTxUrl } from '@/features/swap/utils';
 import { networks, Token } from '@/features/swap/tokens';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useActiveWallet, useDisconnect, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx, QuoteResponse } from '@/features/swap/types';
+import { Button } from '@/components/ui/button';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 
 
 interface Message {
@@ -52,12 +59,12 @@ const TRENDING_PROMPTS = [
 ];
 
 const FEATURE_CARDS = [
-  { name: 'Positions Monitoring', icon: WalletIcon, path: null },
-  { name: 'AI Agents on X', icon: XIcon, path: null },
-  { name: 'Liquid Swap', icon: SwapIcon, path: '/swap' },
-  { name: 'Liquid Staking', icon: BlockchainTechnology, path: null },
-  { name: 'Liquidity Provisioning', icon: ComboChart, path: null },
-  { name: 'Lending', icon: Briefcase, path: null },
+  { name: 'Portfolio View', icon: Briefcase, path: null, prompt: null, description: 'Track and manage your entire DeFi portfolio in one place' },
+  { name: 'Liquid Swap', icon: SwapIcon, path: '/swap', prompt: 'I would like to perform a token swap. Can you help me with the process and guide me through the steps?', description: 'Swap tokens across multiple chains with the best rates' },
+  { name: 'Lending & Borrowing', icon: BlockchainTechnology, path: '/lending', prompt: 'I want to explore DeFi lending options. Can you help me understand how to supply and borrow assets?', description: 'Access positions across protocols through easy commands managing collateral, comparing rates and adjusting exposure.' },
+  { name: 'Liquid Staking', icon: LightningIcon, path: '/staking', prompt: 'I want to stake my assets to earn rewards. Can you guide me through the staking process?', description: 'Stake your assets while maintaining liquidity' },
+  { name: 'Liquidity Provision Management', icon: ComboChart, path: null, prompt: null, description: 'Manage pool entries and exits through simple prompts optimizing routes, ranges and capital across chains' },
+  { name: 'DCA & Trigger Orders', icon: LightningIcon, path: null, prompt: null, description: 'Configure multi-token DCA plans and threshold-based execution rules directly in chat.' },
 ];
 
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
@@ -153,10 +160,12 @@ function deriveConversationTitle(fallbackTitle: string, messages: Message[]): st
 
 export default function ChatPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLargeScreen, setIsLargeScreen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [exploreDropdownOpen, setExploreDropdownOpen] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messagesByConversation, setMessagesByConversation] = useState<Record<string, Message[]>>({});
@@ -165,6 +174,8 @@ export default function ChatPage() {
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [bootstrapVersion, setBootstrapVersion] = useState(0);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [navigationType, setNavigationType] = useState<'swap' | 'lending' | 'staking' | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
   const { user, isLoading: authLoading } = useAuth();
@@ -173,6 +184,9 @@ export default function ChatPage() {
 
   // Thirdweb setup
   const account = useActiveAccount();
+  const activeWallet = useActiveWallet();
+  const { disconnect } = useDisconnect();
+  const switchChain = useSwitchActiveWalletChain();
   const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
@@ -183,6 +197,13 @@ export default function ChatPage() {
   const [swapSuccess, setSwapSuccess] = useState(false);
   const [executingSwap, setExecutingSwap] = useState(false);
   const [swapTxHashes, setSwapTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
+  const [swapStatusMessage, setSwapStatusMessage] = useState<string | null>(null);
+
+  // Swap flow states
+  const [swapFlowStep, setSwapFlowStep] = useState<'preview' | 'routing' | 'details' | 'confirm' | null>(null);
+  const [tosAccepted, setTosAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [currentSwapMetadata, setCurrentSwapMetadata] = useState<Record<string, unknown> | null>(null);
   const debug = useCallback(
     (event: string, details?: Record<string, unknown>) => {
       if (!DEBUG_CHAT_ENABLED) return;
@@ -216,6 +237,26 @@ export default function ChatPage() {
     }
   }, []);
 
+  const handleWalletDisconnect = useCallback(async () => {
+    try {
+      if (activeWallet) {
+        await disconnect(activeWallet);
+      }
+    } catch (error) {
+      console.error('[CHAT] Failed to disconnect wallet:', error);
+    } finally {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('authPayload');
+        localStorage.removeItem('authSignature');
+        localStorage.removeItem('telegram_user');
+        localStorage.removeItem('userAddress');
+        setSidebarOpen(false);
+        window.location.href = '/miniapp';
+      }
+    }
+  }, [activeWallet, disconnect]);
+
   useEffect(() => {
     isMountedRef.current = true;
     debug('component:mount');
@@ -241,6 +282,14 @@ export default function ChatPage() {
 
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  // Reset navigation loader when leaving the chat page
+  useEffect(() => {
+    if (pathname !== '/chat') {
+      setIsNavigating(false);
+      setNavigationType(null);
+    }
+  }, [pathname]);
 
   // Use wallet address as userId instead of Telegram user ID
   const getWalletAddress = useCallback(() => {
@@ -408,24 +457,24 @@ export default function ChatPage() {
           return;
         }
 
-        let ensuredConversationId = conversationIds[0] ?? null;
-
-        if (!ensuredConversationId) {
-          try {
-            ensuredConversationId = await agentsClient.createConversation(userId, authOpts);
-            if (ensuredConversationId) {
-              conversationIds = [ensuredConversationId, ...conversationIds.filter((id) => id !== ensuredConversationId)];
-            }
-            debug('bootstrap:createConversation', { ensuredConversationId });
-          } catch (error) {
-            console.error('Error creating initial conversation:', error);
-            debug('bootstrap:createConversation:error', {
-              error: error instanceof Error ? error.message : String(error),
-            });
-            if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
-              setInitializationError('We could not start a conversation. Please try again.');
-            }
+        // Always create a new conversation on login/page load
+        let ensuredConversationId: string | null = null;
+        try {
+          ensuredConversationId = await agentsClient.createConversation(userId, authOpts);
+          if (ensuredConversationId) {
+            conversationIds = [ensuredConversationId, ...conversationIds.filter((id) => id !== ensuredConversationId)];
           }
+          debug('bootstrap:createConversation', { ensuredConversationId });
+        } catch (error) {
+          console.error('Error creating initial conversation:', error);
+          debug('bootstrap:createConversation:error', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
+            setInitializationError('We could not start a conversation. Please try again.');
+          }
+          // Fallback to first existing conversation if creation fails
+          ensuredConversationId = conversationIds[0] ?? null;
         }
 
         if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) return;
@@ -437,15 +486,16 @@ export default function ChatPage() {
             : [];
 
         setConversations(mappedConversations);
-        setMessagesByConversation({});
 
-        const targetId = ensuredConversationId ?? (conversationIds.length > 0 ? conversationIds[0] : null);
-        setActiveConversationId(targetId ?? null);
-        debug('bootstrap:targetSelected', { targetId, totalConversations: mappedConversations.length });
+        // Initialize messagesByConversation with empty array for new conversation
+        setMessagesByConversation(ensuredConversationId ? {
+          [ensuredConversationId]: []
+        } : {});
 
-        if (targetId) {
-          loadConversationMessages(targetId);
-        }
+        // Always use the new conversation (ensuredConversationId) as the active one
+        setActiveConversationId(ensuredConversationId);
+        setInitializationError(null);
+        debug('bootstrap:targetSelected', { targetId: ensuredConversationId, totalConversations: mappedConversations.length });
       } catch (error) {
         console.error('Error initialising chat:', error);
         debug('bootstrap:error', { error: error instanceof Error ? error.message : String(error) });
@@ -531,8 +581,19 @@ export default function ChatPage() {
       );
 
       if (!isMountedRef.current) return;
-      
-      console.log('response: ', response);
+
+      // Enhanced diagnostic logging
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📨 [CHAT DEBUG] Backend Response Received');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🔍 Response Keys:', Object.keys(response));
+      console.log('📊 Response.metadata:', response.metadata);
+      console.log('📝 Response.metadata type:', typeof response.metadata);
+      console.log('🎯 Response.metadata?.event:', response.metadata?.event);
+      console.log('💬 Response.message (first 200 chars):', response.message?.substring(0, 200));
+      console.log('🤖 Response.agent_name:', response.agent_name);
+      console.log('📋 Full Response JSON:', JSON.stringify(response, null, 2));
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       const assistantMessage: Message = {
         role: 'assistant',
@@ -544,8 +605,39 @@ export default function ChatPage() {
 
       // Auto-fetch quote if it's a swap intent
       if (response.metadata?.event === 'swap_intent_ready') {
-        console.log('🔄 Swap intent detected, fetching quote...', response.metadata);
+        console.log('✅ [CHAT] Swap intent detected via metadata event, fetching quote...');
+        console.log('📦 Swap metadata:', JSON.stringify(response.metadata, null, 2));
         getSwapQuote(response.metadata as Record<string, unknown>);
+      } else {
+        console.log('❌ [CHAT] No swap_intent_ready event in metadata');
+
+        // Enhanced fallback detection
+        const messageContent = response.message?.toLowerCase() || '';
+        const hasSwapKeywords = messageContent.includes('swap') || messageContent.includes('troca');
+        const hasConfirmKeywords = messageContent.includes('confirm') || messageContent.includes('confirme');
+
+        if (hasSwapKeywords && hasConfirmKeywords) {
+          console.log('⚠️ [SWAP FALLBACK] Detected swap keywords in message but metadata is missing or invalid');
+          console.log('⚠️ Message snippet:', response.message?.substring(0, 300));
+          console.log('⚠️ This indicates the backend should have returned swap metadata but didn\'t');
+          console.log('⚠️ Check backend logs to see why metadata.event is not "swap_intent_ready"');
+        }
+
+        // Check if metadata exists but has wrong event
+        if (response.metadata && response.metadata.event !== 'swap_intent_ready') {
+          console.log('⚠️ [METADATA MISMATCH] Metadata exists but event is not swap_intent_ready');
+          console.log('⚠️ Actual event:', response.metadata.event);
+          console.log('⚠️ Full metadata:', JSON.stringify(response.metadata, null, 2));
+        }
+
+        // Check if metadata is completely null/undefined
+        if (!response.metadata) {
+          console.log('⚠️ [NO METADATA] Backend returned null/undefined metadata');
+          console.log('⚠️ This usually means:');
+          console.log('   1. Backend is not detecting the swap intent');
+          console.log('   2. Backend is not including metadata in the response');
+          console.log('   3. There was an error processing the request on the backend');
+        }
       }
 
       setMessagesByConversation((prev) => {
@@ -708,7 +800,9 @@ export default function ChatPage() {
 
       if (quoteResponse.success && quoteResponse.quote) {
         setSwapQuote(quoteResponse);
-        console.log('✅ Quote received successfully');
+        setCurrentSwapMetadata(metadata);
+        setSwapFlowStep('routing');
+        console.log('✅ Quote received successfully - Opening Order Routing modal');
       } else {
         const errorMsg = quoteResponse.message || 'Failed to get quote';
         console.error('❌ Quote failed:', errorMsg);
@@ -727,7 +821,7 @@ export default function ChatPage() {
     console.log('🚀 Starting swap execution with metadata:', metadata);
     
     if (!swapQuote?.quote) {
-      const errorMsg = 'Aguarde a cotação ser calculada';
+      const errorMsg = 'Please wait for the quote to finish calculating';
       console.error('❌', errorMsg);
       setSwapError(errorMsg);
       return;
@@ -756,6 +850,7 @@ export default function ChatPage() {
 
     try {
       setExecutingSwap(true);
+      setSwapStatusMessage('Preparing swap transaction...');
       console.log('🔄 Preparing swap transaction...');
 
       const { amount, from_network, from_token, to_network, to_token } = metadata;
@@ -799,10 +894,28 @@ export default function ChatPage() {
       });
 
       const seq = flattenPrepared(prep.prepared);
-      
+
       if (!seq.length) throw new Error('No transactions returned by prepare');
 
+      // Switch to the correct chain FIRST, before executing transactions
+      if (account && switchChain) {
+        const networkName = fromNetwork.name || `Chain ${fromNetwork.chainId}`;
+        console.log('🔄 Switching to source chain before executing swap...');
+        console.log('Target chain:', fromNetwork.chainId, networkName);
+
+        setSwapStatusMessage(`Switching to ${networkName}...`);
+
+        try {
+          await switchChain(defineChain(fromNetwork.chainId));
+          console.log('✅ Chain switched successfully to:', fromNetwork.chainId);
+        } catch (e: any) {
+          console.error('❌ Failed to switch chain:', e);
+          throw new Error(`Please approve the network switch to ${networkName} in your wallet.`);
+        }
+      }
+
       setSwapTxHashes([]); // Reset transaction hashes
+      setSwapStatusMessage('Please confirm the transaction in your wallet...');
 
       for (const t of seq) {
         if (t.chainId !== fromNetwork.chainId) {
@@ -814,7 +927,11 @@ export default function ChatPage() {
           chain: defineChain(t.chainId),
           client,
           data: t.data as Hex,
-          value: t.value ? BigInt(t.value as any) : 0n,
+          value: t.value != null ? BigInt(t.value as any) : 0n,
+          gas: t.gasLimit != null ? BigInt(t.gasLimit as any) : undefined,
+          maxFeePerGas: t.maxFeePerGas != null ? BigInt(t.maxFeePerGas as any) : undefined,
+          maxPriorityFeePerGas:
+            t.maxPriorityFeePerGas != null ? BigInt(t.maxPriorityFeePerGas as any) : undefined,
         });
 
         if (!account) {
@@ -825,6 +942,7 @@ export default function ChatPage() {
 
         // Force MetaMask window to open
         await forceMetaMaskWindow();
+        setSwapStatusMessage('Waiting for wallet confirmation...');
 
         const result = await safeExecuteTransactionV2(async () => {
           return await sendTransaction({ account, transaction: tx });
@@ -840,15 +958,19 @@ export default function ChatPage() {
 
         // Store transaction hash
         setSwapTxHashes(prev => [...prev, { hash: result.transactionHash!, chainId: t.chainId }]);
+        setSwapStatusMessage('Transaction submitted. Waiting for confirmation...');
       }
 
       setSwapSuccess(true);
       setSwapQuote(null);
+      setSwapStatusMessage(null);
     } catch (error) {
       console.error('❌ Error executing swap:', error);
       setSwapError(error instanceof Error ? error.message : 'Failed to execute swap');
+      setSwapStatusMessage(null);
     } finally {
       setExecutingSwap(false);
+      setSwapStatusMessage(null);
     }
   }, [swapQuote, client, account, clientId, getWalletAddress]);
 
@@ -882,255 +1004,368 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-screen bg-[#0d1117] text-white flex overflow-hidden">
-      {/* Left Sidebar with Chat Conversations */}
-      {sidebarOpen && (
-        <>
-          {/* Overlay - only on mobile/tablet */}
-          {!isLargeScreen && (
-            <div
-              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-              onClick={() => setSidebarOpen(false)}
-            />
-          )}
-          <div className={`h-full w-80 bg-[#0d1117] border-r border-cyan-500/20 overflow-y-auto flex flex-col ${
-            isLargeScreen ? 'relative' : 'fixed top-0 left-0 z-50 h-screen'
-          }`}>
-            {/* Header with logo - Fixed */}
-            <div className="flex-shrink-0 px-4 py-3 border-b border-cyan-500/20 flex items-center justify-between">
-              <Image
-                src={zicoBlue}
-                alt="Zico"
-                width={32}
-                height={32}
-              />
-              {!isLargeScreen && (
-                <button
-                  onClick={() => setSidebarOpen(false)}
-                  className="text-gray-400 hover:text-white lg:hidden"
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
+    <ProtectedRoute>
+      <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
+      <GlobalLoader 
+        isLoading={isNavigating} 
+        message={
+          navigationType === 'lending' ? 'Loading Lending...' :
+          navigationType === 'staking' ? 'Loading Staking...' :
+          navigationType === 'swap' ? 'Loading Swap...' :
+          'Loading...'
+        } 
+      />
+      <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
+      {/* Top Navbar - Horizontal across full width */}
+      <header className="sticky top-0 flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
+        <div className="flex items-center justify-between max-w-[1920px] mx-auto">
+          {/* Left: Menu toggle (mobile only) + Logo (desktop only) + Navigation */}
+          <div className="flex items-center gap-8">
+            {!isLargeScreen && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="text-gray-400 hover:text-white"
+                aria-label="Open menu"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            )}
 
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              {/* Navigation Menu */}
-              <nav className="p-4 space-y-2 border-b border-cyan-500/20">
-                <button
-                  onClick={() => {
-                    router.push('/chat');
-                    if (!isLargeScreen) setSidebarOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/50"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  <span className="font-medium">Chat</span>
-                </button>
-                <button
-                  onClick={() => {
-                    router.push('/swap');
-                    if (!isLargeScreen) setSidebarOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-all"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                  </svg>
-                  <span className="font-medium">Swap</span>
-                </button>
-              </nav>
-
-              {/* New Chat Button */}
-              <div className="px-4 mt-4 mb-6">
-                <button
-                  onClick={createNewChat}
-                  disabled={isCreatingConversation}
-                  className="w-full px-4 py-3 rounded-lg border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isCreatingConversation ? 'Creating...' : 'New Chat'}
-                </button>
+            {/* Logo - Desktop on left, Mobile just icon */}
+            {!isLargeScreen ? (
+              <div className="flex items-center gap-2">
+                <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
               </div>
-
-              {/* Past Conversations (Last 5) */}
-              <div className="px-4 mb-6">
-                <h3 className="text-gray-400 text-sm font-semibold mb-2">Recent Conversations</h3>
-                {conversations.slice(0, 5).map((conv) => (
-                  <button
-                    key={conv.id}
-                    onClick={() => handleSelectConversation(conv.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 mb-2 rounded-lg transition-all text-left ${
-                      conv.id === activeConversationId
-                        ? 'bg-gray-800 border border-cyan-500/40 text-white'
-                        : 'text-gray-400 hover:bg-gray-800'
-                    }`}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    <span className="text-sm">{conv.title}</span>
-                  </button>
-                ))}
+            ) : (
+              <div className="flex items-center gap-2">
+                <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
+                <span className="text-white font-semibold text-sm tracking-wide">PANORAMA BLOCK</span>
               </div>
-
-              {/* Trending Prompts */}
-              <div className="px-4 mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-cyan-400">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  <h3 className="text-white font-semibold">Trending Prompts</h3>
-                </div>
-                {TRENDING_PROMPTS.map((prompt, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => sendMessage(prompt)}
-                    disabled={!activeConversationId || isSending}
-                    className="w-full text-left px-4 py-3 mb-2 rounded-lg bg-gray-800/50 text-gray-300 hover:bg-gray-800 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-
-              {/* Disconnect Button */}
-              <div className="px-4 pb-6">
-                <button
-                  onClick={async () => {
-                    try {
-                      // Clear all auth data
-                      localStorage.removeItem('authToken');
-                      localStorage.removeItem('authPayload');
-                      localStorage.removeItem('authSignature');
-                      localStorage.removeItem('telegram_user');
-
-                      // Close sidebar on mobile
-                      if (!isLargeScreen) setSidebarOpen(false);
-
-                      // Small delay to ensure localStorage is cleared
-                      await new Promise(resolve => setTimeout(resolve, 100));
-
-                      // Force page reload to clear all state (basePath is /miniapp)
-                      window.location.href = '/miniapp';
-                    } catch (error) {
-                      console.error('Error disconnecting:', error);
-                      // Force redirect anyway
-                      window.location.href = '/miniapp';
-                    }
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-all border border-red-500/20 hover:border-red-500/50"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  <span className="font-medium">Disconnect</span>
-                </button>
-              </div>
-            </div>
+            )}
           </div>
-        </>
-      )}
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full">
-        {/* Top Bar - Fixed */}
-        <div className="flex-shrink-0 bg-[#0d1117] border-b border-cyan-500/20 px-4 py-3 flex items-center justify-between">
-          {!isLargeScreen && (
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="text-gray-400 hover:text-white lg:hidden"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          {/* Right: Explore + Docs + Notifications + Wallet Address */}
+          <div className="flex items-center gap-3">
+            {/* Navigation Menu - Desktop only */}
+            {isLargeScreen && (
+              <nav className="flex items-center gap-6 text-sm mr-3">
+                {/* Explore Dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={() => setExploreDropdownOpen(!exploreDropdownOpen)}
+                    className="text-gray-400 hover:text-white transition-colors flex items-center gap-1"
+                  >
+                    Explore
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {exploreDropdownOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setExploreDropdownOpen(false)}
+                      />
+                      <div className="absolute top-full right-0 mt-2 w-48 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg shadow-xl z-20">
+                        <div className="py-2">
+                          <button
+                            onClick={() => {
+                              setExploreDropdownOpen(false);
+                              router.push('/chat');
+                            }}
+                            className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4BC3C5" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            Chat
+                          </button>
+                        <button
+                          onClick={() => {
+                            setIsNavigating(true);
+                            setNavigationType('swap');
+                            setExploreDropdownOpen(false);
+                            router.push('/swap');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <Image src={SwapIcon} alt="Swap" width={16} height={16} />
+                          Swap
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsNavigating(true);
+                            setNavigationType('lending');
+                            setExploreDropdownOpen(false);
+                            router.push('/lending');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Lending
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsNavigating(true);
+                            setNavigationType('staking');
+                            setExploreDropdownOpen(false);
+                            router.push('/staking');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Staking
+                        </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Docs Link */}
+                <a
+                  href="https://docs.panoramablock.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  Docs
+                </a>
+              </nav>
+            )}
+            {/* Notifications Icon */}
+            <button className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
               </svg>
             </button>
-          )}
-          {isLargeScreen && <div className="w-6"></div>}
 
-          <div className="flex items-center gap-2">
-            <Image src={zicoBlue} alt="Zico" width={32} height={32} />
+            {/* Wallet Address Display */}
+            {(account?.address || getWalletAddress()) && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
+                <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
+                <span className="text-white text-xs font-mono">
+                  {account?.address
+                    ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                    : getWalletAddress()
+                      ? `${getWalletAddress()!.slice(0, 6)}...${getWalletAddress()!.slice(-4)}`
+                      : ''}
+                </span>
+              </div>
+            )}
           </div>
-
-          <div className="w-6"></div>
         </div>
+      </header>
 
-        {/* Messages or Empty State */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {initializing ? (
-            <div className="h-full flex items-center justify-center px-4 py-12 text-center">
-              {initializationError ? (
-                <div className="space-y-4">
-                  <p className="text-gray-300">{initializationError}</p>
+      {/* Main content area with sidebar and messages */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar - Below navbar */}
+        {(isLargeScreen || sidebarOpen) && (
+          <>
+            {/* Mobile backdrop */}
+            {!isLargeScreen && sidebarOpen && (
+              <div
+                className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+                onClick={() => setSidebarOpen(false)}
+              />
+            )}
+
+            {/* Sidebar content */}
+            <aside className={`
+              ${isLargeScreen ? 'relative' : 'fixed inset-y-0 left-0 z-50'}
+              w-80 bg-black border-r-2 border-white/15 flex flex-col
+              ${!isLargeScreen && !sidebarOpen ? 'hidden' : ''}
+            `}>
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
+                {/* New Chat Button */}
+                <div className="px-4">
                   <button
-                    onClick={retryBootstrap}
-                    className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-cyan-500 text-white hover:bg-cyan-600 transition-all"
+                    onClick={createNewChat}
+                    disabled={isCreatingConversation}
+                    className="w-full px-4 py-2 rounded-full border border-white bg-transparent hover:bg-gray-900 text-white text-sm font-normal transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    Try again
+                    {isCreatingConversation ? (
+                      <>
+                        <div className="loader-inline-sm" />
+                        <span>Creating...</span>
+                      </>
+                    ) : (
+                      <span>New Chat</span>
+                    )}
                   </button>
                 </div>
-              ) : (
-                <p className="text-gray-400">Loading your conversations...</p>
-              )}
-            </div>
-          ) : !activeConversationId ? (
-            <div className="h-full flex items-center justify-center px-4 py-12">
-              <p className="text-gray-400">Create a new chat to get started.</p>
-            </div>
-          ) : initializationError && activeMessages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center px-4 py-12 text-center space-y-4">
-              <p className="text-gray-300">{initializationError}</p>
-              <button
-                onClick={retryBootstrap}
-                className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-cyan-500 text-white hover:bg-cyan-600 transition-all"
-              >
-                Try again
-              </button>
-            </div>
-          ) : isHistoryLoading && activeMessages.length === 0 ? (
-            <div className="h-full flex items-center justify-center px-4 py-12">
-              <p className="text-gray-400">Loading conversation...</p>
-            </div>
-          ) : activeMessages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center px-4 py-12">
-              <h2 className="text-3xl sm:text-4xl font-bold text-gray-300 mb-14">
-                Select a Feature or Start a Chat
-              </h2>
 
-              {/* Feature Cards Grid */}
-              <div className="grid grid-cols-3 gap-6 max-w-2xl mb-10">
-                {FEATURE_CARDS.map((feature, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      if (feature.path) {
-                        router.push(feature.path);
-                      }
-                    }}
-                    disabled={!feature.path}
-                    className={`flex flex-col items-center justify-center gap-4 p-8 min-w-[180px] min-h-[150px] rounded-2xl bg-gray-800/30 backdrop-blur-md hover:bg-gray-800/50 border border-cyan-500/20 hover:border-cyan-500/50 transition-all shadow-lg hover:shadow-cyan-500/20 ${
-                      !feature.path ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                    }`}
-                  >
-                    <Image
-                      src={feature.icon}
-                      alt={feature.name}
-                      width={40}
-                      height={40}
-                      className="w-10 h-10"
-                    />
-                    <span className="text-sm text-gray-300 text-center">{feature.name}</span>
-                  </button>
-                ))}
+                {/* Past Conversations */}
+                {conversations.length > 0 && (
+                  <div className="max-h-[180px] overflow-y-auto custom-scrollbar pr-2 px-4">
+                    <div className="space-y-3">
+                      {conversations.map((conversation) => (
+                        <button
+                          key={conversation.id}
+                          onClick={() => handleSelectConversation(conversation.id)}
+                          className={`w-full text-left px-3 py-2 transition-colors text-sm flex items-center gap-3 rounded-md ${
+                            activeConversationId === conversation.id
+                              ? 'text-white bg-[#202020]'
+                              : 'text-gray-400 hover:text-white hover:bg-[#202020]'
+                          }`}
+                        >
+                          <Image src={ChatIcon} alt="Chat" width={20} height={20} className="shrink-0" />
+                          <div className="truncate">{conversation.title}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Separator Line */}
+                <div className="border-t border-white/20 my-6"></div>
+
+                {/* Trending Prompts */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Image src={LightningIcon} alt="Lightning" width={18} height={18} />
+                    <h3 className="text-sm font-semibold text-white">
+                      Trending Prompts
+                    </h3>
+                  </div>
+                  <div className="space-y-3 px-4">
+                    {TRENDING_PROMPTS.map((prompt, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => sendMessage(prompt)}
+                        disabled={isSending || !activeConversationId}
+                        className="w-full text-left text-sm text-gray-400 leading-relaxed hover:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-[#202020] px-4 py-4 rounded-md"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="py-6">
-              {activeMessages.map((message, index) => {
+
+              <div className="p-4 border-t border-white/15">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleWalletDisconnect}
+                  className="w-full justify-center text-gray-300 hover:text-white hover:bg-white/5 border border-white/10 text-sm font-normal"
+                >
+                  Disconnect
+                </Button>
+              </div>
+            </aside>
+          </>
+        )}
+
+        {/* Messages Area */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          {/* Messages or Empty State */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {initializing ? (
+              <div className="h-full flex items-center justify-center px-4 py-12 text-center">
+                {initializationError ? (
+                  <div className="space-y-4">
+                    <p className="text-gray-300">{initializationError}</p>
+                    <button
+                      onClick={retryBootstrap}
+                      className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition-all font-medium"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-gray-400">Loading your conversations...</p>
+                )}
+              </div>
+            ) : !activeConversationId ? (
+              <div className="h-full flex items-center justify-center px-4 py-12">
+                <p className="text-gray-400">Create a new chat to get started.</p>
+              </div>
+            ) : initializationError && activeMessages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center px-4 py-12 text-center space-y-4">
+                <p className="text-gray-300">{initializationError}</p>
+                <button
+                  onClick={retryBootstrap}
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition-all font-medium"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : isHistoryLoading && activeMessages.length === 0 ? (
+              <div className="h-full flex items-center justify-center px-4 py-12">
+                <p className="text-gray-400">Loading conversation...</p>
+              </div>
+            ) : activeMessages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center px-6 sm:px-8 md:px-12 lg:px-16 py-1 sm:py-2 md:py-3 lg:py-4">
+                <h2 className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl font-normal text-white mb-2 sm:mb-3 md:mb-4 lg:mb-5 xl:mb-6 flex-shrink-0">
+                  How can I help you today?
+                </h2>
+
+                {/* Feature Cards Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-2 md:gap-2.5 lg:gap-3 xl:gap-4 2xl:gap-5 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
+                  {FEATURE_CARDS.map((feature, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        if (feature.prompt) {
+                          sendMessage(feature.prompt);
+                        } else if (feature.path) {
+                          setIsNavigating(true);
+                          if (feature.path === '/lending') {
+                            setNavigationType('lending');
+                          } else if (feature.path === '/staking') {
+                            setNavigationType('staking');
+                          } else if (feature.path === '/swap') {
+                            setNavigationType('swap');
+                          }
+                          router.push(feature.path);
+                        }
+                      }}
+                      disabled={!feature.path && !feature.prompt}
+                      className={`flex flex-col p-3 sm:p-2 md:p-2.5 lg:p-3 xl:p-4 2xl:p-5 rounded-lg md:rounded-xl bg-black/80 backdrop-blur-md border border-white/15 transition-all shadow-lg text-left ${
+                        !feature.path && !feature.prompt ? 'opacity-50 cursor-not-allowed' : 'hover:border-white/30 cursor-pointer'
+                      }`}
+                    >
+                      {/* Icon */}
+                      <div className="mb-1.5 sm:mb-1 md:mb-1.5 lg:mb-2 xl:mb-2.5">
+                        <Image
+                          src={feature.icon}
+                          alt={feature.name}
+                          width={48}
+                          height={48}
+                          className="w-7 h-7 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 xl:w-10 xl:h-10 2xl:w-12 2xl:h-12"
+                        />
+                      </div>
+
+                      {/* Title */}
+                      <h3 className="text-[11px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base text-white font-semibold mb-1 sm:mb-0.5 md:mb-1 lg:mb-1.5">
+                        {feature.name}
+                      </h3>
+
+                      {/* Description */}
+                      <p className="text-[9px] sm:text-[8px] md:text-[9px] lg:text-[10px] xl:text-xs 2xl:text-sm text-gray-400 leading-snug mb-2 sm:mb-1.5 md:mb-2 lg:mb-2.5 xl:mb-3 flex-1">
+                        {feature.description}
+                      </p>
+
+                      {/* Continue Button - Only on larger screens */}
+                      <div className="hidden sm:block w-full px-1.5 py-0.5 sm:px-2 sm:py-0.5 md:px-2.5 md:py-1 lg:px-3 lg:py-1.5 xl:px-4 xl:py-2 rounded-md bg-white text-black text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base font-medium text-center">
+                        Continue
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="py-6">
+                {activeMessages.map((message, index) => {
                 const timestampValue = message.timestamp.getTime();
                 const hasValidTime = !Number.isNaN(timestampValue);
                 const timeLabel = hasValidTime
@@ -1146,21 +1381,35 @@ export default function ChatPage() {
                 return (
                   <div
                     key={messageKey}
-                    className="w-full border-b border-gray-800/50"
+                    className="w-full"
                   >
-                    <div className="max-w-3xl mx-auto px-4 py-6">
-                      <div className={`flex items-start gap-3 ${
-                        message.role === 'user' ? 'flex-row-reverse' : ''
-                      }`}>
-                        {/* Avatar/Icon */}
-                        <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-                          {message.role === 'user' ? (
-                            <div className="w-full h-full rounded-full bg-cyan-500 text-white flex items-center justify-center">
+                    <div className="max-w-3xl mx-auto px-4 py-4">
+                      {message.role === 'user' ? (
+                        // User message - aligned to the right with background
+                        <div className="flex items-start gap-3 justify-end">
+                          <div className="flex flex-col items-end max-w-[80%]">
+                            <div className="flex items-center gap-2 mb-2">
+                              {timeLabel ? (
+                                <span className="text-xs text-gray-500">{timeLabel}</span>
+                              ) : null}
+                              <span className="text-sm font-semibold text-gray-300">You</span>
+                            </div>
+                            <div className="rounded-2xl bg-[#202020] text-gray-200 px-4 py-3 text-[15px] break-words leading-relaxed">
+                              {message.content}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
+                            <div className="w-full h-full rounded-full bg-gray-700 text-white flex items-center justify-center">
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                               </svg>
                             </div>
-                          ) : (
+                          </div>
+                        </div>
+                      ) : (
+                        // Assistant message - aligned to the left without background
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
                             <Image
                               src={zicoBlue}
                               alt="Zico"
@@ -1168,136 +1417,289 @@ export default function ChatPage() {
                               height={32}
                               className="w-8 h-8"
                             />
-                          )}
-                        </div>
-
-                        {/* Message Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className={`flex items-center gap-2 mb-2 ${
-                            message.role === 'user' ? 'justify-end' : ''
-                          }`}>
-                            {timeLabel ? (
-                              <span className="text-xs text-gray-500">{timeLabel}</span>
-                            ) : null}
-                            <span className={`text-sm font-semibold ${
-                              message.role === 'user' ? 'text-cyan-400' : 'text-gray-300'
-                            }`}>
-                              {message.role === 'user' ? 'You' : 'Zico'}
-                            </span>
                           </div>
-                          <div className={`text-[15px] break-words leading-relaxed ${
-                            message.role === 'user' ? 'text-right text-gray-200' : 'text-left'
-                          }`}>
-                            {message.role === 'assistant' ? (
-                              <div className="rounded-2xl bg-gray-800/30 border border-cyan-500/15 p-3 shadow-[0_6px_18px_rgba(0,0,0,0.25)]">
-                                <MarkdownMessage text={message.content} />
-                              </div>
-                            ) : (
-                              <span className="inline-block rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-gray-200 px-4 py-3">{message.content}</span>
-                            )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-sm font-semibold text-gray-300">Zico</span>
+                              {timeLabel ? (
+                                <span className="text-xs text-gray-500">{timeLabel}</span>
+                              ) : null}
+                            </div>
+                            <div className="text-[15px] break-words leading-relaxed text-gray-200">
+                              <MarkdownMessage text={message.content} />
+                            </div>
                           
                             {/* Swap Interface */}
                             {message.role === 'assistant' &&
                               message.metadata?.event === 'swap_intent_ready' && (
-                              <div className="mt-4 space-y-3">
-                                {/* Quote Information */}
-                                {swapLoading && (
-                                  <div className="flex items-center gap-2 text-cyan-400">
-                                    <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                                    <span className="text-sm">Getting quote...</span>
-                                  </div>
-                                )}
-
-                                {swapQuote?.quote && (
-                                  <div className="bg-gray-700/50 rounded-lg p-3 space-y-2">
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-sm text-gray-300">You will receive:</span>
-                                      <span className="text-sm font-medium text-white">
-                                        {formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount), 18)} {String(message.metadata?.to_token)}
-                                      </span>
-                                    </div>
-                                    {swapQuote.quote.fees?.totalFeeUsd && (
-                                      <div className="flex justify-between items-center">
-                                        <span className="text-sm text-gray-300">Total fees:</span>
-                                        <span className="text-sm text-gray-400">${swapQuote.quote.fees.totalFeeUsd}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {swapError && (
-                                  <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
-                                    <p className="text-sm text-red-400">{swapError}</p>
-                                  </div>
-                                )}
-
-                                {swapSuccess && (
-                                  <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-3">
-                                    <p className="text-sm text-green-400 mb-3">✅ Swap executed successfully!</p>
-
-                                    {/* Transaction Hashes */}
-                                    {swapTxHashes.length > 0 && (
-                                      <div className="space-y-2">
-                                        <div className="text-xs text-gray-400">Transaction Hashes:</div>
-                                        {swapTxHashes.map((tx, index) => {
-                                          const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
-                                          return (
-                                            <div key={index} className="flex items-center justify-between bg-gray-800/50 rounded p-2">
-                                              <div className="flex-1 min-w-0">
-                                                <div className="text-xs text-gray-300 font-mono truncate">
-                                                  {tx.hash}
-                                                </div>
-                                                <div className="text-xs text-gray-500">
-                                                  Chain ID: {tx.chainId}
-                                                </div>
-                                              </div>
-                                              {explorerUrl && (
-                                                <a
-                                                  href={explorerUrl}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors"
-                                                >
-                                                  View
-                                                </a>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
+                              <div className="mt-4">
+                                {/* Loading State */}
                                 {swapLoading && !swapQuote?.quote && (
-                                  <div className="mt-3 p-3 bg-gray-700/50 rounded-lg border border-cyan-500/30">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                                      <span className="text-sm text-cyan-400">Preparing swap transaction...</span>
+                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
+                                    <div className="flex items-center gap-2 text-gray-300">
+                                      <div className="loader-inline-sm" />
+                                      <span className="text-sm">Getting quote...</span>
                                     </div>
                                   </div>
                                 )}
 
-                                {swapQuote?.quote && (
-                                  <SignatureApprovalButton
-                                    onApprove={() => handleSignatureApproval(message.metadata as Record<string, unknown>)}
-                                    onReject={handleSignatureRejection}
-                                    disabled={isSending || swapLoading || executingSwap}
+                                {swapStatusMessage && (
+                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5 mt-3">
+                                    <div className="flex items-center gap-2 text-gray-300">
+                                      {executingSwap && <div className="loader-inline-sm" />}
+                                      <span className="text-sm">{swapStatusMessage}</span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Error State */}
+                                {swapError && !swapLoading && (
+                                  <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4">
+                                    <p className="text-sm text-red-400">❌ {swapError}</p>
+                                  </div>
+                                )}
+
+                                {/* Resume Swap Button - Shows when swap quote exists but no modal is open */}
+                                {swapQuote?.quote && !swapFlowStep && !swapSuccess && !swapLoading && (
+                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex-1">
+                                        <p className="text-sm text-white font-medium mb-1">
+                                          Swap {String(message.metadata?.from_token)} → {String(message.metadata?.to_token)}
+                                        </p>
+                                        <p className="text-xs text-gray-400">
+                                          Quote ready. Click to continue with your swap.
+                                        </p>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
+                                          setSwapFlowStep('routing');
+                                        }}
+                                        disabled={executingSwap}
+                                        className="px-4 py-2 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                      >
+                                        Resume Swap
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Swap Preview Card - Hidden, modal flow is used instead */}
+                                {false && swapQuote?.quote && !swapSuccess && (
+                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden max-w-sm">
+                                    {/* Header */}
+                                    <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                                      <h3 className="text-sm font-semibold text-white">Preview Swap Position</h3>
+                                      <button
+                                        onClick={() => {
+                                          setSwapQuote(null);
+                                          setSwapError(null);
+                                        }}
+                                        className="text-gray-400 hover:text-white transition-colors"
+                                      >
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      </button>
+                                    </div>
+
+                                    {/* Token Pair Indicator */}
+                                    <div className="px-4 py-3 bg-[#2A2A2A]/50">
+                                      <div className="flex items-center gap-2.5">
+                                        {/* Overlapping circles */}
+                                        <div className="relative flex items-center">
+                                          <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center text-xs font-bold text-black">
+                                            {String(message.metadata?.from_token).slice(0, 1)}
+                                          </div>
+                                          <div className="w-7 h-7 rounded-full bg-gray-500 flex items-center justify-center text-xs font-bold text-white -ml-2">
+                                            {String(message.metadata?.to_token).slice(0, 1)}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex-1">
+                                          <div className="text-sm text-white font-medium">
+                                            {String(message.metadata?.from_token)}/{String(message.metadata?.to_token)}
+                                          </div>
+                                          <div className="text-xs text-gray-400 mt-0.5">
+                                            {String(message.metadata?.from_network)} → {String(message.metadata?.to_network)}
+                                          </div>
+                                        </div>
+
+                                        {swapQuote?.quote?.fees?.totalFeeUsd && (
+                                          <div className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs font-medium rounded">
+                                            ${swapQuote?.quote?.fees?.totalFeeUsd}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Content */}
+                                    <div className="px-4 py-3 space-y-3">
+                                      {/* Token Deposited */}
+                                      <div>
+                                        <div className="text-xs text-gray-400 mb-2">Token Deposited</div>
+                                        <div className="text-xl font-light text-white mb-2">
+                                          ${(parseFloat(String(message.metadata?.amount)) * 1800).toFixed(3)}
+                                        </div>
+                                        <div className="space-y-1.5">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-4 h-4 rounded-full bg-white"></div>
+                                              <span className="text-xs text-white">{String(message.metadata?.from_token)}</span>
+                                            </div>
+                                            <span className="text-xs text-white">{String(message.metadata?.amount)}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-4 h-4 rounded-full bg-gray-500"></div>
+                                              <span className="text-xs text-white">{String(message.metadata?.to_token)}</span>
+                                            </div>
+                                            <span className="text-xs text-white">{formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Divider Line */}
+                                      <div className="border-t border-white/5"></div>
+
+                                      {/* Min. Amounts */}
+                                      <div>
+                                        <div className="text-xs text-gray-400 mb-2">Min. Amounts to Receive</div>
+                                        <div className="space-y-1.5">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-4 h-4 rounded-full bg-white"></div>
+                                              <span className="text-xs text-white">{String(message.metadata?.from_token)}</span>
+                                            </div>
+                                            <span className="text-xs text-white">0</span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-4 h-4 rounded-full bg-gray-500"></div>
+                                              <span className="text-xs text-white">{String(message.metadata?.to_token)}</span>
+                                            </div>
+                                            <span className="text-xs text-white">{(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Price Range */}
+                                      <div>
+                                        <div className="text-xs text-gray-400 mb-2">Price Range</div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                          <div className="bg-black/40 border border-white/10 rounded-lg p-3">
+                                            <div className="text-xs text-gray-400 mb-0.5">Min</div>
+                                            <div className="text-base font-medium text-white">
+                                              {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) / parseFloat(String(message.metadata?.amount)) * 0.95).toFixed(2)}
+                                            </div>
+                                            <div className="text-[10px] text-gray-400 mt-0.5">
+                                              {String(message.metadata?.to_token)} per {String(message.metadata?.from_token)}
+                                            </div>
+                                          </div>
+                                          <div className="bg-black/40 border border-white/10 rounded-lg p-3">
+                                            <div className="text-xs text-gray-400 mb-0.5">Max</div>
+                                            <div className="text-base font-medium text-white">
+                                              {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) / parseFloat(String(message.metadata?.amount)) * 1.05).toFixed(2)}
+                                            </div>
+                                            <div className="text-[10px] text-gray-400 mt-0.5">
+                                              {String(message.metadata?.to_token)} per {String(message.metadata?.from_token)}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Fee Tier */}
+                                      <div className="flex items-center justify-between py-1.5">
+                                        <span className="text-xs text-gray-400">Fee Tier</span>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-xs text-cyan-400 font-medium">Best for Stable Pairs</span>
+                                          <span className="text-xs text-white">0.01%</span>
+                                        </div>
+                                      </div>
+
+                                      {/* Details */}
+                                      <div className="space-y-1.5 pt-1.5 border-t border-white/5">
+                                        {swapQuote?.quote?.fees?.totalFeeUsd && (
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs text-gray-400">Est. Total Gas Fee</span>
+                                            <span className="text-xs text-white">${swapQuote?.quote?.fees?.totalFeeUsd}</span>
+                                          </div>
+                                        )}
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs text-gray-400">Slippage Setting</span>
+                                          <span className="text-xs text-white">10%</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs text-gray-400">Order Routing</span>
+                                          <div className="flex items-center gap-1">
+                                            <div className="w-3 h-3 rounded-full bg-white"></div>
+                                            <span className="text-xs text-white">UNI V3</span>
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400">
+                                              <circle cx="12" cy="12" r="10" />
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
+                                            </svg>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Error Message */}
+                                      {swapError && (
+                                        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
+                                          <p className="text-sm text-red-400">{swapError}</p>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="px-4 py-3 border-t border-white/10 flex gap-2">
+                                      <button
+                                        onClick={() => {
+                                          setSwapQuote(null);
+                                          setSwapError(null);
+                                        }}
+                                        className="flex-1 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#333333] text-white text-sm font-medium transition-colors"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
+                                          setSwapFlowStep('routing');
+                                        }}
+                                        disabled={executingSwap}
+                                        className="flex-1 py-2.5 rounded-xl bg-cyan-400 hover:bg-cyan-500 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                      >
+                                        Confirm Open Position
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Success State */}
+                                {swapSuccess && (
+                                  <SwapSuccessCard
+                                    txHashes={swapTxHashes}
+                                    variant="compact"
+                                    onClose={() => {
+                                      setSwapSuccess(false);
+                                      setSwapTxHashes([]);
+                                    }}
                                   />
                                 )}
                               </div>
                             )}
                           </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 );
               })}
 
               {isSending && (
-                <div className="w-full border-b border-gray-800/50">
-                  <div className="max-w-3xl mx-auto px-4 py-6">
+                <div className="w-full">
+                  <div className="max-w-3xl mx-auto px-4 py-4">
                     <div className="flex items-start gap-3">
                       <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
                         <Image
@@ -1309,13 +1711,13 @@ export default function ChatPage() {
                         />
                       </div>
                       <div className="flex-1">
-                        <div className="rounded-2xl bg-gray-800/40 border border-cyan-500/20 p-4 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-                          <div className="text-sm font-semibold text-gray-300 mb-2">Zico</div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
-                            <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse delay-75" />
-                            <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse delay-150" />
-                          </div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-semibold text-gray-300">Zico</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-75" />
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150" />
                         </div>
                       </div>
                     </div>
@@ -1323,35 +1725,385 @@ export default function ChatPage() {
                 </div>
               )}
 
-              <div ref={messagesEndRef} />
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Input Area - Fixed */}
-        <div className="flex-shrink-0 bg-[#0d1117] border-t border-cyan-500/20 p-4">
-          <div className="flex items-center gap-2 max-w-4xl mx-auto">
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your message..."
-              disabled={isSending || !activeConversationId || initializing}
-              className="flex-1 px-4 py-3 rounded-full bg-gray-800 border border-cyan-500/30 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
-            />
-            <button
-              onClick={() => sendMessage()}
-              disabled={!inputMessage.trim() || isSending || !activeConversationId || initializing}
-              className="p-3 rounded-full bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            </button>
-          </div>
+            {/* Input Area - Fixed with black bg */}
+            <div className="flex-shrink-0 bg-black px-4 pb-6 pt-6">
+              <div className="flex items-center gap-3 max-w-4xl mx-auto relative">
+                <input
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Type your message..."
+                  disabled={isSending || !activeConversationId || initializing}
+                  className="flex-1 px-4 py-3 rounded-3xl bg-[#202020] border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-gray-500 disabled:opacity-50"
+                />
+
+                {/* Send Button - Round with white bg */}
+                <button
+                  onClick={() => sendMessage()}
+                  disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
+                  className="p-3 rounded-full bg-white hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Send message"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-black" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </main>
         </div>
       </div>
-    </div>
+
+      {/* Order Routing Modal */}
+      {swapFlowStep === 'routing' && swapQuote?.quote && currentSwapMetadata && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+            // Just close the modal, keep swap state so user can resume
+            setSwapFlowStep(null);
+          }} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
+                <h3 className="text-base sm:text-lg font-semibold text-white">Order Routing</h3>
+                <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="px-4 py-4 sm:px-5 sm:py-5 space-y-3 sm:space-y-4">
+                {/* Select Swap API Label */}
+                <div className="text-xs sm:text-sm font-medium text-white">Select Swap API</div>
+
+                {/* Routing Option Card */}
+                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                    {/* Radio Button + Label */}
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white flex items-center justify-center flex-shrink-0">
+                          <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-black"></div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-white font-semibold text-xs sm:text-sm">UNI V3</span>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
+                            <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="text-[10px] sm:text-xs text-gray-400 ml-6 sm:ml-7">Est. Price Impact 1.1%</div>
+                    </div>
+
+                    {/* Swap Info */}
+                    <div className="flex-1 space-y-2 sm:space-y-3">
+                      <div className="flex items-start sm:items-center justify-between gap-2">
+                        <div className="text-sm sm:text-base font-medium text-white break-words">
+                          Swap {String(currentSwapMetadata?.from_token)} to {String(currentSwapMetadata?.to_token)}
+                        </div>
+                        <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1 flex-shrink-0">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                          </svg>
+                          Suggested
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-400">Amount in</span>
+                          <span className="text-white font-medium text-right break-words">
+                            {String(currentSwapMetadata?.amount)} {String(currentSwapMetadata?.from_token)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-400">Expected Amount Out</span>
+                          <span className="text-white font-medium text-right break-words">
+                            {formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)} {String(currentSwapMetadata?.to_token)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
+                          <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
+                            {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
+                <button
+                  onClick={() => setSwapFlowStep('details')}
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors"
+                >
+                  Continue
+                </button>
+                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
+                  </div>
+                  <span>Powered by Uniswap</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Swap Details Modal */}
+      {swapFlowStep === 'details' && swapQuote?.quote && currentSwapMetadata && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+            // Just close the modal, keep swap state so user can resume
+            setSwapFlowStep(null);
+          }} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
+                <h3 className="text-base sm:text-lg font-semibold text-white">Swap Details</h3>
+                <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="px-4 py-4 sm:px-5 sm:py-5 space-y-3 sm:space-y-4">
+                {/* Select Swap API */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs sm:text-sm font-medium text-white">Select Swap API</span>
+                  <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
+                    Change API
+                  </button>
+                </div>
+
+                {/* Routing */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs sm:text-sm text-gray-400">Routing</span>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-white flex items-center justify-center">
+                      <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-black"></div>
+                    </div>
+                    <span className="text-xs sm:text-sm text-white">UNI V3</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
+                      <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
+                    </svg>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                    </svg>
+                    Suggested
+                  </div>
+                  <span className="text-[10px] sm:text-xs text-gray-400">Est. Price Impact 1.1%</span>
+                </div>
+
+                {/* Swap Details Card */}
+                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                  <div className="text-sm sm:text-base font-semibold text-white mb-3 sm:mb-4 break-words">
+                    Swap {String(currentSwapMetadata?.from_token)} to {String(currentSwapMetadata?.to_token)}
+                  </div>
+
+                  <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-gray-400">Amount in</span>
+                      <span className="text-white font-medium text-right break-words">
+                        {String(currentSwapMetadata?.amount)} {String(currentSwapMetadata?.from_token)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-gray-400 text-[11px] sm:text-xs">Expected Amount Out</span>
+                      <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
+                        {formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)} {String(currentSwapMetadata?.to_token)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
+                      <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
+                        {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Transaction Settings */}
+                <div className="space-y-2 sm:space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-white font-medium text-xs sm:text-sm">Transaction Settings</span>
+                    <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
+                      Change Settings
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
+                <button
+                  onClick={() => setSwapFlowStep('confirm')}
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors"
+                >
+                  Continue
+                </button>
+                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
+                  </div>
+                  <span>Powered by Uniswap</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Confirm Details Modal */}
+      {swapFlowStep === 'confirm' && swapQuote?.quote && currentSwapMetadata && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+            // Just close the modal, keep swap state so user can resume
+            setSwapFlowStep(null);
+          }} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-sm w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 sticky top-0 bg-black z-10">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <h3 className="text-sm sm:text-base font-semibold text-white mb-1">Confirm details</h3>
+                    <p className="text-[10px] sm:text-xs text-gray-400 pr-2">Review and accept Uniswap Labs Terms of Service & Privacy Policy to get started</p>
+                  </div>
+                  <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors flex-shrink-0">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 space-y-3 sm:space-y-4">
+                {/* Terms of Service Toggles */}
+                <div className="space-y-2 sm:space-y-3">
+                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
+                    <span className="text-xs sm:text-sm text-white flex-1 pr-2">
+                      I have read and agreed with{' '}
+                      <a
+                        href="https://support.uniswap.org/hc/en-us/articles/30935100859661-Uniswap-Labs-Terms-of-Service"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-cyan-400 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Uniswap Labs Terms of Service
+                      </a>
+                    </span>
+                    <div className="relative ml-2 sm:ml-4 flex-shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={tosAccepted}
+                        onChange={(e) => setTosAccepted(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${tosAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${tosAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
+                    <span className="text-xs sm:text-sm text-white flex-1 pr-2">
+                      I have read and agreed with{' '}
+                      <a
+                        href="https://support.uniswap.org/hc/en-us/articles/40074102704141-Uniswap-Labs-Privacy-Policy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-cyan-400 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Uniswap Labs Privacy Policy
+                      </a>
+                    </span>
+                    <div className="relative ml-2 sm:ml-4 flex-shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={privacyAccepted}
+                        onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${privacyAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${privacyAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
+                    </div>
+                  </label>
+                </div>
+
+              </div>
+
+              {/* Action Button */}
+              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
+                <button
+                  onClick={async () => {
+                    if (tosAccepted && privacyAccepted && currentSwapMetadata) {
+                      setSwapFlowStep(null);
+                      await forceMetaMaskWindow();
+                      await executeSwap(currentSwapMetadata);
+                    }
+                  }}
+                  disabled={!tosAccepted || !privacyAccepted || executingSwap}
+                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
+                >
+                  {executingSwap ? 'Executing...' : 'Confirm'}
+                </button>
+                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src={UniswapIcon}
+                      alt="Uniswap"
+                      width={44}
+                      height={44}
+                      className="w-11 h-11"
+                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                    />
+                  </div>
+                  <span>Powered by Uniswap</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </ProtectedRoute>
   );
 }
