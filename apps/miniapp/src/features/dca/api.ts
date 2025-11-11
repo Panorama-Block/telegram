@@ -407,3 +407,35 @@ export async function withdrawFromSmartAccount(
     throw new DCAApiError(error.message || 'Failed to withdraw funds');
   }
 }
+
+/**
+ * Check session key ETH balance
+ * Returns balance in ETH (not Wei)
+ */
+export async function getSessionKeyBalance(
+  sessionKeyAddress: string,
+  chainId: number
+): Promise<string> {
+  try {
+    // Import Thirdweb functions dynamically to avoid SSR issues
+    const { createThirdwebClient, defineChain, getRpcClient, eth_getBalance } = await import('thirdweb');
+    const { THIRDWEB_CLIENT_ID } = await import('@/shared/config/thirdweb');
+
+    const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID || '' });
+    const chain = defineChain(chainId);
+    const rpcRequest = getRpcClient({ client, chain });
+
+    // Get balance in Wei
+    const balanceWei = await eth_getBalance(rpcRequest, {
+      address: sessionKeyAddress as `0x${string}`,
+    });
+
+    // Convert Wei to ETH
+    const balanceEth = Number(balanceWei) / 1e18;
+
+    return balanceEth.toFixed(6);
+  } catch (error: any) {
+    console.error('Error fetching session key balance:', error);
+    throw new DCAApiError(error.message || 'Failed to fetch session key balance');
+  }
+}

@@ -10,8 +10,10 @@ import { sendTransaction, prepareTransaction, toWei, getContract, defineChain } 
 import { createThirdwebClient, type Address } from 'thirdweb';
 import { approve, allowance } from 'thirdweb/extensions/erc20';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
-import { networks } from '@/features/swap/tokens';
+import { networks, Token } from '@/features/swap/tokens';
 import { Button } from '@/components/ui/button';
+import { TokenSelector } from '@/components/ui/TokenSelector';
+import { parseAmountToWei } from '@/features/swap/utils';
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -42,10 +44,16 @@ export default function DepositModal({
 }: DepositModalProps) {
   const account = useActiveAccount();
   const activeChain = useActiveWalletChain();
-  const [isTestnet, setIsTestnet] = useState<boolean>(false); // Toggle between Mainnet/Testnet
-  const [chainId, setChainId] = useState<number>(1); // Ethereum mainnet default
-  const [selectedToken, setSelectedToken] = useState<string>('');
+  const [chainId, setChainId] = useState<number>(8453); // Base default
+  const [selectedToken, setSelectedToken] = useState<Token>({
+    symbol: 'ETH',
+    address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+    decimals: 18,
+    name: 'Ethereum'
+  });
   const [amount, setAmount] = useState('0.01');
+  const [showTokenSelector, setShowTokenSelector] = useState(false);
   const [isDepositing, setIsDepositing] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [needsApproval, setNeedsApproval] = useState(false);
@@ -56,6 +64,12 @@ export default function DepositModal({
   const [isCheckingBalance, setIsCheckingBalance] = useState(false);
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
 
+  // Session Key funding state
+  const [showSessionKeyStep, setShowSessionKeyStep] = useState(false);
+  const [plannedTrades, setPlannedTrades] = useState<number>(5);
+  const [isDepositingToSessionKey, setIsDepositingToSessionKey] = useState(false);
+  const [sessionKeyTxHash, setSessionKeyTxHash] = useState<string | null>(null);
+
   const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID || '' });
 
   useEffect(() => {
@@ -64,38 +78,11 @@ export default function DepositModal({
     }
   }, [activeChain]);
 
-  // Update chainId when testnet toggle changes
-  useEffect(() => {
-    setChainId(isTestnet ? 11155111 : 1); // Sepolia : Ethereum
-  }, [isTestnet]);
-
-  // Get current network (ETH Mainnet or Sepolia)
+  // Get current network
   const currentNetwork = useMemo(() => {
-    const allowedNetworks = isTestnet
-      ? networks.filter(n => n.chainId === 11155111) // Sepolia
-      : networks.filter(n => n.chainId === 1); // Ethereum mainnet
-
-    const found = allowedNetworks.find((n) => n.chainId === chainId);
-
-    if (found) return found;
-
-    // Fallback network definition with native token
-    return {
-      name: isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet',
-      chainId: isTestnet ? 11155111 : 1,
-      nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-      icon: '⚡',
-      tokens: [
-        {
-          address: '0x0000000000000000000000000000000000000000',
-          name: 'Ethereum',
-          symbol: 'ETH',
-          decimals: 18,
-          icon: '⚡'
-        }
-      ]
-    };
-  }, [chainId, isTestnet]);
+    const found = networks.find((n) => n.chainId === chainId);
+    return found;
+  }, [chainId]);
 
   // Fetch session key address from smart account (for display purposes only)
   useEffect(() => {
@@ -120,29 +107,11 @@ export default function DepositModal({
     }
   }, [isOpen, smartAccountAddress]);
 
-  // Set default token when network changes
-  useEffect(() => {
-    if (currentNetwork?.tokens && currentNetwork.tokens.length > 0) {
-      setSelectedToken(currentNetwork.tokens[0].address);
-    }
-  }, [currentNetwork]);
-
-  // Get selected token info
-  const tokenInfo = useMemo(() => {
-    if (!currentNetwork || !selectedToken) return null;
-    return currentNetwork.tokens.find((t) => t.address === selectedToken);
-  }, [currentNetwork, selectedToken]);
-
   // Check if token is native (ETH, AVAX, etc)
   const isNativeToken = useMemo(() => {
-    return selectedToken === '0x0000000000000000000000000000000000000000' ||
-           selectedToken === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+    return selectedToken.address === '0x0000000000000000000000000000000000000000' ||
+           selectedToken.address === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
   }, [selectedToken]);
-
-  // Check if token is ETH (only valid on Ethereum)
-  const isETH = useMemo(() => {
-    return selectedToken === '0x0000000000000000000000000000000000000000' && chainId === 1;
-  }, [selectedToken, chainId]);
 
   // Check if wallet is on wrong network
   const isWrongNetwork = useMemo(() => {
@@ -171,7 +140,7 @@ export default function DepositModal({
 
       if (isNativeToken) {
         // For native tokens (ETH on Ethereum)
-        console.log('🔍 Checking native token balance for:', { chainId, isETH });
+        console.log('🔍 Checking native token balance for:', { chainId });
 
         // const balance = await getBalance({
         //   client,
@@ -191,23 +160,23 @@ export default function DepositModal({
           return;
         }
 
-        if (!selectedToken || selectedToken === '0x0000000000000000000000000000000000000000') {
+        if (!selectedToken.address || selectedToken.address === '0x0000000000000000000000000000000000000000') {
           console.warn('No valid token selected for ERC20 balance check');
           setWalletBalance('0');
           return;
         }
 
-        console.log('🔍 Checking ERC20 balance for token:', selectedToken, 'on Ethereum');
+        console.log('🔍 Checking ERC20 balance for token:', selectedToken.address, 'on Ethereum');
 
         // Validate token address
-        if (!selectedToken || selectedToken.length !== 42 || !selectedToken.startsWith('0x')) {
-          throw new Error(`Invalid token address: ${selectedToken}`);
+        if (!selectedToken.address || selectedToken.address.length !== 42 || !selectedToken.address.startsWith('0x')) {
+          throw new Error(`Invalid token address: ${selectedToken.address}`);
         }
 
         const contract = getContract({
           client,
           chain: defineChain(1),
-          address: selectedToken as Address,
+          address: selectedToken.address as Address,
         });
 
         const { balanceOf } = await import('thirdweb/extensions/erc20');
@@ -262,12 +231,12 @@ export default function DepositModal({
   // Check wallet balance when component mounts or chain changes
   useEffect(() => {
     if (isOpen && account && currentNetwork && selectedToken) {
-      console.log('🔄 Checking balance for:', { selectedToken, chainId, isNativeToken });
+      console.log('🔄 Checking balance for:', { token: selectedToken.address, chainId, isNativeToken });
       // Reset balance first
       setWalletBalance('0');
       checkWalletBalance();
     }
-  }, [isOpen, account, chainId, currentNetwork, selectedToken, isNativeToken]);
+  }, [isOpen, account, chainId, currentNetwork, selectedToken.address, isNativeToken]);
 
   // Ensure wallet is on selected network when modal opens or selection changes
   useEffect(() => {
@@ -374,7 +343,7 @@ export default function DepositModal({
         const contract = getContract({
           client,
           chain: defineChain(chainId),
-          address: selectedToken as Address,
+          address: selectedToken.address as Address,
         });
 
         const currentAllowance = await allowance({
@@ -383,8 +352,21 @@ export default function DepositModal({
           spender: smartAccountAddress as Address,
         });
 
-        const amountInWei = toWei(amount);
-        setNeedsApproval(currentAllowance < amountInWei);
+        // Get token decimals
+        const tokenDecimals = selectedToken.decimals || 18;
+
+        // Convert amount to token's decimals using safe parseAmountToWei
+        const amountInTokenUnits = parseAmountToWei(amount, tokenDecimals);
+
+        console.log('🔍 Checking approval:', {
+          token: selectedToken.symbol,
+          decimals: tokenDecimals,
+          currentAllowance: currentAllowance.toString(),
+          requiredAmount: amountInTokenUnits.toString(),
+          needsApproval: currentAllowance < amountInTokenUnits
+        });
+
+        setNeedsApproval(currentAllowance < amountInTokenUnits);
       } catch (err) {
         console.error('Error checking allowance:', err);
         setNeedsApproval(true);
@@ -392,7 +374,7 @@ export default function DepositModal({
     }
 
     void checkApproval();
-  }, [account, selectedToken, amount, isNativeToken, chainId, smartAccountAddress, client]);
+  }, [account, selectedToken.address, amount, isNativeToken, chainId, smartAccountAddress, client]);
 
   const handleApprove = async () => {
     if (!account || !selectedToken || isNativeToken) {
@@ -405,16 +387,53 @@ export default function DepositModal({
     try {
       console.log('🔓 Aprovando token...');
 
-      const contract = getContract({
-        client,
-        chain: defineChain(chainId),
-        address: selectedToken as Address,
+      // Get token decimals
+      const tokenDecimals = selectedToken.decimals || 18;
+
+      // Convert amount to token's decimals using safe parseAmountToWei
+      const amountInTokenUnits = parseAmountToWei(amount, tokenDecimals);
+
+      // UNI and some other tokens use uint96 for amounts
+      // For these tokens, we approve max uint96 to avoid issues
+      // Max value for uint96: 2^96 - 1 = 0xffffffffffffffffffffffff (96 bits)
+      const MAX_UINT96 = (BigInt(1) << BigInt(96)) - BigInt(1);
+
+      // List of tokens known to use uint96
+      const UINT96_TOKENS = ['UNI', 'COMP'];
+      const isUint96Token = UINT96_TOKENS.includes(selectedToken.symbol.toUpperCase());
+
+      // For uint96 tokens, approve max uint96 instead of exact amount to avoid gas estimation issues
+      const approvalAmount = isUint96Token ? MAX_UINT96 : amountInTokenUnits;
+
+      console.log('📊 Approval details:', {
+        token: selectedToken.symbol,
+        decimals: tokenDecimals,
+        amountHuman: amount,
+        requestedAmount: amountInTokenUnits.toString(),
+        approvalAmount: approvalAmount.toString(),
+        isUint96Token,
+        approvalAmountHex: '0x' + approvalAmount.toString(16),
+        spender: smartAccountAddress
       });
 
-      const transaction = approve({
-        contract,
-        spender: smartAccountAddress as Address,
-        amount: toWei(amount) as any,
+      // ERC20 approve function signature: approve(address spender, uint256 amount)
+      // Function selector: 0x095ea7b3
+      const approveData = `0x095ea7b3${
+        smartAccountAddress.slice(2).padStart(64, '0')
+      }${approvalAmount.toString(16).padStart(64, '0')}`;
+
+      console.log('📋 Manual approval transaction data:', {
+        to: selectedToken.address,
+        data: approveData,
+        value: '0x0'
+      });
+
+      const transaction = prepareTransaction({
+        to: selectedToken.address as Address,
+        chain: defineChain(chainId),
+        client,
+        data: approveData as any,
+        value: 0n,
       });
 
       const result = await sendTransaction({
@@ -446,15 +465,8 @@ export default function DepositModal({
       return;
     }
 
-    if (!currentNetwork || !tokenInfo) {
+    if (!currentNetwork || !selectedToken) {
       setError('Selecione uma rede e token válidos');
-      return;
-    }
-
-    // Check if user is on a supported network (ETH Mainnet or Sepolia)
-    const supportedChainIds = [1, 11155111]; // Ethereum Mainnet and Sepolia
-    if (!supportedChainIds.includes(chainId)) {
-      setError(`Rede não suportada! Você está na rede ${currentNetwork?.name || 'desconhecida'} (Chain ID: ${chainId}). Por favor, mude para Ethereum Mainnet (Chain ID: 1) ou Sepolia Testnet (Chain ID: 11155111).`);
       return;
     }
 
@@ -462,12 +474,10 @@ export default function DepositModal({
     const currentWalletChainId = walletChainId ?? activeChain?.id;
 
     if (typeof currentWalletChainId === 'number' && currentWalletChainId !== chainId) {
-      const expectedNetwork = isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet';
-      const currentWalletNetwork =
-        activeChain?.name ||
-        (currentWalletChainId === 11155111 ? 'Sepolia Testnet' : `Chain ID: ${currentWalletChainId}`);
+      const expectedNetwork = currentNetwork?.name || `Chain ID: ${chainId}`;
+      const currentWalletNetwork = activeChain?.name || `Chain ID: ${currentWalletChainId}`;
 
-      setError(`⚠️ Sua carteira está em ${currentWalletNetwork}, mas você selecionou ${expectedNetwork}.\n\nPor favor, troque sua carteira para ${expectedNetwork} (Chain ID: ${chainId}) no MetaMask.`);
+      setError(`⚠️ Sua carteira está em ${currentWalletNetwork}, mas você selecionou ${expectedNetwork}.\n\nPor favor, troque sua carteira para ${expectedNetwork} no MetaMask.`);
       return;
     }
 
@@ -501,14 +511,14 @@ export default function DepositModal({
       console.log('De (sua carteira):', account.address);
       console.log('Para (Smart Account - contrato):', depositAddress);
       console.log('Assinante autorizado (Session Key):', sessionKeyAddress);
-      console.log('Valor:', amount, tokenInfo.symbol);
+      console.log('Valor:', amount, selectedToken.symbol);
       console.log('Rede:', currentNetwork.name);
       console.log('Chain ID:', chainId);
-      console.log('Token Address:', selectedToken);
+      console.log('Token Address:', selectedToken.address);
 
       if (isNativeToken) {
-        // Native token transfer (ETH on Ethereum)
-        console.log('🔄 Fazendo transferência de token nativo...', { chainId, isETH });
+        // Native token transfer
+        console.log('🔄 Fazendo transferência de token nativo...', { chainId });
 
         const transaction = prepareTransaction({
           to: depositAddress as Address,
@@ -534,36 +544,43 @@ export default function DepositModal({
           }
         }, 100);
       } else {
-        // ERC20 token transfer (Ethereum only)
-        if (chainId !== 1) {
-          throw new Error('Tokens ERC20 só são suportados na rede Ethereum');
-        }
-
+        // ERC20 token transfer
         console.log('🔄 Fazendo transferência ERC20...');
 
         const contract = getContract({
           client,
-          chain: defineChain(1),
-          address: selectedToken as Address,
+          chain: defineChain(chainId),
+          address: selectedToken.address as Address,
         });
 
         // Use transfer function from ERC20 extension
         const { transfer } = await import('thirdweb/extensions/erc20');
 
-        const amountInWei = toWei(amount);
-        console.log('💰 Amount in wei:', amountInWei.toString());
+        // Get token decimals
+        const tokenDecimals = selectedToken.decimals || 18;
+
+        // Convert amount to token's decimals using safe parseAmountToWei
+        const amountInTokenUnits = parseAmountToWei(amount, tokenDecimals);
+
+        console.log('💰 Amount details:', {
+          symbol: selectedToken.symbol,
+          decimals: tokenDecimals,
+          amountHuman: amount,
+          amountInUnits: amountInTokenUnits.toString(),
+          amountInUnitsHex: '0x' + amountInTokenUnits.toString(16)
+        });
 
         const transaction = transfer({
           contract,
           to: depositAddress as Address,
-          amount: amountInWei as any,
+          amount: amountInTokenUnits.toString(),
         });
 
         console.log('📤 Enviando transação ERC20...');
         console.log('📋 Transaction details:', {
           to: depositAddress,
-          amount: amountInWei.toString(),
-          token: selectedToken
+          amount: amountInTokenUnits.toString(),
+          token: selectedToken.address
         });
         
         const result = await sendTransaction({
@@ -584,11 +601,10 @@ export default function DepositModal({
         }, 100);
       }
 
-      // Limpar form e fechar modal após 5 segundos
+      // After successful deposit to smart account, show session key funding step
       setTimeout(() => {
-        setAmount('0.01');
-        onClose();
-      }, 5000);
+        setShowSessionKeyStep(true);
+      }, 2000);
     } catch (err: any) {
       console.error('❌ Erro ao depositar:', err);
       
@@ -596,8 +612,8 @@ export default function DepositModal({
       let errorMessage = 'Erro ao fazer depósito. Tente novamente.';
       
       if (err.message) {
-        if (err.message.includes('insufficient funds')) {
-          errorMessage = `Saldo insuficiente! Você precisa de mais ${tokenInfo?.symbol || 'tokens'} para cobrir o valor + taxas de gas.`;
+        if (err.message.includes('insufficient funds') || err.message.includes('transfer amount exceeds balance')) {
+          errorMessage = `❌ Saldo insuficiente na ${currentNetwork?.name}!\n\nVocê não tem ${amount} ${selectedToken.symbol} disponível na sua carteira.\n\nPor favor:\n• Adicione fundos à sua carteira\n• Ou tente um valor menor`;
         } else if (err.message.includes('user rejected')) {
           errorMessage = 'Transação cancelada pelo usuário.';
         } else if (err.message.includes('gas')) {
@@ -612,6 +628,96 @@ export default function DepositModal({
       setError(errorMessage);
     } finally {
       setIsDepositing(false);
+    }
+  };
+
+  // Calculate estimated gas needed for session key based on planned trades
+  const calculateSessionKeyGas = useMemo(() => {
+    // Estimated gas per DCA trade on Ethereum mainnet
+    // Based on Account Abstraction UserOp: ~0.0002 ETH per trade
+    const gasPerTrade = 0.0002;
+
+    // Add 20% buffer for safety
+    const buffer = 1.2;
+
+    const totalGas = plannedTrades * gasPerTrade * buffer;
+
+    return {
+      gasPerTrade,
+      totalGas: totalGas.toFixed(6),
+      breakdown: `${plannedTrades} trades × ${gasPerTrade} ETH + 20% buffer`
+    };
+  }, [plannedTrades]);
+
+  // Deposit ETH from Smart Account to Session Key
+  const handleDepositToSessionKey = async () => {
+    if (!account || !sessionKeyAddress) {
+      setError('Endereço da session key não encontrado');
+      return;
+    }
+
+    // Validate session key address
+    if (!sessionKeyAddress || sessionKeyAddress.length !== 42 || !sessionKeyAddress.startsWith('0x')) {
+      setError('Endereço da session key inválido');
+      return;
+    }
+
+    setIsDepositingToSessionKey(true);
+    setError(null);
+    setSessionKeyTxHash(null);
+
+    try {
+      const depositAmount = calculateSessionKeyGas.totalGas;
+
+      console.log('💰 Depositando na Session Key...');
+      console.log('De (Smart Account):', smartAccountAddress);
+      console.log('Para (Session Key):', sessionKeyAddress);
+      console.log('Valor:', depositAmount, 'ETH');
+      console.log('Planned trades:', plannedTrades);
+
+      // Transfer ETH from current wallet to session key
+      // Note: This transfers from the user's wallet, not the smart account
+      // In a production environment, you might want to implement a way to transfer from smart account
+      const transaction = prepareTransaction({
+        to: sessionKeyAddress as Address,
+        value: toWei(depositAmount),
+        chain: defineChain(chainId),
+        client,
+      });
+
+      const result = await sendTransaction({
+        transaction,
+        account,
+      });
+
+      console.log('✅ Depósito na Session Key realizado!');
+      console.log('Transaction Hash:', result.transactionHash);
+      setSessionKeyTxHash(result.transactionHash);
+
+      // Close modal after 5 seconds
+      setTimeout(() => {
+        setAmount('0.01');
+        setShowSessionKeyStep(false);
+        onClose();
+      }, 5000);
+    } catch (err: any) {
+      console.error('❌ Erro ao depositar na session key:', err);
+
+      let errorMessage = 'Erro ao depositar na session key. Tente novamente.';
+
+      if (err.message) {
+        if (err.message.includes('insufficient funds')) {
+          errorMessage = `❌ Saldo insuficiente!\n\nVocê não tem ${calculateSessionKeyGas.totalGas} ETH disponível.\n\nPor favor, adicione fundos à sua carteira.`;
+        } else if (err.message.includes('user rejected')) {
+          errorMessage = 'Transação cancelada pelo usuário.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+
+      setError(errorMessage);
+    } finally {
+      setIsDepositingToSessionKey(false);
     }
   };
 
@@ -641,36 +747,159 @@ export default function DepositModal({
           </div>
 
           <div className="space-y-5 px-6 py-5">
-            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">{isTestnet ? '🧪' : '🌐'}</span>
+            {/* Session Key Funding Step */}
+            {showSessionKeyStep && sessionKeyAddress ? (
+              <>
+                <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-4 py-3 text-sm">
+                  <h3 className="font-semibold text-cyan-400 mb-2 flex items-center gap-2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Fund Your Session Key
+                  </h3>
+                  <p className="text-xs text-pano-text-muted mb-3">
+                    Para executar DCA trades automaticamente, a session key precisa de ETH para pagar gas.
+                    Vamos calcular quanto você precisa baseado no número de trades planejados.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
                   <div>
-                    <p className="text-sm font-medium text-pano-text-primary">
-                      {isTestnet ? 'Modo teste (Sepolia)' : 'Modo principal (Mainnet)'}
-                    </p>
-                    <p className="text-xs text-pano-text-muted">
-                      {isTestnet
-                        ? 'Utilize ETH de faucet para experimentar o fluxo.'
-                        : 'Transações executadas na rede principal Ethereum.'}
-                    </p>
+                    <label className="text-sm font-medium text-pano-text-primary">Quantos trades DCA você planeja executar?</label>
+                    <div className="mt-2 flex gap-2 items-center">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={plannedTrades}
+                        onChange={(e) => setPlannedTrades(parseInt(e.target.value) || 1)}
+                        className="flex-1 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40"
+                        placeholder="5"
+                        disabled={isDepositingToSessionKey}
+                      />
+                      <div className="text-sm text-pano-text-muted">trades</div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {[5, 10, 20, 50].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setPlannedTrades(preset)}
+                        disabled={isDepositingToSessionKey}
+                        className="rounded-md border border-pano-border-subtle px-3 py-1.5 text-xs text-pano-text-secondary transition-colors hover:border-pano-primary/60 hover:text-pano-text-primary disabled:opacity-50"
+                      >
+                        {preset} trades
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <button
-                  onClick={() => setIsTestnet(!isTestnet)}
-                  className={isTestnet ? 'relative inline-flex h-6 w-12 items-center rounded-full bg-pano-primary transition-colors' : 'relative inline-flex h-6 w-12 items-center rounded-full bg-pano-border-subtle transition-colors'}
-                >
-                  <span
-                    className={isTestnet ? 'inline-block h-4 w-4 translate-x-6 transform rounded-full bg-black transition-transform' : 'inline-block h-4 w-4 translate-x-1 transform rounded-full bg-black transition-transform'}
-                  />
-                </button>
-              </div>
-              {activeChain && activeChain.id !== chainId && (
-                <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-3 py-2 text-[11px] text-pano-warning">
-                  Sua carteira está em {activeChain.name || 'outra rede'}. Altere para {isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet'} antes de continuar.
+
+                <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/5 px-4 py-4 space-y-3">
+                  <h4 className="text-sm font-semibold text-pano-text-primary">Cálculo de Gas Estimado</h4>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
+                      <span className="text-pano-text-muted">Gas por trade</span>
+                      <span className="font-semibold text-pano-text-primary">
+                        {calculateSessionKeyGas.gasPerTrade} ETH
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
+                      <span className="text-pano-text-muted">Número de trades</span>
+                      <span className="font-semibold text-pano-text-primary">
+                        {plannedTrades}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
+                      <span className="text-pano-text-muted">Buffer de segurança</span>
+                      <span className="font-semibold text-pano-text-primary">
+                        +20%
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 px-3 rounded bg-cyan-500/20 border border-cyan-500/30">
+                      <span className="text-cyan-400 font-semibold">Total necessário</span>
+                      <span className="font-bold text-cyan-400 text-base">
+                        {calculateSessionKeyGas.totalGas} ETH
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-pano-text-muted">
+                    {calculateSessionKeyGas.breakdown}
+                  </p>
                 </div>
-              )}
-            </div>
+
+                <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-3 text-xs space-y-2">
+                  <p className="font-medium text-pano-text-primary">Por que a session key precisa de fundos?</p>
+                  <ul className="space-y-1 text-pano-text-muted list-disc list-inside">
+                    <li>A session key assina transações automaticamente sem popup</li>
+                    <li>Ela paga o gas das transações com seu próprio saldo</li>
+                    <li>Os fundos dos trades ficam na Smart Account (seguros)</li>
+                    <li>Você pode recuperar ETH não usado depois</li>
+                  </ul>
+                </div>
+
+                {sessionKeyTxHash && (
+                  <div className="rounded-lg border border-pano-success/40 bg-pano-success/10 px-4 py-4 text-sm text-pano-success space-y-2">
+                    <div className="flex items-center gap-2 font-medium">
+                      <span className="text-lg">✅</span>
+                      Session key funded successfully!
+                    </div>
+                    <a
+                      className="block truncate text-xs font-mono text-pano-text-primary hover:text-pano-primary"
+                      href={getExplorerUrl(chainId, sessionKeyTxHash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {sessionKeyTxHash}
+                    </a>
+                    <p className="text-[11px] text-pano-text-muted">
+                      Agora você pode executar até {plannedTrades} trades DCA automaticamente!
+                    </p>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="rounded-lg border border-pano-error/40 bg-pano-error/10 px-4 py-3 text-sm text-pano-error">
+                    {error}
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-3 md:flex-row">
+                  <Button
+                    variant="ghost"
+                    size="md"
+                    fullWidth
+                    onClick={() => {
+                      setShowSessionKeyStep(false);
+                      onClose();
+                    }}
+                    disabled={isDepositingToSessionKey}
+                  >
+                    Pular (fazer depois)
+                  </Button>
+
+                  <Button
+                    variant="primary"
+                    size="md"
+                    fullWidth
+                    onClick={handleDepositToSessionKey}
+                    disabled={isDepositingToSessionKey || !sessionKeyAddress || plannedTrades < 1}
+                    loading={isDepositingToSessionKey}
+                  >
+                    Depositar {calculateSessionKeyGas.totalGas} ETH
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+            {activeChain && activeChain.id !== chainId && (
+              <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-3 py-2 text-[11px] text-pano-warning">
+                Sua carteira está em {activeChain.name || 'outra rede'}. Altere para {currentNetwork?.name || `Chain ID ${chainId}`} antes de continuar.
+              </div>
+            )}
 
             <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
@@ -684,9 +913,16 @@ export default function DepositModal({
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    const explorerUrl = isTestnet
-                      ? 'https://sepolia.etherscan.io/address/' + smartAccountAddress
-                      : 'https://etherscan.io/address/' + smartAccountAddress;
+                    const explorerUrls: Record<number, string> = {
+                      1: 'https://etherscan.io/address/',
+                      8453: 'https://basescan.org/address/',
+                      42161: 'https://arbiscan.io/address/',
+                      10: 'https://optimistic.etherscan.io/address/',
+                      137: 'https://polygonscan.com/address/',
+                      43114: 'https://snowtrace.io/address/',
+                      11155111: 'https://sepolia.etherscan.io/address/',
+                    };
+                    const explorerUrl = (explorerUrls[chainId] || 'https://etherscan.io/address/') + smartAccountAddress;
                     window.open(explorerUrl, '_blank');
                   }}
                   className="text-xs text-pano-text-accent hover:text-pano-primary"
@@ -719,13 +955,13 @@ export default function DepositModal({
                 <div className="flex items-center justify-between gap-3">
                   <span>Rede selecionada</span>
                   <span className="font-medium text-pano-text-primary">
-                    {isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet'}
+                    {currentNetwork?.name || `Chain ID: ${chainId}`}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-3">
               <div className="space-y-2">
                 <label className="text-xs font-medium text-pano-text-secondary">Rede</label>
                 <select
@@ -741,20 +977,35 @@ export default function DepositModal({
                   ))}
                 </select>
               </div>
+
               <div className="space-y-2">
                 <label className="text-xs font-medium text-pano-text-secondary">Token</label>
-                <select
-                  value={selectedToken}
-                  onChange={(e) => setSelectedToken(e.target.value)}
-                  disabled={isDepositing || isApproving || !currentNetwork}
-                  className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40 disabled:opacity-50"
+                <button
+                  onClick={() => setShowTokenSelector(true)}
+                  disabled={isDepositing || isApproving}
+                  className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated hover:bg-pano-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {currentNetwork?.tokens.map((token) => (
-                    <option key={token.address} value={token.address}>
-                      {token.symbol}
-                    </option>
-                  ))}
-                </select>
+                  <div className="flex items-center gap-2">
+                    {selectedToken.icon && (
+                      <img
+                        src={selectedToken.icon}
+                        alt={selectedToken.symbol}
+                        className="w-6 h-6 rounded-full"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
+                        }}
+                      />
+                    )}
+                    <div className="text-left">
+                      <div className="text-sm font-medium text-pano-text-primary">{selectedToken.symbol}</div>
+                      <div className="text-xs text-pano-text-muted">{selectedToken.name}</div>
+                    </div>
+                  </div>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-pano-text-muted">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
               </div>
             </div>
 
@@ -773,7 +1024,7 @@ export default function DepositModal({
                     disabled={isDepositing || isApproving}
                   />
                   <div className="flex items-center rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 text-sm font-medium text-pano-text-muted">
-                    {tokenInfo?.symbol || 'TOKEN'}
+                    {selectedToken.symbol}
                   </div>
                 </div>
                 <p className="mt-1 text-[11px] text-pano-text-muted">
@@ -790,7 +1041,7 @@ export default function DepositModal({
                     disabled={isDepositing || isApproving}
                     className="rounded-md border border-pano-border-subtle px-3 py-1.5 text-xs text-pano-text-secondary transition-colors hover:border-pano-primary/60 hover:text-pano-text-primary disabled:opacity-50"
                   >
-                    {preset} {tokenInfo?.symbol || 'ETH'}
+                    {preset} {selectedToken.symbol}
                   </button>
                 ))}
               </div>
@@ -807,7 +1058,7 @@ export default function DepositModal({
                     ) : (
                       <>
                         <span className="font-medium">
-                          {walletBalance} {tokenInfo?.symbol}
+                          {walletBalance} {selectedToken.symbol}
                         </span>
                         <button
                           type="button"
@@ -909,7 +1160,7 @@ export default function DepositModal({
                   disabled={isApproving || !account || !amount || parseFloat(amount) <= 0}
                   loading={isApproving}
                 >
-                  Aprovar {tokenInfo?.symbol}
+                  Aprovar {selectedToken.symbol}
                 </Button>
               ) : (
                 <Button
@@ -921,14 +1172,28 @@ export default function DepositModal({
                   loading={isDepositing}
                 >
                   {isWrongNetwork
-                    ? `Troque para ${isTestnet ? 'Sepolia' : 'Mainnet'}`
-                    : `Depositar ${amount} ${tokenInfo?.symbol}`}
+                    ? `Troque para ${currentNetwork?.name || 'rede correta'}`
+                    : `Depositar ${amount} ${selectedToken.symbol}`}
                 </Button>
               )}
             </div>
+              </>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Token Selector Modal */}
+      <TokenSelector
+        isOpen={showTokenSelector}
+        onClose={() => setShowTokenSelector(false)}
+        onSelect={(token, chainId) => {
+          setSelectedToken(token);
+          setChainId(chainId);
+        }}
+        title="Selecione um token para depositar"
+        currentChainId={chainId}
+      />
     </>
   );
 }

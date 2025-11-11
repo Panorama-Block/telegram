@@ -14,6 +14,7 @@ import {
   toggleStrategy,
   deleteStrategy,
   getExecutionHistory,
+  getSessionKeyBalance,
   type SmartAccount,
   type DCAStrategy,
   type ExecutionHistory,
@@ -43,6 +44,7 @@ interface CreateDCAModalProps {
   onConfirm: (config: DCAConfig) => void;
   loading: boolean;
   smartAccounts: SmartAccount[];
+  chainId?: number;
 }
 
 interface DCAConfig {
@@ -63,7 +65,9 @@ function CreateDCAModal({
   onConfirm,
   loading,
   smartAccounts,
+  chainId = 1,
 }: CreateDCAModalProps) {
+  const account = useActiveAccount();
   const defaultFromNetwork = networks.find(n => n.chainId === 1) || networks[0];
   const defaultFromToken = defaultFromNetwork.tokens[0];
   const defaultToToken = defaultFromNetwork.tokens.find(t => t.symbol === 'USDC') || defaultFromNetwork.tokens[1];
@@ -87,6 +91,80 @@ function CreateDCAModal({
 
   const [showFromSelector, setShowFromSelector] = useState(false);
   const [showToSelector, setShowToSelector] = useState(false);
+
+  // Session Key Gas states
+  const [sessionKeyBalance, setSessionKeyBalance] = useState<string | null>(null);
+  const [checkingBalance, setCheckingBalance] = useState(false);
+  const [showGasWarning, setShowGasWarning] = useState(false);
+  const [estimatedGasNeeded, setEstimatedGasNeeded] = useState<string>('0');
+  const [customGasAmount, setCustomGasAmount] = useState<string>('');
+  const [isDepositingGas, setIsDepositingGas] = useState(false);
+  const [depositError, setDepositError] = useState<string | null>(null);
+  const [depositSuccess, setDepositSuccess] = useState(false);
+  const [depositTxHash, setDepositTxHash] = useState<string | null>(null);
+
+  // Calculate estimated gas needed based on interval
+  const calculateEstimatedGas = useCallback((interval: 'daily' | 'weekly' | 'monthly') => {
+    // Gas per DCA trade (Account Abstraction UserOp on Ethereum)
+    const gasPerTrade = 0.0002;
+
+    // Estimate number of trades for 30 days
+    let estimatedTrades = 0;
+    switch (interval) {
+      case 'daily':
+        estimatedTrades = 30; // 30 trades in 30 days
+        break;
+      case 'weekly':
+        estimatedTrades = 4; // ~4 trades in 30 days
+        break;
+      case 'monthly':
+        estimatedTrades = 1; // 1 trade in 30 days
+        break;
+    }
+
+    // Add 20% buffer
+    const totalGas = estimatedTrades * gasPerTrade * 1.2;
+    return totalGas.toFixed(6);
+  }, []);
+
+  // Check session key balance
+  const checkSessionKeyBalance = useCallback(async (smartAccountAddress: string) => {
+    if (!smartAccountAddress) return;
+
+    setCheckingBalance(true);
+    try {
+      // Get smart account details to get session key address
+      const smartAccount = smartAccounts.find(acc => acc.address === smartAccountAddress);
+      if (!smartAccount?.sessionKeyAddress) {
+        console.error('Session key address not found');
+        return;
+      }
+
+      // Check balance on the selected chain
+      const balance = await getSessionKeyBalance(smartAccount.sessionKeyAddress, config.fromChainId);
+      setSessionKeyBalance(balance);
+
+      console.log('Session Key Balance:', balance, 'ETH');
+    } catch (error) {
+      console.error('Error checking session key balance:', error);
+      setSessionKeyBalance('0');
+    } finally {
+      setCheckingBalance(false);
+    }
+  }, [smartAccounts, config.fromChainId]);
+
+  // Check balance when smart account or interval changes
+  useEffect(() => {
+    if (isOpen && config.smartAccountId) {
+      void checkSessionKeyBalance(config.smartAccountId);
+      const estimated = calculateEstimatedGas(config.interval);
+      setEstimatedGasNeeded(estimated);
+      setCustomGasAmount(estimated); // Set as default
+      setDepositError(null); // Clear previous errors
+      setDepositSuccess(false); // Reset success state
+      setDepositTxHash(null);
+    }
+  }, [isOpen, config.smartAccountId, config.interval, checkSessionKeyBalance, calculateEstimatedGas]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -117,8 +195,14 @@ function CreateDCAModal({
 
   if (!isOpen) return null;
 
-  const handleSubmit = () => {
+  const handleSubmit = (skipGasWarning = false) => {
     if (!config.smartAccountId || !config.amount || Number(config.amount) <= 0) {
+      return;
+    }
+
+    // Show gas warning if balance is low (but allow user to proceed)
+    if (!skipGasWarning && sessionKeyBalance !== null && parseFloat(sessionKeyBalance) < parseFloat(estimatedGasNeeded)) {
+      setShowGasWarning(true);
       return;
     }
 
@@ -174,6 +258,103 @@ function CreateDCAModal({
     console.log('==============================================\n');
 
     onConfirm(config);
+  };
+
+  // Deposit gas to session key
+  const handleDepositGas = async () => {
+    if (!account || !config.smartAccountId) {
+      return;
+    }
+
+    // Validate custom amount
+    if (!customGasAmount || parseFloat(customGasAmount) <= 0) {
+      setDepositError('Please enter a valid amount');
+      return;
+    }
+
+    const smartAccount = smartAccounts.find(acc => acc.address === config.smartAccountId);
+    if (!smartAccount?.sessionKeyAddress) {
+      setDepositError('Session key address not found');
+      return;
+    }
+
+    setIsDepositingGas(true);
+    setDepositError(null);
+
+    try {
+      const { createThirdwebClient, prepareTransaction, sendTransaction, toWei, defineChain } = await import('thirdweb');
+      const { THIRDWEB_CLIENT_ID } = await import('@/shared/config/thirdweb');
+
+      const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID || '' });
+
+      // Transfer ETH from user's wallet to session key (use custom amount)
+      const transaction = prepareTransaction({
+        to: smartAccount.sessionKeyAddress as `0x${string}`,
+        value: toWei(customGasAmount),
+        chain: defineChain(config.fromChainId),
+        client,
+      });
+
+      const result = await sendTransaction({
+        transaction,
+        account,
+      });
+
+      console.log('✅ Gas deposited to session key!');
+      console.log('Transaction Hash:', result.transactionHash);
+
+      // Set success state
+      setDepositSuccess(true);
+      setDepositTxHash(result.transactionHash);
+      setDepositError(null);
+
+      // Refresh balance
+      await checkSessionKeyBalance(config.smartAccountId);
+    } catch (error: any) {
+      console.error('❌ Error depositing gas:', error);
+
+      // Parse error for better user feedback
+      let errorMessage = 'Failed to deposit gas. Please try again.';
+
+      if (error.message || error.code) {
+        const errMsg = error.message?.toLowerCase() || '';
+        const errCode = error.code;
+
+        if (errCode === -32603 || errMsg.includes('invalid nonce') || errMsg.includes('nonce')) {
+          errorMessage = 'Transaction nonce conflict detected. Please wait a moment and try again, or reset your MetaMask account (Settings > Advanced > Clear activity tab data).';
+        } else if (errCode === 4001 || errMsg.includes('user rejected') || errMsg.includes('user denied')) {
+          errorMessage = 'Transaction was rejected. Please try again when ready.';
+        } else if (errMsg.includes('insufficient funds')) {
+          errorMessage = `Insufficient ETH in your wallet. You need at least ${customGasAmount} ETH plus gas fees.`;
+        } else if (errMsg.includes('gas')) {
+          errorMessage = 'Gas estimation failed. Try lowering the amount or wait for network congestion to clear.';
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+      }
+
+      setDepositError(errorMessage);
+    } finally {
+      setIsDepositingGas(false);
+    }
+  };
+
+  // Continue to create strategy after gas deposit
+  const handleContinueAfterDeposit = () => {
+    setShowGasWarning(false);
+    setDepositSuccess(false);
+    setDepositTxHash(null);
+    setDepositError(null);
+    // Call handleSubmit with skipGasWarning to proceed directly
+    handleSubmit(true);
+  };
+
+  // Create strategy anyway with low gas (user's choice)
+  const handleCreateAnyway = () => {
+    setShowGasWarning(false);
+    setDepositError(null);
+    // Call handleSubmit with skipGasWarning to bypass gas check
+    handleSubmit(true);
   };
 
   return (
@@ -313,9 +494,40 @@ function CreateDCAModal({
               </select>
             </div>
 
+            {/* Session Key Balance Info */}
+            {config.smartAccountId && (
+              <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-400">Session Key Gas</span>
+                  {checkingBalance ? (
+                    <span className="text-xs text-gray-400">Checking...</span>
+                  ) : (
+                    <span className={`text-xs font-semibold ${
+                      sessionKeyBalance && parseFloat(sessionKeyBalance) < parseFloat(estimatedGasNeeded)
+                        ? 'text-orange-400'
+                        : 'text-green-400'
+                    }`}>
+                      {sessionKeyBalance || '0'} ETH
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-400">Recommended</span>
+                  <span className="text-xs font-semibold text-white">
+                    {estimatedGasNeeded} ETH
+                  </span>
+                </div>
+                {sessionKeyBalance && parseFloat(sessionKeyBalance) < parseFloat(estimatedGasNeeded) && (
+                  <p className="mt-2 text-[10px] text-orange-400">
+                    ⚠️ Low gas balance. You can deposit now or create anyway and deposit later.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Create Button */}
             <button
-              onClick={handleSubmit}
+              onClick={() => handleSubmit(false)}
               disabled={!config.smartAccountId || !config.amount || Number(config.amount) <= 0 || loading}
               className="w-full py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-gray-100"
             >
@@ -344,6 +556,229 @@ function CreateDCAModal({
           </div>
         </div>
       </div>
+
+      {/* Gas Warning Modal */}
+      {showGasWarning && (
+        <>
+          <div
+            className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowGasWarning(false)}
+          />
+          <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-[#202020]/85 backdrop-blur-xl rounded-[25px] p-5 shadow-[0px_16px_57.7px_0px_rgba(0,0,0,0.42)] border border-white/10">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-orange-500/20 border border-orange-500/40 flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-orange-400">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-lg font-semibold text-white">Low Gas Balance</h2>
+                </div>
+                <button
+                  onClick={() => setShowGasWarning(false)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {depositSuccess ? (
+                  <>
+                    {/* Success State */}
+                    <div className="flex flex-col items-center text-center py-4">
+                      <div className="w-16 h-16 rounded-full bg-green-500/20 border border-green-500/40 flex items-center justify-center mb-4">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-green-400">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-semibold text-white mb-2">Gas Deposited Successfully!</h3>
+                      <p className="text-sm text-gray-400 mb-4">
+                        Your session key now has enough gas to execute recurring buys.
+                      </p>
+                    </div>
+
+                    {/* Updated Balance */}
+                    <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-400">Session Key Balance</span>
+                        <span className="text-xs font-semibold text-green-400">
+                          {sessionKeyBalance || '0.000000'} ETH
+                        </span>
+                      </div>
+                      {depositTxHash && (
+                        <div className="pt-2 border-t border-white/10">
+                          <a
+                            href={`https://etherscan.io/tx/${depositTxHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
+                          >
+                            View transaction
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-col gap-2 pt-2">
+                      <button
+                        onClick={handleContinueAfterDeposit}
+                        className="w-full py-3 rounded-xl font-semibold text-sm transition-all bg-white text-black hover:bg-gray-100"
+                      >
+                        Continue to Create Strategy
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowGasWarning(false);
+                          setDepositSuccess(false);
+                          setDepositTxHash(null);
+                        }}
+                        className="w-full py-3 rounded-xl font-semibold text-sm transition-all bg-transparent text-gray-400 hover:text-white border border-white/10 hover:border-white/20"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Deposit Form */}
+                    <p className="text-sm text-gray-400">
+                      Your session key has low gas. We recommend depositing more ETH for smooth execution.
+                    </p>
+
+                    {/* Balance Info */}
+                    <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-400">Current Balance</span>
+                        <span className="text-xs font-semibold text-orange-400">
+                          {sessionKeyBalance || '0.000000'} ETH
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-400">Recommended Amount</span>
+                        <span className="text-xs font-semibold text-white">
+                          {estimatedGasNeeded} ETH
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                        <span className="text-xs font-medium text-gray-300">Suggested Deposit</span>
+                        <span className="text-sm font-bold text-green-400">
+                          {(parseFloat(estimatedGasNeeded) - parseFloat(sessionKeyBalance || '0')).toFixed(6)} ETH
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Deposit Amount Input */}
+                    <div>
+                      <label className="text-xs text-gray-400 mb-2 block">Amount to Deposit</label>
+                      <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10">
+                        <input
+                          type="text"
+                          value={customGasAmount}
+                          onChange={(e) => setCustomGasAmount(e.target.value)}
+                          placeholder="0"
+                          className="bg-transparent text-3xl font-light text-white outline-none w-full mb-2"
+                          disabled={isDepositingGas}
+                        />
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-400">ETH</span>
+                          <button
+                            onClick={() => setCustomGasAmount(estimatedGasNeeded)}
+                            className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                            type="button"
+                          >
+                            Use Recommended
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Quick presets */}
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {['0.001', '0.005', '0.01'].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setCustomGasAmount(preset)}
+                            disabled={isDepositingGas}
+                            className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:border-white/20 transition-colors"
+                          >
+                            {preset} ETH
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Info Box */}
+                    <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10">
+                      <p className="text-xs font-medium text-cyan-400 mb-2">Why does my session key need gas?</p>
+                      <ul className="space-y-1 text-[11px] text-gray-400">
+                        <li>• The session key signs and pays for DCA transactions automatically</li>
+                        <li>• Estimated for {config.interval} purchases over 30 days</li>
+                        <li>• Includes 20% safety buffer for gas price fluctuations</li>
+                      </ul>
+                    </div>
+
+                    {/* Error Message */}
+                    {depositError && (
+                      <div className="bg-red-500/10 border border-red-500/40 rounded-xl p-3">
+                        <div className="flex items-start gap-2">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400 flex-shrink-0 mt-0.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <p className="text-xs text-red-400 leading-relaxed">{depositError}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="space-y-2 pt-2">
+                      <button
+                        onClick={handleDepositGas}
+                        disabled={isDepositingGas || !customGasAmount || parseFloat(customGasAmount) <= 0}
+                        className="w-full py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-gray-100"
+                      >
+                        {isDepositingGas ? 'Depositing...' : `Deposit ${customGasAmount || '0'} ETH`}
+                      </button>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleCreateAnyway}
+                          disabled={isDepositingGas}
+                          className="flex-1 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-transparent text-white hover:bg-white/10 border border-white/20 hover:border-white/30"
+                        >
+                          Create Anyway
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowGasWarning(false);
+                            setDepositError(null);
+                          }}
+                          disabled={isDepositingGas}
+                          className="flex-1 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-transparent text-gray-400 hover:text-white border border-white/10 hover:border-white/20"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+
+                      <p className="text-[10px] text-center text-gray-500 pt-1">
+                        You can create the strategy now and deposit gas later
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Token Selector Modal - From */}
       {showFromSelector && (
@@ -1187,6 +1622,7 @@ export default function DCAPage() {
         onConfirm={handleCreateStrategy}
         loading={loading}
         smartAccounts={smartAccounts}
+        chainId={1}
       />
     </>
   );
