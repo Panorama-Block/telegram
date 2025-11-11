@@ -17,9 +17,7 @@ import {
 } from '@/features/dca/api';
 import DepositModal from '@/features/dca/DepositModal';
 import WithdrawModal from '@/features/dca/WithdrawModal';
-import { Sidebar } from '@/shared/ui/Sidebar';
 import { Container } from '@/components/layout/Container';
-import { Stack } from '@/components/layout/Stack';
 import {
   Card,
   CardHeader,
@@ -30,6 +28,10 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/shared/lib/utils';
+import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import zicoBlue from '../../../public/icons/zico_blue.svg';
 
 type SubAccount = SmartAccount;
 
@@ -45,54 +47,6 @@ interface ConfigModalProps {
   onClose: () => void;
   onConfirm: (config: SubAccountConfig) => void;
   loading: boolean;
-}
-
-type StatTone = 'default' | 'success' | 'warning' | 'danger';
-
-function StatTile({
-  label,
-  value,
-  helper,
-  tone = 'default',
-}: {
-  label: string;
-  value: React.ReactNode;
-  helper?: string;
-  tone?: StatTone;
-}) {
-  const toneStyles: Record<StatTone, string> = {
-    default: 'border-pano-border bg-pano-surface text-pano-text-primary',
-    success: 'border-pano-primary/50 bg-pano-primary-muted/30 text-pano-primary',
-    warning: 'border-pano-warning/40 bg-pano-warning/10 text-pano-warning',
-    danger: 'border-pano-error/40 bg-pano-error/10 text-pano-error',
-  };
-
-  return (
-    <div
-      className={cn(
-        'rounded-lg border px-4 py-3 transition-colors shadow-sm shadow-black/10',
-        toneStyles[tone],
-      )}
-    >
-      <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-pano-text-muted">
-        {label}
-      </p>
-      <p className={cn('mt-1 text-xl font-semibold', tone !== 'default' && 'text-current')}>
-        {value}
-      </p>
-      {helper && (
-        <p className="mt-1 text-[11px] text-pano-text-muted">{helper}</p>
-      )}
-    </div>
-  );
-}
-
-function formatDate(timestamp: number) {
-  return new Date(timestamp * 1000).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
 }
 
 function getDaysRemaining(timestamp: number) {
@@ -391,8 +345,9 @@ function ConfigModal({
 
 export default function AccountPage() {
   const account = useActiveAccount();
+  const router = useRouter();
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [exploreDropdownOpen, setExploreDropdownOpen] = useState(false);
   const [subAccounts, setSubAccounts] = useState<SubAccount[]>([]);
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
@@ -408,18 +363,20 @@ export default function AccountPage() {
       onClick={() => setShowConfigModal(true)}
       disabled={loading || !account}
       className={cn(
-        'group flex h-full min-h-[140px] w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-pano-border-subtle bg-pano-surface/70 text-pano-text-secondary transition-all hover:border-pano-primary/60 hover:bg-pano-primary/5 hover:text-pano-text-primary disabled:opacity-50',
+        'group flex h-full min-h-[140px] w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-white/20 bg-[#252525]/30 backdrop-blur-sm text-gray-400 transition-all hover:border-cyan-400/60 hover:bg-cyan-400/5 hover:text-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed',
         compact ? 'py-6' : 'py-8',
       )}
     >
-      <span className="flex h-12 w-12 items-center justify-center rounded-full border border-pano-border-subtle bg-pano-surface-elevated text-2xl transition-colors group-hover:border-pano-primary/60 group-hover:bg-pano-primary/20">
-        +
+      <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-dashed border-white/20 bg-black/20 text-3xl transition-all group-hover:border-cyan-400/60 group-hover:bg-cyan-400/10 group-hover:scale-110">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-gray-400 group-hover:text-cyan-400">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+      </div>
+      <span className="text-sm font-semibold group-hover:text-cyan-400 transition-colors">
+        Create Smart Wallet
       </span>
-      <span className="text-sm font-medium">
-        Criar smart wallet
-      </span>
-      <span className="text-[11px] text-pano-text-muted">
-        Session key segura com limites personalizados
+      <span className="text-[11px] text-gray-500 group-hover:text-gray-400 px-4 text-center">
+        Secure session key with custom limits
       </span>
     </button>
   );
@@ -560,132 +517,334 @@ export default function AccountPage() {
     setSelectedAccount(null);
   };
 
+  const getWalletAddress = () => {
+    if (typeof window === 'undefined') return undefined;
+    const authPayload = localStorage.getItem('authPayload');
+    if (authPayload) {
+      try {
+        const payload = JSON.parse(authPayload);
+        return payload.address?.toLowerCase();
+      } catch (error) {
+        console.error('Error parsing authPayload:', error);
+      }
+    }
+    return undefined;
+  };
+
   return (
-    <div className="min-h-screen bg-pano-bg-primary text-pano-text-primary flex">
+    <>
+      <div className="h-screen text-white flex flex-col overflow-hidden relative">
+        {/* Animated Background */}
+        <AnimatedBackground />
 
-      <div className="flex-1 flex flex-col md:ml-64">
-        <header className="sticky top-0 z-30 border-b border-pano-border bg-pano-surface/80 backdrop-blur-md">
-        </header>
+      {/* Top Navbar - Same as swap */}
+      <header className="flex-shrink-0 bg-black/40 backdrop-blur-md border-b-2 border-white/15 px-6 py-3 z-50">
+        <div className="flex items-center justify-between max-w-[1920px] mx-auto">
+          {/* Left: Logo */}
+          <div className="flex items-center gap-2">
+            <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
+            <span className="text-white font-semibold text-sm tracking-wide hidden md:inline">PANORAMA BLOCK</span>
+          </div>
 
-        <main className="flex-1 overflow-y-auto">
-          <Container size="xl" className="py-6 space-y-6">
-            <div className="flex flex-col gap-4 md:hidden">
-              {account && subAccounts.length === 0 && renderCreateTile(false)}
+          {/* Right: Explore + Docs + Notifications + Wallet Address */}
+          <div className="flex items-center gap-3">
+            {/* Navigation Menu */}
+            <nav className="flex items-center gap-6 text-sm mr-3">
+              {/* Explore Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setExploreDropdownOpen(!exploreDropdownOpen)}
+                  className="text-gray-400 hover:text-white transition-colors flex items-center gap-1"
+                >
+                  Explore
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {/* Dropdown Menu */}
+                {exploreDropdownOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setExploreDropdownOpen(false)}
+                    />
+                    <div className="absolute top-full right-0 mt-2 w-48 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg shadow-xl z-20">
+                      <div className="py-2">
+                        <button
+                          onClick={() => {
+                            setExploreDropdownOpen(false);
+                            router.push('/chat');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" stroke="#4BC3C5" fill="none" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                          </svg>
+                          Chat
+                        </button>
+                        <button
+                          onClick={() => {
+                            setExploreDropdownOpen(false);
+                            router.push('/swap');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" stroke="#4BC3C5" fill="none" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                          </svg>
+                          Swap
+                        </button>
+                        <button
+                          onClick={() => {
+                            setExploreDropdownOpen(false);
+                            router.push('/lending');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Lending
+                        </button>
+                        <button
+                          onClick={() => {
+                            setExploreDropdownOpen(false);
+                            router.push('/staking');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Staking
+                        </button>
+                        <button
+                          onClick={() => {
+                            setExploreDropdownOpen(false);
+                            router.push('/account');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left bg-gray-800/50"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          Account
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Docs Link */}
+              <a
+                href="https://docs.panoramablock.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                Docs
+              </a>
+            </nav>
+
+            {/* Notifications Icon */}
+            <button className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+            </button>
+
+            {/* Wallet Address Display */}
+            {(account?.address || getWalletAddress()) && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
+                <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
+                <span className="text-white text-xs font-mono">
+                  {account?.address
+                    ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                    : getWalletAddress()
+                      ? `${getWalletAddress()!.slice(0, 6)}...${getWalletAddress()!.slice(-4)}`
+                      : ''}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto">
+        <Container size="xl" className="py-8 space-y-6">
+          {/* Hero Section - Clear page purpose */}
+          <div className="text-center space-y-3 mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-cyan-400/20 border border-cyan-400/30 mb-4">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
             </div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white">
+              Wallet Manager
+            </h1>
+            <p className="text-gray-400 text-base md:text-lg max-w-2xl mx-auto">
+              Manage your smart wallets, deposits, withdrawals and automated transactions in one place
+            </p>
+          </div>
 
-            <Card
-              variant="default"
-              size="md"
-              className="bg-pano-surface border border-pano-border/60 shadow-md shadow-black/20"
-            >
-              <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <CardTitle className="text-lg md:text-xl text-pano-text-primary">
-                    Visão geral das smart wallets
-                  </CardTitle>
-                  <CardDescription className="text-pano-text-secondary">
-                    Monitore e gerencie carteiras derivadas com session keys seguras.
-                  </CardDescription>
-                </div>
-                <div className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-xs text-pano-text-muted font-mono truncate max-w-full md:max-w-sm">
-                  {account?.address ?? 'Carteira principal desconectada'}
+          <div className="flex flex-col gap-4 md:hidden">
+            {account && subAccounts.length === 0 && renderCreateTile(false)}
+          </div>
+
+          <Card
+            variant="default"
+            size="md"
+            className="bg-[#1A1A1A]/95 backdrop-blur-xl border border-white/10 shadow-2xl"
+          >
+            <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-white/5 pb-6">
+              <div>
+                <CardTitle className="text-lg md:text-xl text-white flex items-center gap-2">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  Smart Wallets Overview
+                </CardTitle>
+                <CardDescription className="text-gray-400">
+                  Monitor and manage derived wallets with secure session keys
+                </CardDescription>
+              </div>
+                <div className="rounded-lg border border-gray-700 bg-gray-800/30 px-3 py-2 text-xs text-gray-400 font-mono truncate max-w-full md:max-w-sm">
+                  {account?.address ?? 'Main wallet not connected'}
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <StatTile
-                    label="Total de smart wallets"
-                    value={initializing ? '—' : subAccounts.length}
-                    helper={
-                      initializing
-                        ? 'Carregando...'
+              <CardContent className="pt-6">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="bg-[#252525]/50 border border-white/10 rounded-xl p-4 hover:border-cyan-400/30 transition-all">
+                    <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-2">Total Wallets</p>
+                    <p className="text-2xl font-bold text-white mb-1">
+                      {initializing ? '—' : subAccounts.length}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {initializing
+                        ? 'Loading...'
                         : subAccounts.length === 0
-                        ? 'Crie sua primeira smart wallet para começar.'
-                        : `${activeAccounts.length} ativas agora`
-                    }
-                  />
-                  <StatTile
-                    label="Ativas"
-                    value={initializing ? '—' : activeAccounts.length}
-                    helper="Session keys válidas dentro do período definido."
-                    tone="success"
-                  />
-                  <StatTile
-                    label="Expiram em até 3 dias"
-                    value={initializing ? '—' : expiringSoonCount}
-                    helper="Renove ou crie novas session keys antes do vencimento."
-                    tone={expiringSoonCount > 0 ? 'warning' : 'default'}
-                  />
+                        ? 'Create your first smart wallet'
+                        : `${activeAccounts.length} active now`}
+                    </p>
+                  </div>
+                  <div className="bg-gradient-to-br from-green-500/10 to-cyan-500/10 border border-green-500/30 rounded-xl p-4 hover:border-green-400/50 transition-all">
+                    <p className="text-xs font-medium uppercase tracking-wider text-green-400 mb-2">Active</p>
+                    <p className="text-2xl font-bold text-white mb-1">
+                      {initializing ? '—' : activeAccounts.length}
+                    </p>
+                    <p className="text-xs text-gray-400">Valid session keys</p>
+                  </div>
+                  <div className={cn(
+                    "rounded-xl p-4 border transition-all",
+                    expiringSoonCount > 0
+                      ? "bg-gradient-to-br from-orange-500/10 to-yellow-500/10 border-orange-500/30 hover:border-orange-400/50"
+                      : "bg-[#252525]/50 border-white/10 hover:border-cyan-400/30"
+                  )}>
+                    <p className={cn(
+                      "text-xs font-medium uppercase tracking-wider mb-2",
+                      expiringSoonCount > 0 ? "text-orange-400" : "text-gray-500"
+                    )}>Expiring Soon</p>
+                    <p className="text-2xl font-bold text-white mb-1">
+                      {initializing ? '—' : expiringSoonCount}
+                    </p>
+                    <p className="text-xs text-gray-400">Within 3 days</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
             {error && (
-              <Card className="border border-pano-error/40 bg-pano-error/10 text-pano-error">
-                <CardContent className="flex items-start gap-3 text-sm">
-                  <span className="text-lg">⚠️</span>
+              <Card className="border border-red-500/40 bg-red-500/10 backdrop-blur-sm">
+                <CardContent className="flex items-start gap-3 text-sm p-4">
+                  <span className="text-2xl">⚠️</span>
                   <div>
-                    <p className="font-medium text-pano-error">Algo deu errado</p>
-                    <p className="text-pano-text-primary/80">{error}</p>
+                    <p className="font-semibold text-red-400 mb-1">Something went wrong</p>
+                    <p className="text-gray-300">{error}</p>
                   </div>
                 </CardContent>
               </Card>
             )}
 
             {success && (
-              <Card className="border border-pano-success/40 bg-pano-success/10 text-pano-success">
-                <CardContent className="flex items-start gap-3 text-sm">
-                  <span className="text-lg">✅</span>
+              <Card className="border border-green-500/40 bg-green-500/10 backdrop-blur-sm">
+                <CardContent className="flex items-start gap-3 text-sm p-4">
+                  <span className="text-2xl">✅</span>
                   <div>
-                    <p className="font-medium text-pano-success">Tudo certo!</p>
-                    <p className="text-pano-text-primary/80">{success}</p>
+                    <p className="font-semibold text-green-400 mb-1">Success!</p>
+                    <p className="text-gray-300">{success}</p>
                   </div>
                 </CardContent>
               </Card>
             )}
 
             {!account && (
-              <Card className="border border-pano-border/60 bg-pano-surface-elevated">
-                <CardHeader>
-                  <CardTitle className="text-pano-text-primary">
-                    Conecte sua carteira principal
-                  </CardTitle>
-                  <CardDescription className="text-pano-text-secondary">
-                    É necessário conectar uma carteira para criar e administrar smart wallets derivadas.
-                  </CardDescription>
+              <Card className="border border-orange-500/40 bg-orange-500/10 backdrop-blur-sm">
+                <CardHeader className="pb-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center flex-shrink-0">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-orange-400">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <CardTitle className="text-white mb-1">
+                        Connect Your Wallet
+                      </CardTitle>
+                      <CardDescription className="text-gray-300">
+                        Connect a wallet to create and manage derived smart wallets
+                      </CardDescription>
+                    </div>
+                  </div>
                 </CardHeader>
               </Card>
             )}
 
-            <Card className="border border-pano-border/60 bg-pano-surface shadow-md shadow-black/20">
-              <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <Card className="border border-white/10 bg-[#1A1A1A]/95 backdrop-blur-xl shadow-2xl">
+              <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-white/5 pb-6">
                 <div>
-                  <CardTitle className="text-lg md:text-xl text-pano-text-primary">
-                    Smart wallets derivadas
+                  <CardTitle className="text-lg md:text-xl text-white flex items-center gap-2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    Your Smart Wallets
                   </CardTitle>
-                  <CardDescription className="text-pano-text-secondary">
-                    Controle granular de permissões, limites e validade das suas automações.
+                  <CardDescription className="text-gray-400">
+                    Granular control over permissions, limits and validity of your automations
                   </CardDescription>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-pano-text-muted">
-                  {initializing ? 'Carregando...' : `${subAccounts.length} wallet(s) encontradas`}
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-400/10 border border-cyan-400/30">
+                  <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></div>
+                  <span className="text-xs text-cyan-400 font-medium">
+                    {initializing ? 'Loading...' : `${subAccounts.length} wallet${subAccounts.length !== 1 ? 's' : ''}`}
+                  </span>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="pt-6">
                 {initializing ? (
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {Array.from({ length: 3 }).map((_, idx) => (
                       <div
                         key={idx}
-                        className="rounded-xl border border-pano-border-subtle bg-pano-surface-elevated p-4 animate-pulse space-y-3"
+                        className="rounded-xl border border-white/10 bg-[#252525]/50 p-4 animate-pulse space-y-3"
                       >
-                        <div className="h-5 w-32 rounded bg-pano-border/40" />
-                        <div className="h-4 w-full rounded bg-pano-border/30" />
-                        <div className="h-4 w-2/3 rounded bg-pano-border/30" />
-                        <div className="flex gap-2 pt-2">
-                          <div className="h-9 w-20 rounded bg-pano-border/30" />
-                          <div className="h-9 w-20 rounded bg-pano-border/20" />
+                        <div className="flex items-center justify-between">
+                          <div className="h-5 w-32 rounded bg-white/10" />
+                          <div className="h-6 w-16 rounded-full bg-white/10" />
                         </div>
+                        <div className="h-3 w-full rounded bg-white/5" />
+                        <div className="h-16 w-full rounded-lg bg-black/30 border border-white/5" />
+                        <div className="space-y-2">
+                          <div className="h-8 w-full rounded bg-black/20" />
+                          <div className="h-8 w-full rounded bg-black/20" />
+                        </div>
+                        <div className="flex gap-2 pt-2 border-t border-white/5">
+                          <div className="h-9 flex-1 rounded bg-white/10" />
+                          <div className="h-9 flex-1 rounded bg-white/5" />
+                        </div>
+                        <div className="h-9 w-full rounded bg-white/5" />
                       </div>
                     ))}
                   </div>
@@ -695,8 +854,15 @@ export default function AccountPage() {
                       {renderCreateTile(false)}
                     </div>
                   ) : (
-                    <div className="text-center text-sm text-pano-text-muted">
-                      Conecte sua carteira para criar smart wallets.
+                    <div className="text-center py-12">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-cyan-400/10 border border-cyan-400/30 mb-4">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                      </div>
+                      <p className="text-gray-400 text-sm">
+                        Connect your wallet to create smart wallets
+                      </p>
                     </div>
                   )
                 ) : (
@@ -709,84 +875,93 @@ export default function AccountPage() {
                     {subAccounts.map((wallet) => {
                       const expiresInDays = getDaysRemaining(wallet.permissions.endTimestamp);
                       const expired = expiresInDays <= 0;
-                      const expiryLabel = expired
-                        ? `Expirada em ${formatDate(wallet.permissions.endTimestamp)}`
-                        : `Expira em ${formatDate(wallet.permissions.endTimestamp)} (${expiresInDays} dia${expiresInDays === 1 ? '' : 's'})`;
 
                       return (
                         <Card
                           key={wallet.address}
                           variant="interactive"
                           size="sm"
-                          className="h-full bg-pano-surface-elevated border border-pano-border-subtle"
+                          className="h-full bg-[#252525]/70 backdrop-blur-sm border border-white/10 hover:border-cyan-400/40 transition-all group"
                         >
-                          <CardHeader className="space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <CardTitle className="text-lg text-pano-text-primary">
-                                {wallet.name}
-                              </CardTitle>
+                          <CardHeader className="space-y-3 pb-4">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <CardTitle className="text-base text-white font-semibold truncate group-hover:text-cyan-400 transition-colors">
+                                  {wallet.name}
+                                </CardTitle>
+                                <CardDescription className="font-mono text-[10px] text-gray-500 break-all mt-1">
+                                  {wallet.address}
+                                </CardDescription>
+                              </div>
                               <span
                                 className={cn(
-                                  'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium',
+                                  'inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wider flex-shrink-0',
                                   expired
-                                    ? 'bg-pano-error/20 text-pano-error border border-pano-error/50'
-                                    : 'bg-pano-primary/10 text-pano-primary border border-pano-primary/50',
+                                    ? 'bg-red-500/20 text-red-400 border border-red-500/50'
+                                    : 'bg-green-500/20 text-green-400 border border-green-500/50',
                                 )}
                               >
-                                {expired ? 'Expirada' : 'Ativa'}
+                                {expired ? 'Expired' : 'Active'}
                               </span>
                             </div>
-                            <CardDescription className="font-mono text-xs text-pano-text-muted break-all">
-                              {wallet.address}
-                            </CardDescription>
                           </CardHeader>
-                          <CardContent className="space-y-2 text-sm text-pano-text-secondary">
-                            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-3 py-2">
-                              <span className="text-xs text-pano-text-muted">Session key</span>
-                              <p className="font-mono text-[11px] text-pano-text-primary break-all">
+                          <CardContent className="space-y-3 text-sm">
+                            <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2.5">
+                              <div className="flex items-center gap-2 mb-1">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                                </svg>
+                                <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">Session Key</span>
+                              </div>
+                              <p className="font-mono text-[10px] text-gray-400 break-all">
                                 {wallet.sessionKeyAddress}
                               </p>
                             </div>
                             <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs text-pano-text-muted">Limite por TX</span>
-                                <span className="font-medium text-pano-text-primary">
+                              <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
+                                <span className="text-xs text-gray-400">TX Limit</span>
+                                <span className="font-semibold text-white text-xs">
                                   {wallet.permissions.nativeTokenLimitPerTransaction} ETH
                                 </span>
                               </div>
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs text-pano-text-muted">Expiração</span>
-                                <span className="font-medium text-pano-text-primary">
-                                  {expiryLabel}
+                              <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
+                                <span className="text-xs text-gray-400">Expiration</span>
+                                <span className={cn(
+                                  "font-semibold text-xs",
+                                  expired ? "text-red-400" : expiresInDays <= 3 ? "text-orange-400" : "text-white"
+                                )}>
+                                  {expiresInDays > 0 ? `${expiresInDays}d` : 'Expired'}
                                 </span>
                               </div>
                             </div>
                           </CardContent>
-                          <CardFooter className="flex flex-wrap gap-2 pt-3">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="flex-1"
-                              onClick={() => openDeposit(wallet)}
-                            >
-                              Depositar
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="flex-1 text-pano-text-primary"
-                              onClick={() => openWithdraw(wallet)}
-                            >
-                              Sacar
-                            </Button>
+                          <CardFooter className="flex flex-col gap-2 pt-4 border-t border-white/5">
+                            <div className="flex gap-2 w-full">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                className="flex-1 bg-cyan-400/10 hover:bg-cyan-400/20 text-cyan-400 border-cyan-400/30"
+                                onClick={() => openDeposit(wallet)}
+                              >
+                                Deposit
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="flex-1 hover:bg-white/5 text-gray-300"
+                                onClick={() => openWithdraw(wallet)}
+                              >
+                                Withdraw
+                              </Button>
+                            </div>
                             <Button
                               variant="danger"
                               size="sm"
-                              className="w-full"
+                              className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30"
                               onClick={() => handleDeleteSubAccount(wallet.address)}
                               loading={loading}
                             >
-                              Remover
+                              Remove Wallet
                             </Button>
                           </CardFooter>
                         </Card>
@@ -798,7 +973,7 @@ export default function AccountPage() {
             </Card>
 
           </Container>
-        </main>
+        </div>
       </div>
 
       <ConfigModal
@@ -825,6 +1000,6 @@ export default function AccountPage() {
           smartAccountName={selectedAccount.name}
         />
       )}
-    </div>
+    </>
   );
 }
