@@ -439,3 +439,55 @@ export async function getSessionKeyBalance(
     throw new DCAApiError(error.message || 'Failed to fetch session key balance');
   }
 }
+
+/**
+ * Withdraw ERC20 token from smart account
+ */
+export interface WithdrawTokenRequest {
+  smartAccountAddress: string;
+  userId: string;
+  tokenAddress: string;
+  amount: string;
+  decimals?: number;
+  chainId: number;
+}
+
+export async function withdrawTokenFromSmartAccount(
+  request: WithdrawTokenRequest
+): Promise<SignAndExecuteResponse> {
+  try {
+    console.log('[withdrawTokenFromSmartAccount] Sending request:', request);
+
+    const response = await fetch(`${DCA_API_URL}/transaction/withdraw-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    console.log('[withdrawTokenFromSmartAccount] Response status:', response.status);
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to withdraw token';
+      try {
+        const error = await response.json();
+        errorMessage = error.error || error.message || errorMessage;
+      } catch (parseError) {
+        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      }
+      throw new DCAApiError(errorMessage, response.status);
+    }
+
+    const data = await response.json();
+    console.log('[withdrawTokenFromSmartAccount] Success:', data);
+    return data;
+  } catch (error: any) {
+    console.error('[withdrawTokenFromSmartAccount] Error:', error);
+    if (error instanceof DCAApiError) {
+      throw error;
+    }
+    const errorMessage = error?.message || error?.toString() || 'Failed to withdraw token';
+    throw new DCAApiError(errorMessage);
+  }
+}

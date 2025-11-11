@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useActiveAccount, useActiveWalletChain } from 'thirdweb/react';
-import { createThirdwebClient, defineChain, eth_getBalance, getRpcClient, type Address } from 'thirdweb';
+import { createThirdwebClient, defineChain, eth_getBalance, getRpcClient, getContract, type Address } from 'thirdweb';
+import { balanceOf } from 'thirdweb/extensions/erc20';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
-import { withdrawFromSmartAccount, DCAApiError } from './api';
+import { withdrawFromSmartAccount, withdrawTokenFromSmartAccount, DCAApiError } from './api';
 import { Button } from '@/components/ui/button';
+import { networks } from '@/features/swap/tokens';
 
 interface WithdrawModalProps {
   isOpen: boolean;
@@ -32,6 +34,11 @@ export default function WithdrawModal({
   const [isFetchingBalance, setIsFetchingBalance] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
 
+  // ERC20 token states
+  const [selectedToken, setSelectedToken] = useState<'ETH' | string>('ETH');
+  const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
+  const [isFetchingTokens, setIsFetchingTokens] = useState(false);
+
   const client = useMemo(
     () => createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID || '' }),
     []
@@ -55,6 +62,57 @@ export default function WithdrawModal({
       void fetchSessionKey();
     }
   }, [isOpen, smartAccountAddress]);
+
+  // Fetch token balances (ERC20)
+  const fetchTokenBalances = useCallback(async () => {
+    if (!smartAccountAddress) return;
+    setIsFetchingTokens(true);
+    try {
+      const chain = defineChain(selectedChainId);
+      const network = networks.find(n => n.chainId === selectedChainId);
+      if (!network) return;
+
+      const balances: Record<string, string> = {};
+
+      // Fetch balance for each token in the network
+      await Promise.all(
+        network.tokens.map(async (token) => {
+          try {
+            if (token.address === '0x0000000000000000000000000000000000000000' ||
+                token.address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
+              // Skip native token (handled separately)
+              return;
+            }
+
+            const contract = getContract({
+              client,
+              chain,
+              address: token.address,
+            });
+
+            const balance = await balanceOf({
+              contract,
+              address: smartAccountAddress as Address,
+            });
+
+            const balanceFormatted = (Number(balance) / Math.pow(10, token.decimals || 18)).toFixed(6);
+            if (parseFloat(balanceFormatted) > 0) {
+              balances[token.address] = balanceFormatted;
+            }
+          } catch (err) {
+            console.error(`Error fetching balance for ${token.symbol}:`, err);
+          }
+        })
+      );
+
+      setTokenBalances(balances);
+      console.log('🪙 Token Balances:', balances);
+    } catch (err) {
+      console.error('Error fetching token balances:', err);
+    } finally {
+      setIsFetchingTokens(false);
+    }
+  }, [client, smartAccountAddress, selectedChainId]);
 
   const fetchSessionBalance = useCallback(async () => {
     if (!smartAccountAddress) return;
@@ -91,25 +149,38 @@ export default function WithdrawModal({
   useEffect(() => {
     if (isOpen && smartAccountAddress) {
       void fetchSessionBalance();
+      void fetchTokenBalances();
     }
-  }, [isOpen, smartAccountAddress, fetchSessionBalance]);
+  }, [isOpen, smartAccountAddress, fetchSessionBalance, fetchTokenBalances]);
 
   const handleWithdraw = async () => {
     if (!account) {
       setError('Por favor, conecte sua carteira.');
       return;
     }
+
     const parsedAmount = parseFloat(amount);
     if (!amount || parsedAmount <= 0) {
       setError('Digite um valor válido para sacar.');
       return;
     }
-    const numericBalance = parseFloat(availableBalance);
+
+    // Check balance based on token type
+    const currentBalance = selectedToken === 'ETH' ? availableBalance : tokenBalances[selectedToken];
+    const numericBalance = parseFloat(currentBalance || '0');
+
     if (!Number.isFinite(numericBalance) || numericBalance <= 0) {
       setError('Saldo indisponível para saque no momento.');
       return;
     }
-    if (parsedAmount >= numericBalance) {
+
+    if (parsedAmount > numericBalance) {
+      setError(`Saldo insuficiente. Disponível: ${numericBalance.toFixed(6)}`);
+      return;
+    }
+
+    // For ETH, recommend leaving some for gas
+    if (selectedToken === 'ETH' && parsedAmount >= numericBalance) {
       const recommended = Math.max(numericBalance - 0.001, 0);
       setError(`Saldo insuficiente após taxas. Saque até ${recommended.toFixed(6)} ETH para deixar margem de gas.`);
       return;
@@ -118,18 +189,46 @@ export default function WithdrawModal({
     setLoading(true);
     setError(null);
     setSuccess(null);
+
     try {
-      const result = await withdrawFromSmartAccount({
-        smartAccountAddress,
-        userId: account.address,
-        amount,
-        chainId: selectedChainId,
-      });
+      let result;
+      let tokenSymbol = 'ETH';
+
+      if (selectedToken === 'ETH') {
+        // Withdraw ETH
+        result = await withdrawFromSmartAccount({
+          smartAccountAddress,
+          userId: account.address,
+          amount,
+          chainId: selectedChainId,
+        });
+      } else {
+        // Withdraw ERC20 token
+        const network = networks.find(n => n.chainId === selectedChainId);
+        const token = network?.tokens.find(t => t.address === selectedToken);
+
+        if (!token) {
+          setError('Token não encontrado.');
+          return;
+        }
+
+        tokenSymbol = token.symbol;
+
+        result = await withdrawTokenFromSmartAccount({
+          smartAccountAddress,
+          userId: account.address,
+          tokenAddress: selectedToken,
+          amount,
+          decimals: token.decimals || 18,
+          chainId: selectedChainId,
+        });
+      }
 
       if (result.success) {
-        setSuccess(`✅ ${amount} ETH enviados para ${account.address}`);
+        setSuccess(`✅ ${amount} ${tokenSymbol} enviados para ${account.address}`);
         setAmount('');
         void fetchSessionBalance();
+        void fetchTokenBalances();
         setTimeout(() => onClose(), 3000);
       } else {
         setError(result.error || 'Falha ao processar saque.');
@@ -246,6 +345,90 @@ export default function WithdrawModal({
               </div>
             </div>
 
+            {/* Token Selection */}
+            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
+              <div>
+                <p className="text-sm font-medium text-pano-text-primary mb-2">Tokens Disponíveis</p>
+                {isFetchingTokens ? (
+                  <div className="flex items-center justify-center py-4 text-sm text-pano-text-muted">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-pano-primary border-t-transparent mr-2" />
+                    Carregando tokens...
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {/* ETH Native */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedToken('ETH')}
+                      className={`w-full flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                        selectedToken === 'ETH'
+                          ? 'border-pano-primary bg-pano-primary/10'
+                          : 'border-pano-border-subtle hover:border-pano-border'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-pano-surface-elevated flex items-center justify-center text-sm font-medium">
+                          Ξ
+                        </div>
+                        <div className="text-left">
+                          <p className="text-sm font-medium text-pano-text-primary">ETH</p>
+                          <p className="text-xs text-pano-text-muted">Ethereum</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-pano-text-primary">{availableBalance}</p>
+                        <p className="text-xs text-pano-text-muted">Disponível</p>
+                      </div>
+                    </button>
+
+                    {/* ERC20 Tokens */}
+                    {Object.entries(tokenBalances).map(([tokenAddress, balance]) => {
+                      const network = networks.find(n => n.chainId === selectedChainId);
+                      const token = network?.tokens.find(t => t.address === tokenAddress);
+                      if (!token) return null;
+
+                      return (
+                        <button
+                          key={tokenAddress}
+                          type="button"
+                          onClick={() => setSelectedToken(tokenAddress)}
+                          className={`w-full flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                            selectedToken === tokenAddress
+                              ? 'border-pano-primary bg-pano-primary/10'
+                              : 'border-pano-border-subtle hover:border-pano-border'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-pano-surface-elevated flex items-center justify-center">
+                              {token.icon ? (
+                                <img src={token.icon} alt={token.symbol} className="w-6 h-6 rounded-full" />
+                              ) : (
+                                <span className="text-xs font-medium">{token.symbol.slice(0, 2)}</span>
+                              )}
+                            </div>
+                            <div className="text-left">
+                              <p className="text-sm font-medium text-pano-text-primary">{token.symbol}</p>
+                              <p className="text-xs text-pano-text-muted">{token.name}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-medium text-pano-text-primary">{balance}</p>
+                            <p className="text-xs text-pano-text-muted">Disponível</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+
+                    {!isFetchingTokens && Object.keys(tokenBalances).length === 0 && (
+                      <div className="text-center py-4 text-sm text-pano-text-muted">
+                        Nenhum token ERC20 encontrado nesta smart account
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
               <div>
                 <label className="text-sm font-medium text-pano-text-primary">Valor do saque</label>
@@ -261,31 +444,36 @@ export default function WithdrawModal({
                     disabled={loading}
                   />
                   <div className="flex items-center rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 text-sm font-medium text-pano-text-muted">
-                    ETH
+                    {selectedToken === 'ETH' ? 'ETH' : networks.find(n => n.chainId === selectedChainId)?.tokens.find(t => t.address === selectedToken)?.symbol || 'TOKEN'}
                   </div>
                 </div>
-                <p className="mt-1 text-[11px] text-pano-text-muted">
-                  Todos os saques são realizados em ETH nativo.
-                </p>
               </div>
 
               <div className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-xs text-pano-text-secondary">
                 <div className="flex items-center justify-between gap-2">
                   <span>Saldo disponível</span>
                   <div className="flex items-center gap-2 text-pano-text-primary">
-                    {isFetchingBalance ? (
+                    {(isFetchingBalance || isFetchingTokens) ? (
                       <span className="flex items-center gap-2">
                         <span className="h-3 w-3 animate-spin rounded-full border border-pano-primary border-t-transparent" />
                         Verificando...
                       </span>
                     ) : (
                       <>
-                        <span className="font-medium">{availableBalance} ETH</span>
+                        <span className="font-medium">
+                          {selectedToken === 'ETH'
+                            ? `${availableBalance} ETH`
+                            : `${tokenBalances[selectedToken] || '0.000000'} ${networks.find(n => n.chainId === selectedChainId)?.tokens.find(t => t.address === selectedToken)?.symbol || 'TOKEN'}`
+                          }
+                        </span>
                         <button
                           type="button"
-                          onClick={fetchSessionBalance}
+                          onClick={() => {
+                            void fetchSessionBalance();
+                            void fetchTokenBalances();
+                          }}
                           className="text-pano-text-muted hover:text-pano-primary transition-colors"
-                          disabled={isFetchingBalance}
+                          disabled={isFetchingBalance || isFetchingTokens}
                           title="Atualizar saldo"
                         >
                           ↻
@@ -296,9 +484,13 @@ export default function WithdrawModal({
                 </div>
                 {balanceError ? (
                   <p className="mt-1 text-[11px] text-pano-warning">{balanceError}</p>
-                ) : (
+                ) : selectedToken === 'ETH' ? (
                   <p className="mt-1 text-[11px] text-pano-text-muted">
                     Recomenda-se deixar ~0.001 ETH para cobrir eventuais taxas de gas.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-pano-text-muted">
+                    Saldo do token na smart account.
                   </p>
                 )}
               </div>
