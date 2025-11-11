@@ -5,12 +5,13 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useActiveWalletChain } from 'thirdweb/react';
 import { sendTransaction, prepareTransaction, toWei, getContract, defineChain } from 'thirdweb';
 import { createThirdwebClient, type Address } from 'thirdweb';
 import { approve, allowance } from 'thirdweb/extensions/erc20';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { networks } from '@/features/swap/tokens';
+import { Button } from '@/components/ui/button';
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -40,6 +41,7 @@ export default function DepositModal({
   smartAccountName,
 }: DepositModalProps) {
   const account = useActiveAccount();
+  const activeChain = useActiveWalletChain();
   const [isTestnet, setIsTestnet] = useState<boolean>(false); // Toggle between Mainnet/Testnet
   const [chainId, setChainId] = useState<number>(1); // Ethereum mainnet default
   const [selectedToken, setSelectedToken] = useState<string>('');
@@ -57,10 +59,10 @@ export default function DepositModal({
   const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID || '' });
 
   useEffect(() => {
-    if (account?.chain?.id != null) {
-      setWalletChainId(account.chain.id);
+    if (activeChain?.id != null) {
+      setWalletChainId(activeChain.id);
     }
-  }, [account]);
+  }, [activeChain]);
 
   // Update chainId when testnet toggle changes
   useEffect(() => {
@@ -95,7 +97,7 @@ export default function DepositModal({
     };
   }, [chainId, isTestnet]);
 
-  // Fetch session key address from smart account
+  // Fetch session key address from smart account (for display purposes only)
   useEffect(() => {
     const fetchSessionKey = async () => {
       if (!smartAccountAddress) return;
@@ -105,7 +107,8 @@ export default function DepositModal({
         if (response.ok) {
           const data = await response.json();
           setSessionKeyAddress(data.sessionKeyAddress);
-          console.log('Session Key Address:', data.sessionKeyAddress);
+          console.log('Session Key Address (signer):', data.sessionKeyAddress);
+          console.log('Smart Account Address (holds funds):', smartAccountAddress);
         }
       } catch (err) {
         console.error('Error fetching session key:', err);
@@ -143,16 +146,19 @@ export default function DepositModal({
 
   // Check if wallet is on wrong network
   const isWrongNetwork = useMemo(() => {
-    const currentChain = walletChainId ?? account?.chain?.id;
+    const currentChain = walletChainId ?? activeChain?.id;
     if (currentChain == null) {
       return false;
     }
     return currentChain !== chainId;
-  }, [walletChainId, account, chainId]);
+  }, [walletChainId, activeChain, chainId]);
 
   // Check wallet balance
   const checkWalletBalance = async () => {
     if (!account || !currentNetwork) return;
+
+    // TypeScript narrowing
+    const activeAccount = account;
 
     setIsCheckingBalance(true);
     try {
@@ -170,7 +176,7 @@ export default function DepositModal({
         // const balance = await getBalance({
         //   client,
         //   chain: defineChain(chainId),
-        //   address: account.address as Address,
+        //   address: activeAccount.address as Address,
         // });
 
         // // Convert from wei to readable format
@@ -207,17 +213,25 @@ export default function DepositModal({
         const { balanceOf } = await import('thirdweb/extensions/erc20');
         const balance = await balanceOf({
           contract,
-          address: account.address as Address,
+          address: activeAccount.address as Address,
         });
 
         console.log('🔍 Raw balance response:', balance);
 
         // Handle different response formats
-        let balanceValue;
+        let balanceValue: bigint;
         if (typeof balance === 'bigint') {
           balanceValue = balance;
-        } else if (balance && typeof balance === 'object' && balance.value !== undefined) {
-          balanceValue = balance.value;
+        } else if (balance && typeof balance === 'object') {
+          // Handle object with value property
+          const balanceObj = balance as any;
+          if (balanceObj.value !== undefined && typeof balanceObj.value === 'bigint') {
+            balanceValue = balanceObj.value;
+          } else {
+            console.error('Invalid balance response format:', balance);
+            setWalletBalance('0');
+            return;
+          }
         } else {
           console.error('Invalid balance response format:', balance);
           setWalletBalance('0');
@@ -273,10 +287,11 @@ export default function DepositModal({
       setWalletChainId(newChainId);
     };
 
-    window.ethereum.on('chainChanged', handleChainChanged);
+    const ethereum = window.ethereum as any;
+    ethereum.on?.('chainChanged', handleChainChanged);
 
     return () => {
-      window.ethereum?.removeListener('chainChanged', handleChainChanged);
+      ethereum.removeListener?.('chainChanged', handleChainChanged);
     };
   }, [isOpen, account, chainId]);
 
@@ -358,7 +373,7 @@ export default function DepositModal({
       try {
         const contract = getContract({
           client,
-          chain: chainId === 43114 ? avalanche : defineChain(chainId),
+          chain: defineChain(chainId),
           address: selectedToken as Address,
         });
 
@@ -392,14 +407,14 @@ export default function DepositModal({
 
       const contract = getContract({
         client,
-        chain: chainId === 43114 ? avalanche : defineChain(chainId),
+        chain: defineChain(chainId),
         address: selectedToken as Address,
       });
 
       const transaction = approve({
         contract,
         spender: smartAccountAddress as Address,
-        amount: toWei(amount),
+        amount: toWei(amount) as any,
       });
 
       const result = await sendTransaction({
@@ -444,12 +459,12 @@ export default function DepositModal({
     }
 
     // Check if wallet is on the correct network
-    const currentWalletChainId = walletChainId ?? account.chain?.id;
+    const currentWalletChainId = walletChainId ?? activeChain?.id;
 
     if (typeof currentWalletChainId === 'number' && currentWalletChainId !== chainId) {
       const expectedNetwork = isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet';
       const currentWalletNetwork =
-        account.chain?.name ||
+        activeChain?.name ||
         (currentWalletChainId === 11155111 ? 'Sepolia Testnet' : `Chain ID: ${currentWalletChainId}`);
 
       setError(`⚠️ Sua carteira está em ${currentWalletNetwork}, mas você selecionou ${expectedNetwork}.\n\nPor favor, troque sua carteira para ${expectedNetwork} (Chain ID: ${chainId}) no MetaMask.`);
@@ -477,12 +492,15 @@ export default function DepositModal({
     setTxHash(null);
 
     try {
-      // Use session key address as destination instead of smart account
-      const depositAddress = sessionKeyAddress || smartAccountAddress;
+      // IMPORTANT: Always deposit to the SMART ACCOUNT, not the session key!
+      // The smart account is a contract that holds the funds
+      // The session key only signs transactions on behalf of the smart account
+      const depositAddress = smartAccountAddress;
 
-      console.log('💰 Depositando na Session Key Wallet...');
+      console.log('💰 Depositando na Smart Account (Account Abstraction)...');
       console.log('De (sua carteira):', account.address);
-      console.log('Para (Session Key Wallet):', depositAddress);
+      console.log('Para (Smart Account - contrato):', depositAddress);
+      console.log('Assinante autorizado (Session Key):', sessionKeyAddress);
       console.log('Valor:', amount, tokenInfo.symbol);
       console.log('Rede:', currentNetwork.name);
       console.log('Chain ID:', chainId);
@@ -538,7 +556,7 @@ export default function DepositModal({
         const transaction = transfer({
           contract,
           to: depositAddress as Address,
-          amount: amountInWei,
+          amount: amountInWei as any,
         });
 
         console.log('📤 Enviando transação ERC20...');
@@ -601,135 +619,120 @@ export default function DepositModal({
 
   return (
     <>
-      {/* Overlay */}
-      <div className="fixed inset-0 bg-black/70 z-50" onClick={onClose} />
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal */}
-      <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-        <div className="bg-[#0d1117] border border-cyan-500/30 rounded-2xl w-full max-w-md shadow-xl">
-          {/* Header */}
-          <div className="border-b border-cyan-500/20 p-6 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white">💰 Depositar Fundos</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+        <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-pano-border/60 bg-pano-surface shadow-2xl shadow-black/40">
+          <div className="flex items-start justify-between border-b border-pano-border/40 px-6 py-4">
+            <div>
+              <h2 className="text-lg font-semibold text-pano-text-primary">Depositar fundos</h2>
+              <p className="text-xs text-pano-text-muted">
+                Adicione saldo à smart wallet derivada selecionada.
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated p-2 text-pano-text-muted transition-colors hover:text-pano-text-primary"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
 
-          {/* Network Toggle */}
-          <div className="px-6 pt-6">
-            <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-xl p-4">
+          <div className="space-y-5 px-6 py-5">
+            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="text-2xl">{isTestnet ? '🧪' : '🌐'}</div>
+                  <span className="text-xl">{isTestnet ? '🧪' : '🌐'}</span>
                   <div>
-                    <div className="text-sm font-bold text-white">
-                      {isTestnet ? 'Modo Teste (Sepolia)' : 'Modo Produção (Mainnet)'}
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      {isTestnet ? 'ETH grátis via faucet' : 'ETH real'}
-                    </div>
+                    <p className="text-sm font-medium text-pano-text-primary">
+                      {isTestnet ? 'Modo teste (Sepolia)' : 'Modo principal (Mainnet)'}
+                    </p>
+                    <p className="text-xs text-pano-text-muted">
+                      {isTestnet
+                        ? 'Utilize ETH de faucet para experimentar o fluxo.'
+                        : 'Transações executadas na rede principal Ethereum.'}
+                    </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setIsTestnet(!isTestnet)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    isTestnet ? 'bg-purple-600' : 'bg-gray-600'
-                  }`}
+                  className={isTestnet ? 'relative inline-flex h-6 w-12 items-center rounded-full bg-pano-primary transition-colors' : 'relative inline-flex h-6 w-12 items-center rounded-full bg-pano-border-subtle transition-colors'}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      isTestnet ? 'translate-x-6' : 'translate-x-1'
-                    }`}
+                    className={isTestnet ? 'inline-block h-4 w-4 translate-x-6 transform rounded-full bg-black transition-transform' : 'inline-block h-4 w-4 translate-x-1 transform rounded-full bg-black transition-transform'}
                   />
                 </button>
               </div>
-
-              {/* Network Warning */}
-              {account?.chain && account.chain.id !== chainId && (
-                <div className="mt-3 pt-3 border-t border-purple-500/20">
-                  <div className="text-xs text-yellow-400 mb-2">
-                    ⚠️ Sua carteira está em <strong>{account.chain.name || 'rede diferente'}</strong>
-                  </div>
-                  <div className="text-xs text-gray-400 mb-2">
-                    Para depositar, troque para <strong>{isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet'}</strong> no MetaMask
-                  </div>
+              {activeChain && activeChain.id !== chainId && (
+                <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-3 py-2 text-[11px] text-pano-warning">
+                  Sua carteira está em {activeChain.name || 'outra rede'}. Altere para {isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet'} antes de continuar.
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Content */}
-          <div className="p-6 space-y-6">
-            {/* Smart Account Details */}
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-cyan-400">📊 Destino do Depósito</h3>
-                <button
+            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-pano-text-primary">Smart Account (Account Abstraction)</p>
+                  <p className="text-xs text-pano-text-muted">
+                    Fundos são guardados no contrato da smart account, não na session key.
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
-                    // Open session key wallet in explorer
-                    const addressToShow = sessionKeyAddress || smartAccountAddress;
                     const explorerUrl = isTestnet
-                      ? `https://sepolia.etherscan.io/address/${addressToShow}`
-                      : `https://etherscan.io/address/${addressToShow}`;
+                      ? 'https://sepolia.etherscan.io/address/' + smartAccountAddress
+                      : 'https://etherscan.io/address/' + smartAccountAddress;
                     window.open(explorerUrl, '_blank');
                   }}
-                  className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                  className="text-xs text-pano-text-accent hover:text-pano-primary"
                 >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                  Ver no Explorer
-                </button>
+                  Ver explorer
+                </Button>
               </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Nome da Conta:</span>
-                  <span className="text-cyan-400 font-mono">{smartAccountName}</span>
+
+              <div className="grid gap-2 text-xs text-pano-text-muted">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Nome</span>
+                  <span className="font-mono text-pano-text-primary">{smartAccountName}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Session Key Wallet:</span>
-                  <span className="text-cyan-400 font-mono">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Smart Account (contrato)</span>
+                  <span className="font-mono text-pano-text-primary">
+                    {smartAccountAddress
+                      ? `${smartAccountAddress.slice(0, 6)}...${smartAccountAddress.slice(-4)}`
+                      : 'Carregando...'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Session Key (assinante)</span>
+                  <span className="font-mono text-pano-text-primary">
                     {sessionKeyAddress
                       ? `${sessionKeyAddress.slice(0, 6)}...${sessionKeyAddress.slice(-4)}`
-                      : 'Carregando...'
-                    }
+                      : 'Carregando...'}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Rede:</span>
-                  <span className="text-cyan-400">
-                    {isTestnet ? '🧪 Sepolia Testnet' : '🌐 Ethereum Mainnet'}
+                <div className="flex items-center justify-between gap-3">
+                  <span>Rede selecionada</span>
+                  <span className="font-medium text-pano-text-primary">
+                    {isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet'}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Info */}
-            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-              <div className="text-sm text-blue-400 mb-2">
-                <strong>🔐 Como funciona:</strong>
-              </div>
-              <ul className="text-xs text-gray-300 space-y-1">
-                <li>• Você deposita na Session Key Wallet (controlada pelo backend)</li>
-                <li>• O backend assina transações automaticamente quando necessário</li>
-                <li>• Você pode sacar a qualquer momento via botão "Withdraw"</li>
-                <li>• Sua carteira principal fica segura!</li>
-              </ul>
-            </div>
-
-            {/* Network and Token Selection */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 mb-2">
-                  Rede:
-                </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-pano-text-secondary">Rede</label>
                 <select
                   value={chainId}
                   onChange={(e) => setChainId(Number(e.target.value))}
                   disabled={isDepositing || isApproving}
-                  className="w-full px-3 py-2 rounded-lg bg-gray-800/50 border border-cyan-500/30 text-white text-sm focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+                  className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40 disabled:opacity-50"
                 >
                   {networks.map((network) => (
                     <option key={network.chainId} value={network.chainId}>
@@ -738,15 +741,13 @@ export default function DepositModal({
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 mb-2">
-                  Token:
-                </label>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-pano-text-secondary">Token</label>
                 <select
                   value={selectedToken}
                   onChange={(e) => setSelectedToken(e.target.value)}
                   disabled={isDepositing || isApproving || !currentNetwork}
-                  className="w-full px-3 py-2 rounded-lg bg-gray-800/50 border border-cyan-500/30 text-white text-sm focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+                  className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40 disabled:opacity-50"
                 >
                   {currentNetwork?.tokens.map((token) => (
                     <option key={token.address} value={token.address}>
@@ -757,227 +758,172 @@ export default function DepositModal({
               </div>
             </div>
 
-            {/* Smart Account Info */}
-            <div className="bg-gray-800/50 rounded-lg p-4 space-y-2">
-              <div className="text-xs text-gray-400">Smart Account de Destino:</div>
-              <div className="text-sm font-semibold text-cyan-400">{smartAccountName}</div>
-              <div className="text-xs font-mono text-gray-500 break-all">
-                {smartAccountAddress}
-              </div>
-            </div>
-
-            {/* Amount Input */}
-            <div>
-              <label className="block text-sm font-semibold text-white mb-2">
-                Valor para depositar:
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  step="0.001"
-                  min="0.000001"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="flex-1 px-4 py-3 rounded-lg bg-gray-800/50 border border-cyan-500/30 text-white focus:outline-none focus:border-cyan-500"
-                  placeholder="0.01"
-                  disabled={isDepositing || isApproving}
-                />
-                <div className="px-4 py-3 bg-gray-800/50 border border-cyan-500/30 rounded-lg text-gray-400 font-semibold">
-                  {tokenInfo?.symbol || 'TOKEN'}
-                </div>
-              </div>
-              <p className="text-xs text-gray-400 mt-1">
-                Valor que será transferido da sua carteira para a Smart Account
-              </p>
-              
-              {/* Balance display */}
-              {(isNativeToken || !isNativeToken) && (
-                <div className="mt-2 p-3 rounded-lg bg-gray-800/30 border border-gray-700/50">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-400">Saldo disponível:</span>
-                    <div className="flex items-center gap-2">
-                      {isCheckingBalance ? (
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 border border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
-                          <span className="text-gray-400">Verificando...</span>
-                        </div>
-                      ) : (
-                        <>
-                          <span className="text-cyan-400 font-semibold">
-                            {walletBalance} {tokenInfo?.symbol}
-                          </span>
-                          <button
-                            onClick={checkWalletBalance}
-                            disabled={isCheckingBalance}
-                            className="text-gray-400 hover:text-cyan-400 transition-colors disabled:opacity-50"
-                            title="Atualizar saldo"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-                              <path d="M21 3v5h-5"/>
-                              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-                              <path d="M3 21v-5h5"/>
-                            </svg>
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {isNativeToken ? '* Certifique-se de ter saldo suficiente para o valor + taxas de gas' : '* Saldo do token ERC20'}
+            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
+              <div>
+                <label className="text-sm font-medium text-pano-text-primary">Valor para depositar</label>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    type="number"
+                    step="0.001"
+                    min="0.000001"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="flex-1 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40 disabled:opacity-50"
+                    placeholder="0.01"
+                    disabled={isDepositing || isApproving}
+                  />
+                  <div className="flex items-center rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 text-sm font-medium text-pano-text-muted">
+                    {tokenInfo?.symbol || 'TOKEN'}
                   </div>
                 </div>
-              )}
-            </div>
-
-            {/* Quick amounts */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => setAmount('0.001')}
-                disabled={isDepositing || isApproving}
-                className="px-3 py-2 rounded-lg bg-gray-700/50 hover:bg-gray-700 text-xs text-white transition-all disabled:opacity-50"
-              >
-                0.001 {tokenInfo?.symbol}
-              </button>
-              <button
-                onClick={() => setAmount('0.005')}
-                disabled={isDepositing || isApproving}
-                className="px-3 py-2 rounded-lg bg-gray-700/50 hover:bg-gray-700 text-xs text-white transition-all disabled:opacity-50"
-              >
-                0.005 {tokenInfo?.symbol}
-              </button>
-              <button
-                onClick={() => setAmount('0.01')}
-                disabled={isDepositing || isApproving}
-                className="px-3 py-2 rounded-lg bg-gray-700/50 hover:bg-gray-700 text-xs text-white transition-all disabled:opacity-50"
-              >
-                0.01 {tokenInfo?.symbol}
-              </button>
-            </div>
-
-            {/* Gas Fee Warning for Native Token */}
-            {isNativeToken && (
-              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
-                <div className="flex items-start gap-2">
-                  <span className="text-lg">⚠️</span>
-                  <div className="text-xs text-yellow-400">
-                    <strong>Atenção:</strong> Você precisa ter <strong>mais ETH</strong> do que o valor do depósito para pagar as taxas de gas.
-                    Se você tem 0.01 ETH, tente depositar <strong>0.001 ou 0.005 ETH</strong> para deixar ETH sobrando para o gas.
-                  </div>
-                </div>
+                <p className="mt-1 text-[11px] text-pano-text-muted">
+                  Esse valor será transferido diretamente da sua carteira para a smart wallet.
+                </p>
               </div>
-            )}
 
-            {/* Approval needed warning */}
-            {needsApproval && !isNativeToken && (
-              <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-                <div className="text-sm font-semibold text-yellow-400 mb-2">
-                  🔒 Aprovação Necessária
-                </div>
-                <div className="text-xs text-gray-300">
-                  Este token ERC20 precisa ser aprovado antes do depósito. Clique em &quot;Aprovar Token&quot; primeiro.
-                </div>
-              </div>
-            )}
-
-            {/* Success */}
-            {txHash && (
-              <div className="p-5 rounded-xl bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-2 border-green-500/50 shadow-lg shadow-green-500/20 animate-pulse">
-                <div className="text-lg font-bold text-green-400 mb-3 flex items-center gap-2">
-                  <span className="text-2xl">✅</span>
-                  <span>Depósito realizado com sucesso!</span>
-                </div>
-                <div className="bg-black/30 rounded-lg p-3 mb-3">
-                  <div className="text-xs text-gray-400 mb-1">Hash da transação:</div>
-                  <a
-                    href={getExplorerUrl(chainId, txHash)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-mono text-cyan-400 hover:text-cyan-300 break-all underline"
-                  >
-                    {txHash}
-                  </a>
-                </div>
-                <div className="text-sm text-green-300 font-semibold flex items-center gap-2">
-                  <span className="text-xl">🎉</span>
-                  <span>Sua Smart Account agora tem saldo de {tokenInfo?.symbol || 'tokens'}!</span>
-                </div>
-                <div className="text-xs text-gray-400 mt-2">
-                  Este modal fechará automaticamente em 5 segundos...
-                </div>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && (
-              <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
-                <div className="text-sm text-red-400 mb-3">{error}</div>
-                {error.includes('Rede não suportada') && (
+              <div className="flex flex-wrap gap-2">
+                {["0.001", "0.005", "0.01"].map((preset) => (
                   <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setAmount(preset)}
+                    disabled={isDepositing || isApproving}
+                    className="rounded-md border border-pano-border-subtle px-3 py-1.5 text-xs text-pano-text-secondary transition-colors hover:border-pano-primary/60 hover:text-pano-text-primary disabled:opacity-50"
+                  >
+                    {preset} {tokenInfo?.symbol || 'ETH'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-xs text-pano-text-secondary">
+                <div className="flex items-center justify-between gap-2">
+                  <span>Saldo disponível</span>
+                  <div className="flex items-center gap-2 text-pano-text-primary">
+                    {isCheckingBalance ? (
+                      <span className="flex items-center gap-2">
+                        <span className="h-3 w-3 animate-spin rounded-full border border-pano-primary border-t-transparent" />
+                        Verificando...
+                      </span>
+                    ) : (
+                      <>
+                        <span className="font-medium">
+                          {walletBalance} {tokenInfo?.symbol}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={checkWalletBalance}
+                          className="text-pano-text-muted hover:text-pano-primary transition-colors"
+                          disabled={isCheckingBalance}
+                          title="Atualizar saldo"
+                        >
+                          ↻
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-1 text-[11px] text-pano-text-muted">
+                  {isNativeToken
+                    ? 'Reserve uma fração de ETH para pagar o gas desta e de futuras transações.'
+                    : 'O saldo considera o token ERC20 selecionado.'}
+                </p>
+              </div>
+            </div>
+
+            {isNativeToken && (
+              <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-4 py-3 text-[11px] text-pano-warning">
+                Para evitar erros de gas, deixe pelo menos 0.001 ETH disponível após o depósito.
+              </div>
+            )}
+
+            {needsApproval && !isNativeToken && (
+              <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-4 py-3 text-[11px] text-pano-warning">
+                Tokens ERC20 exigem aprovação antes do depósito. Execute a aprovação e, em seguida, confirme o envio.
+              </div>
+            )}
+
+            {txHash && (
+              <div className="rounded-lg border border-pano-success/40 bg-pano-success/10 px-4 py-4 text-sm text-pano-success space-y-2">
+                <div className="flex items-center gap-2 font-medium">
+                  <span className="text-lg">✅</span>
+                  Depósito confirmado! A smart account já possui saldo.
+                </div>
+                <a
+                  className="block truncate text-xs font-mono text-pano-text-primary hover:text-pano-primary"
+                  href={getExplorerUrl(chainId, txHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {txHash}
+                </a>
+                <p className="text-[11px] text-pano-text-muted">
+                  Este modal será fechado automaticamente em instantes.
+                </p>
+              </div>
+            )}
+
+            {error && (
+              <div className="rounded-lg border border-pano-error/40 bg-pano-error/10 px-4 py-3 text-sm text-pano-error space-y-2">
+                <span>{error}</span>
+                {error.includes('Rede não suportada') && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => {
-                      // Switch to Ethereum
                       if (window.ethereum) {
                         window.ethereum.request({
                           method: 'wallet_switchEthereumChain',
-                          params: [{ chainId: '0x1' }], // 1 in hex
+                          params: [{ chainId: '0x1' }],
                         });
                       }
                     }}
-                    className="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs rounded-lg transition-colors"
+                    className="w-fit text-xs"
                   >
-                    🔄 Mudar para Ethereum
-                  </button>
+                    Ajustar para Ethereum Mainnet
+                  </Button>
                 )}
               </div>
             )}
 
-            {/* Actions */}
-            <div className="flex gap-3">
-              <button
-                onClick={onClose}
-                disabled={isDepositing || isApproving}
-                className="flex-1 py-3 rounded-xl font-semibold border border-gray-600 text-gray-300 hover:bg-gray-800 transition-all disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-
-              {needsApproval && !isNativeToken ? (
-                <button
-                  onClick={handleApprove}
-                  disabled={isApproving || !account || !amount || parseFloat(amount) <= 0}
-                  className="flex-1 py-3 rounded-xl font-semibold bg-gradient-to-r from-yellow-500 to-orange-500 text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isApproving ? '⏳ Aprovando...' : `🔓 Aprovar ${tokenInfo?.symbol}`}
-                </button>
-              ) : (
-                <button
-                  onClick={handleDeposit}
-                  disabled={isDepositing || !account || !amount || parseFloat(amount) <= 0 || isWrongNetwork}
-                  className="flex-1 py-3 rounded-xl font-semibold bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isWrongNetwork
-                    ? `⚠️ Troque para ${isTestnet ? 'Sepolia' : 'Mainnet'} no MetaMask`
-                    : isDepositing
-                    ? '⏳ Depositando...'
-                    : `💰 Depositar ${amount} ${tokenInfo?.symbol}`
-                  }
-                </button>
-              )}
+            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-3 text-[11px] text-pano-text-muted">
+              Após o depósito, a smart wallet pode ser utilizada em fluxos automáticos sem exigir novas assinaturas.
             </div>
 
-            {/* Warning */}
-            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-xs text-blue-300">
-              <div className="font-semibold mb-1">💡 Informação:</div>
-              {!isNativeToken && needsApproval ? (
-                <div>
-                  Para tokens ERC20, você precisa aprovar primeiro e depois depositar (2 transações).
-                  {' '}
-                  Para tokens nativos ({currentNetwork?.name === 'Ethereum' ? 'ETH' : 'nativos'}), é apenas 1 transação.
-                </div>
+            <div className="flex flex-col gap-3 md:flex-row">
+              <Button
+                variant="ghost"
+                size="md"
+                fullWidth
+                onClick={onClose}
+                disabled={isDepositing || isApproving}
+              >
+                Cancelar
+              </Button>
+
+              {needsApproval && !isNativeToken ? (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  fullWidth
+                  onClick={handleApprove}
+                  disabled={isApproving || !account || !amount || parseFloat(amount) <= 0}
+                  loading={isApproving}
+                >
+                  Aprovar {tokenInfo?.symbol}
+                </Button>
               ) : (
-                <div>
-                  Você precisará aprovar esta transação na sua carteira. Depois disso, a Smart Account terá saldo para transações automáticas!
-                </div>
+                <Button
+                  variant="primary"
+                  size="md"
+                  fullWidth
+                  onClick={handleDeposit}
+                  disabled={isDepositing || !account || !amount || parseFloat(amount) <= 0 || isWrongNetwork}
+                  loading={isDepositing}
+                >
+                  {isWrongNetwork
+                    ? `Troque para ${isTestnet ? 'Sepolia' : 'Mainnet'}`
+                    : `Depositar ${amount} ${tokenInfo?.symbol}`}
+                </Button>
               )}
             </div>
           </div>

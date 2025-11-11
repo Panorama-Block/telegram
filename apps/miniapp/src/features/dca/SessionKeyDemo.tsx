@@ -21,6 +21,7 @@ export default function SessionKeyDemo() {
     saveSessionKey,
     removeSessionKey,
     executeWithSessionKey,
+    getSessionAccount,
   } = useSessionKey();
 
   const [isExecuting, setIsExecuting] = useState(false);
@@ -95,7 +96,6 @@ SEM POPUP DE APROVAÇÃO!`);
 
     try {
       // Pegar account da session key
-      const { getSessionAccount } = useSessionKey();
       const sessionAccount = getSessionAccount(client);
 
       if (!sessionAccount) {

@@ -1126,6 +1126,7 @@ export default function ChatPage() {
                         </button>
                         </div>
                       </div>
+                      
                     </>
                   )}
                 </div>
@@ -1248,6 +1249,19 @@ export default function ChatPage() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+
+                <div className="border-t border-white/10 mt-auto px-4 py-4 space-y-3">
+                  <button
+                    onClick={() => router.push('/account')}
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white transition-all hover:border-white/40 hover:bg-black/80"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9 9 0 0112 15a9 9 0 016.879 2.804M15 11a3 3 0 10-6 0 3 3 0 006 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804l-.002.002A6.978 6.978 0 003 22h18a6.978 6.978 0 00-2.119-4.194l-.002-.002" />
+                    </svg>
+                  </button>
                 </div>
               </div>
 

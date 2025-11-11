@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useActiveWalletChain } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, eth_getBalance, getRpcClient, type Address } from 'thirdweb';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { withdrawFromSmartAccount, DCAApiError } from './api';
+import { Button } from '@/components/ui/button';
 
 interface WithdrawModalProps {
   isOpen: boolean;
@@ -17,10 +18,11 @@ export default function WithdrawModal({
   isOpen,
   onClose,
   smartAccountAddress,
-  smartAccountName
+  smartAccountName,
 }: WithdrawModalProps) {
   const account = useActiveAccount();
-  const [isTestnet, setIsTestnet] = useState<boolean>(false); // Toggle between Mainnet/Testnet
+  const activeChain = useActiveWalletChain();
+  const [isTestnet, setIsTestnet] = useState(false);
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,14 +36,11 @@ export default function WithdrawModal({
     () => createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID || '' }),
     []
   );
-
   const selectedChainId = isTestnet ? 11155111 : 1;
 
-  // Fetch session key address when modal opens
   useEffect(() => {
     const fetchSessionKey = async () => {
       if (!smartAccountAddress || !isOpen) return;
-
       try {
         const response = await fetch(`http://localhost:3004/dca/account/${smartAccountAddress}`);
         if (response.ok) {
@@ -52,112 +51,93 @@ export default function WithdrawModal({
         console.error('Error fetching session key:', err);
       }
     };
-
     if (isOpen) {
-      fetchSessionKey();
+      void fetchSessionKey();
     }
   }, [isOpen, smartAccountAddress]);
 
   const fetchSessionBalance = useCallback(async () => {
-    if (!sessionKeyAddress) return;
-
+    if (!smartAccountAddress) return;
     setIsFetchingBalance(true);
     setBalanceError(null);
-
     try {
       const rpcClient = getRpcClient({
         client,
         chain: defineChain(selectedChainId),
       });
-
+      // IMPORTANT: Fetch balance from SMART ACCOUNT, not session key!
+      // The smart account (contract) holds the funds, session key only signs
       const balanceWei = await eth_getBalance(rpcClient, {
-        address: sessionKeyAddress as Address,
+        address: smartAccountAddress as Address,
       });
-
-      const balanceAsNumber = parseFloat(balanceWei.toString()) / Math.pow(10, 18);
-
-      if (Number.isFinite(balanceAsNumber)) {
-        setAvailableBalance(balanceAsNumber.toFixed(6));
+      const balance = Number(balanceWei) / 1e18;
+      if (Number.isFinite(balance)) {
+        setAvailableBalance(balance.toFixed(6));
       } else {
         setAvailableBalance('0.000000');
       }
+      console.log('💰 Smart Account Balance:', balance.toFixed(6), 'ETH');
+      console.log('Smart Account Address:', smartAccountAddress);
+      console.log('Session Key (signer):', sessionKeyAddress);
     } catch (err) {
-      console.error('Error fetching session key balance:', err);
+      console.error('Error fetching smart account balance:', err);
       setAvailableBalance('0.000000');
       setBalanceError('Não foi possível carregar o saldo. Atualize para tentar novamente.');
     } finally {
       setIsFetchingBalance(false);
     }
-  }, [client, sessionKeyAddress, selectedChainId]);
+  }, [client, smartAccountAddress, sessionKeyAddress, selectedChainId]);
 
   useEffect(() => {
-    if (isOpen && sessionKeyAddress) {
+    if (isOpen && smartAccountAddress) {
       void fetchSessionBalance();
     }
-  }, [isOpen, sessionKeyAddress, fetchSessionBalance]);
-
-  if (!isOpen) return null;
+  }, [isOpen, smartAccountAddress, fetchSessionBalance]);
 
   const handleWithdraw = async () => {
     if (!account) {
       setError('Por favor, conecte sua carteira.');
       return;
     }
-
     const parsedAmount = parseFloat(amount);
-
     if (!amount || parsedAmount <= 0) {
       setError('Digite um valor válido para sacar.');
       return;
     }
-
     const numericBalance = parseFloat(availableBalance);
     if (!Number.isFinite(numericBalance) || numericBalance <= 0) {
       setError('Saldo indisponível para saque no momento.');
       return;
     }
-    if (Number.isFinite(numericBalance) && parsedAmount >= numericBalance) {
+    if (parsedAmount >= numericBalance) {
       const recommended = Math.max(numericBalance - 0.001, 0);
-      setError(
-        `Saldo insuficiente após taxas de gas. Tente sacar no máximo ${recommended.toFixed(6)} ETH para deixar uma margem para o gas.`,
-      );
+      setError(`Saldo insuficiente após taxas. Saque até ${recommended.toFixed(6)} ETH para deixar margem de gas.`);
       return;
     }
 
     setLoading(true);
     setError(null);
     setSuccess(null);
-
     try {
-      console.log('🔄 Iniciando saque...');
-      console.log('De:', smartAccountAddress);
-      console.log('Para:', account.address);
-      console.log('Valor:', amount, 'ETH');
-
       const result = await withdrawFromSmartAccount({
         smartAccountAddress,
         userId: account.address,
         amount,
-        chainId: selectedChainId, // Sepolia : Ethereum mainnet
+        chainId: selectedChainId,
       });
 
       if (result.success) {
-        setSuccess(`✅ Saque realizado com sucesso! ${amount} ETH transferido para sua carteira.`);
-        console.log('✅ TX Hash:', result.transactionHash);
+        setSuccess(`✅ ${amount} ETH enviados para ${account.address}`);
         setAmount('');
         void fetchSessionBalance();
-        
-        // Close modal after 3 seconds
-        setTimeout(() => {
-          onClose();
-        }, 3000);
+        setTimeout(() => onClose(), 3000);
       } else {
-        setError(result.error || 'Falha ao processar saque');
+        setError(result.error || 'Falha ao processar saque.');
       }
-    } catch (e: any) {
-      console.error('Erro ao sacar:', e);
-      if (e instanceof DCAApiError) {
-        setError(e.message);
+    } catch (err: any) {
+      console.error('Erro ao sacar:', err);
+      if (err instanceof DCAApiError) {
+        setError(err.message);
       } else {
         setError('Erro ao processar saque. Tente novamente.');
       }
@@ -166,201 +146,205 @@ export default function WithdrawModal({
     }
   };
 
-  const handleMaxClick = () => {
-    if (isFetchingBalance) return;
-
-    const parsed = parseFloat(availableBalance);
-
-    if (Number.isFinite(parsed) && parsed > 0) {
-      const buffer = 0.001;
-      const recommended = Math.max(parsed - buffer, 0);
-      setAmount(recommended > 0 ? recommended.toFixed(6) : '');
-    }
-  };
+  if (!isOpen) return null;
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/70 z-50" onClick={onClose} />
-      <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-        <div className="bg-[#0d1117] border border-red-500/30 rounded-2xl w-full max-w-md">
-          {/* Header */}
-          <div className="border-b border-red-500/20 p-6 flex items-center justify-between">
-            <h2 className="text-2xl font-bold text-white">💸 Sacar Fundos</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+        <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-pano-border/60 bg-pano-surface shadow-2xl shadow-black/40">
+          <div className="flex items-start justify-between border-b border-pano-border/40 px-6 py-4">
+            <div>
+              <h2 className="text-lg font-semibold text-pano-text-primary">Sacar fundos</h2>
+              <p className="text-xs text-pano-text-muted">
+                Transfira o saldo disponível da smart wallet para sua carteira principal.
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated p-2 text-pano-text-muted transition-colors hover:text-pano-text-primary"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
 
-          {/* Network Toggle */}
-          <div className="px-6 pt-6">
-            <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-xl p-4">
+          <div className="space-y-5 px-6 py-5">
+            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="text-2xl">{isTestnet ? '🧪' : '🌐'}</div>
+                  <span className="text-xl">{isTestnet ? '🧪' : '🌐'}</span>
                   <div>
-                    <div className="text-sm font-bold text-white">
-                      {isTestnet ? 'Modo Teste (Sepolia)' : 'Modo Produção (Mainnet)'}
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      {isTestnet ? 'ETH grátis via faucet' : 'ETH real'}
-                    </div>
+                    <p className="text-sm font-medium text-pano-text-primary">
+                      {isTestnet ? 'Modo teste (Sepolia)' : 'Modo principal (Mainnet)'}
+                    </p>
+                    <p className="text-xs text-pano-text-muted">
+                      {isTestnet
+                        ? 'Saques executados na rede de testes Sepolia.'
+                        : 'Transações definitivas na rede principal Ethereum.'}
+                    </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setIsTestnet(!isTestnet)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    isTestnet ? 'bg-purple-600' : 'bg-gray-600'
-                  }`}
+                  className={isTestnet
+                    ? 'relative inline-flex h-6 w-12 items-center rounded-full bg-pano-primary transition-colors'
+                    : 'relative inline-flex h-6 w-12 items-center rounded-full bg-pano-border-subtle transition-colors'}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      isTestnet ? 'translate-x-6' : 'translate-x-1'
-                    }`}
+                    className={isTestnet
+                      ? 'inline-block h-4 w-4 translate-x-6 transform rounded-full bg-black transition-transform'
+                      : 'inline-block h-4 w-4 translate-x-1 transform rounded-full bg-black transition-transform'}
                   />
                 </button>
               </div>
-            </div>
-          </div>
-
-          {/* Content */}
-          <div className="p-6 space-y-6">
-            {/* Smart Account Info */}
-            <div className="bg-gradient-to-r from-red-500/10 to-orange-500/10 border border-red-500/30 rounded-xl p-4">
-              <div className="text-sm text-gray-400 mb-1">🔐 Sacando de:</div>
-              <div className="text-lg font-bold text-white mb-1">{smartAccountName}</div>
-              <div className="text-xs text-gray-400 mb-1">Session Key Wallet (Backend-Controlled)</div>
-              <div className="text-xs font-mono text-gray-500">
-                {sessionKeyAddress
-                  ? `${sessionKeyAddress.slice(0, 6)}...${sessionKeyAddress.slice(-4)}`
-                  : 'Carregando...'
-                }
-              </div>
-              
-              <div className="mt-3 pt-3 border-t border-red-500/20">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-400">Saldo disponível:</span>
-                  <div className="flex items-center gap-2 text-red-400">
-                    <span className="text-lg font-bold">
-                      {isFetchingBalance ? 'Carregando...' : `${availableBalance} ETH`}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => fetchSessionBalance()}
-                      disabled={isFetchingBalance}
-                      className="text-xs text-gray-400 hover:text-red-300 transition-colors disabled:opacity-50"
-                      title="Atualizar saldo"
-                    >
-                      ↻
-                    </button>
-                  </div>
+              {activeChain && activeChain.id !== selectedChainId && (
+                <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-3 py-2 text-[11px] text-pano-warning">
+                  Sua carteira está em {activeChain.name || 'outra rede'}. Altere para {isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet'} antes de confirmar o saque.
                 </div>
-                {balanceError && (
-                  <div className="text-[11px] text-yellow-400 mt-1">
-                    {balanceError}
-                  </div>
-                )}
-                {!balanceError && !isFetchingBalance && (
-                  <div className="text-[11px] text-gray-500 mt-1">
-                    Sugestão: deixe ~0.001 ETH para cobrir taxas de gas.
-                  </div>
-                )}
+              )}
+            </div>
+
+            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
+              <div className="space-y-1 mb-2">
+                <p className="text-sm font-medium text-pano-text-primary">Account Abstraction</p>
+                <p className="text-xs text-pano-text-muted">
+                  O saldo está na smart account. A session key apenas assina a transação.
+                </p>
+              </div>
+              <div className="grid gap-2 text-xs text-pano-text-muted">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Nome</span>
+                  <span className="font-mono text-pano-text-primary">{smartAccountName}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Smart Account (origem)</span>
+                  <span className="font-mono text-pano-text-primary">
+                    {smartAccountAddress
+                      ? `${smartAccountAddress.slice(0, 6)}...${smartAccountAddress.slice(-4)}`
+                      : 'Carregando...'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Session Key (assinante)</span>
+                  <span className="font-mono text-pano-text-primary">
+                    {sessionKeyAddress
+                      ? `${sessionKeyAddress.slice(0, 6)}...${sessionKeyAddress.slice(-4)}`
+                      : 'Carregando...'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Destino (sua wallet)</span>
+                  <span className="font-mono text-pano-text-primary">
+                    {account?.address
+                      ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                      : 'Conecte sua carteira'}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Destination */}
-            <div className="bg-gray-800/30 border border-green-500/20 rounded-xl p-4">
-              <div className="text-sm text-gray-400 mb-1">Destino:</div>
-              <div className="text-sm font-bold text-green-400 mb-1">Sua Carteira Principal</div>
-              <div className="text-xs font-mono text-gray-500 break-all">
-                {account?.address || 'Conecte sua carteira'}
-              </div>
-            </div>
-
-            {/* Amount Input */}
-            <div>
-              <label className="block text-sm font-semibold text-white mb-2">
-                💰 Valor do Saque
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="0.001"
-                  min="0.000001"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.0"
-                  className="w-full px-4 py-3 pr-20 rounded-lg bg-gray-800/50 border border-red-500/30 text-white text-lg font-semibold placeholder-gray-500 focus:outline-none focus:border-red-500"
-                  disabled={loading}
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                  <button
-                    onClick={handleMaxClick}
-                    className="px-2 py-1 text-xs font-semibold bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition-colors"
+            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
+              <div>
+                <label className="text-sm font-medium text-pano-text-primary">Valor do saque</label>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    type="number"
+                    step="0.001"
+                    min="0.000001"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="flex-1 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40 disabled:opacity-50"
+                    placeholder="0.0"
                     disabled={loading}
-                  >
-                    MAX
-                  </button>
-                  <span className="text-gray-400 font-semibold">ETH</span>
+                  />
+                  <div className="flex items-center rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 text-sm font-medium text-pano-text-muted">
+                    ETH
+                  </div>
                 </div>
+                <p className="mt-1 text-[11px] text-pano-text-muted">
+                  Todos os saques são realizados em ETH nativo.
+                </p>
               </div>
-              <p className="text-xs text-gray-400 mt-1">
-                Valor será enviado para sua carteira principal
-              </p>
+
+              <div className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-xs text-pano-text-secondary">
+                <div className="flex items-center justify-between gap-2">
+                  <span>Saldo disponível</span>
+                  <div className="flex items-center gap-2 text-pano-text-primary">
+                    {isFetchingBalance ? (
+                      <span className="flex items-center gap-2">
+                        <span className="h-3 w-3 animate-spin rounded-full border border-pano-primary border-t-transparent" />
+                        Verificando...
+                      </span>
+                    ) : (
+                      <>
+                        <span className="font-medium">{availableBalance} ETH</span>
+                        <button
+                          type="button"
+                          onClick={fetchSessionBalance}
+                          className="text-pano-text-muted hover:text-pano-primary transition-colors"
+                          disabled={isFetchingBalance}
+                          title="Atualizar saldo"
+                        >
+                          ↻
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {balanceError ? (
+                  <p className="mt-1 text-[11px] text-pano-warning">{balanceError}</p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-pano-text-muted">
+                    Recomenda-se deixar ~0.001 ETH para cobrir eventuais taxas de gas.
+                  </p>
+                )}
+              </div>
             </div>
 
-            {/* Security Notice */}
-            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
-              <div className="flex items-start gap-2">
-                <span className="text-xl">⚠️</span>
-                <div className="text-xs text-yellow-400">
-                  <strong>Atenção:</strong> Esta transação será assinada de forma segura pelo backend. 
-                  Certifique-se de que o valor está correto antes de confirmar.
-                </div>
-              </div>
-            </div>
-
-            {/* Error/Success Messages */}
             {error && (
-              <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30">
-                <div className="flex items-start gap-3">
-                  <span className="text-xl">❌</span>
-                  <div className="text-sm text-red-400">{error}</div>
-                </div>
+              <div className="rounded-lg border border-pano-error/40 bg-pano-error/10 px-4 py-3 text-sm text-pano-error">
+                {error}
               </div>
             )}
 
             {success && (
-              <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/30">
-                <div className="flex items-start gap-3">
-                  <span className="text-xl">✅</span>
-                  <div className="text-sm text-green-400">{success}</div>
-                </div>
+              <div className="rounded-lg border border-pano-success/40 bg-pano-success/10 px-4 py-3 text-sm text-pano-success">
+                {success}
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div className="flex gap-3">
-              <button
-                onClick={onClose}
-                disabled={loading}
-                className="flex-1 py-3 rounded-xl font-semibold border border-gray-600 text-gray-300 hover:bg-gray-800 transition-all disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleWithdraw}
-                disabled={loading || !amount || parseFloat(amount) <= 0}
-                className="flex-1 py-3 rounded-xl font-semibold bg-gradient-to-r from-red-500 to-orange-500 text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? '🔄 Processando...' : '💸 Sacar'}
-              </button>
+            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-3 text-[11px] text-pano-text-muted">
+              <p className="font-medium text-pano-text-primary mb-1">Como funciona o saque?</p>
+              <ul className="space-y-1">
+                <li>• A transação SAI da smart account (contrato que guarda os fundos)</li>
+                <li>• A session key apenas ASSINA a transação no backend</li>
+                <li>• O saldo vem da smart account, não da session key</li>
+              </ul>
             </div>
 
-            {/* Info */}
-            <div className="text-xs text-gray-500 text-center">
-              🔐 Transação assinada de forma segura no backend
+            <div className="flex flex-col gap-3 md:flex-row">
+              <Button
+                variant="ghost"
+                size="md"
+                fullWidth
+                onClick={onClose}
+                disabled={loading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                size="md"
+                fullWidth
+                onClick={handleWithdraw}
+                disabled={loading || !amount || parseFloat(amount) <= 0}
+                loading={loading}
+              >
+                Sacar
+              </Button>
             </div>
           </div>
         </div>
