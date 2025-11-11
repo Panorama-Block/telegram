@@ -88,7 +88,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
     const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
     if (!authApiBase) {
-      throw new Error('VITE_AUTH_API_BASE não configurado');
+      throw new Error('VITE_AUTH_API_BASE not configured');
     }
 
     try {
@@ -99,7 +99,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       const normalizedAddress = account.address;
       const loginPayload = { address: normalizedAddress };
 
-      console.log('🔍 [AUTH MODAL] Autenticando com:', authApiBase);
+      console.log('🔍 [AUTH MODAL] Authenticating with:', authApiBase);
 
       const loginResponse = await fetch(`${authApiBase}/auth/login`, {
         method: 'POST',
@@ -115,17 +115,17 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         } catch {
           error = { error: errorText };
         }
-        throw new Error(error.error || 'Erro ao gerar payload');
+        throw new Error(error.error || 'Failed to generate payload');
       }
 
       const { payload } = await loginResponse.json();
 
-      // Verificar se os endereços batem
+      // Ensure the addresses match
       if (account.address.toLowerCase() !== payload.address.toLowerCase()) {
-        throw new Error(`Endereço da wallet (${account.address}) não confere com o payload (${payload.address})`);
+        throw new Error(`Wallet address (${account.address}) does not match payload (${payload.address})`);
       }
 
-      // 2. Assinar payload usando Thirdweb
+      // 2. Sign the payload using Thirdweb
       let signature;
 
       try {
@@ -143,30 +143,30 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           if (possibleSignature) {
             signature = possibleSignature;
           } else {
-            throw new Error('Formato de assinatura inválido - nenhuma assinatura encontrada');
+            throw new Error('Invalid signature format - no signature found');
           }
         } else {
-          throw new Error('Formato de assinatura inválido');
+          throw new Error('Invalid signature format');
         }
 
       } catch (error) {
-        console.error('❌ [AUTH MODAL] Erro na assinatura via Thirdweb:', error);
+        console.error('❌ [AUTH MODAL] Thirdweb signature error:', error);
 
-        // Fallback para método direto se signLoginPayload falhar
+        // Fallback to direct signing if signLoginPayload fails
         try {
           if (activeWallet && typeof (activeWallet as any).signMessage === 'function') {
             const messageToSign = JSON.stringify(payload);
             signature = await (activeWallet as any).signMessage({ message: messageToSign });
           } else {
-            throw new Error('Método de assinatura não disponível');
+            throw new Error('Signature method not available');
           }
         } catch (fallbackError) {
-          console.error('❌ [AUTH MODAL] Fallback também falhou:', fallbackError);
-          throw new Error(`Erro na assinatura: ${error}. Fallback: ${fallbackError}`);
+          console.error('❌ [AUTH MODAL] Fallback also failed:', fallbackError);
+          throw new Error(`Signing error: ${error}. Fallback: ${fallbackError}`);
         }
       }
 
-      // 3. Verificar assinatura no backend
+      // 3. Verify the signature with the backend
       const verifyPayload = { payload, signature };
 
       const verifyResponse = await fetch(`${authApiBase}/auth/verify`, {
@@ -183,22 +183,22 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         } catch {
           error = { error: errorText };
         }
-        throw new Error(error.error || 'Erro na verificação');
+        throw new Error(error.error || 'Verification error');
       }
 
       const verifyResult = await verifyResponse.json();
       const { token: authToken } = verifyResult;
 
-      // 4. Salvar dados de autenticação
+      // 4. Persist auth data locally
       localStorage.setItem('authPayload', JSON.stringify(payload));
       localStorage.setItem('authSignature', signature);
       localStorage.setItem('authToken', authToken);
 
       setIsAuthenticated(true);
 
-      console.log('✅ [AUTH MODAL] Autenticação bem-sucedida! Redirecionando para /newchat...');
+      console.log('✅ [AUTH MODAL] Authentication succeeded! Redirecting to /newchat...');
 
-      // 5. Redirecionar para /newchat (página que cria conversa e abre o Chat)
+      // 5. Redirect to /newchat (page that creates a conversation and opens chat)
       setTimeout(() => {
         router.push('/newchat');
       }, 500);
@@ -206,10 +206,10 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     } catch (err: any) {
       console.error('❌ [AUTH MODAL] Authentication failed:', err);
 
-      let errorMessage = err?.message || 'Falha na autenticação';
+      let errorMessage = err?.message || 'Authentication failed';
 
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        errorMessage = `Erro de conexão com ${authApiBase}. Verifique se o servidor está rodando e acessível.`;
+        errorMessage = `Connection error with ${authApiBase}. Make sure the server is running and reachable.`;
       }
 
       setError(errorMessage);
@@ -222,7 +222,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   // prevent infinite retries: only one auto-attempt per account address
   const lastTriedAddressRef = useRef<string | null>(null);
 
-  // Autenticação automática quando a conta estiver conectada
+  // Automatically authenticate when the account is connected
   useEffect(() => {
     if (!account || !client || isAuthenticated || isAuthenticating) return;
     if (lastTriedAddressRef.current === account.address) return;

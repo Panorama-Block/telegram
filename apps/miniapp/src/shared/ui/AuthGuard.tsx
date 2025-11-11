@@ -63,13 +63,9 @@ export function AuthGuard({ children }: AuthGuardProps) {
     if (!isLoading) {
       // For protected routes, ensure wallet or Telegram authentication is present
       if (!canAccessProtectedRoute && !isPublicRoute) {
-        console.log('🔒 [AUTHGUARD] Redirecting to /auth - missing authentication credentials');
-        router.push('/auth');
+        console.log('🔒 [AUTHGUARD] Redirecting to /newchat - missing authentication credentials');
+        router.push('/newchat');
       }
-      // Don't redirect from /auth - let user connect wallet first
-      // else if (isAuthenticated && pathname === '/auth') {
-      //   router.push('/dashboard');
-      // }
     }
   }, [isAuthenticated, isLoading, pathname, router]);
 
