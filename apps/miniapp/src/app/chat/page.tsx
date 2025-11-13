@@ -65,7 +65,7 @@ const FEATURE_CARDS = [
   { name: 'Lending & Borrowing', icon: BlockchainTechnology, path: '/lending', prompt: 'I want to explore DeFi lending options. Can you help me understand how to supply and borrow assets?', description: 'Access positions across protocols through easy commands managing collateral, comparing rates and adjusting exposure.' },
   { name: 'Liquid Staking', icon: LightningIcon, path: '/staking', prompt: 'I want to stake my assets to earn rewards. Can you guide me through the staking process?', description: 'Stake your assets while maintaining liquidity' },
   { name: 'Liquidity Provision Management', icon: ComboChart, path: null, prompt: null, description: 'Manage pool entries and exits through simple prompts optimizing routes, ranges and capital across chains' },
-  { name: 'DCA & Trigger Orders', icon: LightningIcon, path: null, prompt: null, description: 'Configure multi-token DCA plans and threshold-based execution rules directly in chat.' },
+  { name: 'DCA & Trigger Orders', icon: LightningIcon, path: '/dca', prompt: 'I want to set up a Dollar Cost Averaging strategy for my crypto investments. Can you help me configure automated recurring purchases?', description: 'Configure multi-token DCA plans and threshold-based execution rules directly in chat.' },
 ];
 
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
@@ -192,7 +192,7 @@ export default function ChatPage() {
   const [bootstrapVersion, setBootstrapVersion] = useState(0);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
-  const [navigationType, setNavigationType] = useState<'swap' | 'lending' | 'staking' | null>(null);
+  const [navigationType, setNavigationType] = useState<'swap' | 'lending' | 'staking' | 'dca' | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
   const { user, isLoading: authLoading } = useAuth();
@@ -1023,14 +1023,15 @@ export default function ChatPage() {
   return (
     <ProtectedRoute>
       <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
-      <GlobalLoader 
-        isLoading={isNavigating} 
+      <GlobalLoader
+        isLoading={isNavigating}
         message={
           navigationType === 'lending' ? 'Loading Lending...' :
           navigationType === 'staking' ? 'Loading Staking...' :
           navigationType === 'swap' ? 'Loading Swap...' :
+          navigationType === 'dca' ? 'Loading DCA...' :
           'Loading...'
-        } 
+        }
       />
       <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
       {/* Top Navbar - Horizontal across full width */}
@@ -1141,8 +1142,35 @@ export default function ChatPage() {
                           </svg>
                           Staking
                         </button>
+                        <button
+                          onClick={() => {
+                            setExploreDropdownOpen(false);
+                            router.push('/account');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          Account
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsNavigating(true);
+                            setNavigationType('dca');
+                            setExploreDropdownOpen(false);
+                            router.push('/dca');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          DCA
+                        </button>
                         </div>
                       </div>
+                      
                     </>
                   )}
                 </div>
@@ -1266,6 +1294,19 @@ export default function ChatPage() {
                     ))}
                   </div>
                 </div>
+
+
+                <div className="border-t border-white/10 mt-auto px-4 py-4 space-y-3">
+                  <button
+                    onClick={() => router.push('/account')}
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white transition-all hover:border-white/40 hover:bg-black/80"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9 9 0 0112 15a9 9 0 016.879 2.804M15 11a3 3 0 10-6 0 3 3 0 006 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804l-.002.002A6.978 6.978 0 003 22h18a6.978 6.978 0 00-2.119-4.194l-.002-.002" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               <div className="p-4 border-t border-white/15">
@@ -1342,6 +1383,8 @@ export default function ChatPage() {
                             setNavigationType('staking');
                           } else if (feature.path === '/swap') {
                             setNavigationType('swap');
+                          } else if (feature.path === '/dca') {
+                            setNavigationType('dca');
                           }
                           router.push(feature.path);
                         }
