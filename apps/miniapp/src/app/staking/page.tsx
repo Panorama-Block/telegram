@@ -9,6 +9,7 @@ import { useActiveAccount, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { defineChain } from 'thirdweb/chains';
 import { useStakingApi } from '@/features/staking/api';
 import { useStakingData } from '@/features/staking/useStakingData';
+import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
 
 type StakingActionType = 'stake' | 'unstake';
 
@@ -172,17 +173,9 @@ export default function StakingPage() {
   const [amount, setAmount] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [initializing, setInitializing] = useState<boolean>(true);
   const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
   const [loadingBalances, setLoadingBalances] = useState<boolean>(false);
   const [success, setSuccess] = useState<string | null>(null);
-
-  // Update initializing state
-  useEffect(() => {
-    if (account) {
-      setInitializing(false);
-    }
-  }, [account]);
 
   // Switch to Ethereum Mainnet when page loads
   useEffect(() => {
@@ -370,9 +363,10 @@ export default function StakingPage() {
   }, [amount]);
 
   return (
-    <div className="h-screen bg-black text-white flex flex-col overflow-hidden">
+    <div className="h-screen text-white flex flex-col overflow-hidden relative">
+      <AnimatedBackground />
       {/* Top Navbar - Same as swap */}
-      <header className="flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
+      <header className="flex-shrink-0 bg-black/40 backdrop-blur-md border-b-2 border-white/15 px-4 sm:px-6 py-2.5 sm:py-3 z-50">
         <div className="flex items-center justify-between max-w-[1920px] mx-auto">
           {/* Left: Logo */}
           <div className="flex items-center gap-2">
@@ -451,6 +445,30 @@ export default function StakingPage() {
                           </svg>
                           Staking
                         </button>
+                        <button
+                          onClick={() => {
+                            setExploreDropdownOpen(false);
+                            router.push('/account');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          Account
+                        </button>
+                        <button
+                          onClick={() => {
+                            setExploreDropdownOpen(false);
+                            router.push('/dca');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          DCA
+                        </button>
                       </div>
                     </div>
                   </>
@@ -503,7 +521,7 @@ export default function StakingPage() {
       <div className="flex-1 overflow-hidden">
         {/* Staking Interface */}
         <div className="h-full flex items-center justify-center p-4">
-          {initializing || dataLoading ? (
+          {dataLoading ? (
             <div className="text-center">
               <div className="loader-inline-lg mb-4" />
               <p className="text-gray-400">Loading staking data...</p>
@@ -511,42 +529,54 @@ export default function StakingPage() {
           ) : (
             <div className="w-full max-w-md">
             {/* Staking Card */}
-            <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-2xl">
+            <div className="bg-[#202020]/75 backdrop-blur-xl border border-white/10 rounded-[25px] p-3 shadow-[0px_16px_57.7px_0px_rgba(0,0,0,0.42)]">
               {/* Header */}
-              <div className="text-center mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
+              <div className="text-center mb-2">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
                     {/* Lido Logo */}
-                    <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center">
-                      <Image 
-                        src="https://s2.coinmarketcap.com/static/img/coins/64x64/8000.png" 
-                        alt="Lido Protocol" 
-                        width={32}
-                        height={32}
+                    <div className="w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0">
+                      <Image
+                        src="https://s2.coinmarketcap.com/static/img/coins/64x64/8000.png"
+                        alt="Lido Protocol"
+                        width={24}
+                        height={24}
                         className="w-full h-full object-cover"
                         unoptimized
                       />
                     </div>
-                    <h2 className="text-2xl font-bold text-white">Staking Service</h2>
+                    <h2 className="text-base sm:text-lg font-bold text-white">Staking Service</h2>
                   </div>
                   <button
                     onClick={clearCacheAndRefresh}
-                    className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
+                    className="p-1.5 rounded-lg bg-[#2A2A2A]/80 hover:bg-[#343434]/80 transition-colors border border-white/10"
                     title="Refresh data"
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
                   </button>
                 </div>
-                <p className="text-gray-400 text-sm">Powered by Lido Protocol on Ethereum</p>
+                <div className="flex items-center justify-center gap-2 mt-1.5 pt-1.5 border-t border-white/5">
+                  <div className="w-5 h-5 rounded overflow-hidden flex items-center justify-center flex-shrink-0">
+                    <Image
+                      src="https://s2.coinmarketcap.com/static/img/coins/64x64/8000.png"
+                      alt="Lido Protocol"
+                      width={20}
+                      height={20}
+                      className="w-full h-full object-cover"
+                      unoptimized
+                    />
+                  </div>
+                  <p className="text-gray-400 text-xs">Powered by Lido Protocol on Ethereum</p>
+                </div>
               </div>
 
               {/* User Position Summary */}
               {userPosition && (
-                <div className="bg-black/40 border border-white/10 rounded-xl p-4 mb-6">
-                  <h3 className="text-white font-semibold mb-3">Your Position</h3>
-                  <div className="space-y-2 text-sm">
+                <div className="bg-[#2A2A2A]/80 border border-white/10 rounded-xl p-2.5 mb-1.5">
+                  <h3 className="text-white font-semibold text-sm mb-1.5">Your Position</h3>
+                  <div className="space-y-1.5 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-400">Staked:</span>
                       <span className="text-white font-medium">
@@ -576,12 +606,12 @@ export default function StakingPage() {
               )}
 
               {/* Action Selection */}
-              <div className="mb-4">
-                <label className="text-xs text-white uppercase tracking-wide font-medium mb-2 block">Action</label>
+              <div className="mb-1.5">
+                <label className="text-xs text-gray-400 mb-1.5 block">Action</label>
                 <select
                   value={action}
                   onChange={(e) => setAction(e.target.value as StakingActionType)}
-                  className="w-full px-4 py-3 rounded-lg bg-black/40 border border-white/20 text-white focus:outline-none focus:border-white/40"
+                  className="w-full px-3 py-2 text-sm rounded-xl bg-[#2A2A2A]/80 border border-white/10 text-white focus:outline-none focus:border-white/20"
                 >
                   <option value="stake">Stake ETH → stETH</option>
                   <option value="unstake">Unstake stETH → ETH</option>
@@ -595,9 +625,9 @@ export default function StakingPage() {
               </div>
 
               {/* Token Display */}
-              <div className="mb-4">
-                <label className="text-xs text-white uppercase tracking-wide font-medium mb-2 block">Token</label>
-                <div className="px-4 py-3 rounded-lg bg-black/40 border border-white/20 text-white">
+              <div className="mb-1.5">
+                <label className="text-xs text-gray-400 mb-1.5 block">Token</label>
+                <div className="px-3 py-2 text-sm rounded-xl bg-[#2A2A2A]/80 border border-white/10 text-white">
                   {action === 'stake' ? 'ETH → stETH' : 'stETH → ETH'}
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
@@ -609,8 +639,8 @@ export default function StakingPage() {
               </div>
 
               {/* Amount Input */}
-              <div className="mb-6">
-                <label className="text-xs text-white uppercase tracking-wide font-medium mb-2 block">
+              <div className="mb-1.5">
+                <label className="text-xs text-gray-400 mb-1.5 block">
                   {action === 'stake' ? 'Amount to Stake' : 'Amount to Unstake'}
                 </label>
                 <input
@@ -620,7 +650,7 @@ export default function StakingPage() {
                   placeholder="0.0"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-white/40"
+                  className="w-full px-3 py-2 text-sm rounded-xl bg-[#2A2A2A]/80 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:border-white/20"
                 />
                 <div className="flex justify-between mt-2 text-xs text-gray-400">
                   <span>
@@ -659,12 +689,12 @@ export default function StakingPage() {
                         } else {
                           targetToken = tokens.find(t => t.symbol === 'stETH') || tokens[1] || tokens[0];
                         }
-                        
+
                         const balance = tokenBalances[targetToken.address] || '0';
                         setAmount(formatAmount(balance, targetToken.decimals));
                       }
                     }}
-                    className="text-cyan-400 hover:text-cyan-300 underline"
+                    className="text-[#4BDEDD] hover:text-[#4BDEDD]/80 underline font-medium"
                   >
                     Max
                   </button>
@@ -672,11 +702,11 @@ export default function StakingPage() {
               </div>
 
               {/* Token Info */}
-              <div className="bg-black/40 border border-white/10 rounded-xl p-4 mb-6">
-                <h4 className="text-white font-semibold mb-3">
+              <div className="bg-[#2A2A2A]/80 border border-white/10 rounded-xl p-2.5 mb-1.5">
+                <h4 className="text-white font-semibold text-sm mb-1.5">
                   {action === 'stake' ? 'ETH Staking Info' : 'stETH Unstaking Info'}
                 </h4>
-                <div className="space-y-2 text-sm">
+                <div className="space-y-1.5 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-400">Staking APY:</span>
                     <span className="text-green-400 font-medium">
@@ -700,30 +730,30 @@ export default function StakingPage() {
               <button
                 onClick={handleAction}
                 disabled={!canExecute || loading}
-                className="w-full py-4 rounded-xl font-semibold text-base transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-white/90"
+                className="w-full py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-white/90"
               >
                 {loading ? 'Processing...' : getActionLabel()}
               </button>
 
               {/* Error Messages */}
               {error && (
-                <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
-                  <div className="text-sm text-red-400">{error}</div>
+                <div className="mt-2 p-2.5 rounded-xl bg-red-500/10 border border-red-500/30">
+                  <div className="text-xs text-red-400">{error}</div>
                 </div>
               )}
 
               {/* Success Messages */}
               {success && (
-                <div className="mt-4 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
-                  <div className="text-sm text-green-400">{success}</div>
+                <div className="mt-2 p-2.5 rounded-xl bg-green-500/10 border border-green-500/30">
+                  <div className="text-xs text-green-400">{success}</div>
                 </div>
               )}
-              
+
               {dataError && (
-                <div className="mt-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-                  <div className="text-sm text-yellow-400">
+                <div className="mt-2 p-2.5 rounded-xl bg-yellow-500/10 border border-yellow-500/30">
+                  <div className="text-xs text-yellow-400">
                     Data loading error: {dataError}
-                    <button 
+                    <button
                       onClick={refresh}
                       className="ml-2 underline hover:no-underline"
                     >

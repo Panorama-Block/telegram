@@ -18,6 +18,7 @@ import type { PreparedTx } from '@/features/swap/types';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
 
+
 interface TokenSelectorProps {
   isOpen: boolean;
   onClose: () => void;
@@ -704,6 +705,30 @@ export default function SwapPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                           </svg>
                           Staking
+                        </button>
+                        <button
+                          onClick={() => {
+                            setExploreDropdownOpen(false);
+                            router.push('/account');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          Account
+                        </button>
+                        <button
+                          onClick={() => {
+                            setExploreDropdownOpen(false);
+                            router.push('/dca');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          DCA
                         </button>
                       </div>
                     </div>
