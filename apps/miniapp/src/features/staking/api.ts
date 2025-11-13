@@ -665,7 +665,7 @@ class StakingApiClient {
           gasPrice = `0x${standardGasPrice.toString(16)}`;
           console.log('Using gas price from Etherscan:', gasPriceData.result.Standard, 'gwei');
         }
-      } catch (_error) {
+      } catch {
         console.log('Could not fetch gas price, using fallback');
         // Fallback to a reasonable gas price (20 gwei)
         const fallbackGasPrice = 20 * 1e9; // 20 gwei in wei
@@ -674,11 +674,49 @@ class StakingApiClient {
       }
 
       // Format transaction data for thirdweb/MetaMask
+      // Convert value to hex properly handling BigInt
+      let valueHex = '0x0';
+      if (value) {
+        try {
+          // Handle both string and number inputs, and both decimal and hex strings
+          const valueStr = typeof value === 'string' ? value : value.toString();
+          // If already hex, use it; otherwise convert from decimal
+          if (valueStr.startsWith('0x')) {
+            valueHex = valueStr;
+          } else {
+            // Convert decimal string to BigInt then to hex
+            const bigIntValue = BigInt(valueStr);
+            valueHex = `0x${bigIntValue.toString(16)}`;
+          }
+        } catch (error) {
+          console.error('Error converting value to hex:', error);
+          throw new Error(`Invalid value format: ${value}`);
+        }
+      }
+
+      // Convert gasLimit to hex properly
+      let gasLimitHex = '0x5208'; // Default 21000
+      if (gas) {
+        try {
+          const gasStr = typeof gas === 'string' ? gas : gas.toString();
+          if (gasStr.startsWith('0x')) {
+            gasLimitHex = gasStr;
+          } else {
+            // Use BigInt for gas to handle large values
+            const bigIntGas = BigInt(gasStr);
+            gasLimitHex = `0x${bigIntGas.toString(16)}`;
+          }
+        } catch (error) {
+          console.error('Error converting gas to hex:', error);
+          // Fallback to default
+        }
+      }
+
       const formattedTxData = {
         to: toAddress,
-        value: value ? `0x${BigInt(value).toString(16)}` : '0x0', // Convert to hex using BigInt
+        value: valueHex,
         data: data,
-        gasLimit: gas ? `0x${parseInt(gas).toString(16)}` : '0x5208', // Use gasLimit instead of gas
+        gasLimit: gasLimitHex,
         ...(gasPrice && { gasPrice }) // Only add gasPrice if we have it
       };
 
