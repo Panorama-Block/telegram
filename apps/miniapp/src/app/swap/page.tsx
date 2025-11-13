@@ -15,8 +15,6 @@ import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction,
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx } from '@/features/swap/types';
-import { useSessionKey } from '@/features/dca/useSessionKey';
-import { privateKeyToAccount } from 'thirdweb/wallets';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
 
@@ -205,7 +203,6 @@ export default function SwapPage() {
   const switchChain = useSwitchActiveWalletChain();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
-  const { sessionKey, hasSessionKey } = useSessionKey();
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const userAddress = localStorage.getItem('userAddress');
@@ -583,159 +580,6 @@ export default function SwapPage() {
       // Clean up noisy ABI decode errors from viem/thirdweb
       if (lowerError.includes('abierrorsignaturenotfounderror') || lowerError.includes('encoded error signature')) {
         errorMessage = 'Transaction reverted by contract (no detailed reason provided).';
-      }
-
-      setError(errorMessage);
-    } finally {
-      setPreparing(false);
-      setExecuting(false);
-    }
-  }
-
-  async function handleSwapWithSessionKey() {
-    if (!quote) {
-      setError('Please wait for the quote to be calculated');
-      return;
-    }
-
-    if (!hasSessionKey || !sessionKey) {
-      setError('Session Key não encontrada. Crie uma Smart Account primeiro na página DCA.');
-      return;
-    }
-
-    if (!clientId || !client) {
-      setError('Missing THIRDWEB client configuration.');
-      return;
-    }
-
-    setError(null);
-    setSuccess(false);
-
-    try {
-      console.log('🔑 Executing swap with Session Key (automatic approval)...');
-      console.log('Session Key Address:', sessionKey.address);
-      console.log('Smart Account:', sessionKey.smartAccountAddress);
-
-      setPreparing(true);
-
-      const decimals = await getTokenDecimals({
-        client,
-        chainId: fromChainId,
-        token: sellToken.address
-      });
-
-      const wei = parseAmountToWei(sellAmount, decimals);
-      if (wei <= 0n) throw new Error('Invalid amount');
-
-      if (!buyToken) {
-        throw new Error('Please select a token to buy');
-      }
-
-      console.log('=== SWAP WITH SESSION KEY DEBUG ===');
-      console.log('Sell token:', sellToken.symbol, sellToken.address);
-      console.log('Buy token:', buyToken.symbol, buyToken.address);
-      console.log('Sell amount (human):', sellAmount);
-      console.log('Sell amount (wei):', wei.toString());
-      console.log('From chain:', fromChainId);
-      console.log('To chain:', toChainId);
-
-      // Use Smart Account address as sender
-      const prep = await swapApi.prepare({
-        fromChainId,
-        toChainId,
-        fromToken: normalizeToApi(sellToken.address),
-        toToken: normalizeToApi(buyToken.address),
-        amount: wei.toString(),
-        sender: sessionKey.smartAccountAddress,
-      });
-
-      console.log('Prepared transactions:', prep.prepared);
-
-      const seq = flattenPrepared(prep.prepared);
-
-      if (!seq.length) throw new Error('No transactions returned by prepare');
-
-      setPreparing(false);
-
-      setExecuting(true);
-      setTxHashes([]);
-
-      // Create account from session key private key
-      const sessionAccount = privateKeyToAccount({
-        client,
-        privateKey: sessionKey.privateKey,
-      });
-
-      console.log('✅ Session Key account created:', sessionAccount.address);
-
-      for (const t of seq) {
-        if (t.chainId !== fromChainId) {
-          throw new Error(`Chain mismatch. Expected chain ${t.chainId}`);
-        }
-
-        console.log('=== TRANSACTION DEBUG (SESSION KEY) ===');
-        console.log('Raw transaction from API:', t);
-
-        let txValue = 0n;
-        if (t.value) {
-          const valueStr = typeof t.value === 'string' ? t.value : String(t.value);
-          if (valueStr && valueStr !== '0') {
-            try {
-              txValue = BigInt(valueStr);
-              console.log('Using value from API:', txValue.toString());
-            } catch (e) {
-              console.error('Failed to parse transaction value:', valueStr, e);
-              txValue = 0n;
-            }
-          }
-        }
-
-        const tx = prepareTransaction({
-          to: t.to as Address,
-          chain: defineChain(t.chainId),
-          client,
-          data: t.data as Hex,
-          value: txValue,
-        });
-
-        console.log('🔐 Signing transaction with Session Key (no popup!)...');
-
-        // Execute with session key account - NO POPUP!
-        const result = await safeExecuteTransactionV2(async () => {
-          return await sendTransaction({ account: sessionAccount, transaction: tx });
-        });
-
-        if (!result.success) {
-          throw new Error(`Transaction failed: ${result.error}`);
-        }
-
-        if (!result.transactionHash) {
-          throw new Error('Transaction failed: no transaction hash returned.');
-        }
-
-        setTxHashes(prev => [...prev, { hash: result.transactionHash!, chainId: t.chainId }]);
-        console.log(`✅ Transaction ${result.transactionHash} submitted automatically with Session Key!`);
-      }
-
-      setSuccess(true);
-      setSellAmount('');
-      setBuyAmount('');
-      setQuote(null);
-
-      console.log('🎉 Swap executed successfully with Session Key - NO POPUP REQUIRED!');
-    } catch (e: any) {
-      let errorMessage = e.message || 'Failed to execute swap with Session Key';
-      const lowerError = errorMessage.toLowerCase();
-
-      if (lowerError.includes('insufficient funds') ||
-          lowerError.includes('have 0 want') ||
-          lowerError.includes('32003') ||
-          lowerError.includes('gas required exceeds allowance')) {
-        errorMessage = 'Saldo insuficiente na Smart Account. Deposite fundos na Smart Account primeiro (página DCA).';
-      }
-
-      if (lowerError.includes('abierrorsignaturenotfounderror') || lowerError.includes('encoded error signature')) {
-        errorMessage = 'Transação revertida pelo contrato (sem motivo detalhado).';
       }
 
       setError(errorMessage);

@@ -3,6 +3,8 @@
  * Integrates with panorama-block-backend DCA service
  */
 
+import { authenticatedFetch } from '@/shared/lib/telegram-auth';
+
 const DCA_API_URL = process.env.DCA_API_BASE || process.env.NEXT_PUBLIC_DCA_API_BASE || 'http://localhost:3004';
 
 export interface SmartAccountPermissions {
@@ -81,16 +83,14 @@ export class DCAApiError extends Error {
 
 /**
  * Create a new smart account
+ * 🔒 SECURE: Uses Telegram authentication
  */
 export async function createSmartAccount(request: CreateAccountRequest): Promise<CreateAccountResponse> {
   try {
-    const response = await fetch(`${DCA_API_URL}/dca/create-account`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/dca/create-account`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(request),
-    });
+    }, request.userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -112,10 +112,11 @@ export async function createSmartAccount(request: CreateAccountRequest): Promise
 
 /**
  * Get all smart accounts for a user
+ * 🔒 SECURE: Uses Telegram authentication
  */
 export async function getUserAccounts(userId: string): Promise<SmartAccount[]> {
   try {
-    const response = await fetch(`${DCA_API_URL}/dca/accounts/${userId}`);
+    const response = await authenticatedFetch(`${DCA_API_URL}/dca/accounts/${userId}`, {}, userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -134,10 +135,11 @@ export async function getUserAccounts(userId: string): Promise<SmartAccount[]> {
 
 /**
  * Get a single smart account
+ * 🔒 SECURE: Uses Telegram authentication
  */
-export async function getSmartAccount(address: string): Promise<SmartAccount> {
+export async function getSmartAccount(address: string, userId?: string): Promise<SmartAccount> {
   try {
-    const response = await fetch(`${DCA_API_URL}/dca/account/${address}`);
+    const response = await authenticatedFetch(`${DCA_API_URL}/dca/account/${address}`, {}, userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -155,16 +157,14 @@ export async function getSmartAccount(address: string): Promise<SmartAccount> {
 
 /**
  * Delete a smart account
+ * 🔒 SECURE: Uses Telegram authentication
  */
 export async function deleteSmartAccount(address: string, userId: string): Promise<void> {
   try {
-    const response = await fetch(`${DCA_API_URL}/dca/account/${address}`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/dca/account/${address}`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ userId }),
-    });
+    }, userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -180,16 +180,14 @@ export async function deleteSmartAccount(address: string, userId: string): Promi
 
 /**
  * Create a DCA strategy
+ * 🔒 SECURE: Uses Telegram authentication
  */
-export async function createStrategy(request: CreateStrategyRequest): Promise<{ strategyId: string; nextExecution: Date }> {
+export async function createStrategy(request: CreateStrategyRequest, userId?: string): Promise<{ strategyId: string; nextExecution: Date }> {
   try {
-    const response = await fetch(`${DCA_API_URL}/dca/create-strategy`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/dca/create-strategy`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(request),
-    });
+    }, userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -211,10 +209,11 @@ export async function createStrategy(request: CreateStrategyRequest): Promise<{ 
 
 /**
  * Get all strategies for a smart account
+ * 🔒 SECURE: Uses Telegram authentication
  */
-export async function getAccountStrategies(smartAccountId: string): Promise<DCAStrategy[]> {
+export async function getAccountStrategies(smartAccountId: string, userId?: string): Promise<DCAStrategy[]> {
   try {
-    const response = await fetch(`${DCA_API_URL}/dca/strategies/${smartAccountId}`);
+    const response = await authenticatedFetch(`${DCA_API_URL}/dca/strategies/${smartAccountId}`, {}, userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -233,16 +232,14 @@ export async function getAccountStrategies(smartAccountId: string): Promise<DCAS
 
 /**
  * Toggle strategy active status
+ * 🔒 SECURE: Uses Telegram authentication
  */
-export async function toggleStrategy(strategyId: string, isActive: boolean): Promise<void> {
+export async function toggleStrategy(strategyId: string, isActive: boolean, userId?: string): Promise<void> {
   try {
-    const response = await fetch(`${DCA_API_URL}/dca/strategy/${strategyId}/toggle`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/dca/strategy/${strategyId}/toggle`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ isActive }),
-    });
+    }, userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -258,12 +255,13 @@ export async function toggleStrategy(strategyId: string, isActive: boolean): Pro
 
 /**
  * Delete a strategy
+ * 🔒 SECURE: Uses Telegram authentication
  */
-export async function deleteStrategy(strategyId: string): Promise<void> {
+export async function deleteStrategy(strategyId: string, userId?: string): Promise<void> {
   try {
-    const response = await fetch(`${DCA_API_URL}/dca/strategy/${strategyId}`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/dca/strategy/${strategyId}`, {
       method: 'DELETE',
-    });
+    }, userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -279,10 +277,11 @@ export async function deleteStrategy(strategyId: string): Promise<void> {
 
 /**
  * Get execution history for a smart account
+ * 🔒 SECURE: Uses Telegram authentication
  */
-export async function getExecutionHistory(smartAccountId: string, limit = 100): Promise<ExecutionHistory[]> {
+export async function getExecutionHistory(smartAccountId: string, limit = 100, userId?: string): Promise<ExecutionHistory[]> {
   try {
-    const response = await fetch(`${DCA_API_URL}/dca/history/${smartAccountId}?limit=${limit}`);
+    const response = await authenticatedFetch(`${DCA_API_URL}/dca/history/${smartAccountId}?limit=${limit}`, {}, userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -322,13 +321,10 @@ export async function signAndExecuteTransaction(
   request: SignAndExecuteRequest
 ): Promise<SignAndExecuteResponse> {
   try {
-    const response = await fetch(`${DCA_API_URL}/transaction/sign-and-execute`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/transaction/sign-and-execute`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(request),
-    });
+    }, request.userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -350,16 +346,14 @@ export async function signAndExecuteTransaction(
 export async function validateTransactionPermissions(
   smartAccountAddress: string,
   to: string,
-  value: string
+  value: string,
+  userId?: string
 ): Promise<{ valid: boolean; reason?: string }> {
   try {
-    const response = await fetch(`${DCA_API_URL}/transaction/validate`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/transaction/validate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ smartAccountAddress, to, value }),
-    });
+    }, userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -458,13 +452,10 @@ export async function withdrawTokenFromSmartAccount(
   try {
     console.log('[withdrawTokenFromSmartAccount] Sending request:', request);
 
-    const response = await fetch(`${DCA_API_URL}/transaction/withdraw-token`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/transaction/withdraw-token`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(request),
-    });
+    }, request.userId);
 
     console.log('[withdrawTokenFromSmartAccount] Response status:', response.status);
 

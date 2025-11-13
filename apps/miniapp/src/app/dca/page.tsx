@@ -987,14 +987,14 @@ export default function DCAPage() {
       if (accounts.length > 0) {
         const allStrategies: DCAStrategy[] = [];
         for (const acc of accounts) {
-          const accountStrategies = await getAccountStrategies(acc.address);
+          const accountStrategies = await getAccountStrategies(acc.address, account.address);
           allStrategies.push(...accountStrategies);
         }
         setStrategies(allStrategies);
 
         // Load history for first account
         if (accounts[0]) {
-          const execHistory = await getExecutionHistory(accounts[0].address, 10);
+          const execHistory = await getExecutionHistory(accounts[0].address, 10, account.address);
           setHistory(execHistory);
         }
       }
@@ -1027,6 +1027,11 @@ export default function DCAPage() {
   }, [error]);
 
   const handleCreateStrategy = async (config: DCAConfig) => {
+    if (!account) {
+      setError('Wallet not connected');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -1039,7 +1044,7 @@ export default function DCAPage() {
         toChainId: config.toChainId,
         amount: config.amount,
         interval: config.interval,
-      });
+      }, account.address);
 
       setSuccess('Recurring buy created successfully!');
       setShowCreateModal(false);
@@ -1057,11 +1062,16 @@ export default function DCAPage() {
   };
 
   const handleToggleStrategy = async (strategyId: string, currentStatus: boolean) => {
+    if (!account) {
+      setError('Wallet not connected');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      await toggleStrategy(strategyId, !currentStatus);
+      await toggleStrategy(strategyId, !currentStatus, account.address);
       setSuccess(`Strategy ${!currentStatus ? 'activated' : 'paused'} successfully!`);
       await loadSmartAccounts();
     } catch (err) {
@@ -1073,6 +1083,11 @@ export default function DCAPage() {
   };
 
   const handleDeleteStrategy = async (strategyId: string) => {
+    if (!account) {
+      setError('Wallet not connected');
+      return;
+    }
+
     if (!window.confirm('Are you sure you want to delete this recurring buy?')) {
       return;
     }
@@ -1081,7 +1096,7 @@ export default function DCAPage() {
     setError(null);
 
     try {
-      await deleteStrategy(strategyId);
+      await deleteStrategy(strategyId, account.address);
       setSuccess('Recurring buy deleted successfully!');
       await loadSmartAccounts();
     } catch (err) {
