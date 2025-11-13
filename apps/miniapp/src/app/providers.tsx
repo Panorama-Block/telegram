@@ -19,11 +19,13 @@ export function ClientProviders({ children }: ClientProvidersProps) {
           { default: WebApp },
           tonConnect,
           thirdwebReact,
+          thirdwebChains,
           bufferModule,
         ] = await Promise.all([
           import('@twa-dev/sdk'),
           import('@tonconnect/ui-react'),
           import('thirdweb/react'),
+          import('thirdweb/chains'),
           import('buffer'),
         ]);
 

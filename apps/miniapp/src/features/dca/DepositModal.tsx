@@ -1,0 +1,888 @@
+/**
+ * Modal para depositar fundos na Smart Account
+ */
+
+'use client';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { useActiveAccount, useActiveWalletChain } from 'thirdweb/react';
+import { sendTransaction, prepareTransaction, toWei, defineChain } from 'thirdweb';
+import { createThirdwebClient, type Address } from 'thirdweb';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import { networks, Token } from '@/features/swap/tokens';
+import { Button } from '@/components/ui/button';
+
+interface DepositModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  smartAccountAddress: string;
+  smartAccountName: string;
+}
+
+// Helper function to get explorer URL for transaction
+function getExplorerUrl(chainId: number, txHash: string): string {
+  const explorers: Record<number, string> = {
+    1: 'https://etherscan.io/tx/',
+    56: 'https://bscscan.com/tx/',
+    137: 'https://polygonscan.com/tx/',
+    43114: 'https://snowtrace.io/tx/',
+    42161: 'https://arbiscan.io/tx/',
+    8453: 'https://basescan.org/tx/',
+    10: 'https://optimistic.etherscan.io/tx/',
+  };
+  return `${explorers[chainId] || 'https://etherscan.io/tx/'}${txHash}`;
+}
+
+export default function DepositModal({
+  isOpen,
+  onClose,
+  smartAccountAddress,
+  smartAccountName,
+}: DepositModalProps) {
+  const account = useActiveAccount();
+  const activeChain = useActiveWalletChain();
+  const [chainId, setChainId] = useState<number>(8453); // Base default
+  const [amount, setAmount] = useState('0.01');
+  const [isDepositing, setIsDepositing] = useState(false);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [sessionKeyAddress, setSessionKeyAddress] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [walletBalance, setWalletBalance] = useState<string>('0');
+  const [isCheckingBalance, setIsCheckingBalance] = useState(false);
+  const [walletChainId, setWalletChainId] = useState<number | null>(null);
+
+  // Session Key funding state
+  const [showSessionKeyStep, setShowSessionKeyStep] = useState(false);
+  const [plannedTrades, setPlannedTrades] = useState<number>(5);
+  const [isDepositingToSessionKey, setIsDepositingToSessionKey] = useState(false);
+  const [sessionKeyTxHash, setSessionKeyTxHash] = useState<string | null>(null);
+
+  const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID || '' });
+
+  useEffect(() => {
+    if (activeChain?.id != null) {
+      setWalletChainId(activeChain.id);
+    }
+  }, [activeChain]);
+
+  // Get current network
+  const currentNetwork = useMemo(() => {
+    const found = networks.find((n) => n.chainId === chainId);
+    return found;
+  }, [chainId]);
+
+  // Get native token for current network
+  const nativeToken = useMemo(() => {
+    return currentNetwork?.nativeCurrency || {
+      symbol: 'ETH',
+      address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+      icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+      decimals: 18,
+      name: 'Ethereum'
+    };
+  }, [currentNetwork]);
+
+  // Fetch session key address from smart account (for display purposes only)
+  useEffect(() => {
+    const fetchSessionKey = async () => {
+      if (!smartAccountAddress) return;
+
+      try {
+        const response = await fetch(`http://localhost:3004/dca/account/${smartAccountAddress}`);
+        if (response.ok) {
+          const data = await response.json();
+          setSessionKeyAddress(data.sessionKeyAddress);
+          console.log('Session Key Address (signer):', data.sessionKeyAddress);
+          console.log('Smart Account Address (holds funds):', smartAccountAddress);
+        }
+      } catch (err) {
+        console.error('Error fetching session key:', err);
+      }
+    };
+
+    if (isOpen) {
+      fetchSessionKey();
+    }
+  }, [isOpen, smartAccountAddress]);
+
+  // Check if wallet is on wrong network
+  const isWrongNetwork = useMemo(() => {
+    const currentChain = walletChainId ?? activeChain?.id;
+    if (currentChain == null) {
+      return false;
+    }
+    return currentChain !== chainId;
+  }, [walletChainId, activeChain, chainId]);
+
+  // Check wallet balance
+  const checkWalletBalance = async () => {
+    if (!account || !currentNetwork) return;
+
+    // TypeScript narrowing
+    const activeAccount = account;
+
+    setIsCheckingBalance(true);
+    try {
+      // TODO: Fix balance checking with correct Thirdweb v5 imports
+      // Temporarily disabled to avoid errors
+      console.log('⚠️ Balance checking temporarily disabled');
+      setWalletBalance('--');
+      setIsCheckingBalance(false);
+      return;
+
+      // For native tokens
+      console.log('🔍 Checking native token balance for:', { chainId });
+
+      // const balance = await getBalance({
+      //   client,
+      //   chain: defineChain(chainId),
+      //   address: activeAccount.address as Address,
+      // });
+
+      // // Convert from wei to readable format
+      // const balanceInTokens = (Number(balance.value) / Math.pow(10, 18)).toFixed(6);
+      // console.log('💰 Native token balance found:', balanceInTokens);
+      // setWalletBalance(balanceInTokens);
+    } catch (err) {
+      console.error('Error checking balance:', err);
+      setWalletBalance('0');
+    } finally {
+      setIsCheckingBalance(false);
+    }
+  };
+
+  // Check wallet balance when component mounts or chain changes
+  useEffect(() => {
+    if (isOpen && account && currentNetwork) {
+      console.log('🔄 Checking balance for:', { token: nativeToken.symbol, chainId });
+      // Reset balance first
+      setWalletBalance('0');
+      checkWalletBalance();
+    }
+  }, [isOpen, account, chainId, currentNetwork]);
+
+  // Ensure wallet is on selected network when modal opens or selection changes
+  useEffect(() => {
+    if (!isOpen || !account) {
+      return;
+    }
+
+    void checkCurrentNetwork();
+
+    if (!window.ethereum) {
+      return;
+    }
+
+    const handleChainChanged = (chainIdHex: string) => {
+      const newChainId = parseInt(chainIdHex, 16);
+      console.log('🔄 Rede mudou para:', newChainId);
+      setWalletChainId(newChainId);
+    };
+
+    const ethereum = window.ethereum as any;
+    ethereum.on?.('chainChanged', handleChainChanged);
+
+    return () => {
+      ethereum.removeListener?.('chainChanged', handleChainChanged);
+    };
+  }, [isOpen, account, chainId]);
+
+  const checkCurrentNetwork = async () => {
+    if (!window.ethereum) return;
+
+    try {
+      const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+      const currentChainIdNumber = parseInt(currentChainId, 16);
+
+      console.log('🔍 Rede atual detectada:', currentChainIdNumber);
+
+      setWalletChainId(currentChainIdNumber);
+
+      if (currentChainIdNumber !== chainId) {
+        console.log(`🔄 Tentando mudar para a rede selecionada (Chain ID: ${chainId})...`);
+        await switchToChain(chainId);
+      }
+    } catch (err) {
+      console.error('Erro ao verificar rede atual:', err);
+    }
+  };
+
+  const switchToChain = async (targetChainId: number) => {
+    if (!window.ethereum) return;
+
+    const chainIdHex = `0x${targetChainId.toString(16)}`;
+
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: chainIdHex }],
+      });
+    } catch (err: any) {
+      // Chain not added to MetaMask
+      if (err?.code === 4902 && targetChainId === 11155111) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [
+              {
+                chainId: chainIdHex,
+                chainName: 'Sepolia Test Network',
+                nativeCurrency: {
+                  name: 'Sepolia ETH',
+                  symbol: 'ETH',
+                  decimals: 18,
+                },
+                rpcUrls: ['https://rpc.sepolia.org'],
+                blockExplorerUrls: ['https://sepolia.etherscan.io'],
+              },
+            ],
+          });
+
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: chainIdHex }],
+          });
+          return;
+        } catch (addError) {
+          console.error('Erro ao adicionar a rede Sepolia:', addError);
+          throw addError;
+        }
+      }
+
+      console.error('Erro ao mudar de rede:', err);
+      throw err;
+    }
+  };
+
+  const handleDeposit = async () => {
+    if (!account) {
+      setError('Conecte sua carteira primeiro!');
+      return;
+    }
+
+    if (!amount || parseFloat(amount) <= 0) {
+      setError('Digite um valor válido maior que 0');
+      return;
+    }
+
+    if (!currentNetwork) {
+      setError('Selecione uma rede válida');
+      return;
+    }
+
+    // Check if wallet is on the correct network
+    const currentWalletChainId = walletChainId ?? activeChain?.id;
+
+    if (typeof currentWalletChainId === 'number' && currentWalletChainId !== chainId) {
+      const expectedNetwork = currentNetwork?.name || `Chain ID: ${chainId}`;
+      const currentWalletNetwork = activeChain?.name || `Chain ID: ${currentWalletChainId}`;
+
+      setError(`⚠️ Sua carteira está em ${currentWalletNetwork}, mas você selecionou ${expectedNetwork}.\n\nPor favor, troque sua carteira para ${expectedNetwork} no MetaMask.`);
+      return;
+    }
+
+    // Validate Smart Account address
+    if (!smartAccountAddress || smartAccountAddress.length !== 42 || !smartAccountAddress.startsWith('0x')) {
+      setError('Endereço da Smart Account inválido');
+      return;
+    }
+
+    setIsDepositing(true);
+    setError(null);
+    setTxHash(null);
+
+    try {
+      // IMPORTANT: Always deposit to the SMART ACCOUNT, not the session key!
+      // The smart account is a contract that holds the funds
+      // The session key only signs transactions on behalf of the smart account
+      const depositAddress = smartAccountAddress;
+
+      console.log('💰 Depositando na Smart Account (Account Abstraction)...');
+      console.log('De (sua carteira):', account.address);
+      console.log('Para (Smart Account - contrato):', depositAddress);
+      console.log('Assinante autorizado (Session Key):', sessionKeyAddress);
+      console.log('Valor:', amount, nativeToken.symbol);
+      console.log('Rede:', currentNetwork.name);
+      console.log('Chain ID:', chainId);
+
+      // Native token transfer
+      console.log('🔄 Fazendo transferência de token nativo...', { chainId });
+
+      const transaction = prepareTransaction({
+        to: depositAddress as Address,
+        value: toWei(amount),
+        chain: defineChain(chainId),
+        client,
+      });
+
+      const result = await sendTransaction({
+        transaction,
+        account,
+      });
+
+      console.log('✅ Depósito de token nativo realizado!');
+      console.log('Transaction Hash:', result.transactionHash);
+      setTxHash(result.transactionHash);
+
+      // Scroll to success message
+      setTimeout(() => {
+        const successElement = document.querySelector('.bg-green-500\\/10');
+        if (successElement) {
+          successElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+
+      // After successful deposit to smart account, show session key funding step
+      setTimeout(() => {
+        setShowSessionKeyStep(true);
+      }, 2000);
+    } catch (err: any) {
+      console.error('❌ Erro ao depositar:', err);
+      
+      // Parse error message for better user experience
+      let errorMessage = 'Erro ao fazer depósito. Tente novamente.';
+      
+      if (err.message) {
+        if (err.message.includes('insufficient funds') || err.message.includes('transfer amount exceeds balance')) {
+          errorMessage = `❌ Saldo insuficiente na ${currentNetwork?.name}!\n\nVocê não tem ${amount} ${nativeToken.symbol} disponível na sua carteira.\n\nPor favor:\n• Adicione fundos à sua carteira\n• Ou tente um valor menor`;
+        } else if (err.message.includes('user rejected')) {
+          errorMessage = 'Transação cancelada pelo usuário.';
+        } else if (err.message.includes('gas')) {
+          errorMessage = 'Erro de gas. Tente aumentar o limite de gas ou verifique sua conexão.';
+        } else if (err.message.includes('network')) {
+          errorMessage = 'Erro de rede. Verifique sua conexão e tente novamente.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setIsDepositing(false);
+    }
+  };
+
+  // Calculate estimated gas needed for session key based on planned trades
+  const calculateSessionKeyGas = useMemo(() => {
+    // Estimated gas per DCA trade on Ethereum mainnet
+    // Based on Account Abstraction UserOp: ~0.0002 ETH per trade
+    const gasPerTrade = 0.0002;
+
+    // Add 20% buffer for safety
+    const buffer = 1.2;
+
+    const totalGas = plannedTrades * gasPerTrade * buffer;
+
+    return {
+      gasPerTrade,
+      totalGas: totalGas.toFixed(6),
+      breakdown: `${plannedTrades} trades × ${gasPerTrade} ETH + 20% buffer`
+    };
+  }, [plannedTrades]);
+
+  // Deposit ETH from Smart Account to Session Key
+  const handleDepositToSessionKey = async () => {
+    if (!account || !sessionKeyAddress) {
+      setError('Endereço da session key não encontrado');
+      return;
+    }
+
+    // Validate session key address
+    if (!sessionKeyAddress || sessionKeyAddress.length !== 42 || !sessionKeyAddress.startsWith('0x')) {
+      setError('Endereço da session key inválido');
+      return;
+    }
+
+    setIsDepositingToSessionKey(true);
+    setError(null);
+    setSessionKeyTxHash(null);
+
+    try {
+      const depositAmount = calculateSessionKeyGas.totalGas;
+
+      console.log('💰 Depositando na Session Key...');
+      console.log('De (Smart Account):', smartAccountAddress);
+      console.log('Para (Session Key):', sessionKeyAddress);
+      console.log('Valor:', depositAmount, 'ETH');
+      console.log('Planned trades:', plannedTrades);
+
+      // Transfer ETH from current wallet to session key
+      // Note: This transfers from the user's wallet, not the smart account
+      // In a production environment, you might want to implement a way to transfer from smart account
+      const transaction = prepareTransaction({
+        to: sessionKeyAddress as Address,
+        value: toWei(depositAmount),
+        chain: defineChain(chainId),
+        client,
+      });
+
+      const result = await sendTransaction({
+        transaction,
+        account,
+      });
+
+      console.log('✅ Depósito na Session Key realizado!');
+      console.log('Transaction Hash:', result.transactionHash);
+      setSessionKeyTxHash(result.transactionHash);
+
+      // Close modal after 5 seconds
+      setTimeout(() => {
+        setAmount('0.01');
+        setShowSessionKeyStep(false);
+        onClose();
+      }, 5000);
+    } catch (err: any) {
+      console.error('❌ Erro ao depositar na session key:', err);
+
+      let errorMessage = 'Erro ao depositar na session key. Tente novamente.';
+
+      if (err.message) {
+        if (err.message.includes('insufficient funds')) {
+          errorMessage = `❌ Saldo insuficiente!\n\nVocê não tem ${calculateSessionKeyGas.totalGas} ETH disponível.\n\nPor favor, adicione fundos à sua carteira.`;
+        } else if (err.message.includes('user rejected')) {
+          errorMessage = 'Transação cancelada pelo usuário.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+
+      setError(errorMessage);
+    } finally {
+      setIsDepositingToSessionKey(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+        <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-pano-border/60 bg-pano-surface shadow-2xl shadow-black/40">
+          <div className="flex items-start justify-between border-b border-pano-border/40 px-6 py-4">
+            <div>
+              <h2 className="text-lg font-semibold text-pano-text-primary">Depositar fundos</h2>
+              <p className="text-xs text-pano-text-muted">
+                Adicione saldo à smart wallet derivada selecionada.
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated p-2 text-pano-text-muted transition-colors hover:text-pano-text-primary"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="space-y-5 px-6 py-5">
+            {/* Session Key Funding Step */}
+            {showSessionKeyStep && sessionKeyAddress ? (
+              <>
+                <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-4 py-3 text-sm">
+                  <h3 className="font-semibold text-cyan-400 mb-2 flex items-center gap-2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Fund Your Session Key
+                  </h3>
+                  <p className="text-xs text-pano-text-muted mb-3">
+                    Para executar DCA trades automaticamente, a session key precisa de ETH para pagar gas.
+                    Vamos calcular quanto você precisa baseado no número de trades planejados.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
+                  <div>
+                    <label className="text-sm font-medium text-pano-text-primary">Quantos trades DCA você planeja executar?</label>
+                    <div className="mt-2 flex gap-2 items-center">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={plannedTrades}
+                        onChange={(e) => setPlannedTrades(parseInt(e.target.value) || 1)}
+                        className="flex-1 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40"
+                        placeholder="5"
+                        disabled={isDepositingToSessionKey}
+                      />
+                      <div className="text-sm text-pano-text-muted">trades</div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {[5, 10, 20, 50].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setPlannedTrades(preset)}
+                        disabled={isDepositingToSessionKey}
+                        className="rounded-md border border-pano-border-subtle px-3 py-1.5 text-xs text-pano-text-secondary transition-colors hover:border-pano-primary/60 hover:text-pano-text-primary disabled:opacity-50"
+                      >
+                        {preset} trades
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/5 px-4 py-4 space-y-3">
+                  <h4 className="text-sm font-semibold text-pano-text-primary">Cálculo de Gas Estimado</h4>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
+                      <span className="text-pano-text-muted">Gas por trade</span>
+                      <span className="font-semibold text-pano-text-primary">
+                        {calculateSessionKeyGas.gasPerTrade} ETH
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
+                      <span className="text-pano-text-muted">Número de trades</span>
+                      <span className="font-semibold text-pano-text-primary">
+                        {plannedTrades}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
+                      <span className="text-pano-text-muted">Buffer de segurança</span>
+                      <span className="font-semibold text-pano-text-primary">
+                        +20%
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 px-3 rounded bg-cyan-500/20 border border-cyan-500/30">
+                      <span className="text-cyan-400 font-semibold">Total necessário</span>
+                      <span className="font-bold text-cyan-400 text-base">
+                        {calculateSessionKeyGas.totalGas} ETH
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-pano-text-muted">
+                    {calculateSessionKeyGas.breakdown}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-3 text-xs space-y-2">
+                  <p className="font-medium text-pano-text-primary">Por que a session key precisa de fundos?</p>
+                  <ul className="space-y-1 text-pano-text-muted list-disc list-inside">
+                    <li>A session key assina transações automaticamente sem popup</li>
+                    <li>Ela paga o gas das transações com seu próprio saldo</li>
+                    <li>Os fundos dos trades ficam na Smart Account (seguros)</li>
+                    <li>Você pode recuperar ETH não usado depois</li>
+                  </ul>
+                </div>
+
+                {sessionKeyTxHash && (
+                  <div className="rounded-lg border border-pano-success/40 bg-pano-success/10 px-4 py-4 text-sm text-pano-success space-y-2">
+                    <div className="flex items-center gap-2 font-medium">
+                      <span className="text-lg">✅</span>
+                      Session key funded successfully!
+                    </div>
+                    <a
+                      className="block truncate text-xs font-mono text-pano-text-primary hover:text-pano-primary"
+                      href={getExplorerUrl(chainId, sessionKeyTxHash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {sessionKeyTxHash}
+                    </a>
+                    <p className="text-[11px] text-pano-text-muted">
+                      Agora você pode executar até {plannedTrades} trades DCA automaticamente!
+                    </p>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="rounded-lg border border-pano-error/40 bg-pano-error/10 px-4 py-3 text-sm text-pano-error">
+                    {error}
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-3 md:flex-row">
+                  <Button
+                    variant="ghost"
+                    size="md"
+                    fullWidth
+                    onClick={() => {
+                      setShowSessionKeyStep(false);
+                      onClose();
+                    }}
+                    disabled={isDepositingToSessionKey}
+                  >
+                    Pular (fazer depois)
+                  </Button>
+
+                  <Button
+                    variant="primary"
+                    size="md"
+                    fullWidth
+                    onClick={handleDepositToSessionKey}
+                    disabled={isDepositingToSessionKey || !sessionKeyAddress || plannedTrades < 1}
+                    loading={isDepositingToSessionKey}
+                  >
+                    Depositar {calculateSessionKeyGas.totalGas} ETH
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+            {activeChain && activeChain.id !== chainId && (
+              <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-3 py-2 text-[11px] text-pano-warning">
+                Sua carteira está em {activeChain.name || 'outra rede'}. Altere para {currentNetwork?.name || `Chain ID ${chainId}`} antes de continuar.
+              </div>
+            )}
+
+            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-pano-text-primary">Smart Account (Account Abstraction)</p>
+                  <p className="text-xs text-pano-text-muted">
+                    Fundos são guardados no contrato da smart account, não na session key.
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const explorerUrls: Record<number, string> = {
+                      1: 'https://etherscan.io/address/',
+                      8453: 'https://basescan.org/address/',
+                      42161: 'https://arbiscan.io/address/',
+                      10: 'https://optimistic.etherscan.io/address/',
+                      137: 'https://polygonscan.com/address/',
+                      43114: 'https://snowtrace.io/address/',
+                      11155111: 'https://sepolia.etherscan.io/address/',
+                    };
+                    const explorerUrl = (explorerUrls[chainId] || 'https://etherscan.io/address/') + smartAccountAddress;
+                    window.open(explorerUrl, '_blank');
+                  }}
+                  className="text-xs text-pano-text-accent hover:text-pano-primary"
+                >
+                  Ver explorer
+                </Button>
+              </div>
+
+              <div className="grid gap-2 text-xs text-pano-text-muted">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Nome</span>
+                  <span className="font-mono text-pano-text-primary">{smartAccountName}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Smart Account (contrato)</span>
+                  <span className="font-mono text-pano-text-primary">
+                    {smartAccountAddress
+                      ? `${smartAccountAddress.slice(0, 6)}...${smartAccountAddress.slice(-4)}`
+                      : 'Carregando...'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Session Key (assinante)</span>
+                  <span className="font-mono text-pano-text-primary">
+                    {sessionKeyAddress
+                      ? `${sessionKeyAddress.slice(0, 6)}...${sessionKeyAddress.slice(-4)}`
+                      : 'Carregando...'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Rede selecionada</span>
+                  <span className="font-medium text-pano-text-primary">
+                    {currentNetwork?.name || `Chain ID: ${chainId}`}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-pano-text-secondary">Rede</label>
+                <select
+                  value={chainId}
+                  onChange={(e) => setChainId(Number(e.target.value))}
+                  disabled={isDepositing}
+                  className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40 disabled:opacity-50"
+                >
+                  {networks.map((network) => (
+                    <option key={network.chainId} value={network.chainId}>
+                      {network.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-pano-text-secondary">Token</label>
+                <div className="w-full flex items-center gap-2 px-4 py-3 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated">
+                  <div className="flex items-center gap-2">
+                    {nativeToken.icon && (
+                      <img
+                        src={nativeToken.icon}
+                        alt={nativeToken.symbol}
+                        className="w-6 h-6 rounded-full"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
+                        }}
+                      />
+                    )}
+                    <div className="text-left">
+                      <div className="text-sm font-medium text-pano-text-primary">{nativeToken.symbol}</div>
+                      <div className="text-xs text-pano-text-muted">{nativeToken.name}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
+              <div>
+                <label className="text-sm font-medium text-pano-text-primary">Valor para depositar</label>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    type="number"
+                    step="0.001"
+                    min="0.000001"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="flex-1 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40 disabled:opacity-50"
+                    placeholder="0.01"
+                    disabled={isDepositing}
+                  />
+                  <div className="flex items-center rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 text-sm font-medium text-pano-text-muted">
+                    {nativeToken.symbol}
+                  </div>
+                </div>
+                <p className="mt-1 text-[11px] text-pano-text-muted">
+                  Esse valor será transferido diretamente da sua carteira para a smart wallet.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {["0.001", "0.005", "0.01"].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setAmount(preset)}
+                    disabled={isDepositing}
+                    className="rounded-md border border-pano-border-subtle px-3 py-1.5 text-xs text-pano-text-secondary transition-colors hover:border-pano-primary/60 hover:text-pano-text-primary disabled:opacity-50"
+                  >
+                    {preset} {nativeToken.symbol}
+                  </button>
+                ))}
+              </div>
+
+              <div className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-xs text-pano-text-secondary">
+                <div className="flex items-center justify-between gap-2">
+                  <span>Saldo disponível</span>
+                  <div className="flex items-center gap-2 text-pano-text-primary">
+                    {isCheckingBalance ? (
+                      <span className="flex items-center gap-2">
+                        <span className="h-3 w-3 animate-spin rounded-full border border-pano-primary border-t-transparent" />
+                        Verificando...
+                      </span>
+                    ) : (
+                      <>
+                        <span className="font-medium">
+                          {walletBalance} {nativeToken.symbol}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={checkWalletBalance}
+                          className="text-pano-text-muted hover:text-pano-primary transition-colors"
+                          disabled={isCheckingBalance}
+                          title="Atualizar saldo"
+                        >
+                          ↻
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-1 text-[11px] text-pano-text-muted">
+                  Reserve uma fração de {nativeToken.symbol} para pagar o gas desta e de futuras transações.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-4 py-3 text-[11px] text-pano-warning">
+              Para evitar erros de gas, deixe pelo menos 0.001 {nativeToken.symbol} disponível após o depósito.
+            </div>
+
+            {txHash && (
+              <div className="rounded-lg border border-pano-success/40 bg-pano-success/10 px-4 py-4 text-sm text-pano-success space-y-2">
+                <div className="flex items-center gap-2 font-medium">
+                  <span className="text-lg">✅</span>
+                  Depósito confirmado! A smart account já possui saldo.
+                </div>
+                <a
+                  className="block truncate text-xs font-mono text-pano-text-primary hover:text-pano-primary"
+                  href={getExplorerUrl(chainId, txHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {txHash}
+                </a>
+                <p className="text-[11px] text-pano-text-muted">
+                  Este modal será fechado automaticamente em instantes.
+                </p>
+              </div>
+            )}
+
+            {error && (
+              <div className="rounded-lg border border-pano-error/40 bg-pano-error/10 px-4 py-3 text-sm text-pano-error space-y-2">
+                <span>{error}</span>
+                {error.includes('Rede não suportada') && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      if (window.ethereum) {
+                        window.ethereum.request({
+                          method: 'wallet_switchEthereumChain',
+                          params: [{ chainId: '0x1' }],
+                        });
+                      }
+                    }}
+                    className="w-fit text-xs"
+                  >
+                    Ajustar para Ethereum Mainnet
+                  </Button>
+                )}
+              </div>
+            )}
+
+            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-3 text-[11px] text-pano-text-muted">
+              Após o depósito, a smart wallet pode ser utilizada em fluxos automáticos sem exigir novas assinaturas.
+            </div>
+
+            <div className="flex flex-col gap-3 md:flex-row">
+              <Button
+                variant="ghost"
+                size="md"
+                fullWidth
+                onClick={onClose}
+                disabled={isDepositing}
+              >
+                Cancelar
+              </Button>
+
+              <Button
+                variant="primary"
+                size="md"
+                fullWidth
+                onClick={handleDeposit}
+                disabled={isDepositing || !account || !amount || parseFloat(amount) <= 0 || isWrongNetwork}
+                loading={isDepositing}
+              >
+                {isWrongNetwork
+                  ? `Troque para ${currentNetwork?.name || 'rede correta'}`
+                  : `Depositar ${amount} ${nativeToken.symbol}`}
+              </Button>
+            </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

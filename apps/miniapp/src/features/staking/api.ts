@@ -121,14 +121,22 @@ class StakingApiClient {
     }
 
     try {
+      // Add timeout to fetch request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
       const response = await fetch(`${this.baseUrl}/api/lido/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userAddress: this.account.address })
+        body: JSON.stringify({ userAddress: this.account.address }),
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
 
       const authData: AuthResponse = await response.json();
@@ -145,10 +153,18 @@ class StakingApiClient {
       }
     } catch (error) {
       console.error('Authentication error:', error);
+      
+      // Handle specific error types
       if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error(`Authentication timeout: Staking service at ${this.baseUrl} is not responding. Please check if the service is running.`);
+        }
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          throw new Error(`Cannot connect to staking service at ${this.baseUrl}. Please check if the service is running and accessible.`);
+        }
         throw new Error(`Failed to authenticate with staking service: ${error.message}`);
       }
-      throw new Error('Failed to authenticate with staking service');
+      throw new Error('Failed to authenticate with staking service: Unknown error');
     }
   }
 
@@ -425,8 +441,14 @@ class StakingApiClient {
       // Ensure we're authenticated first
       if (!this.accessToken) {
         console.log('🔐 No access token found, authenticating...');
-        await this.authenticate();
-        console.log('✅ Authentication successful, token:', this.accessToken?.substring(0, 20) + '...');
+        try {
+          await this.authenticate();
+          console.log('✅ Authentication successful, token:', this.accessToken?.substring(0, 20) + '...');
+        } catch (authError) {
+          console.error('❌ Authentication failed, cannot fetch position:', authError);
+          // Return null if authentication fails (server might be down)
+          return null;
+        }
       } else {
         console.log('🔑 Using existing token:', this.accessToken.substring(0, 20) + '...');
       }
@@ -435,20 +457,28 @@ class StakingApiClient {
       const message = `Get staking position\nTimestamp: ${Date.now()}`;
       const authData = await this.getAuthData(message);
       
+      // Add timeout to fetch request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
       const response = await fetch(`${this.baseUrl}/api/lido/position/${this.account.address}`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.accessToken}`
         },
-        body: JSON.stringify({ authData })
+        body: JSON.stringify({ authData }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       const result = await response.json();
 
       return result.success ? result.data : null;
     } catch (error) {
       console.error('Error fetching user position:', error);
+      // Return null instead of throwing - allows UI to continue working
       return null;
     }
   }
@@ -499,6 +529,10 @@ class StakingApiClient {
         }
       });
 
+      // Add timeout to fetch request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for stake
+
       const response = await fetch(`${this.baseUrl}/api/lido/stake`, {
         method: 'POST',
         headers: { 
@@ -509,8 +543,11 @@ class StakingApiClient {
           userAddress: this.account.address,
           amount: amount,
           authData
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       console.log('📥 Stake response status:', response.status);
 
@@ -553,9 +590,16 @@ class StakingApiClient {
     } catch (error) {
       console.error('Error staking:', error);
       if (error instanceof Error) {
+        // Handle specific error types
+        if (error.name === 'AbortError') {
+          throw new Error(`Staking request timeout: The staking service at ${this.baseUrl} is not responding. Please try again later.`);
+        }
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          throw new Error(`Cannot connect to staking service at ${this.baseUrl}. Please check if the service is running.`);
+        }
         throw error;
       }
-      throw new Error('Failed to stake tokens');
+      throw new Error('Failed to stake tokens: Unknown error');
     }
   }
 
@@ -584,6 +628,10 @@ class StakingApiClient {
       const message = `Unstake ${amount} stETH\nTimestamp: ${Date.now()}`;
       const authData = await this.getAuthData(message);
       
+      // Add timeout to fetch request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for unstake
+      
       const response = await fetch(`${this.baseUrl}/api/lido/unstake`, {
         method: 'POST',
         headers: { 
@@ -594,8 +642,11 @@ class StakingApiClient {
           userAddress: this.account.address,
           amount: amount,
           authData
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       const result = await response.json();
 
@@ -635,16 +686,27 @@ class StakingApiClient {
     } catch (error) {
       console.error('Error unstaking:', error);
       if (error instanceof Error) {
+        // Handle specific error types
+        if (error.name === 'AbortError') {
+          throw new Error(`Unstaking request timeout: The staking service at ${this.baseUrl} is not responding. Please try again later.`);
+        }
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          throw new Error(`Cannot connect to staking service at ${this.baseUrl}. Please check if the service is running.`);
+        }
         throw error;
       }
-      throw new Error('Failed to unstake tokens');
+      throw new Error('Failed to unstake tokens: Unknown error');
     }
   }
 
   async executeTransaction(txData: any): Promise<string> {
     try {
       if (!this.account) {
-        throw new Error('Account not connected');
+        throw new Error('Account not connected. Please connect your wallet first.');
+      }
+
+      if (!this.account.sendTransaction) {
+        throw new Error('Account does not support sendTransaction. Please ensure your wallet is properly connected.');
       }
 
       console.log('Raw transaction data received:', txData);
@@ -677,34 +739,68 @@ class StakingApiClient {
         throw new Error(`Invalid data: ${data}`);
       }
 
-      // Get current gas price from the network
-      let gasPrice;
-      try {
-        // Use a free gas price API
-        const gasPriceResponse = await fetch('https://api.etherscan.io/api?module=gastracker&action=gasoracle');
-        const gasPriceData = await gasPriceResponse.json();
-        if (gasPriceData.status === '1' && gasPriceData.result) {
-          // Use standard gas price (gwei to wei)
-          const standardGasPrice = parseInt(gasPriceData.result.Standard) * 1e9; // Convert gwei to wei
-          gasPrice = `0x${standardGasPrice.toString(16)}`;
-          console.log('Using gas price from Etherscan:', gasPriceData.result.Standard, 'gwei');
-        }
-      } catch (_error) {
-        console.log('Could not fetch gas price, using fallback');
-        // Fallback to a reasonable gas price (20 gwei)
-        const fallbackGasPrice = 20 * 1e9; // 20 gwei in wei
-        gasPrice = `0x${fallbackGasPrice.toString(16)}`;
-        console.log('Using fallback gas price: 20 gwei');
-      }
+      // Let thirdweb calculate gas price automatically (same as lending)
+      // This allows the wallet/provider to use the most efficient gas price
+      // and results in lower network fees
 
       // Format transaction data for thirdweb/MetaMask
-      const formattedTxData = {
+      // Convert value to hex properly handling BigInt
+      let valueHex = '0x0';
+      if (value) {
+        try {
+          // Handle both string and number inputs, and both decimal and hex strings
+          const valueStr = typeof value === 'string' ? value : value.toString();
+          // If already hex, use it; otherwise convert from decimal
+          if (valueStr.startsWith('0x')) {
+            valueHex = valueStr;
+          } else {
+            // Convert decimal string to BigInt then to hex
+            const bigIntValue = BigInt(valueStr);
+            valueHex = `0x${bigIntValue.toString(16)}`;
+          }
+        } catch (error) {
+          console.error('Error converting value to hex:', error);
+          throw new Error(`Invalid value format: ${value}`);
+        }
+      }
+
+      // Convert gas to hex properly (only if provided by backend)
+      // Use 'gas' instead of 'gasLimit' for thirdweb compatibility (same as lending)
+      // If not provided, let thirdweb estimate automatically for accurate fees
+      let gasHex: string | undefined;
+      if (gas) {
+        try {
+          const gasStr = typeof gas === 'string' ? gas : gas.toString();
+          if (gasStr.startsWith('0x')) {
+            gasHex = gasStr;
+          } else {
+            // Use BigInt for gas to handle large values
+            const bigIntGas = BigInt(gasStr);
+            gasHex = `0x${bigIntGas.toString(16)}`;
+          }
+          console.log('Using gas from backend:', gasHex);
+        } catch (error) {
+          console.error('Error converting gas to hex:', error);
+          // If conversion fails, let thirdweb estimate
+        }
+      } else {
+        console.log('No gas provided, letting thirdweb estimate automatically');
+      }
+
+      const formattedTxData: any = {
         to: toAddress,
-        value: value ? `0x${BigInt(value).toString(16)}` : '0x0', // Convert to hex using BigInt
-        data: data,
-        gasLimit: gas ? `0x${parseInt(gas).toString(16)}` : '0x5208', // Use gasLimit instead of gas
-        ...(gasPrice && { gasPrice }) // Only add gasPrice if we have it
+        value: valueHex,
+        data: data
       };
+
+      // Only set gas if we have it from backend (same format as lending)
+      // Otherwise let thirdweb estimate automatically for accurate fees
+      if (gasHex) {
+        formattedTxData.gas = gasHex;
+      }
+
+      // Don't set gasPrice - let thirdweb calculate it automatically (same as lending)
+      // This results in optimal fees as the wallet/provider can optimize based on current network conditions
 
       console.log('Formatted transaction data for thirdweb:', formattedTxData);
 

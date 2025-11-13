@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import pblokNav from '../../../public/logos/pblok_nav.svg';
@@ -15,7 +15,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
 
   const navigate = (path: string) => {
-    router.push(path);
+    router.push(path)
     onClose();
   };
 
@@ -38,6 +38,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       ),
       path: '/swap',
     },
+    {
+      name: 'DCA',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+      path: '/dca',
+    },
   ];
 
   return (
@@ -45,19 +54,19 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
           onClick={onClose}
         />
       )}
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 h-full w-64 bg-[#0d1117] border-r border-cyan-500/20 z-50 transform transition-transform duration-300 ${
+        className={`fixed top-0 left-0 z-50 h-full w-64 transform border-r border-pano-border bg-pano-surface shadow-2xl shadow-black/40 transition-transform duration-300 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         } md:translate-x-0`}
       >
         {/* Header */}
-        <div className="p-4 border-b border-cyan-500/20 flex items-center justify-between">
+        <div className="flex items-center justify-between border-b border-pano-border-subtle px-4 py-4">
           <Image
             src={pblokNav}
             alt="Panorama Block"
@@ -67,7 +76,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           />
           <button
             onClick={onClose}
-            className="md:hidden text-gray-400 hover:text-white"
+            className="md:hidden rounded-lg border border-pano-border-subtle bg-pano-surface-elevated p-2 text-pano-text-muted hover:text-pano-text-primary transition-colors"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -76,25 +85,37 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </div>
 
         {/* Menu Items */}
-        <nav className="p-4 space-y-2">
+        <nav className="flex flex-col gap-2 px-4 py-6">
           {menuItems.map((item) => (
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+              className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium transition-all ${
                 pathname === item.path
-                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                  ? 'border-pano-primary/60 bg-pano-primary/15 text-pano-text-primary shadow-lg'
+                  : 'border-transparent text-pano-text-secondary hover:border-pano-border/60 hover:bg-pano-surface-elevated hover:text-pano-text-primary'
               }`}
             >
-              {item.icon}
-              <span className="font-medium">{item.name}</span>
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-pano-border-subtle bg-pano-surface-elevated/80">
+                {item.icon}
+              </span>
+              <span>{item.name}</span>
             </button>
           ))}
         </nav>
 
-        {/* Disconnect Button at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-cyan-500/20">
+        {/* Bottom actions */}
+        <div className="absolute bottom-0 left-0 right-0 border-t border-pano-border-subtle px-4 py-4 space-y-3">
+          <button
+            onClick={() => navigate('/account')}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-pano-border-subtle bg-pano-surface text-pano-text-accent transition-all hover:border-pano-primary/60 hover:bg-pano-primary/10"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9 9 0 0112 15a9 9 0 016.879 2.804M15 11a3 3 0 10-6 0 3 3 0 006 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804l-.002.002A6.978 6.978 0 003 22h18a6.978 6.978 0 00-2.119-4.194l-.002-.002" />
+            </svg>
+          </button>
+
           <button
             onClick={async () => {
               try {
@@ -118,12 +139,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 window.location.href = '/miniapp';
               }
             }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 transition-all border border-red-500/20 hover:border-red-500/50"
+            className="flex w-full items-center gap-3 rounded-xl border border-pano-error/40 bg-pano-error/10 px-4 py-3 text-sm font-medium text-pano-error transition-all hover:border-pano-error/60 hover:bg-pano-error/15"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
-            <span className="font-medium">Disconnect</span>
+            <span>Disconnect</span>
           </button>
         </div>
       </aside>
