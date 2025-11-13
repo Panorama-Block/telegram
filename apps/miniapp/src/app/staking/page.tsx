@@ -242,18 +242,6 @@ export default function StakingPage() {
     setError(null);
 
     try {
-      // Check stETH balance before unstake
-      if (action === 'unstake') {
-        const stETHAddress = '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84';
-        const stETHBalance = await getTokenBalance(account, stETHAddress);
-        console.log('💰 Current stETH balance:', stETHBalance);
-        console.log('💰 Requested unstake amount:', amount);
-        
-        if (parseFloat(stETHBalance) < parseFloat(amount)) {
-          throw new Error(`Insufficient stETH balance. You have ${stETHBalance} stETH but trying to unstake ${amount} stETH`);
-        }
-      }
-      
       let transaction;
       
       // Execute transaction based on action
