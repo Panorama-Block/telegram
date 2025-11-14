@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { AuthProvider } from '@/shared/contexts/AuthContext';
 import { AuthGuard } from '@/shared/ui/AuthGuard';
 
@@ -92,24 +92,30 @@ export function ClientProviders({ children }: ClientProvidersProps) {
         }
 
         const manifestUrl = `${window.location.origin}/miniapp/api/tonconnect-manifest`;
-        // const thirdwebClientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+        const thirdwebClientId = process.env.VITE_THIRDWEB_CLIENT_ID || '841b9035bb273fee8d50a503f5b09fd0';
 
         // Create providers component
         const ProvidersComponent = ({ children }: { children: React.ReactNode }) => {
           const [PWAInstallPrompt, setPWAInstallPrompt] = useState<any>(null);
           const [PWAUpdateNotification, setPWAUpdateNotification] = useState<any>(null);
           const [OfflineIndicator, setOfflineIndicator] = useState<any>(null);
+          const [AutoConnectHandler, setAutoConnectHandler] = useState<any>(null);
+          const [WalletSessionGuard, setWalletSessionGuard] = useState<any>(null);
 
           useEffect(() => {
-            // Dynamic import PWA components to avoid SSR issues
+            // Dynamic import PWA and wallet components to avoid SSR issues
             Promise.all([
               import('@/components/pwa/PWAInstallPrompt'),
               import('@/components/pwa/PWAUpdateNotification'),
-              import('@/components/pwa/OfflineIndicator')
-            ]).then(([installPrompt, updateNotification, offlineIndicator]) => {
+              import('@/components/pwa/OfflineIndicator'),
+              import('@/components/wallet/AutoConnectHandler'),
+              import('@/components/wallet/WalletSessionGuard')
+            ]).then(([installPrompt, updateNotification, offlineIndicator, autoConnect, sessionGuard]) => {
               setPWAInstallPrompt(() => installPrompt.PWAInstallPrompt);
               setPWAUpdateNotification(() => updateNotification.PWAUpdateNotification);
               setOfflineIndicator(() => offlineIndicator.OfflineIndicator);
+              setAutoConnectHandler(() => autoConnect.AutoConnectHandler);
+              setWalletSessionGuard(() => sessionGuard.WalletSessionGuard);
             }).catch(console.error);
           }, []);
 
@@ -117,6 +123,8 @@ export function ClientProviders({ children }: ClientProvidersProps) {
             <AuthProvider>
               <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
                 <thirdwebReact.ThirdwebProvider>
+                  {AutoConnectHandler && <AutoConnectHandler />}
+                  {WalletSessionGuard && <WalletSessionGuard />}
                   <AuthGuard>
                     {children}
                     {/* PWA Components */}

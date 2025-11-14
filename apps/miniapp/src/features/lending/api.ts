@@ -151,10 +151,12 @@ class LendingApiClient {
       }
       
       const data = await response.json();
-      
+
       let tokensArray;
       if (Array.isArray(data)) {
         tokensArray = data;
+      } else if (data.data && data.data.tokens && Array.isArray(data.data.tokens)) {
+        tokensArray = data.data.tokens;
       } else if (data.data && Array.isArray(data.data)) {
         tokensArray = data.data;
       } else if (data.tokens && Array.isArray(data.tokens)) {
