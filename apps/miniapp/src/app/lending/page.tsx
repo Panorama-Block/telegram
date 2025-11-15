@@ -49,12 +49,10 @@ function formatAPY(apy: number): string {
 async function getTokenBalance(account: any, tokenAddress: string): Promise<string> {
   try {
     if (!account) return '0';
-    
-    console.log(`Fetching balance for token ${tokenAddress} for address ${account.address}`);
-    
+
     // Use RPC call to get ERC20 balance
     const rpcUrl = "https://api.avax.network/ext/bc/C/rpc";
-    
+
     const response = await fetch(rpcUrl, {
       method: 'POST',
       headers: {
@@ -73,19 +71,17 @@ async function getTokenBalance(account: any, tokenAddress: string): Promise<stri
         id: 1
       })
     });
-    
+
     const data = await response.json();
-    
+
     if (data.result) {
       const balance = parseInt(data.result, 16).toString();
-      console.log(`Balance for ${tokenAddress}:`, balance);
       return balance;
     } else {
       throw new Error('Failed to fetch balance');
     }
   } catch (error) {
-    console.error('Error fetching token balance:', error);
-    // Return mock balance for testing if contract call fails
+    console.error('[LENDING] Error fetching token balance:', error);
     return '1000000000000000000'; // 1 token in wei
   }
 }
@@ -109,6 +105,23 @@ export default function LendingPage() {
   const userAddress = localStorage.getItem('userAddress');
   const effectiveAddress = account?.address || addressFromToken || userAddress;
 
+  // Filter out invalid tokens (zero address, duplicates)
+  const validTokens = useMemo(() => {
+    const zeroAddress = '0x0000000000000000000000000000000000000000';
+    const seen = new Set<string>();
+
+    return tokens.filter(token => {
+      // Skip zero address
+      if (token.address === zeroAddress) return false;
+
+      // Skip duplicates
+      if (seen.has(token.address)) return false;
+
+      seen.add(token.address);
+      return true;
+    });
+  }, [tokens]);
+
   const [exploreDropdownOpen, setExploreDropdownOpen] = useState(false);
   const [selectedToken, setSelectedToken] = useState<LendingToken | null>(null);
   const [action, setAction] = useState<LendingActionType>('supply');
@@ -121,20 +134,20 @@ export default function LendingPage() {
 
   // Update selected token when tokens change
   useEffect(() => {
-    if (tokens.length > 0 && !selectedToken) {
-      setSelectedToken(tokens[0]);
+    if (validTokens.length > 0 && !selectedToken) {
+      setSelectedToken(validTokens[0]);
     }
-  }, [tokens, selectedToken]);
+  }, [validTokens, selectedToken]);
 
   // Fetch token balances when account or tokens change
   useEffect(() => {
     const fetchTokenBalances = async () => {
       // Only fetch balances if we have an account object (MetaMask connected)
       // For JWT-only users, we'll show 0 balances or fetch differently
-      if (!account || tokens.length === 0) {
+      if (!account || validTokens.length === 0) {
         // Set default balances to 0 for JWT users
         const defaultBalances: Record<string, string> = {};
-        tokens.forEach(token => {
+        validTokens.forEach(token => {
           defaultBalances[token.address] = '0';
         });
         setTokenBalances(defaultBalances);
@@ -144,7 +157,7 @@ export default function LendingPage() {
       setLoadingBalances(true);
       const balances: Record<string, string> = {};
 
-      for (const token of tokens) {
+      for (const token of validTokens) {
         try {
           const balance = await getTokenBalance(account, token.address);
           balances[token.address] = balance;
@@ -159,7 +172,7 @@ export default function LendingPage() {
     };
 
     fetchTokenBalances();
-  }, [account, tokens]);
+  }, [account, validTokens]);
 
   const handleAction = async () => {
     // Capture current action state to avoid race conditions
@@ -167,35 +180,23 @@ export default function LendingPage() {
     const currentToken = selectedToken;
     const currentAmount = amount;
 
-    console.log('🎯 [LENDING] handleAction called:', {
-      action: currentAction,
-      token: currentToken?.symbol,
-      amount: currentAmount,
-      hasAccount: !!account,
-      accountAddress: account?.address
-    });
-
     // Validações
     if (!currentAmount || parseFloat(currentAmount) <= 0) {
-      console.error('❌ [LENDING] Invalid amount:', currentAmount);
       setError('Please enter a valid amount');
       return;
     }
 
     if (!currentToken) {
-      console.error('❌ [LENDING] No token selected');
       setError('Please select a token');
       return;
     }
 
     // Account is required for blockchain transactions
     if (!account) {
-      console.error('❌ [LENDING] No wallet connected');
       setError('Wallet not connected. Redirecting to reconnect...');
       return;
     }
 
-    console.log('✅ [LENDING] All validations passed, starting transaction...');
     setLoading(true);
     setError(null);
     setSuccess(null);
@@ -203,24 +204,18 @@ export default function LendingPage() {
     try {
       let txData;
 
-      console.log('🔄 [LENDING] Preparing transaction:', currentAction);
-
       // Prepare transaction based on action (use captured state)
       switch (currentAction) {
         case 'supply':
-          console.log('📤 [LENDING] Calling prepareSupply');
           txData = await lendingApi.prepareSupply(currentToken.address, currentAmount);
           break;
         case 'withdraw':
-          console.log('📥 [LENDING] Calling prepareWithdraw');
           txData = await lendingApi.prepareWithdraw(currentToken.address, currentAmount);
           break;
         case 'borrow':
-          console.log('💰 [LENDING] Calling prepareBorrow');
           txData = await lendingApi.prepareBorrow(currentToken.address, currentAmount);
           break;
         case 'repay':
-          console.log('💸 [LENDING] Calling prepareRepay');
           txData = await lendingApi.prepareRepay(currentToken.address, currentAmount);
           break;
         default:
@@ -231,13 +226,10 @@ export default function LendingPage() {
         throw new Error(txData.msg || 'Failed to prepare transaction');
       }
 
-      console.log('Full backend response:', txData);
-      console.log('Transaction data from backend:', txData.data);
-      
       // Extract transaction data based on action type
       let mainTransactionData;
       const validationData = txData.data.validation;
-      
+
       switch (action) {
         case 'supply':
           mainTransactionData = txData.data.supply;
@@ -254,10 +246,7 @@ export default function LendingPage() {
         default:
           throw new Error(`Unknown action: ${action}`);
       }
-      
-      console.log(`${action} data:`, mainTransactionData);
-      console.log('Validation data:', validationData);
-      
+
       // Use main transaction data
       const transactionData = {
         to: mainTransactionData.to,
@@ -266,43 +255,40 @@ export default function LendingPage() {
         gasLimit: mainTransactionData.gas,
         gasPrice: mainTransactionData.gasPrice
       };
-      
-      console.log('Prepared transaction data:', transactionData);
 
       // Execute transaction
       const success = await lendingApi.executeTransaction(transactionData);
 
       if (success) {
-        console.log(`${action} transaction successful`);
         setAmount('');
         setSuccess(`${action.charAt(0).toUpperCase() + action.slice(1)} transaction completed successfully!`);
-        
+
         // Refresh data using the hook
         refresh();
-        
+
         // Refresh token balances
         const refreshBalances = async () => {
-          if (!account || tokens.length === 0) return;
-          
+          if (!account || validTokens.length === 0) return;
+
           setLoadingBalances(true);
           const balances: Record<string, string> = {};
-          
-          for (const token of tokens) {
+
+          for (const token of validTokens) {
             try {
               const balance = await getTokenBalance(account, token.address);
               balances[token.address] = balance;
             } catch (error) {
-              console.error(`Error fetching balance for ${token.symbol}:`, error);
+              console.error('[LENDING] Error fetching balance:', error);
               balances[token.address] = '0';
             }
           }
-          
+
           setTokenBalances(balances);
           setLoadingBalances(false);
         };
-        
+
         refreshBalances();
-        
+
         // Clear success message after 5 seconds
         setTimeout(() => setSuccess(null), 5000);
       } else {
@@ -310,13 +296,10 @@ export default function LendingPage() {
       }
 
     } catch (err) {
-      console.error('❌ [LENDING] Transaction error:', err);
-      console.error('❌ [LENDING] Error stack:', err instanceof Error ? err.stack : 'No stack');
+      console.error('[LENDING] Transaction error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Transaction failed. Please try again.';
-      console.error('❌ [LENDING] Error message:', errorMessage);
       setError(errorMessage);
     } finally {
-      console.log('🏁 [LENDING] Transaction flow completed, setting loading to false');
       setLoading(false);
     }
   };
@@ -565,12 +548,12 @@ export default function LendingPage() {
                 <select
                   value={selectedToken?.address || ''}
                   onChange={(e) => {
-                    const token = tokens.find(t => t.address === e.target.value);
+                    const token = validTokens.find(t => t.address === e.target.value);
                     if (token) setSelectedToken(token);
                   }}
                   className="w-full px-3 py-2 text-sm rounded-xl bg-[#2A2A2A]/80 border border-white/10 text-white focus:outline-none focus:border-white/20"
                 >
-                  {tokens.map((token) => (
+                  {validTokens.map((token) => (
                     <option key={token.address} value={token.address}>
                       {token.symbol}
                     </option>

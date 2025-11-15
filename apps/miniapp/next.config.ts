@@ -23,21 +23,21 @@ const nextConfig: NextConfig = {
   },
 
   async rewrites() {
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    const gatewayBase = process.env.PUBLIC_GATEWAY_URL || process.env.VITE_GATEWAY_BASE || "";
-
-    // Em desenvolvimento, use localhost diretamente
-    const lendingBase = isDevelopment
-      ? 'http://localhost:3006'
-      : gatewayBase ? `${gatewayBase.replace(/\/+$/, '')}/lending` : '';
+    // Sempre use a variável de ambiente VITE_LENDING_API_BASE
+    // Se não estiver definida, tenta usar o gateway
+    const lendingBase = process.env.VITE_LENDING_API_BASE ||
+                       (process.env.PUBLIC_GATEWAY_URL ? `${process.env.PUBLIC_GATEWAY_URL.replace(/\/+$/, '')}/lending` : '');
 
     if (!lendingBase) {
       console.warn('[Next.js] Lending API base URL not configured, proxy will not work');
+      console.warn('[Next.js] Please set VITE_LENDING_API_BASE or PUBLIC_GATEWAY_URL in .env');
       return [];
     }
 
+    console.log('[Next.js] Lending API proxy configured:', lendingBase);
+
     return [
-      // Proxy lending API to avoid CORS issues in development
+      // Proxy lending API to avoid CORS issues
       // Note: source is relative to basePath, so /api/lending maps to /miniapp/api/lending
       {
         source: "/api/lending/:path*",
@@ -59,6 +59,7 @@ const nextConfig: NextConfig = {
     VITE_GATEWAY_BASE: process.env.PUBLIC_GATEWAY_URL || "",
     VITE_SWAP_API_BASE: process.env.SWAP_API_BASE || "",
     VITE_AUTH_API_BASE: process.env.AUTH_API_BASE || "",
+    VITE_LENDING_API_BASE: process.env.VITE_LENDING_API_BASE || "",
     VITE_THIRDWEB_CLIENT_ID: process.env.THIRDWEB_CLIENT_ID || "",
     VITE_WALLETCONNECT_PROJECT_ID: process.env.WALLETCONNECT_PROJECT_ID || "",
     VITE_EVM_CHAIN_ID: process.env.DEFAULT_CHAIN_ID || "8453",
