@@ -95,6 +95,69 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       setIsAuthenticating(true);
       setError(null);
 
+      // 0. Extract and save wallet auth token for persistence
+      try {
+        const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+        if (clientId && activeWallet) {
+          console.log('[AUTH MODAL] Attempting to extract wallet auth token for persistence...');
+          console.log('[AUTH MODAL] Wallet type:', activeWallet.id);
+          console.log('[AUTH MODAL] Wallet object keys:', Object.keys(activeWallet));
+
+          // Log all properties and methods available
+          const walletAny = activeWallet as any;
+          console.log('[AUTH MODAL] Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(walletAny)).filter(name => typeof walletAny[name] === 'function'));
+
+          // Check if wallet has getAuthToken method
+          if (typeof walletAny.getAuthToken === 'function') {
+            console.log('[AUTH MODAL] Found getAuthToken method, calling it...');
+            const authToken = await walletAny.getAuthToken();
+            console.log('[AUTH MODAL] getAuthToken result:', authToken ? `token (${authToken.length} chars)` : 'null/undefined');
+            if (authToken) {
+              localStorage.setItem(`walletToken-${clientId}`, authToken);
+              console.log('[AUTH MODAL] ✅ Wallet auth token extracted and saved successfully');
+            } else {
+              console.warn('[AUTH MODAL] ⚠️ getAuthToken() returned null/undefined');
+            }
+          } else {
+            console.warn('[AUTH MODAL] ⚠️ Wallet does not have getAuthToken method');
+            console.log('[AUTH MODAL] Searching for token in wallet properties...');
+
+            // Check various possible token locations
+            const possibleTokenKeys = ['_authToken', 'authToken', 'token', 'sessionToken', 'accessToken', 'authDetails', 'storedToken'];
+            let foundToken = null;
+
+            for (const key of possibleTokenKeys) {
+              if (walletAny[key]) {
+                console.log(`[AUTH MODAL] Found property: ${key}`, typeof walletAny[key]);
+                if (typeof walletAny[key] === 'string' && walletAny[key].length > 20) {
+                  foundToken = walletAny[key];
+                  console.log(`[AUTH MODAL] ✅ Using ${key} as wallet token`);
+                  break;
+                } else if (typeof walletAny[key] === 'object') {
+                  console.log(`[AUTH MODAL] ${key} is an object:`, Object.keys(walletAny[key]));
+                  // Check if this object has a cookieString
+                  if (walletAny[key].cookieString) {
+                    foundToken = walletAny[key].cookieString;
+                    console.log('[AUTH MODAL] ✅ Found cookieString in', key);
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (foundToken) {
+              localStorage.setItem(`walletToken-${clientId}`, foundToken);
+              console.log('[AUTH MODAL] ✅ Wallet auth token found and saved');
+            } else {
+              console.warn('[AUTH MODAL] ❌ Could not find wallet token in any known location');
+              console.warn('[AUTH MODAL] User will need to reconnect on page reload');
+            }
+          }
+        }
+      } catch (tokenError) {
+        console.error('[AUTH MODAL] Failed to extract wallet auth token:', tokenError);
+      }
+
       // 1. Obter payload do backend
       const normalizedAddress = account.address;
       const loginPayload = { address: normalizedAddress };
@@ -194,11 +257,24 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       localStorage.setItem('authSignature', signature);
       localStorage.setItem('authToken', authToken);
 
+      // 4.5. Verify wallet session token persistence
+      const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+      const walletToken = localStorage.getItem(`walletToken-${clientId}`);
+
+      if (walletToken) {
+        console.log('[AUTH MODAL] ✅ Wallet session token is persisted - auto-connect will work on reload');
+      } else {
+        console.warn('[AUTH MODAL] ⚠️ Wallet session token NOT persisted - user may need to reconnect on reload');
+        console.warn('[AUTH MODAL] This can happen if the SDK uses a different storage mechanism');
+      }
+
       setIsAuthenticated(true);
 
-      console.log('✅ [AUTH MODAL] Authentication succeeded! Redirecting to /newchat...');
+      console.log('✅ [AUTH MODAL] Authentication succeeded!');
 
       // 5. Redirect to /newchat (page that creates a conversation and opens chat)
+      console.log('[AUTH MODAL] Redirecting to /newchat...');
+
       setTimeout(() => {
         router.push('/newchat');
       }, 500);
@@ -233,13 +309,22 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   async function handleDisconnect() {
     setError(null);
     try {
+      console.log('[AUTH MODAL] Disconnecting and clearing all session data...');
       if (activeWallet) {
         await disconnect(activeWallet);
       }
       setIsAuthenticated(false);
+
+      // Clear all auth-related data
+      const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '841b9035bb273fee8d50a503f5b09fd0';
       localStorage.removeItem('authToken');
       localStorage.removeItem('authPayload');
       localStorage.removeItem('authSignature');
+      localStorage.removeItem(`walletToken-${clientId}`);
+      localStorage.removeItem(`walletSession-${clientId}`);
+      localStorage.removeItem(`thirdwebEwsWalletUserId-${clientId}`);
+
+      console.log('[AUTH MODAL] ✅ Session cleared - ready for fresh authentication');
     } catch (err: any) {
       console.error('wallet disconnect failed', err);
       setError(err?.message || 'Failed to disconnect');

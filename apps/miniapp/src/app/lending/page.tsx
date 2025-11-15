@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
@@ -10,7 +10,6 @@ import { useLendingApi } from '@/features/lending/api';
 import { useLendingData } from '@/features/lending/useLendingData';
 import { VALIDATION_FEE } from '@/features/lending/config';
 import { LendingToken } from '@/features/lending/types';
-import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 
@@ -189,10 +188,10 @@ export default function LendingPage() {
       return;
     }
 
-    // Account is guaranteed by ProtectedRoute
+    // Account is required for blockchain transactions
     if (!account) {
-      console.error('❌ [LENDING] No account connected');
-      setError('Account not connected. Please refresh the page.');
+      console.error('❌ [LENDING] No wallet connected');
+      setError('Wallet not connected. Redirecting to reconnect...');
       return;
     }
 
