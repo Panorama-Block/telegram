@@ -203,20 +203,20 @@ class LendingApiClient {
     if (!userAddress) return null;
 
     try {
-      const message = this.formatMessage('Get lending position', '');
-      const authData = await this.getAuthData(message);
-
       const authToken = localStorage.getItem('authToken');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const headers: Record<string, string> = {};
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
 
-      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.POSITION}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(authData)
+      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.POSITION}/${userAddress}/info`, {
+        method: 'GET',
+        headers
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       const data = await response.json();
       return data.data;

@@ -107,5 +107,17 @@ export const networks: Network[] = [
       { symbol: 'OP', address: '0x4200000000000000000000000000000000000042', icon: 'https://assets.coingecko.com/coins/images/25244/small/Optimism.png', decimals: 18, name: 'Optimism' },
     ],
   },
+  {
+    chainId: 480,
+    name: 'World Chain',
+    nativeCurrency: { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
+    tokens: [
+      { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
+      { symbol: 'WETH', address: '0x4200000000000000000000000000000000000006', icon: 'https://assets.coingecko.com/coins/images/2518/small/weth.png', decimals: 18, name: 'Wrapped Ether' },
+      { symbol: 'WLD', address: '0x2cfc85d8e48f8eab294be644d9e25c3030863003', icon: 'https://assets.coingecko.com/coins/images/31069/small/worldcoin.jpeg', decimals: 18, name: 'Worldcoin' },
+      { symbol: 'USDC', address: '0x79A02482A880bCE3F13e09Da970dC34db4CD24d1', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
+      { symbol: 'MCW', address: '0xf1E7adc9C1743Cd2c6ceA47D0CA43Fad57190616', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Milhas da Confra' },
+    ],
+  },
 ];
 
