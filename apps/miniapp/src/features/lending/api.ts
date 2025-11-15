@@ -18,32 +18,17 @@ class LendingApiClient {
   private readonly CACHE_DURATION = LENDING_CONFIG.CACHE_DURATION;
 
   constructor(account: any) {
-    // Use same pattern as swap API - try specific env var first, then gateway fallback
+    // Priority 1: Use direct lending API base URL (deployed service)
     const direct = process.env.VITE_LENDING_API_BASE || process.env.NEXT_PUBLIC_LENDING_API_URL;
+
     if (direct && direct.length > 0) {
       this.baseUrl = direct.replace(/\/+$/, '');
     } else {
-      // Check if running on localhost (development)
-      const isLocalhost = typeof window !== 'undefined' &&
-                         (window.location.hostname === 'localhost' ||
-                          window.location.hostname === '127.0.0.1');
-
-      if (isLocalhost) {
-        // Use Next.js proxy to avoid CORS issues in development
-        this.baseUrl = '/api/lending';
-      } else {
-        // Production: use gateway directly
-        const gw = process.env.VITE_GATEWAY_BASE;
-        if (gw && gw.length > 0) {
-          this.baseUrl = `${gw.replace(/\/+$/, '')}/lending`;
-        } else {
-          // Fallback to same-origin
-          this.baseUrl = '/lending';
-        }
-      }
+      // Fallback: use Next.js proxy (which will forward to deployed service)
+      this.baseUrl = '/api/lending';
     }
+
     this.account = account;
-    console.log('[LENDING API] Using baseUrl:', this.baseUrl);
   }
 
   private toWei(amount: string, decimals: number = 18): string {
@@ -84,23 +69,20 @@ class LendingApiClient {
 
     // If we have a JWT token, use placeholder signature (backend will validate JWT)
     if (authToken) {
-      console.log('Using JWT authentication - skipping signature');
       return '0x0000000000000000000000000000000000000000000000000000000000000000';
     }
 
     // Only try to sign with account if we don't have JWT (pure MetaMask users)
     if (this.account) {
       try {
-        console.log('Using MetaMask signature');
         const signature = await this.account.signMessage({ message });
         return signature;
       } catch (error) {
-        console.error('Error signing message:', error);
+        console.error('[LENDING] Error signing message:', error);
         throw new Error('Failed to sign message');
       }
     }
 
-    // No auth method available
     throw new Error('No authentication method available. Please authenticate first.');
   }
 
@@ -256,20 +238,9 @@ class LendingApiClient {
 
   async prepareSupply(tokenAddress: string, amount: string): Promise<any> {
     try {
-      console.log('[LENDING API] prepareSupply called:', { tokenAddress, amount });
-
       const amountInWei = this.toWei(amount);
-      console.log('[LENDING API] Amount in wei:', amountInWei);
-
       const message = this.formatMessage('Validate and supply', amountInWei, tokenAddress);
-      console.log('[LENDING API] Message formatted:', message);
-
       const authData = await this.getAuthData(message);
-      console.log('[LENDING API] Auth data generated:', {
-        address: authData.address,
-        hasSignature: !!authData.signature,
-        walletType: authData.walletType
-      });
 
       const authToken = localStorage.getItem('authToken');
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -277,15 +248,7 @@ class LendingApiClient {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
 
-      const url = `${this.baseUrl}${API_ENDPOINTS.PREPARE_SUPPLY}`;
-      console.log('[LENDING API] Fetching:', url);
-      console.log('[LENDING API] Request body:', {
-        ...authData,
-        amount: amountInWei,
-        qTokenAddress: tokenAddress,
-      });
-
-      const response = await fetch(url, {
+      const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.PREPARE_SUPPLY}`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -295,20 +258,15 @@ class LendingApiClient {
         })
       });
 
-      console.log('[LENDING API] Response status:', response.status);
-      console.log('[LENDING API] Response ok:', response.ok);
-
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[LENDING API] Error response:', errorText);
+        console.error('[LENDING] Error preparing supply:', response.status, errorText);
         throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
 
-      const data = await response.json();
-      console.log('[LENDING API] Response data:', data);
-      return data;
+      return await response.json();
     } catch (error) {
-      console.error('[LENDING API] Error preparing supply:', error);
+      console.error('[LENDING] Error preparing supply:', error);
       throw new Error('Failed to prepare supply transaction: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   }
@@ -337,13 +295,13 @@ class LendingApiClient {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Withdraw API error:', response.status, errorText);
+        console.error('[LENDING] Error preparing withdraw:', response.status, errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       return await response.json();
     } catch (error) {
-      console.error('Error preparing withdraw:', error);
+      console.error('[LENDING] Error preparing withdraw:', error);
       throw new Error('Failed to prepare withdraw transaction');
     }
   }
@@ -371,12 +329,14 @@ class LendingApiClient {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[LENDING] Error preparing borrow:', response.status, errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       return await response.json();
     } catch (error) {
-      console.error('Error preparing borrow:', error);
+      console.error('[LENDING] Error preparing borrow:', error);
       throw new Error('Failed to prepare borrow transaction');
     }
   }
@@ -405,13 +365,13 @@ class LendingApiClient {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Repay API error:', response.status, errorText);
+        console.error('[LENDING] Error preparing repay:', response.status, errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       return await response.json();
     } catch (error) {
-      console.error('Error preparing repay:', error);
+      console.error('[LENDING] Error preparing repay:', error);
       throw new Error('Failed to prepare repay transaction');
     }
   }
@@ -419,7 +379,7 @@ class LendingApiClient {
   async executeTransaction(txData: any): Promise<boolean> {
     try {
       if (!this.account) {
-        throw new Error('Please connect your wallet to execute blockchain transactions. Click "Connect Wallet" in the top right corner.');
+        throw new Error('Please connect your wallet to execute blockchain transactions.');
       }
 
       const toAddress = txData.to;
@@ -429,7 +389,7 @@ class LendingApiClient {
       const gasPrice = txData.gasPrice;
 
       if (!toAddress || !data) {
-        throw new Error(`Invalid transaction data: missing to address (${toAddress}) or data (${data})`);
+        throw new Error(`Invalid transaction data: missing to address or data`);
       }
 
       if (!/^0x[a-fA-F0-9]{40}$/.test(toAddress)) {
@@ -453,14 +413,14 @@ class LendingApiClient {
       }
 
       const tx = await this.account.sendTransaction(formattedTxData);
-      
+
       if (tx.transactionHash) {
         return true;
       } else {
         throw new Error('No transaction hash received');
       }
     } catch (error) {
-      console.error('Error executing transaction:', error);
+      console.error('[LENDING] Transaction failed:', error);
       throw new Error(`Transaction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -493,7 +453,7 @@ class LendingApiClient {
 
       return await response.json();
     } catch (error) {
-      console.error('Error getting supply quote:', error);
+      console.error('[LENDING] Error getting supply quote:', error);
       throw new Error('Failed to get supply quote');
     }
   }
@@ -526,7 +486,7 @@ class LendingApiClient {
 
       return await response.json();
     } catch (error) {
-      console.error('Error getting borrow quote:', error);
+      console.error('[LENDING] Error getting borrow quote:', error);
       throw new Error('Failed to get borrow quote');
     }
   }
