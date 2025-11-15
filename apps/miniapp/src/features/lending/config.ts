@@ -47,10 +47,10 @@ export const LENDING_CONFIG = {
 
 export const API_ENDPOINTS = {
   /** Get available lending tokens */
-  TOKENS: '/dex/tokens',
-  
+  TOKENS: '/benqi/qtokens',
+
   /** Get user lending position */
-  POSITION: '/lending/position',
+  POSITION: '/benqi/account',
   
   /** Calculate tax/fees */
   CALCULATE_TAX: '/validation/calculate',

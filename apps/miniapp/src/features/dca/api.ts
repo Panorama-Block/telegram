@@ -5,7 +5,7 @@
 
 import { authenticatedFetch } from '@/shared/lib/telegram-auth';
 
-const DCA_API_URL = process.env.DCA_API_BASE || process.env.NEXT_PUBLIC_DCA_API_BASE || 'http://localhost:3004';
+export const DCA_API_URL = process.env.DCA_API_BASE || process.env.NEXT_PUBLIC_DCA_API_BASE || 'http://localhost:3004';
 
 export interface SmartAccountPermissions {
   approvedTargets: string[];

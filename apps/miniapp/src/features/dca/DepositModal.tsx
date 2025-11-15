@@ -88,7 +88,8 @@ export default function DepositModal({
       if (!smartAccountAddress) return;
 
       try {
-        const response = await fetch(`http://localhost:3004/dca/account/${smartAccountAddress}`);
+        const { DCA_API_URL } = await import('./api');
+        const response = await fetch(`${DCA_API_URL}/dca/account/${smartAccountAddress}`);
         if (response.ok) {
           const data = await response.json();
           setSessionKeyAddress(data.sessionKeyAddress);
