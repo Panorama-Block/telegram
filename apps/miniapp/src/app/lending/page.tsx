@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useSwitchActiveWalletChain } from 'thirdweb/react';
+import { defineChain } from 'thirdweb';
 import { useLendingApi } from '@/features/lending/api';
 import { useLendingData } from '@/features/lending/useLendingData';
-import { VALIDATION_FEE } from '@/features/lending/config';
+import { VALIDATION_FEE, LENDING_CONFIG } from '@/features/lending/config';
 import { LendingToken } from '@/features/lending/types';
 import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -89,6 +90,7 @@ async function getTokenBalance(account: any, tokenAddress: string): Promise<stri
 export default function LendingPage() {
   const router = useRouter();
   const account = useActiveAccount();
+  const switchChain = useSwitchActiveWalletChain();
   const lendingApi = useLendingApi();
 
   // Use the new hook for data management
@@ -202,6 +204,24 @@ export default function LendingPage() {
     setSuccess(null);
 
     try {
+      // STEP 0: Switch to Avalanche network before executing transactions
+      // Lending operations are always on Avalanche (chain ID 43114)
+      const targetChainId = LENDING_CONFIG.DEFAULT_CHAIN_ID; // 43114 (Avalanche)
+
+      if (account && switchChain) {
+        console.log('[LENDING] Switching to Avalanche network before transaction...');
+        setError('Switching to Avalanche network...');
+
+        try {
+          await switchChain(defineChain(targetChainId));
+          console.log('[LENDING] ✅ Successfully switched to Avalanche network');
+          setError(null);
+        } catch (switchError: any) {
+          console.error('[LENDING] ❌ Failed to switch network:', switchError);
+          throw new Error('Please approve the network switch to Avalanche in your wallet to continue.');
+        }
+      }
+
       let txData;
 
       // Prepare transaction based on action (use captured state)
