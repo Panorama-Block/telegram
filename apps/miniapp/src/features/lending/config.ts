@@ -20,9 +20,6 @@ export const VALIDATION_FEE = {
 } as const;
 
 export const LENDING_CONFIG = {
-  /** Default API base URL */
-  DEFAULT_API_URL: 'http://localhost:3001',
-  
   /** Cache duration in milliseconds (5 minutes) */
   CACHE_DURATION: 5 * 60 * 1000,
   
@@ -47,10 +44,10 @@ export const LENDING_CONFIG = {
 
 export const API_ENDPOINTS = {
   /** Get available lending tokens */
-  TOKENS: '/benqi/qtokens',
-
+  TOKENS: '/dex/tokens',
+  
   /** Get user lending position */
-  POSITION: '/benqi/account',
+  POSITION: '/lending/position',
   
   /** Calculate tax/fees */
   CALCULATE_TAX: '/validation/calculate',
