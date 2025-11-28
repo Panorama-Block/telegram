@@ -12,7 +12,18 @@ export type Network = {
   tokens: Token[]
 };
 
+// Synthetic TON entry so TON holders can start TAC (TON -> EVM) flows from the UI.
+export const TON_CHAIN_ID = 60701;
+
 export const networks: Network[] = [
+  {
+    chainId: TON_CHAIN_ID,
+    name: 'TON',
+    nativeCurrency: { symbol: 'TON', address: 'ton', icon: 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png', decimals: 9, name: 'Toncoin' },
+    tokens: [
+      { symbol: 'TON', address: 'ton', icon: 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png', decimals: 9, name: 'Toncoin' },
+    ],
+  },
   {
     chainId: 43114,
     name: 'Avalanche',
@@ -120,4 +131,3 @@ export const networks: Network[] = [
     ],
   },
 ];
-

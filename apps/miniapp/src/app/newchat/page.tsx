@@ -9,6 +9,9 @@ import { signLoginPayload } from 'thirdweb/auth';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import '@/shared/ui/loader.css';
+import { TonConnectButton, useTonConnectUI } from '@tonconnect/ui-react';
+import { useWalletIdentity } from '@/shared/contexts/WalletIdentityContext';
+import { tacApi } from '@/features/tac/client';
 
 export default function NewChatPage() {
   const router = useRouter();
@@ -18,16 +21,23 @@ export default function NewChatPage() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isWaitingSignature, setIsWaitingSignature] = useState(false);
   const hasTriedAutoConnectRef = useRef(false);
   const hasTriedManualConnectRef = useRef(false);
   const connectButtonRef = useRef<HTMLDivElement>(null);
   const lastTriedAddressRef = useRef<string | null>(null);
+  const tonAuthAttemptRef = useRef<string | null>(null);
+  const { tonAddress, tonAddressRaw, isTelegram, tonWallet } = useWalletIdentity();
+  const [tonConnectUI] = useTonConnectUI();
+  const tacProvisioningRef = useRef(false);
 
   // Client setup
   const client = useMemo(() => {
     const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
     if (!clientId) {
-      console.warn('No THIRDWEB_CLIENT_ID found');
+      if (!isTelegram) {
+        console.warn('No THIRDWEB_CLIENT_ID found');
+      }
       return null;
     }
     try {
@@ -36,16 +46,16 @@ export default function NewChatPage() {
       console.error('Failed to create thirdweb client', err);
       return null;
     }
-  }, []);
+  }, [isTelegram]);
 
-  // Wallet configuration
+  // Wallet configuration (EVM, skipped in Telegram)
   const wallets = useMemo(() => {
-    if (typeof window === 'undefined') return [inAppWallet()];
+    if (typeof window === 'undefined' || isTelegram) return [inAppWallet()];
     const WebApp = (window as any).Telegram?.WebApp;
-    const isTelegram = !!WebApp;
+    const isTelegramWebApp = !!WebApp;
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const mode = isTelegram ? 'redirect' : 'popup';
-    const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    const mode = isTelegramWebApp ? 'redirect' : 'popup';
+    const redirectUrl = isTelegramWebApp ? `${window.location.origin}/miniapp/auth/callback` : undefined;
 
     if (isiOS) {
       return [
@@ -62,10 +72,11 @@ export default function NewChatPage() {
       inAppWallet({ auth: { options: ['google', 'telegram', 'email'], mode, redirectUrl } }),
       createWallet('io.metamask', { preferDeepLink: true }),
     ];
-  }, []);
+  }, [isTelegram]);
 
   // Auto-connect wallet on mount if not connected
   useEffect(() => {
+    if (isTelegram) return;
     const autoConnectWallet = async () => {
       if (account || hasTriedAutoConnectRef.current || !client) return;
 
@@ -73,26 +84,27 @@ export default function NewChatPage() {
       setIsConnecting(true);
 
       try {
-        // Try to autoConnect first (for returning users)
         const wallet = inAppWallet();
         const connectedAccount = await wallet.autoConnect({ client });
 
         if (!connectedAccount) {
-          // If autoConnect fails, user needs to manually connect
-          // The ConnectButton will handle this
           setIsConnecting(false);
         }
       } catch (err) {
         console.log('[NEWCHAT] AutoConnect not available, user needs to connect manually');
         setIsConnecting(false);
+      } finally {
+        // Always clear connecting flag so the connect button can show
+        setIsConnecting(false);
       }
     };
 
     autoConnectWallet();
-  }, [account, client]);
+  }, [account, client, isTelegram]);
 
   // Auto-click connect button if autoConnect fails
   useEffect(() => {
+    if (isTelegram) return;
     if (!account && !isConnecting && hasTriedAutoConnectRef.current && !hasTriedManualConnectRef.current && connectButtonRef.current) {
       const timer = setTimeout(() => {
         const button = connectButtonRef.current?.querySelector('button');
@@ -103,15 +115,157 @@ export default function NewChatPage() {
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [account, isConnecting, hasTriedAutoConnectRef.current]);
+  }, [account, isConnecting, isTelegram, hasTriedAutoConnectRef.current]);
 
   // Authenticate with backend
   const authenticateWithBackend = useCallback(async () => {
+    const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
+
+    if (isTelegram) {
+      const addressForAuth = tonWallet?.account?.address || tonAddressRaw || tonAddress;
+
+      if (!addressForAuth) {
+        setError('Connect your TON wallet to continue.');
+        return;
+      }
+      if (!tonWallet) {
+        setError('TON wallet is still initializing. Please wait a moment.');
+        return;
+      }
+      if (!tonConnectUI) {
+        setError('TON Connect UI is not ready yet. Please try again.');
+        return;
+      }
+      if (!authApiBase) {
+        setError('VITE_AUTH_API_BASE not configured');
+        return;
+      }
+      // If we already have a token for this TON address, skip re-auth
+      const cachedPayload = localStorage.getItem('authPayload');
+      const cachedToken = localStorage.getItem('authToken');
+      if (cachedPayload && cachedToken) {
+        try {
+          const parsed = JSON.parse(cachedPayload);
+          if (parsed?.address === addressForAuth) {
+            setIsAuthenticated(true);
+            router.push('/chat');
+            return;
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+
+      if (tonAuthAttemptRef.current === addressForAuth) {
+        return;
+      }
+
+      let tonAuthSucceeded = false;
+      tonAuthAttemptRef.current = addressForAuth;
+      setIsAuthenticating(true);
+      setError(null);
+
+      try {
+        const payloadResponse = await fetch(`${authApiBase}/auth/ton/payload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address: addressForAuth }),
+        });
+
+        if (!payloadResponse.ok) {
+          const payloadError = await payloadResponse.text();
+          throw new Error(payloadError || 'Failed to create proof payload');
+        }
+
+        const { payload } = await payloadResponse.json();
+
+        if (!payload) {
+          throw new Error('Proof payload missing from auth service');
+        }
+
+        setIsWaitingSignature(true);
+        const signResult = await tonConnectUI.signData({
+          type: 'text',
+          text: payload,
+          from: addressForAuth,
+        });
+
+        const signature = signResult?.signature;
+        const timestamp = signResult?.timestamp;
+        const domainFromSign = signResult?.domain;
+        const payloadMeta = signResult?.payload;
+        const resolvedDomain = typeof domainFromSign === 'string'
+          ? domainFromSign
+          : typeof window !== 'undefined'
+            ? window.location.host
+            : '';
+        if (!signature) {
+          throw new Error('TON wallet did not return a signature');
+        }
+        if (!timestamp) {
+          throw new Error('TON signature timestamp missing');
+        }
+        if (!resolvedDomain) {
+          throw new Error('TON signature domain missing');
+        }
+
+        const publicKey = tonWallet.account?.publicKey;
+        if (!publicKey) {
+          throw new Error('TON wallet public key missing');
+        }
+
+        const verifyResponse = await fetch(`${authApiBase}/auth/ton/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            address: addressForAuth,
+            payload,
+            signature,
+            publicKey,
+            timestamp,
+            domain: resolvedDomain,
+            payloadMeta,
+          }),
+        });
+
+        const verifyResult = await verifyResponse.json();
+        if (!verifyResponse.ok) {
+          throw new Error(verifyResult?.error || 'TON verification failed');
+        }
+
+        const token = verifyResult?.token;
+        if (!token) {
+          throw new Error('Authentication token missing from TON response');
+        }
+
+        localStorage.setItem('authToken', token);
+        localStorage.setItem('authSignature', signature);
+        localStorage.setItem('authPayload', JSON.stringify({ address: addressForAuth, type: 'ton', payload }));
+
+        setIsAuthenticated(true);
+        tonAuthSucceeded = true;
+        console.log('✅ [NEWCHAT] TON authentication succeeded! Redirecting to /chat...');
+        setTimeout(() => {
+          router.push('/chat');
+        }, 500);
+      } catch (err: any) {
+        console.error('❌ [NEWCHAT] TON authentication failed:', err);
+        setError(err?.message || 'TON authentication failed');
+        setIsAuthenticated(false);
+      } finally {
+        setIsAuthenticating(false);
+        setIsWaitingSignature(false);
+        if (!tonAuthSucceeded) {
+          tonAuthAttemptRef.current = null;
+        }
+      }
+      return;
+    }
+
     if (!account || !client) {
       return;
     }
 
-    const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
     if (!authApiBase) {
       throw new Error('VITE_AUTH_API_BASE not configured');
     }
@@ -242,7 +396,63 @@ export default function NewChatPage() {
     } finally {
       setIsAuthenticating(false);
     }
-  }, [account, client, activeWallet, router]);
+  }, [account, activeWallet, client, router, isTelegram, tonAddress, tonAddressRaw, tonWallet, tonConnectUI]);
+
+  useEffect(() => {
+    if (!isTelegram || !tonAddress || isAuthenticated) return;
+    authenticateWithBackend();
+  }, [isTelegram, tonAddress, isAuthenticated, authenticateWithBackend]);
+
+  // Provision TAC smart wallet receiver once TON address is available
+  useEffect(() => {
+    if (!isTelegram || !tonAddress) return;
+    if (tacProvisioningRef.current) return;
+
+    const provisionReceiver = async () => {
+      try {
+        tacProvisioningRef.current = true;
+        const chainId = (process.env.NEXT_PUBLIC_TAC_CHAIN_ID as string) || (process.env.VITE_TAC_CHAIN_ID as string) || 'tac';
+        console.log('🛰️ [NEWCHAT] Ensuring TAC receiver for TON address...', {
+          tonAddress,
+          chainId,
+          tacApiBase: process.env.NEXT_PUBLIC_TAC_API_BASE || process.env.VITE_TAC_API_BASE
+        });
+        const telegramUserId = (() => {
+          if (typeof window === 'undefined') return undefined;
+          try {
+            const stored = localStorage.getItem('telegram_user');
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (parsed?.id) return String(parsed.id);
+            }
+          } catch (err) {
+            console.warn('Failed to parse telegram_user from localStorage', err);
+          }
+          const WebApp = (window as any).Telegram?.WebApp;
+          const initUserId = WebApp?.initDataUnsafe?.user?.id;
+          return initUserId ? String(initUserId) : undefined;
+        })();
+        const resp = await tacApi.ensureEvmWallet({
+          telegramUserId,
+          tonAddress: tonAddressRaw || tonAddress,
+          chainId,
+          provision: true
+        });
+        const receiver = resp?.data?.address || resp?.address;
+        if (receiver) {
+          localStorage.setItem('tacReceiver', receiver);
+          console.log('✅ [NEWCHAT] TAC receiver ready:', receiver);
+        } else {
+          console.warn('⚠️ [NEWCHAT] TAC receiver provisioning response missing address', resp);
+        }
+      } catch (e: any) {
+        console.error('❌ [NEWCHAT] TAC receiver provisioning failed:', e?.message || e);
+        tacProvisioningRef.current = false; // allow retry on next mount
+      }
+    };
+
+    provisionReceiver();
+  }, [isTelegram, tonAddress, tonAddressRaw]);
 
   // Auto-authenticate when account is connected
   useEffect(() => {
@@ -262,6 +472,12 @@ export default function NewChatPage() {
 
   // Determine label text
   const getLabelText = () => {
+    if (isTelegram) {
+      if (!tonAddress) return 'Connect your TON wallet';
+      if (isAuthenticated) return 'Success! Redirecting...';
+      if (isWaitingSignature) return 'Awaiting your signature in TON wallet...';
+      return 'Authenticating...';
+    }
     if (error) return 'Error occurred';
     if (isAuthenticating) return 'Authenticating...';
     if (isAuthenticated) return 'Success! Redirecting...';
@@ -316,38 +532,58 @@ export default function NewChatPage() {
           </p>
         </div>
 
-        {/* Loading indicator or Connect Button */}
-        {isAuthenticating || isConnecting ? (
-          <div className="flex items-center gap-2">
-            <div className="loader-inline-sm" />
+        {isTelegram ? (
+          <div className="flex flex-col items-center gap-3 mt-4">
+            {!tonAddress ? (
+              <>
+                <p className="text-pano-text-secondary text-sm text-center">
+                  Connect your TON wallet to continue with Panorama.
+                </p>
+                <TonConnectButton
+                  className="px-5 py-3 bg-white text-black font-semibold rounded-xl shadow-lg shadow-black/25"
+                />
+              </>
+            ) : (
+              <p className="text-white text-sm text-center">
+                {isWaitingSignature ? 'Check your TON wallet and confirm the signature.' : 'TON wallet connected. Finalizing...'}
+              </p>
+            )}
           </div>
-        ) : !account && client && !hasTriedAutoConnectRef.current ? (
-          <div className="flex items-center gap-2">
-            <div className="loader-inline-sm" />
-          </div>
-        ) : !account && client ? (
-          <div ref={connectButtonRef} className="mt-4">
-            <ConnectButton
-              client={client}
-              wallets={wallets}
-              connectModal={{ size: 'compact' }}
-              connectButton={{
-                label: 'Connect Wallet',
-                style: {
-                  padding: '12px 24px',
-                  borderRadius: '8px',
-                  fontWeight: 600,
-                  fontSize: '16px',
-                  background: '#ffffff',
-                  color: '#000000',
-                  border: 'none',
-                  cursor: 'pointer',
-                },
-              }}
-              theme="dark"
-            />
-          </div>
-        ) : null}
+        ) : (
+          <>
+            {isAuthenticating || isConnecting ? (
+              <div className="flex items-center gap-2">
+                <div className="loader-inline-sm" />
+              </div>
+            ) : !account && client && !hasTriedAutoConnectRef.current ? (
+              <div className="flex items-center gap-2">
+                <div className="loader-inline-sm" />
+              </div>
+            ) : !account && client ? (
+              <div ref={connectButtonRef} className="mt-4">
+                <ConnectButton
+                  client={client}
+                  wallets={wallets}
+                  connectModal={{ size: 'compact' }}
+                  connectButton={{
+                    label: 'Connect Wallet',
+                    style: {
+                      padding: '12px 24px',
+                      borderRadius: '8px',
+                      fontWeight: 600,
+                      fontSize: '16px',
+                      background: '#ffffff',
+                      color: '#000000',
+                      border: 'none',
+                      cursor: 'pointer',
+                    },
+                  }}
+                  theme="dark"
+                />
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );

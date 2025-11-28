@@ -1273,6 +1273,96 @@ export default function ChatPage() {
                 {/* Separator Line */}
                 <div className="border-t border-white/20 my-6"></div>
 
+                {/* Mobile Explore Navigation */}
+                {!isLargeScreen && (
+                  <div className="space-y-3 px-4">
+                    <div className="flex items-center gap-2">
+                      <Image src={LightningIcon} alt="Explore" width={18} height={18} />
+                      <h3 className="text-sm font-semibold text-white">
+                        Explore
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          setSidebarOpen(false);
+                          router.push('/chat');
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
+                      >
+                        <Image src={ChatIcon} alt="Chat" width={16} height={16} />
+                        Chat
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsNavigating(true);
+                          setNavigationType('swap');
+                          setSidebarOpen(false);
+                          router.push('/swap');
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
+                      >
+                        <Image src={SwapIcon} alt="Swap" width={16} height={16} />
+                        Swap
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsNavigating(true);
+                          setNavigationType('lending');
+                          setSidebarOpen(false);
+                          router.push('/lending');
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Lending
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsNavigating(true);
+                          setNavigationType('staking');
+                          setSidebarOpen(false);
+                          router.push('/staking');
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        Staking
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsNavigating(true);
+                          setNavigationType('dca');
+                          setSidebarOpen(false);
+                          router.push('/dca');
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        DCA
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSidebarOpen(false);
+                          router.push('/account');
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        Account
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Trending Prompts */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">

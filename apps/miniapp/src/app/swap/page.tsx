@@ -7,7 +7,7 @@ import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
 import UniswapIcon from '../../../public/icons/uniswap.svg';
 import AvalancheIcon from '../../../public/icons/Avalanche_Blockchain_Logo.svg';
-import { networks, Token } from '@/features/swap/tokens';
+import { networks, Token, TON_CHAIN_ID } from '@/features/swap/tokens';
 import { swapApi, SwapApiError } from '@/features/swap/api';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl } from '@/features/swap/utils';
 import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
@@ -17,6 +17,9 @@ import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx } from '@/features/swap/types';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { useWalletIdentity } from '@/shared/contexts/WalletIdentityContext';
+import { useTacQuote } from '@/features/tac/hooks';
+import { useTacOperation } from '@/features/tac/useTacOperation';
 import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
 
 
@@ -201,6 +204,9 @@ function getAddressFromToken(): string | null {
 export default function SwapPage() {
   const router = useRouter();
   const account = useActiveAccount();
+  const { chainType, address, isTelegram } = useWalletIdentity();
+  const { getQuote: getTacQuote, loading: tacLoading, error: tacError, quote: tacQuote } = useTacQuote();
+  const { startOperation: startTacOperation, loading: tacOpLoading, error: tacOpError, operation: tacOp } = useTacOperation();
   const switchChain = useSwitchActiveWalletChain();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
@@ -210,7 +216,7 @@ export default function SwapPage() {
   const effectiveAddress = account?.address || addressFromToken || userAddress;
 
   const [exploreDropdownOpen, setExploreDropdownOpen] = useState(false);
-  const [fromChainId, setFromChainId] = useState(8453); // Base
+  const [fromChainId, setFromChainId] = useState(8453); // Base (overridden to TON when TonConnect is active)
   const [toChainId, setToChainId] = useState(42161); // Arbitrum
   const [sellToken, setSellToken] = useState<Token>({
     symbol: 'ETH',
@@ -230,6 +236,7 @@ export default function SwapPage() {
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [tacResult, setTacResult] = useState<any | null>(null);
   const [showFundWallet, setShowFundWallet] = useState(false);
   const [txHashes, setTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
   const quoteRequestRef = useRef(0);
@@ -258,6 +265,14 @@ export default function SwapPage() {
   useEffect(() => {
     const requestId = ++quoteRequestRef.current;
 
+    // In TON/TAC mode we should not call the liquid-swap quote API.
+    if (chainType === 'ton') {
+      setQuote(null);
+      setQuoting(false);
+      setBuyAmount('');
+      return undefined;
+    }
+
     if (!canQuote) {
       setQuote(null);
       setQuoting(false);
@@ -279,7 +294,7 @@ export default function SwapPage() {
   }, [canQuote, sellToken, buyToken, sellAmount, effectiveAddress]);
 
   async function performQuote(requestId: number) {
-    if (!canQuote || !buyToken) return;
+    if (!canQuote || !buyToken || chainType === 'ton') return;
 
     setError(null);
     try {
@@ -348,7 +363,29 @@ export default function SwapPage() {
   }
 
   // Function to start swap flow - opens first modal
-  function handleStartSwap() {
+  async function handleStartSwap() {
+    if (chainType === 'ton') {
+      // Use TAC operation flow
+      if (!sellToken || !buyToken) {
+        setError('Select tokens first.');
+        return;
+      }
+      const fromChainName = networks.find(n => n.chainId === fromChainId)?.name.toLowerCase() || String(fromChainId);
+      const toChainName = networks.find(n => n.chainId === toChainId)?.name.toLowerCase() || String(toChainId);
+      await startTacOperation({
+        operationType: 'cross_chain_swap',
+        sourceChain: fromChainName,
+        targetChain: toChainName,
+        inputToken: normalizeToApi(sellToken.address),
+        inputAmount: Number(sellAmount),
+        outputToken: normalizeToApi(buyToken.address),
+        protocol: 'uniswap',
+        protocolAction: 'swap',
+        slippage: 0.5
+      });
+      return;
+    }
+
     if (!quote) {
       setError('Please wait for the quote to be calculated');
       return;
@@ -629,6 +666,37 @@ export default function SwapPage() {
     return undefined;
   };
 
+  const handleTacQuote = async () => {
+    if (!canQuote || !sellToken || !buyToken) return;
+    const fromChainName = networks.find(n => n.chainId === fromChainId)?.name.toLowerCase() || String(fromChainId);
+    const toChainName = networks.find(n => n.chainId === toChainId)?.name.toLowerCase() || String(toChainId);
+    const amountNum = Number(sellAmount);
+    const data = await getTacQuote({
+      fromChain: fromChainName,
+      toChain: toChainName,
+      fromToken: normalizeToApi(sellToken.address),
+      toToken: normalizeToApi(buyToken.address),
+      amount: amountNum,
+      operationType: 'cross_chain_swap',
+      slippage: 0.5
+    });
+    if (data) setTacResult(data);
+  };
+
+  // When connected via TON, default the "from" side to TON so the selector shows TON
+  useEffect(() => {
+    if (chainType !== 'ton') return;
+    const tonNetwork = networks.find(n => n.chainId === TON_CHAIN_ID);
+    if (tonNetwork) {
+      if (fromChainId !== TON_CHAIN_ID) {
+        setFromChainId(TON_CHAIN_ID);
+      }
+      if (!sellToken || sellToken.symbol !== 'TON') {
+        setSellToken(tonNetwork.nativeCurrency);
+      }
+    }
+  }, [chainType, fromChainId, sellToken]);
+
   return (
     <ProtectedRoute>
       <div className="h-screen text-white flex flex-col overflow-hidden relative">
@@ -781,6 +849,40 @@ export default function SwapPage() {
           </div>
         </div>
       </header>
+      
+      {/* TAC mode helper */}
+      <div className="px-4 py-3 text-sm text-white/80 bg-white/5 border-b border-white/10">
+        <div className="max-w-[1200px] mx-auto flex flex-col gap-2">
+          <div>
+            Mode: {chainType === 'ton' ? 'TON (TAC-enabled)' : chainType === 'evm' ? 'EVM (Thirdweb)' : 'Not connected'}
+            {isTelegram && chainType !== 'ton' && ' — connect your TON wallet via TonConnect'}
+          </div>
+          {chainType === 'ton' && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={handleTacQuote}
+                disabled={!canQuote || tacLoading}
+                className="px-4 py-2 rounded-lg bg-white text-black text-sm font-semibold disabled:opacity-50"
+              >
+                {tacLoading ? 'Fetching TAC quote...' : 'Get TAC Quote'}
+              </button>
+              {tacError && <span className="text-red-400 text-xs">{tacError}</span>}
+              {tacResult?.data?.quote && (
+                <span className="text-green-400 text-xs">
+                  Route: {tacResult.data.quote.route.provider} · Est. Output: {tacResult.data.quote.route.estimatedOutput}
+                </span>
+              )}
+              {tacOpError && <span className="text-red-400 text-xs">{tacOpError}</span>}
+              {tacOpLoading && <span className="text-white/70 text-xs">Starting TAC operation…</span>}
+              {tacOp && (
+                <span className="text-blue-300 text-xs">
+                  TAC Operation {tacOp.operationId || tacOp.id || ''} · Status: {tacOp.status || 'in_progress'}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden">
@@ -885,17 +987,23 @@ export default function SwapPage() {
               {/* Start Button */}
               <button
                 onClick={handleStartSwap}
-                disabled={!quote || quoting || preparing || executing}
+                disabled={
+                  (chainType === 'ton' ? (!canQuote || tacLoading || tacOpLoading) : (!quote || quoting || preparing || executing))
+                }
                 className="w-full py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-gray-100"
               >
-                {executing
-                  ? 'Executing swap...'
-                  : preparing
-                    ? 'Preparing transaction...'
-                    : quoting
-                      ? 'Getting quote...'
-                      : quote
-                        ? 'Get started'
+                {chainType === 'ton'
+                  ? tacOpLoading
+                    ? 'Starting TAC operation...'
+                    : tacLoading
+                      ? 'Fetching TAC quote...'
+                      : 'Start TAC Swap'
+                  : executing
+                    ? 'Executing swap...'
+                    : preparing
+                      ? 'Preparing transaction...'
+                      : quoting
+                        ? 'Getting quote...'
                         : 'Get started'}
               </button>
 
