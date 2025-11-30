@@ -1779,7 +1779,7 @@ export default function ChatPage() {
                                             </p>
                                             <p className="text-xs text-gray-400">
                                               {message.metadata?.amount ? `${message.metadata.amount} ` : ''}
-                                              {String(message.metadata?.token || '')}
+                                              {String(message.metadata?.asset || message.metadata?.token || '')}
                                             </p>
                                           </div>
                                           <button

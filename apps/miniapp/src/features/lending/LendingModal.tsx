@@ -104,36 +104,95 @@ export function LendingModal({ isOpen, onClose, metadata, onSuccess }: LendingMo
     const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
     const [loadingBalances, setLoadingBalances] = useState<boolean>(false);
 
+    // Mapping from native token names to wrapped versions used in lending protocols
+    const TOKEN_ALIASES: Record<string, string[]> = {
+        'ETH': ['WETH', 'WETH.E', 'WETH.e'],
+        'AVAX': ['WAVAX', 'WAVAX.E', 'WAVAX.e'],
+        'BTC': ['WBTC', 'WBTC.E', 'WBTC.e', 'BTC.B', 'BTC.b'],
+    };
+
+    // Supported networks for lending (currently only Avalanche via Benqi)
+    const SUPPORTED_NETWORKS = ['avalanche', 'avax', 'avalanche c-chain'];
+
+    // State to track unsupported network warning
+    const [unsupportedNetwork, setUnsupportedNetwork] = useState<string | null>(null);
+
     // Initialize state from metadata
     useEffect(() => {
+        console.log('[LENDING DEBUG] useEffect triggered');
+        console.log('[LENDING DEBUG] metadata:', JSON.stringify(metadata, null, 2));
+        console.log('[LENDING DEBUG] validTokens:', validTokens.map(t => t.symbol));
+        console.log('[LENDING DEBUG] current selectedToken:', selectedToken?.symbol);
+
         if (metadata && validTokens.length > 0) {
+            // Check if network is supported
+            const requestedNetwork = metadata.network;
+            if (requestedNetwork && typeof requestedNetwork === 'string') {
+                const networkLower = requestedNetwork.toLowerCase();
+                if (!SUPPORTED_NETWORKS.includes(networkLower)) {
+                    console.log('[LENDING DEBUG] Unsupported network:', requestedNetwork);
+                    setUnsupportedNetwork(requestedNetwork);
+                    setError(`Lending is currently only available on Avalanche. You requested "${requestedNetwork}". Please try again with Avalanche network.`);
+                } else {
+                    setUnsupportedNetwork(null);
+                }
+            }
+
             // Set Action
             if (metadata.action && typeof metadata.action === 'string') {
                 const metaAction = metadata.action.toLowerCase();
+                console.log('[LENDING DEBUG] Setting action:', metaAction);
                 if (['supply', 'withdraw', 'borrow', 'repay'].includes(metaAction)) {
                     setAction(metaAction as LendingActionType);
                 }
             }
 
-            // Set Token
-            if (metadata.token && typeof metadata.token === 'string') {
-                const metaToken = metadata.token.toUpperCase();
-                const foundToken = validTokens.find(t => t.symbol.toUpperCase() === metaToken);
+            // Set Token (check both 'asset' and 'token' fields for compatibility)
+            const tokenField = metadata.asset || metadata.token;
+            console.log('[LENDING DEBUG] tokenField from metadata:', tokenField);
+            console.log('[LENDING DEBUG] metadata.asset:', metadata.asset);
+            console.log('[LENDING DEBUG] metadata.token:', metadata.token);
+
+            if (tokenField && typeof tokenField === 'string') {
+                const metaToken = tokenField.toUpperCase();
+                console.log('[LENDING DEBUG] Looking for token:', metaToken);
+
+                // First try exact match
+                let foundToken = validTokens.find(t => t.symbol.toUpperCase() === metaToken);
+
+                // If not found, try aliases (e.g., ETH -> WETH)
+                if (!foundToken && TOKEN_ALIASES[metaToken]) {
+                    console.log('[LENDING DEBUG] Token not found, trying aliases:', TOKEN_ALIASES[metaToken]);
+                    for (const alias of TOKEN_ALIASES[metaToken]) {
+                        foundToken = validTokens.find(t => t.symbol.toUpperCase() === alias.toUpperCase());
+                        if (foundToken) {
+                            console.log('[LENDING DEBUG] Found token via alias:', alias);
+                            break;
+                        }
+                    }
+                }
+
+                console.log('[LENDING DEBUG] foundToken:', foundToken?.symbol || 'NOT FOUND');
 
                 if (foundToken) {
+                    console.log('[LENDING DEBUG] Setting selectedToken to:', foundToken.symbol);
                     setSelectedToken(foundToken);
                 } else if (!selectedToken) {
+                    console.log('[LENDING DEBUG] Token not found, falling back to first token:', validTokens[0]?.symbol);
                     setSelectedToken(validTokens[0]);
                 }
             } else if (!selectedToken) {
+                console.log('[LENDING DEBUG] No tokenField, falling back to first token:', validTokens[0]?.symbol);
                 setSelectedToken(validTokens[0]);
             }
 
             // Set Amount
             if (metadata.amount && (typeof metadata.amount === 'string' || typeof metadata.amount === 'number')) {
+                console.log('[LENDING DEBUG] Setting amount:', metadata.amount);
                 setAmount(String(metadata.amount));
             }
         } else if (validTokens.length > 0 && !selectedToken) {
+            console.log('[LENDING DEBUG] No metadata or empty validTokens, setting first token:', validTokens[0]?.symbol);
             setSelectedToken(validTokens[0]);
         }
     }, [metadata, validTokens, selectedToken]);
@@ -305,8 +364,8 @@ export function LendingModal({ isOpen, onClose, metadata, onSuccess }: LendingMo
     };
 
     const canExecute = useMemo(() => {
-        return Boolean(selectedToken && amount && parseFloat(amount) > 0);
-    }, [selectedToken, amount]);
+        return Boolean(selectedToken && amount && parseFloat(amount) > 0 && !unsupportedNetwork);
+    }, [selectedToken, amount, unsupportedNetwork]);
 
     if (!isOpen) return null;
 
