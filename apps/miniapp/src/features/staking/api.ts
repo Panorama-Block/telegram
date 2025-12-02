@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useActiveAccount } from 'thirdweb/react';
 
 export interface StakingToken {
@@ -30,7 +31,7 @@ export interface StakingPosition {
 export interface StakingTransaction {
   id: string;
   userAddress: string;
-  type: 'stake' | 'unstake' | 'claim';
+  type: 'stake' | 'unstake' | 'unstake_approval' | 'claim';
   amount: string;
   token: string;
   status: 'pending' | 'completed' | 'failed';
@@ -42,6 +43,9 @@ export interface StakingTransaction {
     gasLimit: string;
     chainId: number;
   };
+  // For multi-step transactions (like unstake which requires approval first)
+  requiresFollowUp?: boolean;
+  followUpAction?: 'unstake';
 }
 
 export interface ProtocolInfo {
@@ -51,17 +55,6 @@ export interface ProtocolInfo {
   stETHPrice: string;
   wstETHPrice: string;
   lastUpdate: string;
-}
-
-export interface AuthResponse {
-  success: boolean;
-  data: {
-    userAddress: string;
-    accessToken: string;
-    refreshToken: string;
-    expiresIn: number;
-    tokenType: string;
-  };
 }
 
 export interface StakingResponse {
@@ -74,203 +67,114 @@ export interface PositionResponse {
   data: StakingPosition;
 }
 
+export interface CacheStatus {
+  hasCache: boolean;
+  cacheAge: number;
+  isExpired: boolean;
+}
+
 class StakingApiClient {
   private baseUrl: string;
   private account: any;
-  private accessToken: string | null = null;
-  private refreshToken: string | null = null;
-  
+
   // Cache for Lido protocol data to prevent infinite loops
   private lidoDataCache: any = null;
   private lidoDataCacheTime: number = 0;
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
   constructor(account: any) {
-    this.baseUrl = process.env.NEXT_PUBLIC_STAKING_API_URL || 'http://localhost:3004';
+    // Priority: Use environment variable or fallback to localhost
+    const direct = process.env.NEXT_PUBLIC_STAKING_API_URL || process.env.VITE_STAKING_API_URL;
+
+    if (direct && direct.length > 0) {
+      this.baseUrl = direct.replace(/\/+$/, '');
+    } else {
+      this.baseUrl = 'http://localhost:3004';
+    }
+
     this.account = account;
-    
-    // Try to load existing tokens from localStorage
-    this.accessToken = localStorage.getItem('staking_access_token');
-    this.refreshToken = localStorage.getItem('staking_refresh_token');
-    
-    // Clear tokens if they exist but account changed
-    if (this.accessToken && account?.address) {
-      try {
-        const payload = JSON.parse(atob(this.accessToken.split('.')[1]));
-        if (payload.address !== account.address) {
-          console.log('🔄 Account changed, clearing old tokens');
-          this.clearTokens();
-        }
-      } catch {
-        console.log('🔄 Invalid token format, clearing tokens');
-        this.clearTokens();
-      }
-    }
   }
 
-  private clearTokens(): void {
-    this.accessToken = null;
-    this.refreshToken = null;
-    localStorage.removeItem('staking_access_token');
-    localStorage.removeItem('staking_refresh_token');
+  private toWei(amount: string, decimals: number = 18): string {
+    const num = parseFloat(amount);
+    if (isNaN(num)) return '0';
+    // Use BigInt for precise conversion to avoid floating point errors
+    const factor = BigInt(10 ** decimals);
+    const wholePart = Math.floor(num);
+    const decimalPart = num - wholePart;
+    const weiValue = BigInt(wholePart) * factor + BigInt(Math.floor(decimalPart * (10 ** decimals)));
+    return weiValue.toString();
   }
 
-  private async authenticate(): Promise<void> {
-    if (!this.account?.address) {
-      throw new Error('Account not connected');
-    }
-
+  private getAddressFromToken(): string | null {
     try {
-      // Add timeout to fetch request
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+      if (!token) return null;
 
-      const response = await fetch(`${this.baseUrl}/api/lido/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userAddress: this.account.address }),
-        signal: controller.signal
-      });
+      const parts = token.split('.');
+      if (parts.length !== 3) return null;
 
-      clearTimeout(timeoutId);
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-      }
-
-      const authData: AuthResponse = await response.json();
-      
-      if (authData.success && authData.data) {
-        this.accessToken = authData.data.accessToken;
-        this.refreshToken = authData.data.refreshToken;
-        
-        // Store tokens in localStorage for persistence
-        localStorage.setItem('staking_access_token', this.accessToken);
-        localStorage.setItem('staking_refresh_token', this.refreshToken);
-      } else {
-        throw new Error('Authentication failed: Invalid response from server');
-      }
+      return payload.sub || payload.address || null;
     } catch (error) {
-      console.error('Authentication error:', error);
-      
-      // Handle specific error types
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          throw new Error(`Authentication timeout: Staking service at ${this.baseUrl} is not responding. Please check if the service is running.`);
-        }
-        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-          throw new Error(`Cannot connect to staking service at ${this.baseUrl}. Please check if the service is running and accessible.`);
-        }
-        throw new Error(`Failed to authenticate with staking service: ${error.message}`);
-      }
-      throw new Error('Failed to authenticate with staking service: Unknown error');
+      console.error('[STAKING] Error parsing JWT:', error);
+      return null;
     }
   }
 
-  private async refreshAccessToken(): Promise<void> {
-    if (!this.refreshToken) {
-      throw new Error('No refresh token available');
+  private getAuthHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+    // Get JWT from auth-service (centralized authentication)
+    const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
     }
 
-    try {
-      const response = await fetch(`${this.baseUrl}/api/lido/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: this.refreshToken })
-      });
-
-      const authData: AuthResponse = await response.json();
-      
-      if (authData.success) {
-        this.accessToken = authData.data.accessToken;
-        this.refreshToken = authData.data.refreshToken;
-        
-        // Update stored tokens
-        localStorage.setItem('staking_access_token', this.accessToken);
-        localStorage.setItem('staking_refresh_token', this.refreshToken);
-      } else {
-        throw new Error('Token refresh failed');
-      }
-    } catch (error) {
-      console.error('Token refresh error:', error);
-      // Clear tokens and re-authenticate
-      this.clearTokens();
-      await this.authenticate();
-    }
-  }
-
-  private async getAuthHeaders(): Promise<Record<string, string>> {
-    // Try to get tokens from localStorage first
-    if (!this.accessToken) {
-      this.accessToken = localStorage.getItem('staking_access_token');
-      this.refreshToken = localStorage.getItem('staking_refresh_token');
-    }
-
-    // If no tokens, authenticate
-    if (!this.accessToken) {
-      await this.authenticate();
-    }
-
-    return {
-      'Authorization': `Bearer ${this.accessToken}`,
-      'Content-Type': 'application/json'
-    };
+    return headers;
   }
 
   private async generateSignature(message: string): Promise<string> {
-    if (!this.account) {
-      throw new Error('Account not connected');
+    // Check if we have a JWT token first (centralized auth)
+    const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+
+    // If we have a JWT token, use placeholder signature (backend validates JWT via auth-service)
+    if (authToken) {
+      return '0x0000000000000000000000000000000000000000000000000000000000000000';
     }
 
-    try {
-      // Smart wallet signature using thirdweb
-      const signature = await this.account.signMessage({ message });
-      return signature;
-    } catch (error) {
-      console.error('Error signing message:', error);
-      throw new Error('Failed to sign message');
+    // Only try to sign with account if we don't have JWT (pure wallet users)
+    if (this.account) {
+      try {
+        const signature = await this.account.signMessage({ message });
+        return signature;
+      } catch (error) {
+        console.error('[STAKING] Error signing message:', error);
+        throw new Error('Failed to sign message');
+      }
     }
+
+    throw new Error('No authentication method available. Please authenticate first.');
   }
 
   private async getAuthData(message: string) {
     const signature = await this.generateSignature(message);
+    const userAddress = this.account?.address || this.getAddressFromToken() || '';
+
+    if (!userAddress) {
+      throw new Error('User address not found. Please connect wallet or authenticate.');
+    }
+
     return {
-      address: this.account.address,
+      address: userAddress,
       signature,
       message,
       timestamp: Date.now(),
-      // Smart wallet specific data
-      walletType: 'smart_wallet',
+      walletType: this.account ? 'smart_wallet' : 'jwt',
       chainId: 1, // Ethereum mainnet
-      // No private key needed for smart wallets
-      isSmartWallet: true
+      isSmartWallet: !!this.account
     };
-  }
-
-  private async makeAuthenticatedRequest(url: string, options: RequestInit = {}): Promise<any> {
-    try {
-      // Generate a unique message for this request
-      const message = `Staking request at ${Date.now()}`;
-      const authData = await this.getAuthData(message);
-      
-      const response = await fetch(url, {
-        ...options,
-        headers: { 
-          'Content-Type': 'application/json',
-          ...options.headers 
-        },
-        body: JSON.stringify({
-          ...JSON.parse(options.body?.toString() || '{}'),
-          authData
-        })
-      });
-
-      return await response.json();
-    } catch (error) {
-      console.error('Authenticated request error:', error);
-      throw error;
-    }
   }
 
   async getTokens(): Promise<StakingToken[]> {
@@ -435,57 +339,41 @@ class StakingApiClient {
   }
 
   async getUserPosition(): Promise<StakingPosition | null> {
-    if (!this.account?.address) return null;
+    const userAddress = this.account?.address || this.getAddressFromToken();
+    if (!userAddress) return null;
 
     try {
-      // Ensure we're authenticated first
-      if (!this.accessToken) {
-        console.log('🔐 No access token found, authenticating...');
-        try {
-          await this.authenticate();
-          console.log('✅ Authentication successful, token:', this.accessToken?.substring(0, 20) + '...');
-        } catch (authError) {
-          console.error('❌ Authentication failed, cannot fetch position:', authError);
-          // Return null if authentication fails (server might be down)
-          return null;
-        }
-      } else {
-        console.log('🔑 Using existing token:', this.accessToken.substring(0, 20) + '...');
-      }
-
-      // Create specific message for getting position
-      const message = `Get staking position\nTimestamp: ${Date.now()}`;
-      const authData = await this.getAuthData(message);
-      
-      // Add timeout to fetch request
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-      
-      const response = await fetch(`${this.baseUrl}/api/lido/position/${this.account.address}`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.accessToken}`
-        },
-        body: JSON.stringify({ authData }),
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      // Use centralized auth headers
+      const headers = this.getAuthHeaders();
+
+      const response = await fetch(`${this.baseUrl}/api/lido/position/${userAddress}`, {
+        method: 'GET',
+        headers,
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
 
-      const result = await response.json();
+      if (!response.ok) {
+        console.error('[STAKING] Error fetching position:', response.status);
+        return null;
+      }
 
+      const result = await response.json();
       return result.success ? result.data : null;
     } catch (error) {
-      console.error('Error fetching user position:', error);
-      // Return null instead of throwing - allows UI to continue working
+      console.error('[STAKING] Error fetching user position:', error);
       return null;
     }
   }
 
   async stake(amount: string): Promise<StakingTransaction> {
-    if (!this.account?.address) {
-      throw new Error('Account not connected');
+    const userAddress = this.account?.address || this.getAddressFromToken();
+    if (!userAddress) {
+      throw new Error('Please connect your wallet or authenticate first.');
     }
 
     // Validate amount
@@ -495,53 +383,27 @@ class StakingApiClient {
     }
 
     try {
-      // Ensure we're authenticated first
-      if (!this.accessToken) {
-        console.log('🔐 No access token found, authenticating...');
-        await this.authenticate();
-        console.log('✅ Authentication successful, token:', this.accessToken?.substring(0, 20) + '...');
-      } else {
-        console.log('🔑 Using existing token:', this.accessToken.substring(0, 20) + '...');
-      }
-
-      // Create specific message for staking
+      // Note: Backend expects amount in ETH (not wei), it handles conversion internally
       const message = `Stake ${amount} ETH\nTimestamp: ${Date.now()}`;
       const authData = await this.getAuthData(message);
-      
-      console.log('📤 Sending stake request:', {
+
+      const headers = this.getAuthHeaders();
+
+      console.log('[STAKING] Sending stake request:', {
         url: `${this.baseUrl}/api/lido/stake`,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.accessToken?.substring(0, 20)}...`
-        },
-        body: {
-          userAddress: this.account.address,
-          amount: amount,
-          authData: {
-            address: authData.address,
-            signature: authData.signature.substring(0, 20) + '...',
-            message: authData.message,
-            timestamp: authData.timestamp,
-            walletType: authData.walletType,
-            chainId: authData.chainId,
-            isSmartWallet: authData.isSmartWallet
-          }
-        }
+        userAddress,
+        amount
       });
 
-      // Add timeout to fetch request
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for stake
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       const response = await fetch(`${this.baseUrl}/api/lido/stake`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.accessToken}`
-        },
+        headers,
         body: JSON.stringify({
-          userAddress: this.account.address,
-          amount: amount,
+          userAddress,
+          amount,
           authData
         }),
         signal: controller.signal
@@ -549,38 +411,21 @@ class StakingApiClient {
 
       clearTimeout(timeoutId);
 
-      console.log('📥 Stake response status:', response.status);
+      console.log('[STAKING] Stake response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('[STAKING] Stake error:', response.status, errorText);
+
+        if (response.status === 401) {
+          throw new Error('Authentication expired. Please re-authenticate.');
+        }
+
+        throw new Error(`Staking failed: ${errorText}`);
+      }
 
       const result = await response.json();
-      console.log('📥 Stake response data:', result);
-
-      // If 401, try to refresh token or re-authenticate
-      if (response.status === 401) {
-        console.log('🔐 Token expired or invalid, re-authenticating...');
-        await this.authenticate();
-        
-        // Retry with new token
-        const retryResponse = await fetch(`${this.baseUrl}/api/lido/stake`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.accessToken}`
-          },
-          body: JSON.stringify({
-            userAddress: this.account.address,
-            amount: amount,
-            authData
-          })
-        });
-        
-        const retryResult = await retryResponse.json();
-        
-        if (retryResult.success) {
-          return retryResult.data;
-        } else {
-          throw new Error(retryResult.message || 'Staking failed after re-authentication');
-        }
-      }
+      console.log('[STAKING] Stake response data:', result);
 
       if (result.success) {
         return result.data;
@@ -588,14 +433,13 @@ class StakingApiClient {
         throw new Error(result.message || 'Staking failed');
       }
     } catch (error) {
-      console.error('Error staking:', error);
+      console.error('[STAKING] Error staking:', error);
       if (error instanceof Error) {
-        // Handle specific error types
         if (error.name === 'AbortError') {
-          throw new Error(`Staking request timeout: The staking service at ${this.baseUrl} is not responding. Please try again later.`);
+          throw new Error(`Staking request timeout. Please try again later.`);
         }
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-          throw new Error(`Cannot connect to staking service at ${this.baseUrl}. Please check if the service is running.`);
+          throw new Error(`Cannot connect to staking service. Please check if the service is running.`);
         }
         throw error;
       }
@@ -604,8 +448,9 @@ class StakingApiClient {
   }
 
   async unstake(amount: string): Promise<StakingTransaction> {
-    if (!this.account?.address) {
-      throw new Error('Account not connected');
+    const userAddress = this.account?.address || this.getAddressFromToken();
+    if (!userAddress) {
+      throw new Error('Please connect your wallet or authenticate first.');
     }
 
     // Validate amount
@@ -615,32 +460,27 @@ class StakingApiClient {
     }
 
     try {
-      // Ensure we're authenticated first
-      if (!this.accessToken) {
-        console.log('🔐 No access token found, authenticating...');
-        await this.authenticate();
-        console.log('✅ Authentication successful, token:', this.accessToken?.substring(0, 20) + '...');
-      } else {
-        console.log('🔑 Using existing token:', this.accessToken.substring(0, 20) + '...');
-      }
-
-      // Create specific message for unstaking
+      // Note: Backend expects amount in ETH (not wei), it handles conversion internally
       const message = `Unstake ${amount} stETH\nTimestamp: ${Date.now()}`;
       const authData = await this.getAuthData(message);
-      
-      // Add timeout to fetch request
+
+      const headers = this.getAuthHeaders();
+
+      console.log('[STAKING] Sending unstake request:', {
+        url: `${this.baseUrl}/api/lido/unstake`,
+        userAddress,
+        amount
+      });
+
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for unstake
-      
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
       const response = await fetch(`${this.baseUrl}/api/lido/unstake`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.accessToken}`
-        },
+        headers,
         body: JSON.stringify({
-          userAddress: this.account.address,
-          amount: amount,
+          userAddress,
+          amount,
           authData
         }),
         signal: controller.signal
@@ -648,35 +488,21 @@ class StakingApiClient {
 
       clearTimeout(timeoutId);
 
-      const result = await response.json();
+      console.log('[STAKING] Unstake response status:', response.status);
 
-      // If 401, try to refresh token or re-authenticate
-      if (response.status === 401) {
-        console.log('🔐 Token expired or invalid, re-authenticating...');
-        await this.authenticate();
-        
-        // Retry with new token
-        const retryResponse = await fetch(`${this.baseUrl}/api/lido/unstake`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.accessToken}`
-          },
-          body: JSON.stringify({
-            userAddress: this.account.address,
-            amount: amount,
-            authData
-          })
-        });
-        
-        const retryResult = await retryResponse.json();
-        
-        if (retryResult.success) {
-          return retryResult.data;
-        } else {
-          throw new Error(retryResult.message || 'Unstaking failed after re-authentication');
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('[STAKING] Unstake error:', response.status, errorText);
+
+        if (response.status === 401) {
+          throw new Error('Authentication expired. Please re-authenticate.');
         }
+
+        throw new Error(`Unstaking failed: ${errorText}`);
       }
+
+      const result = await response.json();
+      console.log('[STAKING] Unstake response data:', result);
 
       if (result.success) {
         return result.data;
@@ -684,14 +510,13 @@ class StakingApiClient {
         throw new Error(result.message || 'Unstaking failed');
       }
     } catch (error) {
-      console.error('Error unstaking:', error);
+      console.error('[STAKING] Error unstaking:', error);
       if (error instanceof Error) {
-        // Handle specific error types
         if (error.name === 'AbortError') {
-          throw new Error(`Unstaking request timeout: The staking service at ${this.baseUrl} is not responding. Please try again later.`);
+          throw new Error(`Unstaking request timeout. Please try again later.`);
         }
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-          throw new Error(`Cannot connect to staking service at ${this.baseUrl}. Please check if the service is running.`);
+          throw new Error(`Cannot connect to staking service. Please check if the service is running.`);
         }
         throw error;
       }
@@ -710,6 +535,16 @@ class StakingApiClient {
       }
 
       console.log('Raw transaction data received:', txData);
+
+      // IMPORTANT: Lido staking is on Ethereum Mainnet (chainId 1)
+      // The transaction data from backend should have chainId: 1
+      const expectedChainId = txData.chainId || 1; // Default to Ethereum mainnet
+      console.log('Expected chainId for transaction:', expectedChainId);
+
+      if (expectedChainId !== 1) {
+        console.warn('⚠️ Transaction data has unexpected chainId:', expectedChainId);
+        console.warn('Lido staking should be on Ethereum mainnet (chainId 1)');
+      }
 
       // Extract transaction data
       const toAddress = txData.to;
@@ -790,7 +625,10 @@ class StakingApiClient {
       const formattedTxData: any = {
         to: toAddress,
         value: valueHex,
-        data: data
+        data: data,
+        // IMPORTANT: Specify chainId to ensure transaction goes to correct network
+        // Lido staking is on Ethereum mainnet (chainId 1)
+        chainId: 1
       };
 
       // Only set gas if we have it from backend (same format as lending)
@@ -803,6 +641,7 @@ class StakingApiClient {
       // This results in optimal fees as the wallet/provider can optimize based on current network conditions
 
       console.log('Formatted transaction data for thirdweb:', formattedTxData);
+      console.log('Transaction will be sent to Ethereum mainnet (chainId: 1)');
 
       // Validate final transaction data
       if (!formattedTxData.to || !formattedTxData.data) {
@@ -848,28 +687,19 @@ class StakingApiClient {
     }
   }
 
-  async logout(): Promise<void> {
-    try {
-      // Clear tokens from localStorage
-      this.clearTokens();
-    } catch (error) {
-      console.error('Error logging out:', error);
-    }
-  }
-
   // Method to clear cache (useful for testing or manual refresh)
   clearLidoDataCache(): void {
     this.lidoDataCache = null;
     this.lidoDataCacheTime = 0;
-    console.log('Lido data cache cleared');
+    console.log('[STAKING] Lido data cache cleared');
   }
 
   // Method to get cache status (useful for debugging)
-  getCacheStatus(): { hasCache: boolean; cacheAge: number; isExpired: boolean } {
+  getCacheStatus(): CacheStatus {
     const now = Date.now();
     const cacheAge = this.lidoDataCacheTime ? now - this.lidoDataCacheTime : 0;
     const isExpired = cacheAge > this.CACHE_DURATION;
-    
+
     return {
       hasCache: !!this.lidoDataCache,
       cacheAge,
@@ -880,7 +710,7 @@ class StakingApiClient {
 
 export const useStakingApi = () => {
   const account = useActiveAccount();
-  return new StakingApiClient(account);
+  return useMemo(() => new StakingApiClient(account), [account]);
 };
 
 export default StakingApiClient;

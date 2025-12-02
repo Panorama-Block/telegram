@@ -243,7 +243,7 @@ export default function StakingPage() {
 
     try {
       let transaction;
-      
+
       // Execute transaction based on action
       switch (action) {
         case 'stake':
@@ -257,33 +257,124 @@ export default function StakingPage() {
       }
 
       if (transaction) {
-        console.log(`${action} transaction prepared:`, transaction.id);
-        
+        console.log(`${action} transaction prepared:`, transaction);
+
         // Check if we need to execute the transaction (smart wallet)
         if (transaction.transactionData) {
           console.log('🔗 Smart wallet detected, executing transaction...');
-          setSuccess('Transação preparada! Executando na blockchain...');
-          
-          try {
-            // Execute the transaction on the blockchain
-            const txHash = await stakingApi.executeTransaction(transaction.transactionData);
-            console.log('✅ Transaction executed successfully:', txHash);
-            
-            setAmount('');
-            setError(null);
-            const successMessage = `${action === 'stake' ? 'Staking' : 'Unstaking'} successful! Transaction Hash: ${txHash}`;
-            console.log('🎉 Setting success message:', successMessage);
-            setSuccess(successMessage);
-            
-            // Clear success message after 10 seconds
-            setTimeout(() => {
-              console.log('🕐 Clearing success message after 10 seconds');
-              setSuccess(null);
-            }, 10000);
-          } catch (execError) {
-            console.error('❌ Error executing transaction:', execError);
-            setError(`Failed to execute transaction: ${execError instanceof Error ? execError.message : 'Unknown error'}`);
-            return;
+          console.log('📦 Transaction data from backend:', transaction.transactionData);
+          console.log('📋 Transaction type:', transaction.type);
+
+          // Validate chainId from backend - Lido staking should be on Ethereum mainnet
+          const backendChainId = transaction.transactionData.chainId;
+          if (backendChainId && backendChainId !== 1) {
+            console.warn('⚠️ Backend returned wrong chainId:', backendChainId);
+            console.warn('Expected chainId: 1 (Ethereum Mainnet)');
+            console.warn('This may cause the transaction to fail or go to wrong network');
+          }
+
+          // IMPORTANT: Ensure we're on Ethereum mainnet before executing
+          // Lido staking is on Ethereum mainnet (chainId 1)
+          if (switchChain) {
+            try {
+              console.log('🔄 Switching to Ethereum Mainnet before transaction...');
+              setSuccess('Switching to Ethereum Mainnet...');
+              await switchChain(defineChain(1)); // Ethereum Mainnet
+              console.log('✅ Chain switched to Ethereum Mainnet');
+            } catch (switchError) {
+              console.error('❌ Failed to switch chain:', switchError);
+              // Continue anyway - wallet might already be on correct chain
+            }
+          }
+
+          // Check if this is an approval transaction (two-step unstake process)
+          console.log('🔍 Checking transaction type:', transaction.type);
+          console.log('🔍 Full transaction object:', JSON.stringify(transaction, null, 2));
+
+          if (transaction.type === 'unstake_approval') {
+            console.log('📝 This is an approval transaction - Step 1 of unstaking');
+            console.log('📝 Approval transaction details:');
+            console.log('   to:', transaction.transactionData?.to);
+            console.log('   data:', transaction.transactionData?.data);
+            console.log('   data length:', transaction.transactionData?.data?.length);
+            console.log('   value:', transaction.transactionData?.value);
+            console.log('   gasLimit:', transaction.transactionData?.gasLimit);
+            console.log('   chainId:', transaction.transactionData?.chainId);
+            setSuccess('Step 1/2: Approving stETH for withdrawal...');
+
+            try {
+              // Execute the approval transaction
+              const approvalTxHash = await stakingApi.executeTransaction(transaction.transactionData);
+              console.log('✅ Approval transaction executed:', approvalTxHash);
+
+              setSuccess('Step 1/2 complete! Now requesting withdrawal...');
+
+              // Wait a bit for the approval to be confirmed
+              await new Promise(resolve => setTimeout(resolve, 2000));
+
+              // Now call unstake again to get the actual withdrawal transaction
+              console.log('🔄 Calling unstake again to get withdrawal transaction...');
+              const withdrawalTransaction = await stakingApi.unstake(amount);
+
+              if (withdrawalTransaction && withdrawalTransaction.transactionData) {
+                console.log('📦 Withdrawal transaction data:', withdrawalTransaction.transactionData);
+
+                if (withdrawalTransaction.type === 'unstake_approval') {
+                  // If we still get an approval transaction, something went wrong
+                  setError('Approval transaction completed but allowance not updated. Please try again.');
+                  return;
+                }
+
+                setSuccess('Step 2/2: Executing withdrawal request...');
+
+                // Execute the withdrawal transaction
+                const withdrawalTxHash = await stakingApi.executeTransaction(withdrawalTransaction.transactionData);
+                console.log('✅ Withdrawal transaction executed:', withdrawalTxHash);
+
+                setAmount('');
+                setError(null);
+                const successMessage = `Unstaking successful! Approval: ${approvalTxHash}, Withdrawal: ${withdrawalTxHash}`;
+                console.log('🎉 Setting success message:', successMessage);
+                setSuccess(successMessage);
+
+                // Clear success message after 15 seconds
+                setTimeout(() => {
+                  console.log('🕐 Clearing success message after 15 seconds');
+                  setSuccess(null);
+                }, 15000);
+              } else {
+                throw new Error('Failed to get withdrawal transaction after approval');
+              }
+            } catch (execError) {
+              console.error('❌ Error in two-step unstake process:', execError);
+              setError(`Failed to execute unstake: ${execError instanceof Error ? execError.message : 'Unknown error'}`);
+              return;
+            }
+          } else {
+            // Regular transaction (stake or direct unstake with sufficient allowance)
+            setSuccess('Transaction prepared! Executing on blockchain...');
+
+            try {
+              // Execute the transaction on the blockchain
+              const txHash = await stakingApi.executeTransaction(transaction.transactionData);
+              console.log('✅ Transaction executed successfully:', txHash);
+
+              setAmount('');
+              setError(null);
+              const successMessage = `${action === 'stake' ? 'Staking' : 'Unstaking'} successful! Transaction Hash: ${txHash}`;
+              console.log('🎉 Setting success message:', successMessage);
+              setSuccess(successMessage);
+
+              // Clear success message after 10 seconds
+              setTimeout(() => {
+                console.log('🕐 Clearing success message after 10 seconds');
+                setSuccess(null);
+              }, 10000);
+            } catch (execError) {
+              console.error('❌ Error executing transaction:', execError);
+              setError(`Failed to execute transaction: ${execError instanceof Error ? execError.message : 'Unknown error'}`);
+              return;
+            }
           }
         } else {
           // Private key wallet - transaction already executed
@@ -293,24 +384,24 @@ export default function StakingPage() {
           const successMessage = `${action === 'stake' ? 'Staking' : 'Unstaking'} successful! Transaction ID: ${transaction.id}`;
           console.log('🎉 Setting success message:', successMessage);
           setSuccess(successMessage);
-          
+
           // Clear success message after 5 seconds
           setTimeout(() => {
             console.log('🕐 Clearing success message after 5 seconds');
             setSuccess(null);
           }, 5000);
         }
-        
+
         // Refresh data using the hook
         refresh();
-        
+
         // Refresh token balances
         const refreshBalances = async () => {
           if (!account || tokens.length === 0) return;
-          
+
           setLoadingBalances(true);
           const balances: Record<string, string> = {};
-          
+
           for (const token of tokens) {
             try {
               const balance = await getTokenBalance(account, token.address);
@@ -320,16 +411,16 @@ export default function StakingPage() {
               balances[token.address] = '0';
             }
           }
-          
+
           setTokenBalances(balances);
           setLoadingBalances(false);
         };
-        
+
         refreshBalances();
       } else {
         throw new Error('Transaction failed');
       }
-      
+
     } catch (err) {
       console.error('Transaction error:', err);
       setError(err instanceof Error ? err.message : 'Transaction failed. Please try again.');
