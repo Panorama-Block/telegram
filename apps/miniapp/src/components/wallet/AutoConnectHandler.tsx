@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useActiveAccount, useAutoConnect } from 'thirdweb/react';
 import { inAppWallet } from 'thirdweb/wallets';
 import { createThirdwebClient } from 'thirdweb';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
 /**
  * Component that handles auto-reconnection of Thirdweb wallets on page load.
@@ -13,7 +14,7 @@ export function AutoConnectHandler() {
   const account = useActiveAccount();
 
   const client = createThirdwebClient({
-    clientId: process.env.VITE_THIRDWEB_CLIENT_ID || '841b9035bb273fee8d50a503f5b09fd0'
+    clientId: THIRDWEB_CLIENT_ID
   });
 
   const wallet = inAppWallet();

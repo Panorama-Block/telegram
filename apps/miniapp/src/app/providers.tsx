@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { AuthProvider } from '@/shared/contexts/AuthContext';
 import { AuthGuard } from '@/shared/ui/AuthGuard';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
 interface ClientProvidersProps {
   children: React.ReactNode;
@@ -57,7 +58,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
               if (resp.ok) {
                 const { token, walletCookie } = await resp.json();
                 if (walletCookie) {
-                  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+                  const clientId = THIRDWEB_CLIENT_ID;
                   if (clientId) {
                     await localStorage.setItem(`walletToken-${clientId}`, walletCookie);
                   }
@@ -68,7 +69,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
                   try {
                     const thirdweb = await import('thirdweb');
                     const wallets = await import('thirdweb/wallets');
-                    const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+                    const clientId = THIRDWEB_CLIENT_ID;
                     if (clientId) {
                       const client = thirdweb.createThirdwebClient({ clientId });
                       const w = wallets.inAppWallet();
@@ -94,7 +95,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
         }
 
         const manifestUrl = `${window.location.origin}/miniapp/api/tonconnect-manifest`;
-        const thirdwebClientId = process.env.VITE_THIRDWEB_CLIENT_ID || '841b9035bb273fee8d50a503f5b09fd0';
+        const thirdwebClientId = THIRDWEB_CLIENT_ID;
 
         // Create providers component
         const ProvidersComponent = ({ children }: { children: React.ReactNode }) => {

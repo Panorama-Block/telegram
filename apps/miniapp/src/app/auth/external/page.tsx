@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { createThirdwebClient } from 'thirdweb';
 import { authenticateWithRedirect } from 'thirdweb/wallets';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
 export default function ExternalAuthPage() {
   const search = useSearchParams();
@@ -14,7 +15,7 @@ export default function ExternalAuthPage() {
   useEffect(() => {
     async function run() {
       try {
-        const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+        const clientId = THIRDWEB_CLIENT_ID;
         if (!clientId) throw new Error('THIRDWEB_CLIENT_ID missing');
         const client = createThirdwebClient({ clientId });
         const strategy = (search.get('strategy') || 'google') as any;
