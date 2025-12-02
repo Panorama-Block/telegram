@@ -439,7 +439,7 @@ describe('Lending Integration', () => {
   
   beforeAll(() => {
     // Setup test environment
-    process.env.NEXT_PUBLIC_LENDING_API_URL = 'http://localhost:3001';
+    process.env.NEXT_PUBLIC_LENDING_API_URL = 'http://localhost:3301';
   });
   
   it('should fetch tokens successfully', async () => {

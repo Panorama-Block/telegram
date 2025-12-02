@@ -322,7 +322,7 @@ async function handleWithdraw(tokenAddress: string, amount: string) {
 ### Environment Variables
 
 ```bash
-NEXT_PUBLIC_LENDING_API_URL=http://localhost:3001
+NEXT_PUBLIC_LENDING_API_URL=http://localhost:3301
 ```
 
 ### Default Values
