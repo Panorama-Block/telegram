@@ -25,7 +25,7 @@ export async function verifyTelegramAuth(authData: AuthData): Promise<AuthResult
 
   try {
     // Call the auth-service to verify the signature
-    const authServiceUrl = process.env.AUTH_API_BASE || 'http://localhost:3001';
+    const authServiceUrl = process.env.AUTH_API_BASE || 'http://localhost:3301';
     
     const response = await fetch(`${authServiceUrl}/auth/verify`, {
       method: 'POST',
