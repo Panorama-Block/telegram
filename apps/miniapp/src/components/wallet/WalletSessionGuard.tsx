@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useActiveAccount, useActiveWallet } from 'thirdweb/react';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
 /**
  * Component that monitors wallet connections and attempts to persist session data.
@@ -22,7 +23,7 @@ export function WalletSessionGuard() {
 
     lastCheckedAddress.current = account.address;
 
-    const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '841b9035bb273fee8d50a503f5b09fd0';
+    const clientId = THIRDWEB_CLIENT_ID;
 
     console.log('[WalletSessionGuard] Wallet connected:', account.address);
     console.log('[WalletSessionGuard] Checking session persistence...');

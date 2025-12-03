@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import '@/shared/ui/loader.css';
 
 function decodeAuthResult(value: string) {
@@ -30,7 +31,7 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     async function run() {
       try {
-        const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+        const clientId = THIRDWEB_CLIENT_ID;
         if (!clientId) {
           throw new Error('THIRDWEB_CLIENT_ID missing');
         }
@@ -38,9 +39,16 @@ export default function AuthCallbackPage() {
         // 1) Parse authResult (when present) and persist the token locally
         const url = new URL(window.location.href);
         const authResultParam = url.searchParams.get('authResult');
+        const existingToken = localStorage.getItem(`walletToken-${clientId}`);
+
         if (!authResultParam) {
-          // Without authResult we attempt auto-connect if a local session already exists
-          console.warn('[AUTH CALLBACK] Missing authResult parameter');
+          // Without authResult, check if we have an existing token to auto-connect
+          if (!existingToken) {
+            console.warn('[AUTH CALLBACK] No authResult and no stored token, redirecting to newchat');
+            router.replace('/newchat');
+            return;
+          }
+          console.log('[AUTH CALLBACK] No authResult but found existing token, attempting auto-connect');
         } else {
           const authResult = decodeAuthResult(authResultParam);
           if (!authResult || !authResult.storedToken || !authResult.storedToken.cookieString) {
@@ -61,7 +69,15 @@ export default function AuthCallbackPage() {
         // 2) Auto-connect the wallet using the stored token
         const client = createThirdwebClient({ clientId });
         const wallet = inAppWallet();
-        const account = await wallet.autoConnect({ client });
+        let account;
+        try {
+          account = await wallet.autoConnect({ client });
+        } catch (autoConnectError) {
+          console.error('[AUTH CALLBACK] Auto-connect failed:', autoConnectError);
+          // If auto-connect fails, redirect to newchat for manual connection
+          router.replace('/newchat');
+          return;
+        }
 
         if (!account) {
           throw new Error('Failed to connect the wallet after OAuth');

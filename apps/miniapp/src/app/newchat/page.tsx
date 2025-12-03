@@ -8,6 +8,7 @@ import { inAppWallet, createWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import '@/shared/ui/loader.css';
 
 export default function NewChatPage() {
@@ -25,7 +26,7 @@ export default function NewChatPage() {
 
   // Client setup
   const client = useMemo(() => {
-    const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+    const clientId = THIRDWEB_CLIENT_ID;
     if (!clientId) {
       console.warn('No THIRDWEB_CLIENT_ID found');
       return null;

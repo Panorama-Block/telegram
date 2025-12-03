@@ -897,7 +897,7 @@ useEffect(() => {
             onClick={async () => {
               try {
                 const WebApp = (window as any).Telegram?.WebApp;
-                const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+                const clientId = THIRDWEB_CLIENT_ID;
                 const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
                 const walletCookie = clientId ? localStorage.getItem(`walletToken-${clientId}`) : null;
                 const token = localStorage.getItem('authToken');
