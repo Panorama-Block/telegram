@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { createThirdwebClient } from 'thirdweb';
 import { createWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
 export default function WalletExternalPage() {
   const search = useSearchParams();
@@ -12,7 +13,7 @@ export default function WalletExternalPage() {
   const [error, setError] = useState<string | null>(null);
   const [deepLinkUrl, setDeepLinkUrl] = useState<string | null>(null);
 
-  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+  const clientId = THIRDWEB_CLIENT_ID;
   const bot = process.env.VITE_TELEGRAM_BOT_USERNAME || '';
   const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
 

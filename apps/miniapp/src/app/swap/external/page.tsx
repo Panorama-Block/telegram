@@ -6,6 +6,7 @@ import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction,
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
 import { getTokenDecimals } from '@/features/swap/utils';
 import { swapApi } from '@/features/swap/api';
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
 export default function SwapExternalPage() {
   const search = useSearchParams();
@@ -14,7 +15,7 @@ export default function SwapExternalPage() {
   const [txHashes, setTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
   const [deepLinkUrl, setDeepLinkUrl] = useState<string | null>(null);
 
-  const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || '';
+  const clientId = THIRDWEB_CLIENT_ID;
   const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
   const bot = process.env.VITE_TELEGRAM_BOT_USERNAME || '';
 
