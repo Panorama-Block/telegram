@@ -33,7 +33,9 @@ export function AppHeader({ className, onMenuClick, showMenuButton = true }: App
   const handleDisconnect = async () => {
     setWalletOpen(false)
     try {
-      await disconnect?.(activeWallet ?? undefined)
+      if (activeWallet) {
+        await disconnect?.(activeWallet)
+      }
     } catch (error) {
       console.warn('[Header] disconnect failed:', error)
     }
