@@ -159,7 +159,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         console.error('[AUTH MODAL] Failed to extract wallet auth token:', tokenError);
       }
 
-      // 1. Obter payload do backend
+      // 1. Get payload from backend
       const normalizedAddress = account.address;
       const loginPayload = { address: normalizedAddress };
 

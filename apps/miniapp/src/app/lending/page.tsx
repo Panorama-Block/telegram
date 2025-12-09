@@ -182,7 +182,7 @@ export default function LendingPage() {
     const currentToken = selectedToken;
     const currentAmount = amount;
 
-    // Validações
+    // Validations
     if (!currentAmount || parseFloat(currentAmount) <= 0) {
       setError('Please enter a valid amount');
       return;

@@ -428,7 +428,7 @@ export function WalletConnectPanel() {
               {shortAddress(account!.address)}
             </p>
             <div style={{ fontSize: 13, color: '#ffffff', marginTop: 8 }}>
-              {isAuthenticating ? 'Autenticando...' : isAuthenticated ? 'Autenticado com sucesso!' : 'Conecte para autenticar'}
+              {isAuthenticating ? 'Authenticating...' : isAuthenticated ? 'Authenticated successfully!' : 'Connect to authenticate'}
             </div>
           </div>
           <button

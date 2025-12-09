@@ -123,7 +123,7 @@ export function SmartWalletConnectPanel() {
       setIsAuthenticating(true);
       setAuthMessage('🔄 Authenticating...');
 
-      // 1. Obter payload do backend
+      // 1. Get payload from backend
       const normalizedAddress = account.address;
 
       const loginPayload = { address: normalizedAddress };
@@ -204,11 +204,11 @@ export function SmartWalletConnectPanel() {
 
       const { token: authToken, address, sessionId } = verifyResult;
 
-      // 4. Salvar payload e assinatura no localStorage
+      // 4. Save payload and signature to localStorage
       localStorage.setItem('authPayload', JSON.stringify(payload));
       localStorage.setItem('authSignature', signature);
 
-      // 5. Salvar token no localStorage
+      // 5. Save token to localStorage
       localStorage.setItem('authToken', authToken);
       setIsAuthenticated(true);
       setJwtToken(authToken);
