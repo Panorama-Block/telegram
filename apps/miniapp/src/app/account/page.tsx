@@ -97,43 +97,43 @@ function ConfigModal({
         className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
         <Card
           variant="glass"
           size="lg"
-          className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-pano-surface border border-pano-border/60 shadow-lg shadow-black/40"
+          className="w-full max-w-lg sm:max-w-xl md:max-w-2xl lg:max-w-3xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto bg-pano-surface border border-pano-border/60 shadow-lg shadow-black/40"
         >
-          <CardHeader className="flex flex-col gap-4 border-b border-pano-border/40 pb-6 md:flex-row md:items-center md:justify-between">
-            <div>
-              <CardTitle className="text-2xl text-pano-text-primary">
-                Create derived smart wallet
+          <CardHeader className="flex flex-row items-start justify-between gap-3 border-b border-pano-border/40 p-4 sm:p-6 sm:pb-6">
+            <div className="flex-1 min-w-0">
+              <CardTitle className="text-lg sm:text-xl md:text-2xl text-pano-text-primary">
+                Create smart wallet
               </CardTitle>
-              <CardDescription className="text-pano-text-secondary">
-                Create a smart contract that holds funds and is controlled by a secure session key on the backend.
+              <CardDescription className="text-xs sm:text-sm text-pano-text-secondary mt-1">
+                Create a smart contract controlled by a secure session key.
               </CardDescription>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-xs text-pano-text-muted">
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="hidden sm:block rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-2 py-1.5 text-[10px] sm:text-xs text-pano-text-muted">
                 ⚡ Account Abstraction
               </div>
               <button
                 onClick={onClose}
-                className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated p-2 text-pano-text-muted hover:text-pano-text-primary transition-colors"
+                className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated p-1.5 sm:p-2 text-pano-text-muted hover:text-pano-text-primary transition-colors"
                 aria-label="Close modal"
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-8 pt-6">
-            <div className="grid gap-6 md:grid-cols-[2fr,1fr]">
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-pano-text-primary">
+          <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6 pt-4 sm:pt-6">
+            <div className="grid gap-4 sm:gap-6 lg:grid-cols-[2fr,1fr]">
+              <div className="space-y-4 sm:space-y-6">
+                <div className="space-y-1.5 sm:space-y-2">
+                  <label className="text-xs sm:text-sm font-medium text-pano-text-primary">
                     Smart wallet name
                   </label>
                   <input
@@ -142,16 +142,16 @@ function ConfigModal({
                     onChange={(e) => setConfig({ ...config, name: e.target.value })}
                     placeholder="E.g.: Weekly ETH automation"
                     disabled={loading}
-                    className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary placeholder-pano-text-muted focus:outline-none focus:ring-2 focus:ring-pano-primary/60 focus:border-transparent transition-shadow"
+                    className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2.5 sm:px-4 sm:py-3 text-sm text-pano-text-primary placeholder-pano-text-muted focus:outline-none focus:ring-2 focus:ring-pano-primary/60 focus:border-transparent transition-shadow"
                   />
-                  <p className="text-xs text-pano-text-muted">
+                  <p className="text-[10px] sm:text-xs text-pano-text-muted">
                     Give a name that makes it easy to identify this smart wallet&apos;s purpose.
                   </p>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-pano-text-primary">
+                <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <label className="text-xs sm:text-sm font-medium text-pano-text-primary">
                       Session key duration
                     </label>
                     <select
@@ -160,7 +160,7 @@ function ConfigModal({
                         setConfig({ ...config, durationDays: Number(e.target.value) })
                       }
                       disabled={loading}
-                      className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/60 focus:border-transparent transition-shadow"
+                      className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2.5 sm:px-4 sm:py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/60 focus:border-transparent transition-shadow"
                     >
                       <option value={1}>1 day</option>
                       <option value={7}>7 days</option>
@@ -169,13 +169,13 @@ function ConfigModal({
                       <option value={180}>180 days</option>
                       <option value={365}>365 days</option>
                     </select>
-                    <p className="text-xs text-pano-text-muted">
-                      After this period, the key expires automatically for your security.
+                    <p className="text-[10px] sm:text-xs text-pano-text-muted">
+                      After this period, the key expires automatically.
                     </p>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-pano-text-primary">
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <label className="text-xs sm:text-sm font-medium text-pano-text-primary">
                       Limit per transaction (ETH)
                     </label>
                     <input
@@ -185,29 +185,29 @@ function ConfigModal({
                       value={config.nativeTokenLimit}
                       onChange={(e) => setConfig({ ...config, nativeTokenLimit: e.target.value })}
                       disabled={loading}
-                      className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/60 focus:border-transparent transition-shadow"
+                      className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2.5 sm:px-4 sm:py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/60 focus:border-transparent transition-shadow"
                     />
-                    <p className="text-xs text-pano-text-muted">
-                      Maximum ETH value that each automated transaction can spend.
+                    <p className="text-[10px] sm:text-xs text-pano-text-muted">
+                      Maximum ETH per automated transaction.
                     </p>
                   </div>
                 </div>
 
-                <div className="space-y-3 rounded-xl border border-pano-border/40 bg-pano-surface-elevated/60 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-semibold text-pano-text-primary">Advanced options</h4>
-                      <p className="text-xs text-pano-text-muted">
-                        Granular control over allowed contracts and usage rules.
+                <div className="space-y-3 rounded-xl border border-pano-border/40 bg-pano-surface-elevated/60 p-3 sm:p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <h4 className="text-xs sm:text-sm font-semibold text-pano-text-primary">Advanced options</h4>
+                      <p className="text-[10px] sm:text-xs text-pano-text-muted">
+                        Control over allowed contracts.
                       </p>
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowAdvanced((prev) => !prev)}
-                      className="text-pano-text-primary"
+                      className="text-pano-text-primary text-xs flex-shrink-0"
                     >
-                      {showAdvanced ? 'Hide' : 'Show'} options
+                      {showAdvanced ? 'Hide' : 'Show'}
                     </Button>
                   </div>
 
@@ -268,18 +268,18 @@ function ConfigModal({
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 <Card
                   variant="glass"
                   size="sm"
                   className="bg-pano-surface-elevated border border-pano-border/50 shadow-inner"
                 >
-                  <CardHeader>
-                    <CardTitle className="text-sm font-semibold text-pano-text-primary">
+                  <CardHeader className="p-3 sm:p-4 pb-2 sm:pb-3">
+                    <CardTitle className="text-xs sm:text-sm font-semibold text-pano-text-primary">
                       Permissions summary
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3 text-sm">
+                  <CardContent className="space-y-2 sm:space-y-3 text-xs sm:text-sm p-3 sm:p-4 pt-0">
                     <div className="flex items-center justify-between text-pano-text-secondary">
                       <span>Validity</span>
                       <span className="font-medium text-pano-text-primary">
@@ -287,54 +287,53 @@ function ConfigModal({
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-pano-text-secondary">
-                      <span>Limit per transaction</span>
+                      <span>Limit/tx</span>
                       <span className="font-medium text-pano-text-primary">
                         {config.nativeTokenLimit} ETH
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-pano-text-secondary">
-                      <span>Allowed contracts</span>
+                      <span>Contracts</span>
                       <span className="font-medium text-pano-text-primary">
                         {config.approvedTargets[0] === '*'
                           ? 'All'
-                          : `${config.approvedTargets.length} contract(s)`}
+                          : `${config.approvedTargets.length}`}
                       </span>
                     </div>
                   </CardContent>
                 </Card>
 
-                <div className="space-y-3 rounded-xl border border-pano-border-subtle bg-pano-surface px-4 py-4 text-sm text-pano-text-secondary">
-                  <p className="font-medium text-pano-text-primary">How does the smart wallet work?</p>
-                  <ul className="space-y-2 text-xs leading-relaxed text-pano-text-muted">
-                    <li>• The smart wallet is a smart contract that holds your funds</li>
-                    <li>• The backend generates a session key that can sign transactions</li>
-                    <li>• The session key signs within the limits, but the balance stays in the smart wallet</li>
-                    <li>• You can revoke or delete the smart wallet at any time</li>
+                <div className="hidden sm:block space-y-2 rounded-xl border border-pano-border-subtle bg-pano-surface px-3 py-3 text-xs text-pano-text-secondary">
+                  <p className="font-medium text-pano-text-primary text-xs">How it works</p>
+                  <ul className="space-y-1 text-[10px] leading-relaxed text-pano-text-muted">
+                    <li>• Smart wallet holds your funds</li>
+                    <li>• Session key signs transactions</li>
+                    <li>• Revoke or delete anytime</li>
                   </ul>
                 </div>
               </div>
             </div>
           </CardContent>
 
-          <CardFooter className="flex flex-col gap-3 border-t border-pano-border/40 pt-6 md:flex-row md:justify-end">
+          <CardFooter className="flex flex-col gap-2 sm:gap-3 border-t border-pano-border/40 p-4 sm:p-6 pt-4 sm:pt-6 sm:flex-row sm:justify-end">
             <Button
               variant="ghost"
-              size="md"
+              size="sm"
               onClick={onClose}
               disabled={loading}
-              className="w-full md:w-auto"
+              className="w-full sm:w-auto text-sm"
             >
               Cancel
             </Button>
             <Button
               variant="primary"
-              size="md"
+              size="sm"
               onClick={handleSubmit}
               loading={loading}
               disabled={!config.name.trim()}
-              className="w-full md:w-auto"
+              className="w-full sm:w-auto text-sm"
             >
-              Create smart wallet
+              Create wallet
             </Button>
           </CardFooter>
         </Card>
@@ -686,19 +685,19 @@ export default function AccountPage() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto">
-        <Container size="xl" className="py-8 space-y-6">
+        <Container size="xl" className="px-4 md:px-6 py-6 md:py-8 space-y-4 md:space-y-6">
           {/* Hero Section - Clear page purpose */}
-          <div className="text-center space-y-3 mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-cyan-400/20 border border-cyan-400/30 mb-4">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          <div className="text-center space-y-2 md:space-y-3 mb-4 md:mb-8">
+            <div className="inline-flex items-center justify-center w-12 h-12 md:w-16 md:h-16 rounded-full bg-cyan-400/20 border border-cyan-400/30 mb-2 md:mb-4">
+              <svg width="24" height="24" className="md:w-8 md:h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" className="text-cyan-400" />
               </svg>
             </div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white">
               Wallet Manager
             </h1>
-            <p className="text-gray-400 text-base md:text-lg max-w-2xl mx-auto">
-              Manage your smart wallets, deposits, withdrawals and automated transactions in one place
+            <p className="text-gray-400 text-sm md:text-base lg:text-lg max-w-2xl mx-auto px-2">
+              Manage smart wallets, deposits and automated transactions
             </p>
           </div>
 
@@ -711,58 +710,58 @@ export default function AccountPage() {
             size="md"
             className="bg-[#1A1A1A]/95 backdrop-blur-xl border border-white/10 shadow-2xl"
           >
-            <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-white/5 pb-6">
+            <CardHeader className="flex flex-col gap-2 sm:gap-3 md:flex-row md:items-center md:justify-between border-b border-white/5 p-4 sm:p-6 pb-4 sm:pb-6">
               <div>
-                <CardTitle className="text-lg md:text-xl text-white flex items-center gap-2">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                <CardTitle className="text-base sm:text-lg md:text-xl text-white flex items-center gap-2">
+                  <svg width="18" height="18" className="sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
                   Smart Wallets Overview
                 </CardTitle>
-                <CardDescription className="text-gray-400">
-                  Monitor and manage derived wallets with secure session keys
+                <CardDescription className="text-gray-400 text-xs sm:text-sm">
+                  Monitor derived wallets with secure session keys
                 </CardDescription>
               </div>
-                <div className="rounded-lg border border-gray-700 bg-gray-800/30 px-3 py-2 text-xs text-gray-400 font-mono truncate max-w-full md:max-w-sm">
-                  {account?.address ?? 'Main wallet not connected'}
+                <div className="rounded-lg border border-gray-700 bg-gray-800/30 px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-gray-400 font-mono truncate max-w-full md:max-w-sm">
+                  {account?.address ? `${account.address.slice(0, 8)}...${account.address.slice(-6)}` : 'Wallet not connected'}
                 </div>
               </CardHeader>
-              <CardContent className="pt-6">
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="bg-[#252525]/50 border border-white/10 rounded-xl p-4 hover:border-cyan-400/30 transition-all">
-                    <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-2">Total Wallets</p>
-                    <p className="text-2xl font-bold text-white mb-1">
+              <CardContent className="p-4 sm:p-6 pt-4 sm:pt-6">
+                <div className="grid gap-2 sm:gap-3 md:gap-4 grid-cols-3">
+                  <div className="bg-[#252525]/50 border border-white/10 rounded-lg sm:rounded-xl p-2.5 sm:p-4 hover:border-cyan-400/30 transition-all">
+                    <p className="text-[9px] sm:text-xs font-medium uppercase tracking-wider text-gray-500 mb-1 sm:mb-2">Total</p>
+                    <p className="text-lg sm:text-2xl font-bold text-white mb-0.5 sm:mb-1">
                       {initializing ? '—' : subAccounts.length}
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-[9px] sm:text-xs text-gray-400 hidden sm:block">
                       {initializing
                         ? 'Loading...'
                         : subAccounts.length === 0
-                        ? 'Create your first smart wallet'
-                        : `${activeAccounts.length} active now`}
+                        ? 'Create first wallet'
+                        : `${activeAccounts.length} active`}
                     </p>
                   </div>
-                  <div className="bg-gradient-to-br from-green-500/10 to-cyan-500/10 border border-green-500/30 rounded-xl p-4 hover:border-green-400/50 transition-all">
-                    <p className="text-xs font-medium uppercase tracking-wider text-green-400 mb-2">Active</p>
-                    <p className="text-2xl font-bold text-white mb-1">
+                  <div className="bg-gradient-to-br from-green-500/10 to-cyan-500/10 border border-green-500/30 rounded-lg sm:rounded-xl p-2.5 sm:p-4 hover:border-green-400/50 transition-all">
+                    <p className="text-[9px] sm:text-xs font-medium uppercase tracking-wider text-green-400 mb-1 sm:mb-2">Active</p>
+                    <p className="text-lg sm:text-2xl font-bold text-white mb-0.5 sm:mb-1">
                       {initializing ? '—' : activeAccounts.length}
                     </p>
-                    <p className="text-xs text-gray-400">Valid session keys</p>
+                    <p className="text-[9px] sm:text-xs text-gray-400 hidden sm:block">Valid keys</p>
                   </div>
                   <div className={cn(
-                    "rounded-xl p-4 border transition-all",
+                    "rounded-lg sm:rounded-xl p-2.5 sm:p-4 border transition-all",
                     expiringSoonCount > 0
                       ? "bg-gradient-to-br from-orange-500/10 to-yellow-500/10 border-orange-500/30 hover:border-orange-400/50"
                       : "bg-[#252525]/50 border-white/10 hover:border-cyan-400/30"
                   )}>
                     <p className={cn(
-                      "text-xs font-medium uppercase tracking-wider mb-2",
+                      "text-[9px] sm:text-xs font-medium uppercase tracking-wider mb-1 sm:mb-2",
                       expiringSoonCount > 0 ? "text-orange-400" : "text-gray-500"
-                    )}>Expiring Soon</p>
-                    <p className="text-2xl font-bold text-white mb-1">
+                    )}>Expiring</p>
+                    <p className="text-lg sm:text-2xl font-bold text-white mb-0.5 sm:mb-1">
                       {initializing ? '—' : expiringSoonCount}
                     </p>
-                    <p className="text-xs text-gray-400">Within 3 days</p>
+                    <p className="text-[9px] sm:text-xs text-gray-400 hidden sm:block">Within 3 days</p>
                   </div>
                 </div>
               </CardContent>
@@ -815,16 +814,16 @@ export default function AccountPage() {
             )}
 
             <Card className="border border-white/10 bg-[#1A1A1A]/95 backdrop-blur-xl shadow-2xl">
-              <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-white/5 pb-6">
+              <CardHeader className="flex flex-col gap-2 sm:gap-3 md:flex-row md:items-center md:justify-between border-b border-white/5 p-4 sm:p-6 pb-4 sm:pb-6">
                 <div>
-                  <CardTitle className="text-lg md:text-xl text-white flex items-center gap-2">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                  <CardTitle className="text-base sm:text-lg md:text-xl text-white flex items-center gap-2">
+                    <svg width="18" height="18" className="sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
                     Your Smart Wallets
                   </CardTitle>
-                  <CardDescription className="text-gray-400">
-                    Granular control over permissions, limits and validity of your automations
+                  <CardDescription className="text-gray-400 text-xs sm:text-sm">
+                    Control permissions, limits and validity
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-400/10 border border-cyan-400/30">

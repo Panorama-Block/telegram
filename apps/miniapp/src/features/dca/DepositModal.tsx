@@ -459,26 +459,26 @@ export default function DepositModal({
     <>
       <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
-        <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-pano-border/60 bg-pano-surface shadow-2xl shadow-black/40">
-          <div className="flex items-start justify-between border-b border-pano-border/40 px-6 py-4">
-            <div>
-              <h2 className="text-lg font-semibold text-pano-text-primary">Deposit funds</h2>
-              <p className="text-xs text-pano-text-muted">
-                Add balance to the selected derived smart wallet.
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-2 sm:px-4 py-4 sm:py-6">
+        <div className="w-full max-w-lg max-h-[95vh] sm:max-h-[90vh] overflow-y-auto rounded-xl sm:rounded-2xl border border-pano-border/60 bg-pano-surface shadow-2xl shadow-black/40">
+          <div className="flex items-start justify-between border-b border-pano-border/40 px-4 sm:px-6 py-3 sm:py-4">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-base sm:text-lg font-semibold text-pano-text-primary">Deposit funds</h2>
+              <p className="text-[10px] sm:text-xs text-pano-text-muted">
+                Add balance to the smart wallet.
               </p>
             </div>
             <button
               onClick={onClose}
-              className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated p-2 text-pano-text-muted transition-colors hover:text-pano-text-primary"
+              className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated p-1.5 sm:p-2 text-pano-text-muted transition-colors hover:text-pano-text-primary flex-shrink-0 ml-2"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
 
-          <div className="space-y-5 px-6 py-5">
+          <div className="space-y-3 sm:space-y-5 px-4 sm:px-6 py-4 sm:py-5">
             {/* Session Key Funding Step */}
             {showSessionKeyStep && sessionKeyAddress ? (
               <>
