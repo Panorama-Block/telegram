@@ -105,17 +105,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </nav>
 
         {/* Bottom actions */}
-        <div className="absolute bottom-0 left-0 right-0 border-t border-pano-border-subtle px-4 py-4 space-y-3">
-          <button
-            onClick={() => navigate('/account')}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-pano-border-subtle bg-pano-surface text-pano-text-accent transition-all hover:border-pano-primary/60 hover:bg-pano-primary/10"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9 9 0 0112 15a9 9 0 016.879 2.804M15 11a3 3 0 10-6 0 3 3 0 006 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804l-.002.002A6.978 6.978 0 003 22h18a6.978 6.978 0 00-2.119-4.194l-.002-.002" />
-            </svg>
-          </button>
-
+        <div className="absolute bottom-0 left-0 right-0 border-t border-pano-border-subtle px-4 py-4">
           <button
             onClick={async () => {
               try {

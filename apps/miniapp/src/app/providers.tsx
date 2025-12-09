@@ -78,7 +78,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
                   } catch (e) {
                     console.warn('[StartParam Consume] autoConnect failed:', e);
                   }
-                  // opcional: navegar para newchat
+                  // optional: navigate to newchat
                   try {
                     const basePath = '/miniapp';
                     const current = window.location.pathname;

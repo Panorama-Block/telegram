@@ -141,7 +141,7 @@ export default function WithdrawModal({
     } catch (err) {
       console.error('Error fetching smart account balance:', err);
       setAvailableBalance('0.000000');
-      setBalanceError('Não foi possível carregar o saldo. Atualize para tentar novamente.');
+      setBalanceError('Unable to load balance. Refresh to try again.');
     } finally {
       setIsFetchingBalance(false);
     }
@@ -156,13 +156,13 @@ export default function WithdrawModal({
 
   const handleWithdraw = async () => {
     if (!account) {
-      setError('Por favor, conecte sua carteira.');
+      setError('Please connect your wallet.');
       return;
     }
 
     const parsedAmount = parseFloat(amount);
     if (!amount || parsedAmount <= 0) {
-      setError('Digite um valor válido para sacar.');
+      setError('Enter a valid withdrawal amount.');
       return;
     }
 
@@ -171,19 +171,19 @@ export default function WithdrawModal({
     const numericBalance = parseFloat(currentBalance || '0');
 
     if (!Number.isFinite(numericBalance) || numericBalance <= 0) {
-      setError('Saldo indisponível para saque no momento.');
+      setError('Balance unavailable for withdrawal at the moment.');
       return;
     }
 
     if (parsedAmount > numericBalance) {
-      setError(`Saldo insuficiente. Disponível: ${numericBalance.toFixed(6)}`);
+      setError(`Insufficient balance. Available: ${numericBalance.toFixed(6)}`);
       return;
     }
 
     // For ETH, recommend leaving some for gas
     if (selectedToken === 'ETH' && parsedAmount >= numericBalance) {
       const recommended = Math.max(numericBalance - 0.001, 0);
-      setError(`Saldo insuficiente após taxas. Saque até ${recommended.toFixed(6)} ETH para deixar margem de gas.`);
+      setError(`Insufficient balance after fees. Withdraw up to ${recommended.toFixed(6)} ETH to leave gas margin.`);
       return;
     }
 
@@ -209,7 +209,7 @@ export default function WithdrawModal({
         const token = network?.tokens.find(t => t.address === selectedToken);
 
         if (!token) {
-          setError('Token não encontrado.');
+          setError('Token not found.');
           return;
         }
 
@@ -226,20 +226,20 @@ export default function WithdrawModal({
       }
 
       if (result.success) {
-        setSuccess(`✅ ${amount} ${tokenSymbol} enviados para ${account.address}`);
+        setSuccess(`✅ ${amount} ${tokenSymbol} sent to ${account.address}`);
         setAmount('');
         void fetchSessionBalance();
         void fetchTokenBalances();
         setTimeout(() => onClose(), 3000);
       } else {
-        setError(result.error || 'Falha ao processar saque.');
+        setError(result.error || 'Failed to process withdrawal.');
       }
     } catch (err: any) {
-      console.error('Erro ao sacar:', err);
+      console.error('Error withdrawing:', err);
       if (err instanceof DCAApiError) {
         setError(err.message);
       } else {
-        setError('Erro ao processar saque. Tente novamente.');
+        setError('Error processing withdrawal. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -256,9 +256,9 @@ export default function WithdrawModal({
         <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-pano-border/60 bg-pano-surface shadow-2xl shadow-black/40">
           <div className="flex items-start justify-between border-b border-pano-border/40 px-6 py-4">
             <div>
-              <h2 className="text-lg font-semibold text-pano-text-primary">Sacar fundos</h2>
+              <h2 className="text-lg font-semibold text-pano-text-primary">Withdraw funds</h2>
               <p className="text-xs text-pano-text-muted">
-                Transfira o saldo disponível da smart wallet para sua carteira principal.
+                Transfer the available balance from the smart wallet to your main wallet.
               </p>
             </div>
             <button
@@ -278,12 +278,12 @@ export default function WithdrawModal({
                   <span className="text-xl">{isTestnet ? '🧪' : '🌐'}</span>
                   <div>
                     <p className="text-sm font-medium text-pano-text-primary">
-                      {isTestnet ? 'Modo teste (Sepolia)' : 'Modo principal (Mainnet)'}
+                      {isTestnet ? 'Test mode (Sepolia)' : 'Main mode (Mainnet)'}
                     </p>
                     <p className="text-xs text-pano-text-muted">
                       {isTestnet
-                        ? 'Saques executados na rede de testes Sepolia.'
-                        : 'Transações definitivas na rede principal Ethereum.'}
+                        ? 'Withdrawals executed on Sepolia testnet.'
+                        : 'Final transactions on Ethereum mainnet.'}
                     </p>
                   </div>
                 </div>
@@ -302,7 +302,7 @@ export default function WithdrawModal({
               </div>
               {activeChain && activeChain.id !== selectedChainId && (
                 <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-3 py-2 text-[11px] text-pano-warning">
-                  Sua carteira está em {activeChain.name || 'outra rede'}. Altere para {isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet'} antes de confirmar o saque.
+                  Your wallet is on {activeChain.name || 'another network'}. Switch to {isTestnet ? 'Sepolia Testnet' : 'Ethereum Mainnet'} before confirming the withdrawal.
                 </div>
               )}
             </div>
@@ -311,36 +311,36 @@ export default function WithdrawModal({
               <div className="space-y-1 mb-2">
                 <p className="text-sm font-medium text-pano-text-primary">Account Abstraction</p>
                 <p className="text-xs text-pano-text-muted">
-                  O saldo está na smart account. A session key apenas assina a transação.
+                  The balance is in the smart account. The session key only signs the transaction.
                 </p>
               </div>
               <div className="grid gap-2 text-xs text-pano-text-muted">
                 <div className="flex items-center justify-between gap-3">
-                  <span>Nome</span>
+                  <span>Name</span>
                   <span className="font-mono text-pano-text-primary">{smartAccountName}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span>Smart Account (origem)</span>
+                  <span>Smart Account (source)</span>
                   <span className="font-mono text-pano-text-primary">
                     {smartAccountAddress
                       ? `${smartAccountAddress.slice(0, 6)}...${smartAccountAddress.slice(-4)}`
-                      : 'Carregando...'}
+                      : 'Loading...'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span>Session Key (assinante)</span>
+                  <span>Session Key (signer)</span>
                   <span className="font-mono text-pano-text-primary">
                     {sessionKeyAddress
                       ? `${sessionKeyAddress.slice(0, 6)}...${sessionKeyAddress.slice(-4)}`
-                      : 'Carregando...'}
+                      : 'Loading...'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span>Destino (sua wallet)</span>
+                  <span>Destination (your wallet)</span>
                   <span className="font-mono text-pano-text-primary">
                     {account?.address
                       ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
-                      : 'Conecte sua carteira'}
+                      : 'Connect your wallet'}
                   </span>
                 </div>
               </div>
@@ -349,11 +349,11 @@ export default function WithdrawModal({
             {/* Token Selection */}
             <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
               <div>
-                <p className="text-sm font-medium text-pano-text-primary mb-2">Tokens Disponíveis</p>
+                <p className="text-sm font-medium text-pano-text-primary mb-2">Available Tokens</p>
                 {isFetchingTokens ? (
                   <div className="flex items-center justify-center py-4 text-sm text-pano-text-muted">
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-pano-primary border-t-transparent mr-2" />
-                    Carregando tokens...
+                    Loading tokens...
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -378,7 +378,7 @@ export default function WithdrawModal({
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-medium text-pano-text-primary">{availableBalance}</p>
-                        <p className="text-xs text-pano-text-muted">Disponível</p>
+                        <p className="text-xs text-pano-text-muted">Available</p>
                       </div>
                     </button>
 
@@ -414,7 +414,7 @@ export default function WithdrawModal({
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-medium text-pano-text-primary">{balance}</p>
-                            <p className="text-xs text-pano-text-muted">Disponível</p>
+                            <p className="text-xs text-pano-text-muted">Available</p>
                           </div>
                         </button>
                       );
@@ -422,7 +422,7 @@ export default function WithdrawModal({
 
                     {!isFetchingTokens && Object.keys(tokenBalances).length === 0 && (
                       <div className="text-center py-4 text-sm text-pano-text-muted">
-                        Nenhum token ERC20 encontrado nesta smart account
+                        No ERC20 tokens found in this smart account
                       </div>
                     )}
                   </div>
@@ -432,7 +432,7 @@ export default function WithdrawModal({
 
             <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
               <div>
-                <label className="text-sm font-medium text-pano-text-primary">Valor do saque</label>
+                <label className="text-sm font-medium text-pano-text-primary">Withdrawal amount</label>
                 <div className="mt-2 flex gap-2">
                   <input
                     type="number"
@@ -452,12 +452,12 @@ export default function WithdrawModal({
 
               <div className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-xs text-pano-text-secondary">
                 <div className="flex items-center justify-between gap-2">
-                  <span>Saldo disponível</span>
+                  <span>Available balance</span>
                   <div className="flex items-center gap-2 text-pano-text-primary">
                     {(isFetchingBalance || isFetchingTokens) ? (
                       <span className="flex items-center gap-2">
                         <span className="h-3 w-3 animate-spin rounded-full border border-pano-primary border-t-transparent" />
-                        Verificando...
+                        Checking...
                       </span>
                     ) : (
                       <>
@@ -475,7 +475,7 @@ export default function WithdrawModal({
                           }}
                           className="text-pano-text-muted hover:text-pano-primary transition-colors"
                           disabled={isFetchingBalance || isFetchingTokens}
-                          title="Atualizar saldo"
+                          title="Refresh balance"
                         >
                           ↻
                         </button>
@@ -487,11 +487,11 @@ export default function WithdrawModal({
                   <p className="mt-1 text-[11px] text-pano-warning">{balanceError}</p>
                 ) : selectedToken === 'ETH' ? (
                   <p className="mt-1 text-[11px] text-pano-text-muted">
-                    Recomenda-se deixar ~0.001 ETH para cobrir eventuais taxas de gas.
+                    It&apos;s recommended to leave ~0.001 ETH to cover potential gas fees.
                   </p>
                 ) : (
                   <p className="mt-1 text-[11px] text-pano-text-muted">
-                    Saldo do token na smart account.
+                    Token balance in the smart account.
                   </p>
                 )}
               </div>
@@ -510,11 +510,11 @@ export default function WithdrawModal({
             )}
 
             <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-3 text-[11px] text-pano-text-muted">
-              <p className="font-medium text-pano-text-primary mb-1">Como funciona o saque?</p>
+              <p className="font-medium text-pano-text-primary mb-1">How does the withdrawal work?</p>
               <ul className="space-y-1">
-                <li>• A transação SAI da smart account (contrato que guarda os fundos)</li>
-                <li>• A session key apenas ASSINA a transação no backend</li>
-                <li>• O saldo vem da smart account, não da session key</li>
+                <li>• The transaction LEAVES the smart account (contract that holds the funds)</li>
+                <li>• The session key only SIGNS the transaction on the backend</li>
+                <li>• The balance comes from the smart account, not the session key</li>
               </ul>
             </div>
 
@@ -526,7 +526,7 @@ export default function WithdrawModal({
                 onClick={onClose}
                 disabled={loading}
               >
-                Cancelar
+                Cancel
               </Button>
               <Button
                 variant="danger"
@@ -536,7 +536,7 @@ export default function WithdrawModal({
                 disabled={loading || !amount || parseFloat(amount) <= 0}
                 loading={loading}
               >
-                Sacar
+                Withdraw
               </Button>
             </div>
           </div>

@@ -146,7 +146,7 @@ export function SwapSuccessCard({
                         isCompact ? 'text-[11px]' : 'text-xs'
                       )}
                     >
-                      Ver no explorer
+                      View on explorer
                     </a>
                   )}
                 </div>

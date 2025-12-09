@@ -1,5 +1,5 @@
 /**
- * Modal para depositar fundos na Smart Account
+ * Modal to deposit funds into the Smart Account
  */
 
 'use client';
@@ -176,7 +176,7 @@ export default function DepositModal({
 
     const handleChainChanged = (chainIdHex: string) => {
       const newChainId = parseInt(chainIdHex, 16);
-      console.log('🔄 Rede mudou para:', newChainId);
+      console.log('🔄 Network changed to:', newChainId);
       setWalletChainId(newChainId);
     };
 
@@ -195,16 +195,16 @@ export default function DepositModal({
       const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
       const currentChainIdNumber = parseInt(currentChainId, 16);
 
-      console.log('🔍 Rede atual detectada:', currentChainIdNumber);
+      console.log('🔍 Current network detected:', currentChainIdNumber);
 
       setWalletChainId(currentChainIdNumber);
 
       if (currentChainIdNumber !== chainId) {
-        console.log(`🔄 Tentando mudar para a rede selecionada (Chain ID: ${chainId})...`);
+        console.log(`🔄 Trying to switch to selected network (Chain ID: ${chainId})...`);
         await switchToChain(chainId);
       }
     } catch (err) {
-      console.error('Erro ao verificar rede atual:', err);
+      console.error('Error checking current network:', err);
     }
   };
 
@@ -245,29 +245,29 @@ export default function DepositModal({
           });
           return;
         } catch (addError) {
-          console.error('Erro ao adicionar a rede Sepolia:', addError);
+          console.error('Error adding Sepolia network:', addError);
           throw addError;
         }
       }
 
-      console.error('Erro ao mudar de rede:', err);
+      console.error('Error switching network:', err);
       throw err;
     }
   };
 
   const handleDeposit = async () => {
     if (!account) {
-      setError('Conecte sua carteira primeiro!');
+      setError('Connect your wallet first!');
       return;
     }
 
     if (!amount || parseFloat(amount) <= 0) {
-      setError('Digite um valor válido maior que 0');
+      setError('Enter a valid value greater than 0');
       return;
     }
 
     if (!currentNetwork) {
-      setError('Selecione uma rede válida');
+      setError('Select a valid network');
       return;
     }
 
@@ -278,13 +278,13 @@ export default function DepositModal({
       const expectedNetwork = currentNetwork?.name || `Chain ID: ${chainId}`;
       const currentWalletNetwork = activeChain?.name || `Chain ID: ${currentWalletChainId}`;
 
-      setError(`⚠️ Sua carteira está em ${currentWalletNetwork}, mas você selecionou ${expectedNetwork}.\n\nPor favor, troque sua carteira para ${expectedNetwork} no MetaMask.`);
+      setError(`⚠️ Your wallet is on ${currentWalletNetwork}, but you selected ${expectedNetwork}.\n\nPlease switch your wallet to ${expectedNetwork} in MetaMask.`);
       return;
     }
 
     // Validate Smart Account address
     if (!smartAccountAddress || smartAccountAddress.length !== 42 || !smartAccountAddress.startsWith('0x')) {
-      setError('Endereço da Smart Account inválido');
+      setError('Invalid Smart Account address');
       return;
     }
 
@@ -298,16 +298,16 @@ export default function DepositModal({
       // The session key only signs transactions on behalf of the smart account
       const depositAddress = smartAccountAddress;
 
-      console.log('💰 Depositando na Smart Account (Account Abstraction)...');
-      console.log('De (sua carteira):', account.address);
-      console.log('Para (Smart Account - contrato):', depositAddress);
-      console.log('Assinante autorizado (Session Key):', sessionKeyAddress);
-      console.log('Valor:', amount, nativeToken.symbol);
-      console.log('Rede:', currentNetwork.name);
+      console.log('💰 Depositing to Smart Account (Account Abstraction)...');
+      console.log('From (your wallet):', account.address);
+      console.log('To (Smart Account - contract):', depositAddress);
+      console.log('Authorized signer (Session Key):', sessionKeyAddress);
+      console.log('Amount:', amount, nativeToken.symbol);
+      console.log('Network:', currentNetwork.name);
       console.log('Chain ID:', chainId);
 
       // Native token transfer
-      console.log('🔄 Fazendo transferência de token nativo...', { chainId });
+      console.log('🔄 Making native token transfer...', { chainId });
 
       const transaction = prepareTransaction({
         to: depositAddress as Address,
@@ -321,7 +321,7 @@ export default function DepositModal({
         account,
       });
 
-      console.log('✅ Depósito de token nativo realizado!');
+      console.log('✅ Native token deposit completed!');
       console.log('Transaction Hash:', result.transactionHash);
       setTxHash(result.transactionHash);
 
@@ -338,20 +338,20 @@ export default function DepositModal({
         setShowSessionKeyStep(true);
       }, 2000);
     } catch (err: any) {
-      console.error('❌ Erro ao depositar:', err);
-      
+      console.error('❌ Error depositing:', err);
+
       // Parse error message for better user experience
-      let errorMessage = 'Erro ao fazer depósito. Tente novamente.';
+      let errorMessage = 'Error making deposit. Please try again.';
       
       if (err.message) {
         if (err.message.includes('insufficient funds') || err.message.includes('transfer amount exceeds balance')) {
-          errorMessage = `❌ Saldo insuficiente na ${currentNetwork?.name}!\n\nVocê não tem ${amount} ${nativeToken.symbol} disponível na sua carteira.\n\nPor favor:\n• Adicione fundos à sua carteira\n• Ou tente um valor menor`;
+          errorMessage = `❌ Insufficient balance on ${currentNetwork?.name}!\n\nYou don't have ${amount} ${nativeToken.symbol} available in your wallet.\n\nPlease:\n• Add funds to your wallet\n• Or try a smaller amount`;
         } else if (err.message.includes('user rejected')) {
-          errorMessage = 'Transação cancelada pelo usuário.';
+          errorMessage = 'Transaction cancelled by user.';
         } else if (err.message.includes('gas')) {
-          errorMessage = 'Erro de gas. Tente aumentar o limite de gas ou verifique sua conexão.';
+          errorMessage = 'Gas error. Try increasing the gas limit or check your connection.';
         } else if (err.message.includes('network')) {
-          errorMessage = 'Erro de rede. Verifique sua conexão e tente novamente.';
+          errorMessage = 'Network error. Check your connection and try again.';
         } else {
           errorMessage = err.message;
         }
@@ -384,13 +384,13 @@ export default function DepositModal({
   // Deposit ETH from Smart Account to Session Key
   const handleDepositToSessionKey = async () => {
     if (!account || !sessionKeyAddress) {
-      setError('Endereço da session key não encontrado');
+      setError('Session key address not found');
       return;
     }
 
     // Validate session key address
     if (!sessionKeyAddress || sessionKeyAddress.length !== 42 || !sessionKeyAddress.startsWith('0x')) {
-      setError('Endereço da session key inválido');
+      setError('Invalid session key address');
       return;
     }
 
@@ -401,10 +401,10 @@ export default function DepositModal({
     try {
       const depositAmount = calculateSessionKeyGas.totalGas;
 
-      console.log('💰 Depositando na Session Key...');
-      console.log('De (Smart Account):', smartAccountAddress);
-      console.log('Para (Session Key):', sessionKeyAddress);
-      console.log('Valor:', depositAmount, 'ETH');
+      console.log('💰 Depositing to Session Key...');
+      console.log('From (Smart Account):', smartAccountAddress);
+      console.log('To (Session Key):', sessionKeyAddress);
+      console.log('Amount:', depositAmount, 'ETH');
       console.log('Planned trades:', plannedTrades);
 
       // Transfer ETH from current wallet to session key
@@ -422,7 +422,7 @@ export default function DepositModal({
         account,
       });
 
-      console.log('✅ Depósito na Session Key realizado!');
+      console.log('✅ Session Key deposit completed!');
       console.log('Transaction Hash:', result.transactionHash);
       setSessionKeyTxHash(result.transactionHash);
 
@@ -433,15 +433,15 @@ export default function DepositModal({
         onClose();
       }, 5000);
     } catch (err: any) {
-      console.error('❌ Erro ao depositar na session key:', err);
+      console.error('❌ Error depositing to session key:', err);
 
-      let errorMessage = 'Erro ao depositar na session key. Tente novamente.';
+      let errorMessage = 'Error depositing to session key. Please try again.';
 
       if (err.message) {
         if (err.message.includes('insufficient funds')) {
-          errorMessage = `❌ Saldo insuficiente!\n\nVocê não tem ${calculateSessionKeyGas.totalGas} ETH disponível.\n\nPor favor, adicione fundos à sua carteira.`;
+          errorMessage = `❌ Insufficient balance!\n\nYou don't have ${calculateSessionKeyGas.totalGas} ETH available.\n\nPlease add funds to your wallet.`;
         } else if (err.message.includes('user rejected')) {
-          errorMessage = 'Transação cancelada pelo usuário.';
+          errorMessage = 'Transaction cancelled by user.';
         } else {
           errorMessage = err.message;
         }
@@ -463,9 +463,9 @@ export default function DepositModal({
         <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-pano-border/60 bg-pano-surface shadow-2xl shadow-black/40">
           <div className="flex items-start justify-between border-b border-pano-border/40 px-6 py-4">
             <div>
-              <h2 className="text-lg font-semibold text-pano-text-primary">Depositar fundos</h2>
+              <h2 className="text-lg font-semibold text-pano-text-primary">Deposit funds</h2>
               <p className="text-xs text-pano-text-muted">
-                Adicione saldo à smart wallet derivada selecionada.
+                Add balance to the selected derived smart wallet.
               </p>
             </div>
             <button
@@ -490,14 +490,14 @@ export default function DepositModal({
                     Fund Your Session Key
                   </h3>
                   <p className="text-xs text-pano-text-muted mb-3">
-                    Para executar DCA trades automaticamente, a session key precisa de ETH para pagar gas.
-                    Vamos calcular quanto você precisa baseado no número de trades planejados.
+                    To execute DCA trades automatically, the session key needs ETH to pay for gas.
+                    Let&apos;s calculate how much you need based on the number of planned trades.
                   </p>
                 </div>
 
                 <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
                   <div>
-                    <label className="text-sm font-medium text-pano-text-primary">Quantos trades DCA você planeja executar?</label>
+                    <label className="text-sm font-medium text-pano-text-primary">How many DCA trades do you plan to execute?</label>
                     <div className="mt-2 flex gap-2 items-center">
                       <input
                         type="number"
@@ -529,29 +529,29 @@ export default function DepositModal({
                 </div>
 
                 <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/5 px-4 py-4 space-y-3">
-                  <h4 className="text-sm font-semibold text-pano-text-primary">Cálculo de Gas Estimado</h4>
+                  <h4 className="text-sm font-semibold text-pano-text-primary">Estimated Gas Calculation</h4>
 
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
-                      <span className="text-pano-text-muted">Gas por trade</span>
+                      <span className="text-pano-text-muted">Gas per trade</span>
                       <span className="font-semibold text-pano-text-primary">
                         {calculateSessionKeyGas.gasPerTrade} ETH
                       </span>
                     </div>
                     <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
-                      <span className="text-pano-text-muted">Número de trades</span>
+                      <span className="text-pano-text-muted">Number of trades</span>
                       <span className="font-semibold text-pano-text-primary">
                         {plannedTrades}
                       </span>
                     </div>
                     <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
-                      <span className="text-pano-text-muted">Buffer de segurança</span>
+                      <span className="text-pano-text-muted">Safety buffer</span>
                       <span className="font-semibold text-pano-text-primary">
                         +20%
                       </span>
                     </div>
                     <div className="flex items-center justify-between py-2 px-3 rounded bg-cyan-500/20 border border-cyan-500/30">
-                      <span className="text-cyan-400 font-semibold">Total necessário</span>
+                      <span className="text-cyan-400 font-semibold">Total required</span>
                       <span className="font-bold text-cyan-400 text-base">
                         {calculateSessionKeyGas.totalGas} ETH
                       </span>
@@ -564,12 +564,12 @@ export default function DepositModal({
                 </div>
 
                 <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-3 text-xs space-y-2">
-                  <p className="font-medium text-pano-text-primary">Por que a session key precisa de fundos?</p>
+                  <p className="font-medium text-pano-text-primary">Why does the session key need funds?</p>
                   <ul className="space-y-1 text-pano-text-muted list-disc list-inside">
-                    <li>A session key assina transações automaticamente sem popup</li>
-                    <li>Ela paga o gas das transações com seu próprio saldo</li>
-                    <li>Os fundos dos trades ficam na Smart Account (seguros)</li>
-                    <li>Você pode recuperar ETH não usado depois</li>
+                    <li>The session key signs transactions automatically without popup</li>
+                    <li>It pays for transaction gas with its own balance</li>
+                    <li>Trade funds stay in the Smart Account (secure)</li>
+                    <li>You can recover unused ETH later</li>
                   </ul>
                 </div>
 
@@ -588,7 +588,7 @@ export default function DepositModal({
                       {sessionKeyTxHash}
                     </a>
                     <p className="text-[11px] text-pano-text-muted">
-                      Agora você pode executar até {plannedTrades} trades DCA automaticamente!
+                      Now you can execute up to {plannedTrades} DCA trades automatically!
                     </p>
                   </div>
                 )}
@@ -610,7 +610,7 @@ export default function DepositModal({
                     }}
                     disabled={isDepositingToSessionKey}
                   >
-                    Pular (fazer depois)
+                    Skip (do later)
                   </Button>
 
                   <Button
@@ -621,7 +621,7 @@ export default function DepositModal({
                     disabled={isDepositingToSessionKey || !sessionKeyAddress || plannedTrades < 1}
                     loading={isDepositingToSessionKey}
                   >
-                    Depositar {calculateSessionKeyGas.totalGas} ETH
+                    Deposit {calculateSessionKeyGas.totalGas} ETH
                   </Button>
                 </div>
               </>
@@ -629,7 +629,7 @@ export default function DepositModal({
               <>
             {activeChain && activeChain.id !== chainId && (
               <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-3 py-2 text-[11px] text-pano-warning">
-                Sua carteira está em {activeChain.name || 'outra rede'}. Altere para {currentNetwork?.name || `Chain ID ${chainId}`} antes de continuar.
+                Your wallet is on {activeChain.name || 'another network'}. Switch to {currentNetwork?.name || `Chain ID ${chainId}`} before continuing.
               </div>
             )}
 
@@ -638,7 +638,7 @@ export default function DepositModal({
                 <div>
                   <p className="text-sm font-medium text-pano-text-primary">Smart Account (Account Abstraction)</p>
                   <p className="text-xs text-pano-text-muted">
-                    Fundos são guardados no contrato da smart account, não na session key.
+                    Funds are stored in the smart account contract, not in the session key.
                   </p>
                 </div>
                 <Button
@@ -659,33 +659,33 @@ export default function DepositModal({
                   }}
                   className="text-xs text-pano-text-accent hover:text-pano-primary"
                 >
-                  Ver explorer
+                  View explorer
                 </Button>
               </div>
 
               <div className="grid gap-2 text-xs text-pano-text-muted">
                 <div className="flex items-center justify-between gap-3">
-                  <span>Nome</span>
+                  <span>Name</span>
                   <span className="font-mono text-pano-text-primary">{smartAccountName}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span>Smart Account (contrato)</span>
+                  <span>Smart Account (contract)</span>
                   <span className="font-mono text-pano-text-primary">
                     {smartAccountAddress
                       ? `${smartAccountAddress.slice(0, 6)}...${smartAccountAddress.slice(-4)}`
-                      : 'Carregando...'}
+                      : 'Loading...'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span>Session Key (assinante)</span>
+                  <span>Session Key (signer)</span>
                   <span className="font-mono text-pano-text-primary">
                     {sessionKeyAddress
                       ? `${sessionKeyAddress.slice(0, 6)}...${sessionKeyAddress.slice(-4)}`
-                      : 'Carregando...'}
+                      : 'Loading...'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span>Rede selecionada</span>
+                  <span>Selected network</span>
                   <span className="font-medium text-pano-text-primary">
                     {currentNetwork?.name || `Chain ID: ${chainId}`}
                   </span>
@@ -695,7 +695,7 @@ export default function DepositModal({
 
             <div className="space-y-3">
               <div className="space-y-2">
-                <label className="text-xs font-medium text-pano-text-secondary">Rede</label>
+                <label className="text-xs font-medium text-pano-text-secondary">Network</label>
                 <select
                   value={chainId}
                   onChange={(e) => setChainId(Number(e.target.value))}
@@ -736,7 +736,7 @@ export default function DepositModal({
 
             <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
               <div>
-                <label className="text-sm font-medium text-pano-text-primary">Valor para depositar</label>
+                <label className="text-sm font-medium text-pano-text-primary">Amount to deposit</label>
                 <div className="mt-2 flex gap-2">
                   <input
                     type="number"
@@ -753,7 +753,7 @@ export default function DepositModal({
                   </div>
                 </div>
                 <p className="mt-1 text-[11px] text-pano-text-muted">
-                  Esse valor será transferido diretamente da sua carteira para a smart wallet.
+                  This amount will be transferred directly from your wallet to the smart wallet.
                 </p>
               </div>
 
@@ -773,12 +773,12 @@ export default function DepositModal({
 
               <div className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-xs text-pano-text-secondary">
                 <div className="flex items-center justify-between gap-2">
-                  <span>Saldo disponível</span>
+                  <span>Available balance</span>
                   <div className="flex items-center gap-2 text-pano-text-primary">
                     {isCheckingBalance ? (
                       <span className="flex items-center gap-2">
                         <span className="h-3 w-3 animate-spin rounded-full border border-pano-primary border-t-transparent" />
-                        Verificando...
+                        Checking...
                       </span>
                     ) : (
                       <>
@@ -790,7 +790,7 @@ export default function DepositModal({
                           onClick={checkWalletBalance}
                           className="text-pano-text-muted hover:text-pano-primary transition-colors"
                           disabled={isCheckingBalance}
-                          title="Atualizar saldo"
+                          title="Refresh balance"
                         >
                           ↻
                         </button>
@@ -799,20 +799,20 @@ export default function DepositModal({
                   </div>
                 </div>
                 <p className="mt-1 text-[11px] text-pano-text-muted">
-                  Reserve uma fração de {nativeToken.symbol} para pagar o gas desta e de futuras transações.
+                  Reserve a fraction of {nativeToken.symbol} to pay gas for this and future transactions.
                 </p>
               </div>
             </div>
 
             <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-4 py-3 text-[11px] text-pano-warning">
-              Para evitar erros de gas, deixe pelo menos 0.001 {nativeToken.symbol} disponível após o depósito.
+              To avoid gas errors, leave at least 0.001 {nativeToken.symbol} available after the deposit.
             </div>
 
             {txHash && (
               <div className="rounded-lg border border-pano-success/40 bg-pano-success/10 px-4 py-4 text-sm text-pano-success space-y-2">
                 <div className="flex items-center gap-2 font-medium">
                   <span className="text-lg">✅</span>
-                  Depósito confirmado! A smart account já possui saldo.
+                  Deposit confirmed! The smart account now has balance.
                 </div>
                 <a
                   className="block truncate text-xs font-mono text-pano-text-primary hover:text-pano-primary"
@@ -823,7 +823,7 @@ export default function DepositModal({
                   {txHash}
                 </a>
                 <p className="text-[11px] text-pano-text-muted">
-                  Este modal será fechado automaticamente em instantes.
+                  This modal will close automatically shortly.
                 </p>
               </div>
             )}
@@ -831,7 +831,7 @@ export default function DepositModal({
             {error && (
               <div className="rounded-lg border border-pano-error/40 bg-pano-error/10 px-4 py-3 text-sm text-pano-error space-y-2">
                 <span>{error}</span>
-                {error.includes('Rede não suportada') && (
+                {error.includes('Unsupported network') && (
                   <Button
                     variant="secondary"
                     size="sm"
@@ -845,14 +845,14 @@ export default function DepositModal({
                     }}
                     className="w-fit text-xs"
                   >
-                    Ajustar para Ethereum Mainnet
+                    Switch to Ethereum Mainnet
                   </Button>
                 )}
               </div>
             )}
 
             <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-3 text-[11px] text-pano-text-muted">
-              Após o depósito, a smart wallet pode ser utilizada em fluxos automáticos sem exigir novas assinaturas.
+              After the deposit, the smart wallet can be used in automated flows without requiring new signatures.
             </div>
 
             <div className="flex flex-col gap-3 md:flex-row">
@@ -863,7 +863,7 @@ export default function DepositModal({
                 onClick={onClose}
                 disabled={isDepositing}
               >
-                Cancelar
+                Cancel
               </Button>
 
               <Button
@@ -875,8 +875,8 @@ export default function DepositModal({
                 loading={isDepositing}
               >
                 {isWrongNetwork
-                  ? `Troque para ${currentNetwork?.name || 'rede correta'}`
-                  : `Depositar ${amount} ${nativeToken.symbol}`}
+                  ? `Switch to ${currentNetwork?.name || 'correct network'}`
+                  : `Deposit ${amount} ${nativeToken.symbol}`}
               </Button>
             </div>
               </>
