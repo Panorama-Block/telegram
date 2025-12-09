@@ -99,7 +99,7 @@ function formatForDebug(value: unknown): string {
 
 function resolveGenericErrorMessage(err: unknown, setShowFundWallet?: (show: boolean) => void): string {
   const message = (() => {
-    if (!err) return 'Erro desconhecido';
+    if (!err) return 'Unknown error';
     if (err instanceof Error) return err.message;
     if (typeof err === 'string') return err;
     try {
@@ -374,7 +374,7 @@ useEffect(() => {
           title: data.title,
           description: data.description,
           category: data.category as UiErrorState['category'],
-          primaryLabel: data.actions?.primary?.label || 'Tentar novamente',
+          primaryLabel: data.actions?.primary?.label || 'Try again',
           canRetry: data.canRetry !== false,
           traceId: throwable.traceId || data.traceId,
           retryAfterSeconds: data.retryAfterSeconds,
@@ -392,7 +392,7 @@ useEffect(() => {
         title: contextTitle,
         description: message,
         category: 'unknown',
-        primaryLabel: 'Tentar novamente',
+        primaryLabel: 'Try again',
         canRetry: true,
         traceId: throwable instanceof SwapApiError ? throwable.traceId : undefined,
       },
@@ -441,7 +441,7 @@ useEffect(() => {
       }
       applyThrowableAsError(
         e,
-        'Não foi possível calcular a cotação',
+        'Unable to calculate quote',
         () => {
           const nextId = ++quoteRequestRef.current;
           void performQuote(nextId);
@@ -472,10 +472,10 @@ useEffect(() => {
     if (!effectiveAddress) {
       pushErrorState(
         {
-          title: 'Autenticação necessária',
+          title: 'Authentication required',
           description: 'Authentication required. Please ensure you are logged in.',
           category: 'blocked',
-          primaryLabel: 'Tentar novamente',
+          primaryLabel: 'Try again',
           canRetry: true,
         },
         onSwap
@@ -485,10 +485,10 @@ useEffect(() => {
     if (!clientId || !client) {
       pushErrorState(
         {
-          title: 'Configuração incompleta',
+          title: 'Incomplete configuration',
           description: 'Missing THIRDWEB client configuration.',
           category: 'blocked',
-          primaryLabel: 'Tentar novamente',
+          primaryLabel: 'Try again',
           canRetry: true,
         },
         onSwap
@@ -566,7 +566,7 @@ useEffect(() => {
       }
       applyThrowableAsError(
         e,
-        'Não foi possível preparar ou executar o swap',
+        'Unable to prepare or execute the swap',
         onSwap
       );
     } finally {
@@ -932,7 +932,7 @@ useEffect(() => {
               }
             }}
           >
-            Executar no Safari (recomendado no iOS)
+            Execute in Safari (recommended on iOS)
           </Button>
         </div>
       )}

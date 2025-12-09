@@ -112,7 +112,7 @@ export class AgentsClient {
   }
 
   private static joinContent(content: unknown): string {
-    // content pode ser string, array de blocos, objetos etc.
+    // content can be string, array of blocks, objects, etc.
     if (typeof content === 'string') return content;
     if (Array.isArray(content)) {
       const pieces = content
@@ -140,7 +140,7 @@ export class AgentsClient {
   }
 
   private static coerceResponse(data: any): ChatResponse {
-    // Tenta diversas formas comuns de retorno
+    // Try various common return formats
     let message = '';
     if (AgentsClient.isString(data?.message)) message = data.message;
     if (!message && (data?.content !== undefined)) {
@@ -211,7 +211,7 @@ export class AgentsClient {
       content: req.message.content,
     };
 
-    // Estrutura exata esperada pelo backend zico_agents
+    // Exact structure expected by the zico_agents backend
     const body: Record<string, unknown> = {
       message: outgoingMessage,
     };

@@ -9,27 +9,27 @@ const textareaVariants = cva(
   {
     variants: {
       variant: {
-        // Default - Surface com border sutil
+        // Default - Surface with subtle border
         default: 'bg-pano-surface border-pano-border text-pano-text-primary focus:border-pano-primary focus:bg-pano-surface-elevated hover:border-pano-primary/50',
 
-        // Filled - Background mais escuro
+        // Filled - Darker background
         filled: 'bg-pano-surface-elevated border-transparent text-pano-text-primary focus:border-pano-primary focus:bg-pano-surface hover:bg-pano-surface',
 
-        // Glass - Efeito glass morphism
+        // Glass - Glass morphism effect
         glass: 'glass text-pano-text-primary border-pano-border/30 focus:border-pano-primary backdrop-blur-md hover:glass-dark',
 
-        // Ghost - Transparente com hover
+        // Ghost - Transparent with hover
         ghost: 'bg-transparent border-transparent text-pano-text-primary hover:bg-pano-surface focus:bg-pano-surface focus:border-pano-border',
       },
       size: {
-        // Tamanhos diferentes
+        // Different sizes
         sm: 'p-3 text-sm rounded-md min-h-[60px]',
         md: 'p-4 text-sm rounded-lg min-h-[80px]',  // default
         lg: 'p-4 text-base rounded-lg min-h-[120px]',
         xl: 'p-6 text-lg rounded-xl min-h-[160px]',
       },
       state: {
-        // Estados visuais para feedback
+        // Visual states for feedback
         default: '',
         error: 'border-pano-error focus:border-pano-error focus:ring-pano-error/20',
         success: 'border-pano-success focus:border-pano-success focus:ring-pano-success/20',

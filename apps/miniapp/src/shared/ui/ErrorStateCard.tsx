@@ -72,7 +72,7 @@ export function ErrorStateCard({
   const theme = categoryTheme[category] || categoryTheme.unknown;
   const hint =
     typeof retryAfterSeconds === 'number' && retryAfterSeconds > 0
-      ? `Aguarde ~${retryAfterSeconds}s antes de tentar novamente.`
+      ? `Please wait ~${retryAfterSeconds}s before trying again.`
       : undefined;
 
   return (
@@ -172,7 +172,7 @@ export function ErrorStateCard({
                   wordBreak: 'break-all',
                 }}
               >
-                ID de rastreio: {traceId}
+                Trace ID: {traceId}
               </span>
             )}
           </div>

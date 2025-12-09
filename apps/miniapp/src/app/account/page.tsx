@@ -106,10 +106,10 @@ function ConfigModal({
           <CardHeader className="flex flex-col gap-4 border-b border-pano-border/40 pb-6 md:flex-row md:items-center md:justify-between">
             <div>
               <CardTitle className="text-2xl text-pano-text-primary">
-                Criar smart wallet derivada
+                Create derived smart wallet
               </CardTitle>
               <CardDescription className="text-pano-text-secondary">
-                Crie um contrato inteligente que guarda fundos e é controlado por uma session key segura no backend.
+                Create a smart contract that holds funds and is controlled by a secure session key on the backend.
               </CardDescription>
             </div>
 
@@ -120,7 +120,7 @@ function ConfigModal({
               <button
                 onClick={onClose}
                 className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated p-2 text-pano-text-muted hover:text-pano-text-primary transition-colors"
-                aria-label="Fechar modal"
+                aria-label="Close modal"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -134,25 +134,25 @@ function ConfigModal({
               <div className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-pano-text-primary">
-                    Nome da smart wallet
+                    Smart wallet name
                   </label>
                   <input
                     type="text"
                     value={config.name}
                     onChange={(e) => setConfig({ ...config, name: e.target.value })}
-                    placeholder="Ex: Automação ETH semanal"
+                    placeholder="E.g.: Weekly ETH automation"
                     disabled={loading}
                     className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary placeholder-pano-text-muted focus:outline-none focus:ring-2 focus:ring-pano-primary/60 focus:border-transparent transition-shadow"
                   />
                   <p className="text-xs text-pano-text-muted">
-                    Dê um nome que facilite identificar a finalidade dessa smart wallet.
+                    Give a name that makes it easy to identify this smart wallet&apos;s purpose.
                   </p>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-pano-text-primary">
-                      Duração da session key
+                      Session key duration
                     </label>
                     <select
                       value={config.durationDays}
@@ -162,21 +162,21 @@ function ConfigModal({
                       disabled={loading}
                       className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/60 focus:border-transparent transition-shadow"
                     >
-                      <option value={1}>1 dia</option>
-                      <option value={7}>7 dias</option>
-                      <option value={30}>30 dias</option>
-                      <option value={90}>90 dias</option>
-                      <option value={180}>180 dias</option>
-                      <option value={365}>365 dias</option>
+                      <option value={1}>1 day</option>
+                      <option value={7}>7 days</option>
+                      <option value={30}>30 days</option>
+                      <option value={90}>90 days</option>
+                      <option value={180}>180 days</option>
+                      <option value={365}>365 days</option>
                     </select>
                     <p className="text-xs text-pano-text-muted">
-                      Após esse período a chave expira automaticamente para sua segurança.
+                      After this period, the key expires automatically for your security.
                     </p>
                   </div>
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-pano-text-primary">
-                      Limite por transação (ETH)
+                      Limit per transaction (ETH)
                     </label>
                     <input
                       type="number"
@@ -188,7 +188,7 @@ function ConfigModal({
                       className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/60 focus:border-transparent transition-shadow"
                     />
                     <p className="text-xs text-pano-text-muted">
-                      Valor máximo em ETH que cada transação automatizada poderá gastar.
+                      Maximum ETH value that each automated transaction can spend.
                     </p>
                   </div>
                 </div>
@@ -196,9 +196,9 @@ function ConfigModal({
                 <div className="space-y-3 rounded-xl border border-pano-border/40 bg-pano-surface-elevated/60 p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="text-sm font-semibold text-pano-text-primary">Opções avançadas</h4>
+                      <h4 className="text-sm font-semibold text-pano-text-primary">Advanced options</h4>
                       <p className="text-xs text-pano-text-muted">
-                        Controle granular sobre contratos permitidos e regras de consumo.
+                        Granular control over allowed contracts and usage rules.
                       </p>
                     </div>
                     <Button
@@ -207,7 +207,7 @@ function ConfigModal({
                       onClick={() => setShowAdvanced((prev) => !prev)}
                       className="text-pano-text-primary"
                     >
-                      {showAdvanced ? 'Ocultar' : 'Exibir'} opções
+                      {showAdvanced ? 'Hide' : 'Show'} options
                     </Button>
                   </div>
 
@@ -215,7 +215,7 @@ function ConfigModal({
                     <div className="space-y-4 pt-2">
                       <div className="space-y-2">
                         <p className="text-sm font-medium text-pano-text-secondary">
-                          Contratos permitidos
+                          Allowed contracts
                         </p>
                         <div className="space-y-2 rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-3">
                           <label className="flex items-center gap-3 text-sm text-pano-text-primary">
@@ -226,7 +226,7 @@ function ConfigModal({
                               disabled={loading}
                               className="text-pano-primary focus:ring-pano-primary"
                             />
-                            <span>Liberar todos os contratos (recomendado)</span>
+                            <span>Allow all contracts (recommended)</span>
                           </label>
                           <label className="flex items-center gap-3 text-sm text-pano-text-primary">
                             <input
@@ -236,7 +236,7 @@ function ConfigModal({
                               disabled={loading}
                               className="text-pano-primary focus:ring-pano-primary"
                             />
-                            <span>Restringir para contratos específicos</span>
+                            <span>Restrict to specific contracts</span>
                           </label>
                         </div>
                       </div>
@@ -259,7 +259,7 @@ function ConfigModal({
                             className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm font-mono text-pano-text-primary placeholder-pano-text-muted focus:outline-none focus:ring-2 focus:ring-pano-primary/60"
                           />
                           <p className="text-xs text-pano-text-muted">
-                            Informe um endereço de contrato por linha.
+                            Enter one contract address per line.
                           </p>
                         </div>
                       )}
@@ -276,40 +276,40 @@ function ConfigModal({
                 >
                   <CardHeader>
                     <CardTitle className="text-sm font-semibold text-pano-text-primary">
-                      Resumo das permissões
+                      Permissions summary
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm">
                     <div className="flex items-center justify-between text-pano-text-secondary">
-                      <span>Validade</span>
+                      <span>Validity</span>
                       <span className="font-medium text-pano-text-primary">
-                        {config.durationDays} dias
+                        {config.durationDays} days
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-pano-text-secondary">
-                      <span>Limite por transação</span>
+                      <span>Limit per transaction</span>
                       <span className="font-medium text-pano-text-primary">
                         {config.nativeTokenLimit} ETH
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-pano-text-secondary">
-                      <span>Contratos liberados</span>
+                      <span>Allowed contracts</span>
                       <span className="font-medium text-pano-text-primary">
                         {config.approvedTargets[0] === '*'
-                          ? 'Todos'
-                          : `${config.approvedTargets.length} contrato(s)`}
+                          ? 'All'
+                          : `${config.approvedTargets.length} contract(s)`}
                       </span>
                     </div>
                   </CardContent>
                 </Card>
 
                 <div className="space-y-3 rounded-xl border border-pano-border-subtle bg-pano-surface px-4 py-4 text-sm text-pano-text-secondary">
-                  <p className="font-medium text-pano-text-primary">Como funciona a smart wallet?</p>
+                  <p className="font-medium text-pano-text-primary">How does the smart wallet work?</p>
                   <ul className="space-y-2 text-xs leading-relaxed text-pano-text-muted">
-                    <li>• A smart wallet é um contrato inteligente que guarda seus fundos</li>
-                    <li>• O backend gera uma session key que pode assinar transações</li>
-                    <li>• A session key assina dentro dos limites, mas o saldo fica na smart wallet</li>
-                    <li>• Você pode revogar ou deletar a smart wallet a qualquer momento</li>
+                    <li>• The smart wallet is a smart contract that holds your funds</li>
+                    <li>• The backend generates a session key that can sign transactions</li>
+                    <li>• The session key signs within the limits, but the balance stays in the smart wallet</li>
+                    <li>• You can revoke or delete the smart wallet at any time</li>
                   </ul>
                 </div>
               </div>
@@ -324,7 +324,7 @@ function ConfigModal({
               disabled={loading}
               className="w-full md:w-auto"
             >
-              Cancelar
+              Cancel
             </Button>
             <Button
               variant="primary"
@@ -334,7 +334,7 @@ function ConfigModal({
               disabled={!config.name.trim()}
               className="w-full md:w-auto"
             >
-              Criar smart wallet
+              Create smart wallet
             </Button>
           </CardFooter>
         </Card>
@@ -397,7 +397,7 @@ export default function AccountPage() {
       setError(
         err instanceof DCAApiError
           ? err.message
-          : 'Não foi possível carregar suas smart wallets.',
+          : 'Unable to load your smart wallets.',
       );
     } finally {
       setInitializing(false);
@@ -439,7 +439,7 @@ export default function AccountPage() {
 
   const handleCreateSubAccount = async (config: SubAccountConfig) => {
     if (!account?.address) {
-      setError('Conecte sua carteira para criar smart wallets.');
+      setError('Connect your wallet to create smart wallets.');
       return;
     }
 
@@ -458,7 +458,7 @@ export default function AccountPage() {
       };
 
       await createSmartAccount(request);
-      setSuccess(`Smart wallet "${config.name}" criada com sucesso!`);
+      setSuccess(`Smart wallet "${config.name}" created successfully!`);
       setShowConfigModal(false);
       await loadAccounts();
     } catch (err) {
@@ -466,7 +466,7 @@ export default function AccountPage() {
       if (err instanceof DCAApiError) {
         setError(err.message);
       } else {
-        setError('Não foi possível criar a smart wallet. Tente novamente.');
+        setError('Unable to create the smart wallet. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -477,7 +477,7 @@ export default function AccountPage() {
     if (!account?.address) return;
 
     const confirmed = window.confirm(
-      'Tem certeza que deseja remover esta smart wallet? Essa ação revoga a session key imediatamente.',
+      'Are you sure you want to remove this smart wallet? This action revokes the session key immediately.',
     );
     if (!confirmed) return;
 
@@ -486,7 +486,7 @@ export default function AccountPage() {
 
     try {
       await deleteSmartAccount(address, account.address);
-      setSuccess('Smart wallet removida com sucesso.');
+      setSuccess('Smart wallet removed successfully.');
       setSelectedAccount(null);
       await loadAccounts();
     } catch (err) {
@@ -494,7 +494,7 @@ export default function AccountPage() {
       if (err instanceof DCAApiError) {
         setError(err.message);
       } else {
-        setError('Não foi possível remover a smart wallet. Tente novamente.');
+        setError('Unable to remove the smart wallet. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -618,6 +618,18 @@ export default function AccountPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                           </svg>
                           Staking
+                        </button>
+                        <button
+                          onClick={() => {
+                            setExploreDropdownOpen(false);
+                            router.push('/dca');
+                          }}
+                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          DCA
                         </button>
                         <button
                           onClick={() => {
