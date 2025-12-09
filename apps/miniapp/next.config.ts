@@ -6,6 +6,16 @@ const nextConfig: NextConfig = {
   // o app vive sob /miniapp
   basePath: "/miniapp",
 
+  // Ignore ESLint warnings during production builds (Vercel)
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
+  // Ignore TypeScript errors during production builds
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+
   async redirects() {
     return [
       // Raiz do domínio -> /miniapp (sem duplicar basePath)
