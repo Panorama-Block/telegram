@@ -1,9 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
 import UniswapIcon from '../../../public/icons/uniswap.svg';
 import AvalancheIcon from '../../../public/icons/Avalanche_Blockchain_Logo.svg';
@@ -18,6 +16,7 @@ import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2'
 import type { PreparedTx } from '@/features/swap/types';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
+import { SeniorAppShell } from '@/components/layout';
 
 
 interface TokenSelectorProps {
@@ -199,7 +198,6 @@ function getAddressFromToken(): string | null {
 }
 
 export default function SwapPage() {
-  const router = useRouter();
   const account = useActiveAccount();
   const switchChain = useSwitchActiveWalletChain();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
@@ -209,7 +207,6 @@ export default function SwapPage() {
   const userAddress = localStorage.getItem('userAddress');
   const effectiveAddress = account?.address || addressFromToken || userAddress;
 
-  const [exploreDropdownOpen, setExploreDropdownOpen] = useState(false);
   const [fromChainId, setFromChainId] = useState(8453); // Base
   const [toChainId, setToChainId] = useState(42161); // Arbitrum
   const [sellToken, setSellToken] = useState<Token>({
@@ -615,264 +612,119 @@ export default function SwapPage() {
     }
   };
 
-  const getWalletAddress = () => {
-    if (typeof window === 'undefined') return undefined;
-    const authPayload = localStorage.getItem('authPayload');
-    if (authPayload) {
-      try {
-        const payload = JSON.parse(authPayload);
-        return payload.address?.toLowerCase();
-      } catch (error) {
-        console.error('Error parsing authPayload:', error);
-      }
-    }
-    return undefined;
-  };
-
   return (
     <ProtectedRoute>
-      <div className="h-screen text-white flex flex-col overflow-hidden relative">
-      {/* Animated Background */}
-      <AnimatedBackground />
+      <SeniorAppShell pageTitle="Liquid Swap">
+        <div className="relative min-h-[100dvh] w-full overflow-hidden bg-[#050505] text-white">
+          <AnimatedBackground />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(8,180,217,0.12),transparent_40%)]" />
+          <div className="flex h-full items-center justify-center px-4 py-10 sm:py-12">
+            <div className="w-full max-w-3xl space-y-6">
+              <div className="flex flex-col gap-2 text-center">
+                <p className="text-sm uppercase tracking-[0.3em] text-white/60">Cross-chain swap</p>
+                <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">Route assets with Zico</h1>
+              </div>
 
-      {/* Top Navbar - Same as chat */}
-      <header className="flex-shrink-0 bg-black/40 backdrop-blur-md border-b-2 border-white/15 px-6 py-3 z-50">
-        <div className="flex items-center justify-between max-w-[1920px] mx-auto">
-          {/* Left: Logo */}
-          <div className="flex items-center gap-2">
-            <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
-            <span className="text-white font-semibold text-sm tracking-wide hidden md:inline">PANORAMA BLOCK</span>
-          </div>
+              {/* Swap Card */}
+              <div className="bg-[#0c0d11]/90 backdrop-blur-2xl rounded-[28px] p-5 sm:p-7 shadow-[0px_24px_72px_rgba(0,0,0,0.55)] border border-white/10 space-y-5 relative overflow-hidden">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_90%_at_50%_-10%,rgba(8,180,217,0.12),transparent_55%)]" />
+                <div className="relative flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.25em] text-white/50">Smart routing</p>
+                    <h2 className="text-xl font-semibold text-white mt-1">Best price across chains</h2>
+                  </div>
+                  <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/70">
+                    {isAvalancheSwap ? 'Avalanche' : 'Uniswap Router'}
+                  </div>
+                </div>
 
-          {/* Right: Explore + Docs + Notifications + Wallet Address */}
-          <div className="flex items-center gap-3">
-            {/* Navigation Menu */}
-            <nav className="flex items-center gap-6 text-sm mr-3">
-              {/* Explore Dropdown */}
-              <div className="relative">
-                <button
-                  onClick={() => setExploreDropdownOpen(!exploreDropdownOpen)}
-                  className="text-gray-400 hover:text-white transition-colors flex items-center gap-1"
-                >
-                  Explore
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {/* Dropdown Menu */}
-                {exploreDropdownOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={() => setExploreDropdownOpen(false)}
+                {/* Sell Section */}
+                <div className="relative rounded-2xl border border-white/10 bg-[#11131a]/70 p-4 sm:p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/50">You sell</div>
+                    <div className="text-xs text-white/60">Balance —</div>
+                  </div>
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                    <input
+                      type="text"
+                      value={sellAmount}
+                      onChange={(e) => setSellAmount(e.target.value)}
+                      placeholder="0.0"
+                      className="bg-transparent text-4xl sm:text-5xl font-semibold text-white outline-none w-full"
                     />
-                    <div className="absolute top-full right-0 mt-2 w-48 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg shadow-xl z-20">
-                      <div className="py-2">
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/chat');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" stroke="#4BC3C5" fill="none" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                          </svg>
-                          Chat
-                        </button>
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/swap');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" stroke="#4BC3C5" fill="none" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                          </svg>
-                          Swap
-                        </button>
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/lending');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          Lending
-                        </button>
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/staking');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                          Staking
-                        </button>
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/account');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                          Account
-                        </button>
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/dca');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          DCA
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Docs Link */}
-              <a
-                href="https://docs.panoramablock.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                Docs
-              </a>
-            </nav>
-
-            {/* Notifications Icon */}
-            <button className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-            </button>
-
-            {/* Wallet Address Display */}
-            {(account?.address || getWalletAddress()) && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
-                <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
-                <span className="text-white text-xs font-mono">
-                  {account?.address
-                    ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
-                    : getWalletAddress()
-                      ? `${getWalletAddress()!.slice(0, 6)}...${getWalletAddress()!.slice(-4)}`
-                      : ''}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <div className="flex-1 overflow-hidden">
-        {/* Swap Interface */}
-        <div className="h-full flex items-center justify-center p-4">
-          <div className="w-full max-w-xs">
-            {/* Swap Card */}
-            <div className="bg-[#202020]/75 backdrop-blur-xl rounded-[25px] p-4 shadow-[0px_16px_57.7px_0px_rgba(0,0,0,0.42)] border border-white/10">
-              {/* Sell Section */}
-              <div className="mb-2">
-                <label className="text-xs text-gray-400 mb-2 block">Sell</label>
-                <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10">
-                  <input
-                    type="text"
-                    value={sellAmount}
-                    onChange={(e) => setSellAmount(e.target.value)}
-                    placeholder="0"
-                    className="bg-transparent text-3xl font-light text-white outline-none w-full mb-2"
-                  />
-                  <div className="flex items-center justify-end">
                     <button
                       onClick={() => setShowSellSelector(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-black hover:bg-gray-200 transition-colors text-sm"
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#0b0e13] px-3 py-2 border border-white/10 text-sm font-semibold text-white hover:border-cyan-500/50 transition-colors"
                     >
                       <Image
                         src={sellToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
                         alt={sellToken.symbol}
-                        width={20}
-                        height={20}
-                        className="w-5 h-5 rounded-full"
+                        width={28}
+                        height={28}
+                        className="w-7 h-7 rounded-full"
                         unoptimized
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
                         }}
                       />
-                      <span className="font-medium">{sellToken.symbol}</span>
+                      <span>{sellToken.symbol}</span>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
                   </div>
                 </div>
-              </div>
 
-              {/* Swap Button */}
-              <div className="flex justify-center -my-1 relative z-10">
-                <button
-                  onClick={handleSwapTokens}
-                  className="bg-[#2A2A2A]/80 border border-white/10 rounded-lg p-1.5 hover:bg-[#343434]/80 transition-colors"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-white">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                  </svg>
-                </button>
-              </div>
+                {/* Swap Button */}
+                <div className="flex justify-center -my-3 relative z-10">
+                  <button
+                    onClick={handleSwapTokens}
+                    className="bg-[#0b0e13] border border-white/10 rounded-full p-2.5 hover:border-cyan-500/50 hover:shadow-[0_0_24px_rgba(8,180,217,0.45)] transition-all"
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-white">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                    </svg>
+                  </button>
+                </div>
 
-              {/* Buy Section */}
-              <div className="mb-3">
-                <label className="text-xs text-gray-400 mb-2 block">Buy</label>
-                <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10">
-                  <input
-                    type="text"
-                    value={buyAmount}
-                    onChange={(e) => setBuyAmount(e.target.value)}
-                    placeholder="0"
-                    className="bg-transparent text-3xl font-light text-white outline-none w-full mb-2"
-                    readOnly
-                  />
-                  <div className="flex items-center justify-end">
+                {/* Buy Section */}
+                <div className="relative rounded-2xl border border-white/10 bg-[#11131a]/70 p-4 sm:p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/50">You receive</div>
+                    <div className="text-xs text-white/60">Estimated output</div>
+                  </div>
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                    <input
+                      type="text"
+                      value={buyAmount}
+                      onChange={(e) => setBuyAmount(e.target.value)}
+                      placeholder="0.0"
+                      className="bg-transparent text-4xl sm:text-5xl font-semibold text-white outline-none w-full"
+                      readOnly
+                    />
                     <button
                       onClick={() => setShowBuySelector(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-black hover:bg-gray-200 transition-colors text-sm"
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#0b0e13] px-3 py-2 border border-white/10 text-sm font-semibold text-white hover:border-cyan-500/50 transition-colors"
                     >
                       {buyToken ? (
                         <>
                           <Image
                             src={buyToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
                             alt={buyToken.symbol}
-                            width={20}
-                            height={20}
-                            className="w-5 h-5 rounded-full"
+                            width={28}
+                            height={28}
+                            className="w-7 h-7 rounded-full"
                             unoptimized
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
                               target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
                             }}
                           />
-                          <span className="font-medium">{buyToken.symbol}</span>
+                          <span>{buyToken.symbol}</span>
                         </>
                       ) : (
-                        <span className="font-medium">Select token</span>
+                        <span>Select token</span>
                       )}
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -880,59 +732,61 @@ export default function SwapPage() {
                     </button>
                   </div>
                 </div>
-              </div>
 
-              {/* Start Button */}
-              <button
-                onClick={handleStartSwap}
-                disabled={!quote || quoting || preparing || executing}
-                className="w-full py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-gray-100"
-              >
-                {executing
-                  ? 'Executing swap...'
-                  : preparing
-                    ? 'Preparing transaction...'
-                    : quoting
-                      ? 'Getting quote...'
-                      : quote
-                        ? 'Get started'
-                        : 'Get started'}
-              </button>
+                {/* Start Button */}
+                <button
+                  onClick={handleStartSwap}
+                  disabled={!quote || quoting || preparing || executing}
+                  className="relative w-full overflow-hidden rounded-2xl py-3.5 font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-[#00d2ff] to-[#0084ff] text-black shadow-[0_12px_32px_rgba(0,132,255,0.35)]"
+                >
+                  <span className="relative z-10">
+                    {executing
+                      ? 'Executing swap...'
+                      : preparing
+                        ? 'Preparing transaction...'
+                        : quoting
+                          ? 'Getting quote...'
+                          : quote
+                            ? 'Start swap'
+                            : 'Enter an amount to quote'}
+                  </span>
+                  <div className="absolute inset-0 opacity-0 hover:opacity-20 transition-opacity bg-white" />
+                </button>
 
-              {/* Description */}
-              <div className="mt-3 text-center">
-                <p className="text-xs text-gray-400 leading-relaxed">
-                  Buy and sell crypto on 15+ networks including Ethereum, Base, and Arbitrum
-                </p>
-              </div>
+                {/* Description */}
+                <div className="relative flex flex-col items-center gap-3 text-center">
+                  <p className="text-xs text-white/60 leading-relaxed">
+                    Buy and sell crypto on 15+ networks including Ethereum, Base, and Arbitrum
+                  </p>
 
-              {/* Powered by Uniswap/Avalanche */}
-              <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-400">
-                {isAvalancheSwap ? (
-                  <>
-                    <Image
-                      src={AvalancheIcon}
-                      alt="Avalanche"
-                      width={28}
-                      height={28}
-                      className="w-7 h-7"
-                    />
-                    <span>Powered by Avalanche</span>
-                  </>
-                ) : (
-                  <>
-                    <Image
-                      src={UniswapIcon}
-                      alt="Uniswap"
-                      width={44}
-                      height={44}
-                      className="w-11 h-11"
-                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
-                    />
-                    <span>Powered by Uniswap</span>
-                  </>
-                )}
-              </div>
+                  {/* Powered by Uniswap/Avalanche */}
+                  <div className="flex items-center justify-center gap-2 text-xs text-white/70">
+                    {isAvalancheSwap ? (
+                      <>
+                        <Image
+                          src={AvalancheIcon}
+                          alt="Avalanche"
+                          width={26}
+                          height={26}
+                          className="w-7 h-7"
+                        />
+                        <span>Powered by Avalanche</span>
+                      </>
+                    ) : (
+                      <>
+                        <Image
+                          src={UniswapIcon}
+                          alt="Uniswap"
+                          width={40}
+                          height={40}
+                          className="w-10 h-10"
+                          style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                        />
+                        <span>Powered by Uniswap</span>
+                      </>
+                    )}
+                  </div>
+                </div>
 
               {/* Error Message */}
               {error && (
@@ -1434,7 +1288,7 @@ export default function SwapPage() {
           </div>
         </>
       )}
-      </div>
-    </ProtectedRoute>
+    </SeniorAppShell>
+  </ProtectedRoute>
   );
 }

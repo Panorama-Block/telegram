@@ -713,7 +713,7 @@ export default function AccountPage() {
             <CardHeader className="flex flex-col gap-2 sm:gap-3 md:flex-row md:items-center md:justify-between border-b border-white/5 p-4 sm:p-6 pb-4 sm:pb-6">
               <div>
                 <CardTitle className="text-base sm:text-lg md:text-xl text-white flex items-center gap-2">
-                  <svg width="18" height="18" className="sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                  <svg width="18" height="18" className="sm:w-5 sm:h-5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
                   Smart Wallets Overview
@@ -817,7 +817,7 @@ export default function AccountPage() {
               <CardHeader className="flex flex-col gap-2 sm:gap-3 md:flex-row md:items-center md:justify-between border-b border-white/5 p-4 sm:p-6 pb-4 sm:pb-6">
                 <div>
                   <CardTitle className="text-base sm:text-lg md:text-xl text-white flex items-center gap-2">
-                    <svg width="18" height="18" className="sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                    <svg width="18" height="18" className="sm:w-5 sm:h-5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
                     Your Smart Wallets

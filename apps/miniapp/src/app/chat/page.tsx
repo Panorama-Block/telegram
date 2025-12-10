@@ -10,35 +10,27 @@ declare global {
     };
   }
 }
-import { Sidebar, SignatureApprovalButton, GlobalLoader } from '@/shared/ui';
+import { GlobalLoader, TransactionSettingsProvider } from '@/shared/ui';
 import MarkdownMessage from '@/shared/ui/MarkdownMessage';
 import Image from 'next/image';
 import '../../shared/ui/loader.css';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
-import XIcon from '../../../public/icons/X.svg';
-import BlockchainTechnology from '../../../public/icons/BlockchainTechnology.svg';
-import Briefcase from '../../../public/icons/Briefcase.svg';
-import ComboChart from '../../../public/icons/ComboChart.svg';
-import SwapIcon from '../../../public/icons/Swap.svg';
-import WalletIcon from '../../../public/icons/Wallet.svg';
-import ChatIcon from '../../../public/icons/chat.svg';
-import LightningIcon from '../../../public/icons/lightning.svg';
 import UniswapIcon from '../../../public/icons/uniswap.svg';
 import AvalancheIcon from '../../../public/icons/Avalanche_Blockchain_Logo.svg';
 import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
-import { useRouter, usePathname } from 'next/navigation';
-import { swapApi, SwapApiError } from '@/features/swap/api';
+import { useRouter } from 'next/navigation';
+import { swapApi } from '@/features/swap/api';
 import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
 import { LendingModal } from '@/features/lending/LendingModal';
-import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, explorerTxUrl } from '@/features/swap/utils';
+import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman } from '@/features/swap/utils';
 import { networks, Token } from '@/features/swap/tokens';
 import { useActiveAccount, useActiveWallet, useDisconnect, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx, QuoteResponse } from '@/features/swap/types';
-import { Button } from '@/components/ui/button';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { SeniorAppShell } from '@/components/layout';
 
 
 interface Message {
@@ -53,21 +45,6 @@ interface Conversation {
   id: string;
   title: string;
 }
-
-const TRENDING_PROMPTS = [
-  "What's the best DeFi strategy for yield farming?",
-  "How do I bridge tokens between chains safely?",
-  "Explain liquidity pools and impermanent loss",
-];
-
-const FEATURE_CARDS = [
-  { name: 'Portfolio View', icon: Briefcase, path: null, prompt: null, description: 'Track and manage your entire DeFi portfolio in one place' },
-  { name: 'Liquid Swap', icon: SwapIcon, path: '/swap', prompt: 'I would like to perform a token swap. Can you help me with the process and guide me through the steps?', description: 'Swap tokens across multiple chains with the best rates' },
-  { name: 'Lending & Borrowing', icon: BlockchainTechnology, path: '/lending', prompt: 'I want to explore DeFi lending options. Can you help me understand how to supply and borrow assets?', description: 'Access positions across protocols through easy commands managing collateral, comparing rates and adjusting exposure.' },
-  { name: 'Liquid Staking', icon: LightningIcon, path: '/staking', prompt: 'I want to stake my assets to earn rewards. Can you guide me through the staking process?', description: 'Stake your assets while maintaining liquidity' },
-  { name: 'Liquidity Provision Management', icon: ComboChart, path: null, prompt: null, description: 'Manage pool entries and exits through simple prompts optimizing routes, ranges and capital across chains' },
-  { name: 'DCA & Trigger Orders', icon: LightningIcon, path: '/dca', prompt: 'I want to set up a Dollar Cost Averaging strategy for my crypto investments. Can you help me configure automated recurring purchases?', description: 'Configure multi-token DCA plans and threshold-based execution rules directly in chat.' },
-];
 
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
 const DEBUG_CHAT_FLAG = (process.env.NEXT_PUBLIC_MINIAPP_DEBUG_CHAT ?? process.env.MINIAPP_DEBUG_CHAT ?? '').toLowerCase();
@@ -178,12 +155,8 @@ function deriveConversationTitle(fallbackTitle: string, messages: Message[]): st
 
 export default function ChatPage() {
   const router = useRouter();
-  const pathname = usePathname();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isLargeScreen, setIsLargeScreen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [exploreDropdownOpen, setExploreDropdownOpen] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messagesByConversation, setMessagesByConversation] = useState<Record<string, Message[]>>({});
@@ -274,7 +247,6 @@ export default function ChatPage() {
         localStorage.removeItem('authSignature');
         localStorage.removeItem('telegram_user');
         localStorage.removeItem('userAddress');
-        setSidebarOpen(false);
         window.location.href = '/miniapp';
       }
     }
@@ -289,30 +261,6 @@ export default function ChatPage() {
       debug('component:unmount');
     };
   }, [debug]);
-
-  // Detect screen size and keep sidebar open on larger screens
-  useEffect(() => {
-    const checkScreenSize = () => {
-      const isLarge = window.innerWidth >= 1024; // lg breakpoint
-      setIsLargeScreen(isLarge);
-      if (isLarge) {
-        setSidebarOpen(true);
-      }
-    };
-
-    checkScreenSize();
-    window.addEventListener('resize', checkScreenSize);
-
-    return () => window.removeEventListener('resize', checkScreenSize);
-  }, []);
-
-  // Reset navigation loader when leaving the chat page
-  useEffect(() => {
-    if (pathname !== '/chat') {
-      setIsNavigating(false);
-      setNavigationType(null);
-    }
-  }, [pathname]);
 
   // Use wallet address as userId instead of Telegram user ID
   const getWalletAddress = useCallback(() => {
@@ -334,6 +282,12 @@ export default function ChatPage() {
   const userId = account?.address?.toLowerCase() || getWalletAddress() || (user?.id ? String(user.id) : undefined);
   const activeMessages = activeConversationId ? (messagesByConversation[activeConversationId] ?? []) : [];
   const isHistoryLoading = loadingConversationId === activeConversationId;
+  const hasMessages = activeMessages.length > 0;
+  const displayName = useMemo(() => {
+    if (user?.name) return user.name;
+    if (user?.username) return user.username;
+    return 'Alex';
+  }, [user?.name, user?.username]);
 
   // Debug userId
   useEffect(() => {
@@ -756,10 +710,6 @@ export default function ChatPage() {
   const handleSelectConversation = (conversationId: string) => {
     setActiveConversationId(conversationId);
     setInitializationError(null);
-    // Only close sidebar on mobile/tablet
-    if (!isLargeScreen) {
-      setSidebarOpen(false);
-    }
     debug('conversation:select', { conversationId });
   };
 
@@ -1001,19 +951,6 @@ export default function ChatPage() {
     }
   }, [swapQuote, client, account, clientId, getWalletAddress]);
 
-  const handleSignatureApproval = useCallback(async (metadata: Record<string, unknown>) => {
-    console.log('✅ Signature approved');
-
-    // Force MetaMask window to open before executing swap
-    await forceMetaMaskWindow();
-
-    await executeSwap(metadata);
-  }, [executeSwap, forceMetaMaskWindow]);
-
-  const handleSignatureRejection = useCallback(async () => {
-    console.log('❌ Signature rejected');
-  }, []);
-
   // Helper function to flatten prepared transactions (from swap page)
   function flattenPrepared(prepared: any): PreparedTx[] {
     const out: PreparedTx[] = [];
@@ -1032,841 +969,322 @@ export default function ChatPage() {
 
   return (
     <ProtectedRoute>
-      <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
-      <GlobalLoader
-        isLoading={isNavigating}
-        message={
-          navigationType === 'lending' ? 'Loading Lending...' :
-            navigationType === 'staking' ? 'Loading Staking...' :
-              navigationType === 'swap' ? 'Loading Swap...' :
-                navigationType === 'dca' ? 'Loading DCA...' :
-                  'Loading...'
-        }
-      />
-      <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
-        {/* Top Navbar - Horizontal across full width */}
-        <header className="sticky top-0 flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
-          <div className="flex items-center justify-between max-w-[1920px] mx-auto">
-            {/* Left: Menu toggle (mobile only) + Logo (desktop only) + Navigation */}
-            <div className="flex items-center gap-8">
-              {!isLargeScreen && (
-                <button
-                  onClick={() => setSidebarOpen(true)}
-                  className="text-gray-400 hover:text-white"
-                  aria-label="Open menu"
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
-                </button>
-              )}
+      <TransactionSettingsProvider>
+        <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
+        <GlobalLoader
+          isLoading={isNavigating}
+          message={
+            navigationType === 'lending' ? 'Loading Lending...' :
+              navigationType === 'staking' ? 'Loading Staking...' :
+                navigationType === 'swap' ? 'Loading Swap...' :
+                  navigationType === 'dca' ? 'Loading DCA...' :
+                    'Loading...'
+          }
+        />
 
-              {/* Logo - Desktop on left, Mobile just icon */}
-              {!isLargeScreen ? (
-                <div className="flex items-center gap-2">
-                  <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
-                  <span className="text-white font-semibold text-sm tracking-wide">PANORAMA BLOCK</span>
-                </div>
-              )}
-            </div>
+        <SeniorAppShell pageTitle="Zico AI Agent">
+          <div className="relative min-h-[100dvh] bg-[#050505] text-pano-text-primary">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(ellipse_at_top,_rgba(16,131,171,0.16),_transparent_65%)] blur-[80px]" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_15%_15%,rgba(16,131,171,0.08),transparent_50%)]" />
 
-            {/* Right: Explore + Docs + Notifications + Wallet Address */}
-            <div className="flex items-center gap-3">
-              {/* Navigation Menu - Desktop only */}
-              {isLargeScreen && (
-                <nav className="flex items-center gap-6 text-sm mr-3">
-                  {/* Explore Dropdown */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setExploreDropdownOpen(!exploreDropdownOpen)}
-                      className="text-gray-400 hover:text-white transition-colors flex items-center gap-1"
-                    >
-                      Explore
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-
-                    {/* Dropdown Menu */}
-                    {exploreDropdownOpen && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-10"
-                          onClick={() => setExploreDropdownOpen(false)}
-                        />
-                        <div className="absolute top-full right-0 mt-2 w-48 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg shadow-xl z-20">
-                          <div className="py-2">
-                            <button
-                              onClick={() => {
-                                setExploreDropdownOpen(false);
-                                router.push('/chat');
-                              }}
-                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4BC3C5" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                              </svg>
-                              Chat
-                            </button>
-                            <button
-                              onClick={() => {
-                                setIsNavigating(true);
-                                setNavigationType('swap');
-                                setExploreDropdownOpen(false);
-                                router.push('/swap');
-                              }}
-                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                            >
-                              <Image src={SwapIcon} alt="Swap" width={16} height={16} />
-                              Swap
-                            </button>
-                            <button
-                              onClick={() => {
-                                setIsNavigating(true);
-                                setNavigationType('lending');
-                                setExploreDropdownOpen(false);
-                                router.push('/lending');
-                              }}
-                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              Lending
-                            </button>
-                            <button
-                              onClick={() => {
-                                setIsNavigating(true);
-                                setNavigationType('staking');
-                                setExploreDropdownOpen(false);
-                                router.push('/staking');
-                              }}
-                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                              </svg>
-                              Staking
-                            </button>
-                            <button
-                              onClick={() => {
-                                setExploreDropdownOpen(false);
-                                router.push('/account');
-                              }}
-                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                              </svg>
-                              Account
-                            </button>
-                            <button
-                              onClick={() => {
-                                setIsNavigating(true);
-                                setNavigationType('dca');
-                                setExploreDropdownOpen(false);
-                                router.push('/dca');
-                              }}
-                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              DCA
-                            </button>
-                          </div>
-                        </div>
-
-                      </>
-                    )}
+            <div className="relative flex min-h-[100dvh] flex-col">
+              <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-6 sm:px-8 sm:py-10">
+                {initializing ? (
+                  <div className="flex h-full items-center justify-center text-sm text-pano-text-muted">
+                    Loading your conversations...
                   </div>
-
-                  {/* Docs Link */}
-                  <a
-                    href="https://docs.panoramablock.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-white transition-colors"
-                  >
-                    Docs
-                  </a>
-                </nav>
-              )}
-              {/* Notifications Icon */}
-              <button className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-              </button>
-
-              {/* Wallet Address Display */}
-              {(account?.address || getWalletAddress()) && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
-                  <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
-                  <span className="text-white text-xs font-mono">
-                    {account?.address
-                      ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
-                      : getWalletAddress()
-                        ? `${getWalletAddress()!.slice(0, 6)}...${getWalletAddress()!.slice(-4)}`
-                        : ''}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
-
-        {/* Main content area with sidebar and messages */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Sidebar - Below navbar */}
-          {(isLargeScreen || sidebarOpen) && (
-            <>
-              {/* Mobile backdrop */}
-              {!isLargeScreen && sidebarOpen && (
-                <div
-                  className="fixed inset-0 bg-black/60 z-40 lg:hidden"
-                  onClick={() => setSidebarOpen(false)}
-                />
-              )}
-
-              {/* Sidebar content */}
-              <aside className={`
-              ${isLargeScreen ? 'relative' : 'fixed inset-y-0 left-0 z-50'}
-              w-80 bg-black border-r-2 border-white/15 flex flex-col
-              ${!isLargeScreen && !sidebarOpen ? 'hidden' : ''}
-            `}>
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
-                  {/* New Chat Button */}
-                  <div className="px-4">
+                ) : !activeConversationId ? (
+                  <div className="flex h-full items-center justify-center text-sm text-pano-text-muted">
+                    Crie um novo chat para começar.
+                  </div>
+                ) : initializationError && !hasMessages ? (
+                  <div className="flex h-full flex-col items-center justify-center space-y-4 text-center">
+                    <p className="text-pano-text-muted">{initializationError}</p>
                     <button
-                      onClick={createNewChat}
-                      disabled={isCreatingConversation}
-                      className="w-full px-4 py-2 rounded-full border border-white bg-transparent hover:bg-gray-900 text-white text-sm font-normal transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      onClick={retryBootstrap}
+                      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-pano-text-primary transition hover:border-pano-primary/40 hover:bg-pano-primary/10"
                     >
-                      {isCreatingConversation ? (
-                        <>
-                          <div className="loader-inline-sm" />
-                          <span>Creating...</span>
-                        </>
-                      ) : (
-                        <span>New Chat</span>
-                      )}
+                      Try again
                     </button>
                   </div>
+                ) : isHistoryLoading && !hasMessages ? (
+                  <div className="flex h-full items-center justify-center text-sm text-pano-text-muted">
+                    Loading conversation...
+                  </div>
+                ) : !hasMessages ? (
+                  <div className="mx-auto flex min-h-[70vh] max-w-6xl flex-col items-center justify-center gap-12 text-center px-4">
+                    <div className="space-y-3">
+                      <h1 className="text-5xl sm:text-[60px] font-extrabold tracking-tight text-white drop-shadow-[0_8px_40px_rgba(0,0,0,0.45)]">
+                        Hello, {displayName}.
+                      </h1>
+                      <p className="text-lg text-pano-text-secondary">Zico is ready to navigate the chain.</p>
+                    </div>
 
-                  {/* Past Conversations */}
-                  {conversations.length > 0 && (
-                    <div className="max-h-[180px] overflow-y-auto custom-scrollbar pr-2 px-4">
-                      <div className="space-y-3">
-                        {conversations.map((conversation) => (
+                    <div className="w-full max-w-4xl">
+                      <div className="relative rounded-[16px] border border-white/10 bg-[#0b0f13]/90 px-5 py-3.5 shadow-[0_0_32px_rgba(0,0,0,0.45),0_0_28px_rgba(8,180,217,0.18)]">
+                        <div className="flex items-center gap-3">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-pano-text-muted">
+                            <circle cx="11" cy="11" r="6" strokeWidth="2" />
+                            <path strokeWidth="2" strokeLinecap="round" d="M20 20l-3.5-3.5" />
+                          </svg>
+                          <input
+                            type="text"
+                            value={inputMessage}
+                            onChange={(e) => setInputMessage(e.target.value)}
+                            onKeyPress={handleKeyPress}
+                            placeholder="Ask Zico anything..."
+                            disabled={isSending || !activeConversationId || initializing}
+                            className="flex-1 bg-transparent text-base text-white placeholder:text-pano-text-muted focus:outline-none"
+                          />
                           <button
-                            key={conversation.id}
-                            onClick={() => handleSelectConversation(conversation.id)}
-                            className={`w-full text-left px-3 py-2 transition-colors text-sm flex items-center gap-3 rounded-md ${activeConversationId === conversation.id
-                              ? 'text-white bg-[#202020]'
-                              : 'text-gray-400 hover:text-white hover:bg-[#202020]'
-                              }`}
+                            type="button"
+                            className="rounded-full p-2 text-pano-text-muted hover:bg-white/5"
+                            disabled
                           >
-                            <Image src={ChatIcon} alt="Chat" width={20} height={20} className="shrink-0" />
-                            <div className="truncate">{conversation.title}</div>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                              <polyline points="17 8 12 3 7 8" />
+                              <line x1="12" y1="3" x2="12" y2="15" />
+                            </svg>
                           </button>
-                        ))}
+                          <button
+                            onClick={() => sendMessage()}
+                            disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
+                            className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#00d2ff] to-[#0094ff] text-black shadow-[0_0_28px_rgba(0,148,255,0.45)] transition hover:shadow-[0_0_34px_rgba(0,148,255,0.55)] disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label="Send message"
+                          >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  )}
 
-                  {/* Separator Line */}
-                  <div className="border-t border-white/20 my-6"></div>
-
-                  {/* Trending Prompts */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <Image src={LightningIcon} alt="Lightning" width={18} height={18} />
-                      <h3 className="text-sm font-semibold text-white">
-                        Trending Prompts
-                      </h3>
-                    </div>
-                    <div className="space-y-3 px-4">
-                      {TRENDING_PROMPTS.map((prompt, idx) => (
+                    <div className="grid w-full max-w-5xl grid-cols-1 gap-3 sm:grid-cols-2">
+                      {[
+                        { label: 'Analyze my portfolio performance', prompt: 'Analyze my portfolio performance' },
+                        { label: 'Bridge ETH to Optimism', prompt: 'Bridge ETH to Optimism' },
+                        { label: 'Find high yield staking pools', prompt: 'Find high yield staking pools' },
+                        { label: 'Explain this smart contract', prompt: 'Explain this smart contract' },
+                      ].map((item) => (
                         <button
-                          key={idx}
-                          onClick={() => sendMessage(prompt)}
+                          key={item.label}
+                          onClick={() => sendMessage(item.prompt)}
                           disabled={isSending || !activeConversationId}
-                          className="w-full text-left text-sm text-gray-400 leading-relaxed hover:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-[#202020] px-4 py-4 rounded-md"
+                          className="flex items-center justify-between gap-2 rounded-[14px] border border-white/10 bg-[#0b0f13]/90 px-4 py-3 text-left text-sm text-pano-text-secondary transition hover:border-[#08b4d9]/60 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {prompt}
+                          <span className="flex items-center gap-2">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#08b4d9]">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+                            </svg>
+                            {item.label}
+                          </span>
+                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white/5 border border-white/10">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-pano-text-muted">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
                         </button>
                       ))}
                     </div>
                   </div>
+                ) : (
+                  <div className="space-y-6">
+                    {activeMessages.map((message, index) => {
+                      const timestampValue = message.timestamp.getTime();
+                      const hasValidTime = !Number.isNaN(timestampValue);
+                      const timeLabel = hasValidTime
+                        ? message.timestamp.toLocaleTimeString('en-US', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                        : '';
+                      const messageKey = hasValidTime
+                        ? `${message.role}-${timestampValue}-${index}`
+                        : `${message.role}-${index}`;
 
-
-                  <div className="border-t border-white/10 mt-auto px-4 py-4 space-y-3">
-                    <button
-                      onClick={() => router.push('/account')}
-                      className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white transition-all hover:border-white/40 hover:bg-black/80"
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9 9 0 0112 15a9 9 0 016.879 2.804M15 11a3 3 0 10-6 0 3 3 0 006 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804l-.002.002A6.978 6.978 0 003 22h18a6.978 6.978 0 00-2.119-4.194l-.002-.002" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-4 border-t border-white/15">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleWalletDisconnect}
-                    className="w-full justify-center text-gray-300 hover:text-white hover:bg-white/5 border border-white/10 text-sm font-normal"
-                  >
-                    Disconnect
-                  </Button>
-                </div>
-              </aside>
-            </>
-          )}
-
-          {/* Messages Area */}
-          <main className="flex-1 flex flex-col overflow-hidden">
-            {/* Messages or Empty State */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              {initializing ? (
-                <div className="h-full flex items-center justify-center px-4 py-12 text-center">
-                  {initializationError ? (
-                    <div className="space-y-4">
-                      <p className="text-gray-300">{initializationError}</p>
-                      <button
-                        onClick={retryBootstrap}
-                        className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition-all font-medium"
-                      >
-                        Try again
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-gray-400">Loading your conversations...</p>
-                  )}
-                </div>
-              ) : !activeConversationId ? (
-                <div className="h-full flex items-center justify-center px-4 py-12">
-                  <p className="text-gray-400">Create a new chat to get started.</p>
-                </div>
-              ) : initializationError && activeMessages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center px-4 py-12 text-center space-y-4">
-                  <p className="text-gray-300">{initializationError}</p>
-                  <button
-                    onClick={retryBootstrap}
-                    className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition-all font-medium"
-                  >
-                    Try again
-                  </button>
-                </div>
-              ) : isHistoryLoading && activeMessages.length === 0 ? (
-                <div className="h-full flex items-center justify-center px-4 py-12">
-                  <p className="text-gray-400">Loading conversation...</p>
-                </div>
-              ) : activeMessages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center px-6 sm:px-8 md:px-12 lg:px-16 py-1 sm:py-2 md:py-3 lg:py-4">
-                  <h2 className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl font-normal text-white mb-2 sm:mb-3 md:mb-4 lg:mb-5 xl:mb-6 flex-shrink-0">
-                    How can I help you today?
-                  </h2>
-
-                  {/* Feature Cards Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-2 md:gap-2.5 lg:gap-3 xl:gap-4 2xl:gap-5 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
-                    {FEATURE_CARDS.map((feature, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => {
-                          if (feature.prompt) {
-                            sendMessage(feature.prompt);
-                          } else if (feature.path) {
-                            setIsNavigating(true);
-                            if (feature.path === '/lending') {
-                              setNavigationType('lending');
-                            } else if (feature.path === '/staking') {
-                              setNavigationType('staking');
-                            } else if (feature.path === '/swap') {
-                              setNavigationType('swap');
-                            } else if (feature.path === '/dca') {
-                              setNavigationType('dca');
-                            }
-                            router.push(feature.path);
-                          }
-                        }}
-                        disabled={!feature.path && !feature.prompt}
-                        className={`flex flex-col p-3 sm:p-2 md:p-2.5 lg:p-3 xl:p-4 2xl:p-5 rounded-lg md:rounded-xl bg-black/80 backdrop-blur-md border border-white/15 transition-all shadow-lg text-left ${!feature.path && !feature.prompt ? 'opacity-50 cursor-not-allowed' : 'hover:border-white/30 cursor-pointer'
-                          }`}
-                      >
-                        {/* Icon */}
-                        <div className="mb-1.5 sm:mb-1 md:mb-1.5 lg:mb-2 xl:mb-2.5">
-                          <Image
-                            src={feature.icon}
-                            alt={feature.name}
-                            width={48}
-                            height={48}
-                            className="w-7 h-7 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 xl:w-10 xl:h-10 2xl:w-12 2xl:h-12"
-                          />
-                        </div>
-
-                        {/* Title */}
-                        <h3 className="text-[11px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base text-white font-semibold mb-1 sm:mb-0.5 md:mb-1 lg:mb-1.5">
-                          {feature.name}
-                        </h3>
-
-                        {/* Description */}
-                        <p className="text-[9px] sm:text-[8px] md:text-[9px] lg:text-[10px] xl:text-xs 2xl:text-sm text-gray-400 leading-snug mb-2 sm:mb-1.5 md:mb-2 lg:mb-2.5 xl:mb-3 flex-1">
-                          {feature.description}
-                        </p>
-
-                        {/* Continue Button - Only on larger screens */}
-                        <div className="hidden sm:block w-full px-1.5 py-0.5 sm:px-2 sm:py-0.5 md:px-2.5 md:py-1 lg:px-3 lg:py-1.5 xl:px-4 xl:py-2 rounded-md bg-white text-black text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base font-medium text-center">
-                          Continue
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="py-6">
-                  {activeMessages.map((message, index) => {
-                    const timestampValue = message.timestamp.getTime();
-                    const hasValidTime = !Number.isNaN(timestampValue);
-                    const timeLabel = hasValidTime
-                      ? message.timestamp.toLocaleTimeString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                      : '';
-                    const messageKey = hasValidTime
-                      ? `${message.role}-${timestampValue}-${index}`
-                      : `${message.role}-${index}`;
-
-                    return (
-                      <div
-                        key={messageKey}
-                        className="w-full"
-                      >
-                        <div className="max-w-3xl mx-auto px-4 py-4">
+                      return (
+                        <div key={messageKey} className="w-full">
                           {message.role === 'user' ? (
-                            // User message - aligned to the right with background
-                            <div className="flex items-start gap-3 justify-end">
-                              <div className="flex flex-col items-end max-w-[80%]">
-                                <div className="flex items-center gap-2 mb-2">
-                                  {timeLabel ? (
-                                    <span className="text-xs text-gray-500">{timeLabel}</span>
-                                  ) : null}
-                                  <span className="text-sm font-semibold text-gray-300">You</span>
+                            <div className="flex justify-end">
+                              <div className="max-w-2xl rounded-2xl border border-white/10 bg-white/5 px-4 py-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+                                <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-pano-text-muted">
+                                  <span>You</span>
+                                  {timeLabel && <span className="text-[10px]">{timeLabel}</span>}
                                 </div>
-                                <div className="rounded-2xl bg-[#202020] text-gray-200 px-4 py-3 text-[15px] break-words leading-relaxed">
-                                  {message.content}
-                                </div>
-                              </div>
-                              <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-                                <div className="w-full h-full rounded-full bg-gray-700 text-white flex items-center justify-center">
-                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                  </svg>
-                                </div>
+                                <div className="whitespace-pre-wrap text-sm leading-relaxed text-pano-text-primary">{message.content}</div>
                               </div>
                             </div>
                           ) : (
-                            // Assistant message - aligned to the left without background
-                            <div className="flex items-start gap-3">
-                              <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-                                <Image
-                                  src={zicoBlue}
-                                  alt="Zico"
-                                  width={32}
-                                  height={32}
-                                  className="w-8 h-8"
-                                />
+                            <div className="flex gap-3 sm:gap-4">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 shadow-[0_0_18px_rgba(34,211,238,0.18)]">
+                                <Image src={zicoBlue} alt="Zico" width={24} height={24} />
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-sm font-semibold text-gray-300">Zico</span>
-                                  {timeLabel ? (
-                                    <span className="text-xs text-gray-500">{timeLabel}</span>
-                                  ) : null}
+                              <div className="flex-1 space-y-3">
+                                <div className="flex items-center gap-2 text-xs text-pano-text-muted">
+                                  <span className="text-sm font-semibold text-pano-text-primary">{message.agentName || 'Zico'}</span>
+                                  {timeLabel && <span>{timeLabel}</span>}
                                 </div>
-                                <div className="text-[15px] break-words leading-relaxed text-gray-200">
+                                <div className="text-sm leading-relaxed text-pano-text-primary">
                                   <MarkdownMessage text={message.content} />
                                 </div>
 
-                                {/* Swap Interface */}
-                                {message.role === 'assistant' &&
-                                  message.metadata?.event === 'swap_intent_ready' && (
-                                    <div className="mt-4">
-                                      {/* Loading State */}
-                                      {swapLoading && !swapQuote?.quote && (
-                                        <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
-                                          <div className="flex items-center gap-2 text-gray-300">
-                                            <div className="loader-inline-sm" />
-                                            <span className="text-sm">Getting quote...</span>
-                                          </div>
+                                {message.metadata?.event === 'swap_intent_ready' && (
+                                  <div className="mt-3">
+                                    {swapLoading && !swapQuote?.quote && (
+                                      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                                        <div className="flex items-center gap-2 text-pano-text-muted">
+                                          <div className="loader-inline-sm" />
+                                          <span className="text-sm">Getting quote...</span>
                                         </div>
-                                      )}
+                                      </div>
+                                    )}
 
-                                      {swapStatusMessage && (
-                                        <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5 mt-3">
-                                          <div className="flex items-center gap-2 text-gray-300">
-                                            {executingSwap && <div className="loader-inline-sm" />}
-                                            <span className="text-sm">{swapStatusMessage}</span>
-                                          </div>
+                                    {swapStatusMessage && (
+                                      <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-5">
+                                        <div className="flex items-center gap-2 text-pano-text-muted">
+                                          {executingSwap && <div className="loader-inline-sm" />}
+                                          <span className="text-sm">{swapStatusMessage}</span>
                                         </div>
-                                      )}
+                                      </div>
+                                    )}
 
-                                      {/* Error State */}
-                                      {swapError && !swapLoading && (
-                                        <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4">
-                                          <p className="text-sm text-red-400">❌ {swapError}</p>
-                                        </div>
-                                      )}
+                                    {swapError && !swapLoading && (
+                                      <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
+                                        <p className="text-sm text-red-300">❌ {swapError}</p>
+                                      </div>
+                                    )}
 
-                                      {/* Resume Swap Button - Shows when swap quote exists but no modal is open */}
-                                      {swapQuote?.quote && !swapFlowStep && !swapSuccess && !swapLoading && (
-                                        <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
-                                          <div className="flex items-center justify-between gap-3">
-                                            <div className="flex-1">
-                                              <p className="text-sm text-white font-medium mb-1">
-                                                Swap {String(message.metadata?.from_token)} → {String(message.metadata?.to_token)}
-                                              </p>
-                                              <p className="text-xs text-gray-400">
-                                                Quote ready. Click to continue with your swap.
-                                              </p>
-                                            </div>
-                                            <button
-                                              onClick={() => {
-                                                setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
-                                                setSwapFlowStep('routing');
-                                              }}
-                                              disabled={executingSwap}
-                                              className="px-4 py-2 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                                            >
-                                              Resume Swap
-                                            </button>
-                                          </div>
-                                        </div>
-                                      )}
-
-                                      {/* Swap Preview Card - Hidden, modal flow is used instead */}
-                                      {false && swapQuote?.quote && !swapSuccess && (
-                                        <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden max-w-sm">
-                                          {/* Header */}
-                                          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-                                            <h3 className="text-sm font-semibold text-white">Preview Swap Position</h3>
-                                            <button
-                                              onClick={() => {
-                                                setSwapQuote(null);
-                                                setSwapError(null);
-                                              }}
-                                              className="text-gray-400 hover:text-white transition-colors"
-                                            >
-                                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                              </svg>
-                                            </button>
-                                          </div>
-
-                                          {/* Token Pair Indicator */}
-                                          <div className="px-4 py-3 bg-[#2A2A2A]/50">
-                                            <div className="flex items-center gap-2.5">
-                                              {/* Overlapping circles */}
-                                              <div className="relative flex items-center">
-                                                <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center text-xs font-bold text-black">
-                                                  {String(message.metadata?.from_token).slice(0, 1)}
-                                                </div>
-                                                <div className="w-7 h-7 rounded-full bg-gray-500 flex items-center justify-center text-xs font-bold text-white -ml-2">
-                                                  {String(message.metadata?.to_token).slice(0, 1)}
-                                                </div>
-                                              </div>
-
-                                              <div className="flex-1">
-                                                <div className="text-sm text-white font-medium">
-                                                  {String(message.metadata?.from_token)}/{String(message.metadata?.to_token)}
-                                                </div>
-                                                <div className="text-xs text-gray-400 mt-0.5">
-                                                  {String(message.metadata?.from_network)} → {String(message.metadata?.to_network)}
-                                                </div>
-                                              </div>
-
-                                              {swapQuote?.quote?.fees?.totalFeeUsd && (
-                                                <div className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs font-medium rounded">
-                                                  ${swapQuote?.quote?.fees?.totalFeeUsd}
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          {/* Content */}
-                                          <div className="px-4 py-3 space-y-3">
-                                            {/* Token Deposited */}
-                                            <div>
-                                              <div className="text-xs text-gray-400 mb-2">Token Deposited</div>
-                                              <div className="text-xl font-light text-white mb-2">
-                                                ${(parseFloat(String(message.metadata?.amount)) * 1800).toFixed(3)}
-                                              </div>
-                                              <div className="space-y-1.5">
-                                                <div className="flex items-center justify-between">
-                                                  <div className="flex items-center gap-2">
-                                                    <div className="w-4 h-4 rounded-full bg-white"></div>
-                                                    <span className="text-xs text-white">{String(message.metadata?.from_token)}</span>
-                                                  </div>
-                                                  <span className="text-xs text-white">{String(message.metadata?.amount)}</span>
-                                                </div>
-                                                <div className="flex items-center justify-between">
-                                                  <div className="flex items-center gap-2">
-                                                    <div className="w-4 h-4 rounded-full bg-gray-500"></div>
-                                                    <span className="text-xs text-white">{String(message.metadata?.to_token)}</span>
-                                                  </div>
-                                                  <span className="text-xs text-white">{formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)}</span>
-                                                </div>
-                                              </div>
-                                            </div>
-
-                                            {/* Divider Line */}
-                                            <div className="border-t border-white/5"></div>
-
-                                            {/* Min. Amounts */}
-                                            <div>
-                                              <div className="text-xs text-gray-400 mb-2">Min. Amounts to Receive</div>
-                                              <div className="space-y-1.5">
-                                                <div className="flex items-center justify-between">
-                                                  <div className="flex items-center gap-2">
-                                                    <div className="w-4 h-4 rounded-full bg-white"></div>
-                                                    <span className="text-xs text-white">{String(message.metadata?.from_token)}</span>
-                                                  </div>
-                                                  <span className="text-xs text-white">0</span>
-                                                </div>
-                                                <div className="flex items-center justify-between">
-                                                  <div className="flex items-center gap-2">
-                                                    <div className="w-4 h-4 rounded-full bg-gray-500"></div>
-                                                    <span className="text-xs text-white">{String(message.metadata?.to_token)}</span>
-                                                  </div>
-                                                  <span className="text-xs text-white">{(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)}</span>
-                                                </div>
-                                              </div>
-                                            </div>
-
-                                            {/* Price Range */}
-                                            <div>
-                                              <div className="text-xs text-gray-400 mb-2">Price Range</div>
-                                              <div className="grid grid-cols-2 gap-2">
-                                                <div className="bg-black/40 border border-white/10 rounded-lg p-3">
-                                                  <div className="text-xs text-gray-400 mb-0.5">Min</div>
-                                                  <div className="text-base font-medium text-white">
-                                                    {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) / parseFloat(String(message.metadata?.amount)) * 0.95).toFixed(2)}
-                                                  </div>
-                                                  <div className="text-[10px] text-gray-400 mt-0.5">
-                                                    {String(message.metadata?.to_token)} per {String(message.metadata?.from_token)}
-                                                  </div>
-                                                </div>
-                                                <div className="bg-black/40 border border-white/10 rounded-lg p-3">
-                                                  <div className="text-xs text-gray-400 mb-0.5">Max</div>
-                                                  <div className="text-base font-medium text-white">
-                                                    {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) / parseFloat(String(message.metadata?.amount)) * 1.05).toFixed(2)}
-                                                  </div>
-                                                  <div className="text-[10px] text-gray-400 mt-0.5">
-                                                    {String(message.metadata?.to_token)} per {String(message.metadata?.from_token)}
-                                                  </div>
-                                                </div>
-                                              </div>
-                                            </div>
-
-                                            {/* Fee Tier */}
-                                            <div className="flex items-center justify-between py-1.5">
-                                              <span className="text-xs text-gray-400">Fee Tier</span>
-                                              <div className="flex items-center gap-1.5">
-                                                <span className="text-xs text-cyan-400 font-medium">Best for Stable Pairs</span>
-                                                <span className="text-xs text-white">0.01%</span>
-                                              </div>
-                                            </div>
-
-                                            {/* Details */}
-                                            <div className="space-y-1.5 pt-1.5 border-t border-white/5">
-                                              {swapQuote?.quote?.fees?.totalFeeUsd && (
-                                                <div className="flex items-center justify-between">
-                                                  <span className="text-xs text-gray-400">Est. Total Gas Fee</span>
-                                                  <span className="text-xs text-white">${swapQuote?.quote?.fees?.totalFeeUsd}</span>
-                                                </div>
-                                              )}
-                                              <div className="flex items-center justify-between">
-                                                <span className="text-xs text-gray-400">Slippage Setting</span>
-                                                <span className="text-xs text-white">10%</span>
-                                              </div>
-                                              <div className="flex items-center justify-between">
-                                                <span className="text-xs text-gray-400">Order Routing</span>
-                                                <div className="flex items-center gap-1">
-                                                  {isAvalancheSwap(message.metadata as Record<string, unknown>) ? (
-                                                    <>
-                                                      <Image src={AvalancheIcon} alt="Avalanche" width={12} height={12} className="w-3 h-3" />
-                                                      <span className="text-xs text-white">Avalanche C-chain</span>
-                                                    </>
-                                                  ) : (
-                                                    <>
-                                                      <div className="w-3 h-3 rounded-full bg-white"></div>
-                                                      <span className="text-xs text-white">UNI V3</span>
-                                                    </>
-                                                  )}
-                                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400">
-                                                    <circle cx="12" cy="12" r="10" />
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
-                                                  </svg>
-                                                </div>
-                                              </div>
-                                            </div>
-
-                                            {/* Error Message */}
-                                            {swapError && (
-                                              <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
-                                                <p className="text-sm text-red-400">{swapError}</p>
-                                              </div>
-                                            )}
-                                          </div>
-
-                                          {/* Action Buttons */}
-                                          <div className="px-4 py-3 border-t border-white/10 flex gap-2">
-                                            <button
-                                              onClick={() => {
-                                                setSwapQuote(null);
-                                                setSwapError(null);
-                                              }}
-                                              className="flex-1 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#333333] text-white text-sm font-medium transition-colors"
-                                            >
-                                              Cancel
-                                            </button>
-                                            <button
-                                              onClick={() => {
-                                                setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
-                                                setSwapFlowStep('routing');
-                                              }}
-                                              disabled={executingSwap}
-                                              className="flex-1 py-2.5 rounded-xl bg-cyan-400 hover:bg-cyan-500 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                              Confirm Open Position
-                                            </button>
-                                          </div>
-                                        </div>
-                                      )}
-
-                                      {/* Success State */}
-                                      {swapSuccess && (
-                                        <SwapSuccessCard
-                                          txHashes={swapTxHashes}
-                                          variant="compact"
-                                          onClose={() => {
-                                            setSwapSuccess(false);
-                                            setSwapTxHashes([]);
-                                          }}
-                                        />
-                                      )}
-                                    </div>
-                                  )}
-
-                                {/* Lending Interface */}
-                                {message.role === 'assistant' &&
-                                  message.metadata?.event === 'lending_intent_ready' && (
-                                    <div className="mt-4">
-                                      <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
+                                    {swapQuote?.quote && !swapFlowStep && !swapSuccess && !swapLoading && (
+                                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                                         <div className="flex items-center justify-between gap-3">
                                           <div className="flex-1">
-                                            <p className="text-sm text-white font-medium mb-1">
-                                              Lending Action: {String(message.metadata?.action || 'Unknown').toUpperCase()}
+                                            <p className="text-sm font-medium text-pano-text-primary">
+                                              Swap {String(message.metadata?.from_token)} → {String(message.metadata?.to_token)}
                                             </p>
-                                            <p className="text-xs text-gray-400">
-                                              {message.metadata?.amount ? `${message.metadata.amount} ` : ''}
-                                              {String(message.metadata?.asset || message.metadata?.token || '')}
-                                            </p>
+                                            <p className="text-xs text-pano-text-muted">Quote ready. Click to continue with your swap.</p>
                                           </div>
                                           <button
                                             onClick={() => {
-                                              setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
-                                              setLendingModalOpen(true);
+                                              setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
+                                              setSwapFlowStep('routing');
                                             }}
-                                            className="px-4 py-2 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors whitespace-nowrap"
+                                            disabled={executingSwap}
+                                            className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                                           >
-                                            Resume Lending
+                                            Resume Swap
                                           </button>
                                         </div>
                                       </div>
+                                    )}
+
+                                    {swapSuccess && (
+                                      <SwapSuccessCard
+                                        txHashes={swapTxHashes}
+                                        variant="compact"
+                                        onClose={() => {
+                                          setSwapSuccess(false);
+                                          setSwapTxHashes([]);
+                                        }}
+                                      />
+                                    )}
+                                  </div>
+                                )}
+
+                                {message.metadata?.event === 'lending_intent_ready' && (
+                                  <div className="mt-3">
+                                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="flex-1">
+                                          <p className="text-sm font-medium text-pano-text-primary">
+                                            Lending Action: {String(message.metadata?.action || 'Unknown').toUpperCase()}
+                                          </p>
+                                          <p className="text-xs text-pano-text-muted">
+                                            {message.metadata?.amount ? `${message.metadata.amount} ` : ''}
+                                            {String(message.metadata?.asset || message.metadata?.token || '')}
+                                          </p>
+                                        </div>
+                                        <button
+                                          onClick={() => {
+                                            setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
+                                            setLendingModalOpen(true);
+                                          }}
+                                          className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-gray-100"
+                                        >
+                                          Resume Lending
+                                        </button>
+                                      </div>
                                     </div>
-                                  )}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           )}
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
 
-                  {isSending && (
-                    <div className="w-full">
-                      <div className="max-w-3xl mx-auto px-4 py-4">
-                        <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-                            <Image
-                              src={zicoBlue}
-                              alt="Zico"
-                              width={32}
-                              height={32}
-                              className="w-8 h-8"
-                            />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-sm font-semibold text-gray-300">Zico</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
-                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-75" />
-                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150" />
-                            </div>
-                          </div>
+                    {isSending && (
+                      <div className="flex gap-3 sm:gap-4">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 shadow-[0_0_18px_rgba(34,211,238,0.18)]">
+                          <Image src={zicoBlue} alt="Zico" width={24} height={24} />
+                        </div>
+                        <div className="flex items-center gap-2 pt-2">
+                          <div className="h-2 w-2 animate-pulse rounded-full bg-pano-text-muted" />
+                          <div className="h-2 w-2 animate-pulse rounded-full bg-pano-text-muted delay-75" />
+                          <div className="h-2 w-2 animate-pulse rounded-full bg-pano-text-muted delay-150" />
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  <div ref={messagesEndRef} />
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
+              </div>
+
+              {hasMessages && (
+                <div className="relative border-t border-white/5 bg-[#050505]/90 px-3 py-4 pb-safe sm:px-6">
+                  <div className="group relative mx-auto max-w-4xl">
+                    <div className="absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-pano-primary/30 via-transparent to-pano-primary/25 blur opacity-0 transition duration-500 group-focus-within:opacity-100 group-hover:opacity-60" />
+                    <div className="relative flex items-center gap-3 rounded-2xl border border-white/10 bg-[#0A0A0A]/80 px-3 py-2 backdrop-blur-xl">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-pano-text-muted">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                      <input
+                        type="text"
+                        value={inputMessage}
+                        onChange={(e) => setInputMessage(e.target.value)}
+                        onKeyPress={handleKeyPress}
+                        placeholder="Ask Zico anything..."
+                        disabled={isSending || !activeConversationId || initializing}
+                        className="flex-1 bg-transparent text-sm text-pano-text-primary placeholder:text-pano-text-muted focus:outline-none"
+                      />
+                      <button
+                        onClick={() => sendMessage()}
+                        disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
+                        className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-500 text-black shadow-[0_0_20px_rgba(34,211,238,0.35)] transition hover:shadow-[0_0_28px_rgba(34,211,238,0.45)] disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="Send message"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+                        </svg>
+                      </button>
+                    </div>
+                    <p className="mt-2 text-center text-[10px] uppercase tracking-[0.35em] text-pano-text-muted">
+                      AI-Native Web3 Interface
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
+          </div>
+        </SeniorAppShell>
 
-            {/* Input Area - Fixed with black bg */}
-            <div className="flex-shrink-0 bg-black px-4 pb-6 pt-6">
-              <div className="flex items-center gap-3 max-w-4xl mx-auto relative">
-                <input
-                  type="text"
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Type your message..."
-                  disabled={isSending || !activeConversationId || initializing}
-                  className="flex-1 px-4 py-3 rounded-3xl bg-[#202020] border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:border-gray-500 disabled:opacity-50"
-                />
 
-                {/* Send Button - Round with white bg */}
-                <button
-                  onClick={() => sendMessage()}
-                  disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                  className="p-3 rounded-full bg-white hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label="Send message"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-black" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </main>
-        </div>
-      </div>
-
-      {/* Order Routing Modal */}
+{/* Order Routing Modal */}
       {swapFlowStep === 'routing' && swapQuote?.quote && currentSwapMetadata && (
         <>
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
@@ -2278,6 +1696,7 @@ export default function ChatPage() {
           }}
         />
       )}
+      </TransactionSettingsProvider>
     </ProtectedRoute>
   );
 }
