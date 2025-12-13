@@ -124,9 +124,9 @@
   --color-ring: hsl(var(--pano-primary));
 
   /* Typography */
-  --font-sans: 'SuisseIntl', system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-inter), 'SuisseIntl', system-ui, -apple-system, sans-serif;
   --font-display: 'AsgardTrial', serif;
-  --font-mono: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  --font-mono: var(--font-jetbrains), 'SF Mono', 'Monaco', 'Consolas', monospace;
 
   /* Spacing Scale */
   --spacing-0: 0px;

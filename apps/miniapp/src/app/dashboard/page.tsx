@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 
 import { useActiveAccount, useDisconnect, useActiveWallet } from "thirdweb/react";
 import { shortenAddress } from "thirdweb/utils";
+import { networks } from "@/features/swap/tokens";
 
 export default function DashboardPage() {
   const account = useActiveAccount();
@@ -23,11 +24,17 @@ export default function DashboardPage() {
   const { disconnect } = useDisconnect();
 
   const [activeTab, setActiveTab] = useState("chat");
+  
+  // Widget Visibility State
   const [showSwap, setShowSwap] = useState(false);
   const [showLending, setShowLending] = useState(false);
   const [showStaking, setShowStaking] = useState(false);
   const [showDCA, setShowDCA] = useState(false);
   
+  // Widget Data State (Pre-filled from Chat)
+  const [initialSwapFrom, setInitialSwapFrom] = useState<any>(undefined);
+  const [initialSwapTo, setInitialSwapTo] = useState<any>(undefined);
+
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -39,6 +46,8 @@ export default function DashboardPage() {
     setShowDCA(false);
 
     if (tab === "swap") {
+      setInitialSwapFrom(undefined); // Reset defaults
+      setInitialSwapTo(undefined);
       setShowSwap(true);
       return;
     }
@@ -55,6 +64,58 @@ export default function DashboardPage() {
       return;
     }
     setActiveTab(tab);
+  };
+
+  const handleSwapRequest = (data: any) => {
+    // data example: { from_token: 'ETH', to_token: 'USDC', amount: '1', from_network: 'Base' }
+    if (!data) {
+      setShowSwap(true);
+      return;
+    }
+
+    try {
+      const { from_token, to_token, from_network } = data;
+      
+      const net = networks.find(n => 
+        n.name.toLowerCase() === (from_network || 'Base').toLowerCase() || 
+        n.name.toLowerCase().includes((from_network || '').toLowerCase())
+      );
+
+      if (from_token && net) {
+        const token = net.tokens.find(t => t.symbol.toLowerCase() === from_token.toLowerCase());
+        if (token) {
+          setInitialSwapFrom({
+             ticker: token.symbol,
+             name: token.name,
+             network: net.name,
+             address: token.address,
+             balance: "0.00", // Will be fetched by widget or use placeholder
+             decimals: token.decimals,
+             icon: token.icon
+          });
+        }
+      }
+
+      if (to_token && net) {
+         const token = net.tokens.find(t => t.symbol.toLowerCase() === to_token.toLowerCase());
+         if (token) {
+            setInitialSwapTo({
+              ticker: token.symbol,
+              name: token.name,
+              network: net.name,
+              address: token.address,
+              balance: "0.00",
+              decimals: token.decimals,
+              icon: token.icon
+            });
+         }
+      }
+      
+      setShowSwap(true);
+    } catch (e) {
+      console.error("Error parsing swap request:", e);
+      setShowSwap(true); // Fallback to default open
+    }
   };
 
   const sidebarActiveTab = showSwap ? 'swap' : showLending ? 'lending' : showStaking ? 'staking' : showDCA ? 'dca' : activeTab;
@@ -190,13 +251,19 @@ export default function DashboardPage() {
           "flex-1 relative w-full",
           activeTab !== "chat" && "overflow-y-auto overflow-x-hidden p-4 md:p-8 pt-4 md:pt-6 scrollbar-hide"
         )}>
-          {activeTab === "chat" && <ChatInterface />}
+          {activeTab === "chat" && <ChatInterface onSwapRequest={handleSwapRequest} />}
           {activeTab === "wallets" && <SmartWallets />}
         </main>
 
         {/* Modal Widgets (Overlays) */}
         <AnimatePresence>
-          {showSwap && <SwapWidget onClose={() => setShowSwap(false)} />}
+          {showSwap && (
+             <SwapWidget 
+               onClose={() => setShowSwap(false)} 
+               initialFromToken={initialSwapFrom}
+               initialToToken={initialSwapTo}
+             />
+          )}
           {showLending && <Lending onClose={() => setShowLending(false)} />}
           {showStaking && <Staking onClose={() => setShowStaking(false)} />}
           {showDCA && <DCA onClose={() => setShowDCA(false)} />}

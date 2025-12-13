@@ -8,6 +8,7 @@ interface TokenSelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (token: any) => void;
+  customTokens?: UiToken[];
 }
 
 // Extract unique network names from the source of truth
@@ -45,18 +46,20 @@ const NETWORK_COLORS: Record<string, string> = {
   'Ethereum': 'from-indigo-400 to-indigo-600',
 };
 
-export function TokenSelectionModal({ isOpen, onClose, onSelect }: TokenSelectionModalProps) {
+export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }: TokenSelectionModalProps) {
   const [activeNetwork, setActiveNetwork] = useState<string>('All Chains');
   const [searchQuery, setSearchQuery] = useState("");
 
+  const displayTokens = customTokens || TOKENS;
+
   const filteredTokens = useMemo(() => {
-    return TOKENS.filter(token => {
+    return displayTokens.filter(token => {
       const matchesNetwork = activeNetwork === 'All Chains' || token.network === activeNetwork;
       const matchesSearch = token.ticker.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             token.name.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesNetwork && matchesSearch;
     });
-  }, [activeNetwork, searchQuery]);
+  }, [activeNetwork, searchQuery, displayTokens]);
 
   // Responsive variants
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
@@ -129,7 +132,7 @@ export function TokenSelectionModal({ isOpen, onClose, onSelect }: TokenSelectio
             {/* Network Pills */}
             <div className="px-4 pb-2 overflow-x-auto scrollbar-hide shrink-0">
               <div className="flex gap-2 pb-2">
-                {ALL_NETWORKS.map((network) => (
+                {Array.from(new Set(['All Chains', ...displayTokens.map(t => t.network)])).map((network) => (
                   <button
                     key={network}
                     onClick={() => setActiveNetwork(network)}

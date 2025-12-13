@@ -25,7 +25,11 @@ interface Message {
   };
 }
 
-export function ChatInterface() {
+interface ChatInterfaceProps {
+  onSwapRequest?: (data: any) => void;
+}
+
+export function ChatInterface({ onSwapRequest }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -85,6 +89,10 @@ export function ChatInterface() {
                 const isAssistant = msg.role === 'assistant';
                 let widget = undefined;
 
+                if (!isAssistant && msg.content?.toLowerCase()?.trim() === 'hi') {
+                  return null;
+                }
+
                 // Basic widget mapping from metadata
                 if (msg.metadata?.event === 'swap_intent_ready') {
                     widget = {
@@ -101,7 +109,7 @@ export function ChatInterface() {
                     agentName: msg.agent_name,
                     widget
                 };
-            });
+            }).filter((msg): msg is Message => msg !== null);
             setMessages(mappedHistory);
         }
 
@@ -323,7 +331,10 @@ export function ChatInterface() {
                                 <span className="text-sm font-sans font-normal text-zinc-500">To</span> {msg.widget.data?.to_token}
                             </div>
                           </div>
-                          <button className="w-full py-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/50 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                          <button 
+                            onClick={() => onSwapRequest?.(msg.widget?.data)}
+                            className="w-full py-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/50 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                          >
                             <ArrowRightLeft className="w-4 h-4" />
                             Open Swap Widget
                           </button>

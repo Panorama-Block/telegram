@@ -14,47 +14,19 @@ import {
   ArrowLeft,
   Droplets,
   ExternalLink,
-  Scan
+  Scan,
+  Loader2
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
+import { usePortfolioData } from "@/features/portfolio/usePortfolioData";
+import { useActiveAccount } from "thirdweb/react";
+import { shortenAddress } from "thirdweb/utils";
+
 export default function PortfolioPage() {
-  const assets = [
-    {
-      symbol: "ETH",
-      name: "Ethereum",
-      protocol: "Wallet",
-      price: "$1,850.42",
-      balance: "2.0 ETH",
-      value: "$3,700.84",
-      apy: "-",
-      isPositive: true,
-      actions: ["Swap", "Stake"]
-    },
-    {
-      symbol: "stETH",
-      name: "Lido Staked ETH",
-      protocol: "Lido",
-      price: "$1,850.42",
-      balance: "5.5 stETH",
-      value: "$10,177.31",
-      apy: "4.2% APY",
-      isPositive: true,
-      actions: ["Swap"]
-    },
-    {
-      symbol: "USDC",
-      name: "USD Coin",
-      protocol: "Aave Supply",
-      price: "$1.00",
-      balance: "1,000 USDC",
-      value: "$1,000.00",
-      apy: "2.5% APY",
-      isPositive: true,
-      actions: ["Withdraw", "Borrow"]
-    }
-  ];
+  const account = useActiveAccount();
+  const { assets, stats, loading, refresh } = usePortfolioData();
 
   return (
     <div className="min-h-[100dvh] bg-[#050505] relative overflow-x-hidden flex flex-col text-foreground font-sans">
@@ -73,7 +45,7 @@ export default function PortfolioPage() {
            <NotificationCenter />
            <div className="text-right hidden sm:block">
              <div className="text-xs text-zinc-500">Connected Wallet</div>
-             <div className="font-mono text-sm text-white">0x1234...5678f9</div>
+             <div className="font-mono text-sm text-white">{account ? shortenAddress(account.address) : 'Not Connected'}</div>
            </div>
            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-purple-500 shadow-inner" />
         </div>
@@ -94,10 +66,11 @@ export default function PortfolioPage() {
           <motion.button
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
+            onClick={() => refresh()}
             className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white transition-colors"
           >
-             <Scan className="w-4 h-4 text-primary" />
-             Scan Wallet
+             {loading ? <Loader2 className="w-4 h-4 text-primary animate-spin" /> : <Scan className="w-4 h-4 text-primary" />}
+             {loading ? 'Scanning...' : 'Scan Wallet'}
           </motion.button>
         </div>
 
@@ -133,7 +106,7 @@ export default function PortfolioPage() {
               <div className="relative z-10">
                 <div className="text-zinc-400 text-sm mb-1">Net Worth</div>
                 <div className="text-4xl md:text-5xl font-bold font-display text-white tracking-tight">
-                  $14,250.55
+                  {stats.netWorth}
                 </div>
               </div>
             </GlassCard>
@@ -148,10 +121,10 @@ export default function PortfolioPage() {
             <GlassCard className="h-full p-6 flex flex-col justify-center bg-[#0A0A0A]/60 hover:bg-[#0A0A0A]/80 transition-colors">
               <div className="text-zinc-400 text-sm mb-2">P&L 24h</div>
               <div className="text-3xl font-bold font-display text-green-400">
-                +$450
+                {stats.pnl24h}
               </div>
               <div className="text-sm font-medium text-green-500/80 mt-1">
-                (3.2%)
+                ({stats.pnl24hPercent})
               </div>
             </GlassCard>
           </motion.div>
@@ -167,24 +140,22 @@ export default function PortfolioPage() {
           <div className="flex items-center justify-between mb-4">
              <h3 className="text-lg font-medium text-white">Allocation</h3>
              <div className="flex gap-4 text-xs">
-                <div className="flex items-center gap-2">
-                   <div className="w-2 h-2 rounded-full bg-blue-500" />
-                   <span className="text-zinc-400">Stablecoins (40%)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                   <div className="w-2 h-2 rounded-full bg-purple-500" />
-                   <span className="text-zinc-400">Blue Chips (30%)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                   <div className="w-2 h-2 rounded-full bg-orange-500" />
-                   <span className="text-zinc-400">Altcoins (30%)</span>
-                </div>
+                {stats.allocation.map(item => (
+                   <div key={item.label} className="flex items-center gap-2">
+                      <div className={cn("w-2 h-2 rounded-full", item.color)} />
+                      <span className="text-zinc-400">{item.label} ({item.value.toFixed(0)}%)</span>
+                   </div>
+                ))}
              </div>
           </div>
           <div className="h-4 w-full rounded-full flex overflow-hidden bg-white/5">
-             <div className="h-full bg-blue-500 w-[40%]" />
-             <div className="h-full bg-purple-500 w-[30%]" />
-             <div className="h-full bg-orange-500 w-[30%]" />
+             {stats.allocation.map(item => (
+                <div 
+                   key={item.label} 
+                   className={cn("h-full", item.color)} 
+                   style={{ width: `${item.value}%` }} 
+                />
+             ))}
           </div>
         </motion.div>
 
@@ -206,51 +177,54 @@ export default function PortfolioPage() {
                     <th className="p-4 font-medium">Protocol</th>
                     <th className="p-4 font-medium">Balance</th>
                     <th className="p-4 font-medium">Value</th>
-                    <th className="p-4 font-medium">APY</th>
-                    <th className="p-4 font-medium text-right">Action</th>
+                    <th className="p-4 font-medium">Price</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
+                  {assets.length === 0 && !loading && (
+                     <tr>
+                        <td colSpan={5} className="p-8 text-center text-zinc-500 text-sm">
+                           {account ? 'No assets found. Try creating a wallet or bridging funds.' : 'Connect wallet to view portfolio.'}
+                        </td>
+                     </tr>
+                  )}
+                  {loading && assets.length === 0 && (
+                     <tr>
+                        <td colSpan={5} className="p-8 text-center text-zinc-500 text-sm">
+                           Scanning blockchain...
+                        </td>
+                     </tr>
+                  )}
                   {assets.map((asset) => (
-                    <tr key={asset.symbol} className="group hover:bg-white/5 transition-colors">
+                    <tr key={`${asset.network}-${asset.symbol}-${asset.address}`} className="group hover:bg-white/5 transition-colors">
                       <td className="p-4">
                         <div className="flex items-center gap-3">
                           <div className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold",
-                            asset.symbol === 'ETH' ? 'bg-zinc-800 text-zinc-400' :
-                            asset.symbol === 'stETH' ? 'bg-blue-500/20 text-blue-400' :
-                            asset.symbol === 'USDC' ? 'bg-green-500/20 text-green-400' :
-                            'bg-zinc-800 text-zinc-400'
+                            "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-inner",
+                            "bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10"
                           )}>
-                            {asset.symbol[0]}
+                            {asset.icon ? (
+                              <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
+                            ) : (
+                              asset.symbol[0]
+                            )}
                           </div>
                           <div>
                             <div className="font-medium text-white">{asset.name}</div>
-                            <div className="text-xs text-zinc-500">{asset.symbol}</div>
+                            <div className="flex items-center gap-1.5">
+                               <span className="text-xs text-zinc-500">{asset.symbol}</span>
+                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-400 border border-white/5">{asset.network}</span>
+                            </div>
                           </div>
                         </div>
                       </td>
                       <td className="p-4 text-zinc-400 text-sm flex items-center gap-2">
                         {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3" />}
-                        {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400" />}
-                        {asset.protocol === 'Aave Supply' && <Landmark className="w-3 h-3 text-purple-400" />}
                         {asset.protocol}
                       </td>
                       <td className="p-4 text-zinc-300 font-mono text-sm">{asset.balance}</td>
                       <td className="p-4 text-white font-mono font-medium text-sm">{asset.value}</td>
-                      <td className="p-4 text-green-400 font-mono text-sm">{asset.apy}</td>
-                      <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {asset.actions.map((action) => (
-                            <button 
-                              key={action}
-                              className="px-3 py-1.5 text-xs font-medium text-zinc-300 border border-white/10 rounded-lg hover:bg-white/10 hover:text-white hover:border-white/20 transition-all"
-                            >
-                              {action}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
+                      <td className="p-4 text-zinc-500 font-mono text-sm">{asset.price}</td>
                     </tr>
                   ))}
                 </tbody>

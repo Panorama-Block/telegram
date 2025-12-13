@@ -302,7 +302,12 @@ export function Staking({ onClose }: StakingProps) {
           isOpen={showTokenList} 
           onClose={() => setShowTokenList(false)}
           onSelect={(token) => {
-            setActiveToken(token);
+            setActiveToken({
+              ticker: token.symbol,
+              name: token.name,
+              network: token.network,
+              balance: "0.00" // Placeholder until we use usePortfolioData here
+            });
             setShowTokenList(false);
           }}
         />
