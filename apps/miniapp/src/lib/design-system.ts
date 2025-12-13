@@ -135,14 +135,14 @@ export const animations = {
 // CSS-in-JS style objects
 export const styles = {
   glass: {
-    background: 'rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
+    background: 'rgba(255, 255, 255, 0.05)',
+    backdropFilter: 'blur(20px)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
   },
   glassDark: {
-    background: 'rgba(0, 0, 0, 0.3)',
-    backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: 'rgba(0, 0, 0, 0.35)',
+    backdropFilter: 'blur(16px)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
   },
   interactive: {
     transition: tokens.transitions.base,

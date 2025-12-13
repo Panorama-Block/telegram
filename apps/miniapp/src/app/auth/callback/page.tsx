@@ -84,7 +84,7 @@ export default function AuthCallbackPage() {
         }
 
         // 3) Authenticate with the backend (issue your platform JWT)
-        const authApiBase = (process.env.VITE_AUTH_API_BASE || 'http://localhost:3001').replace(/\/+$/, '');
+        const authApiBase = (process.env.VITE_AUTH_API_BASE || 'http://localhost:3301').replace(/\/+$/, '');
 
         const loginPayload = { address: account.address };
         const loginResponse = await fetch(`${authApiBase}/auth/login`, {

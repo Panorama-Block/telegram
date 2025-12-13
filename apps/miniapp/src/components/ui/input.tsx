@@ -1,168 +1,22 @@
-import * as React from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
-import { cn } from '@/shared/lib/utils'
-import '@/shared/ui/loader.css'
+import * as React from "react"
 
-const inputVariants = cva(
-  // Base styles using PanoramaBlock Design System v2.0
-  'flex w-full border transition-all focus:outline-none focus-ring disabled:cursor-not-allowed disabled:opacity-50 placeholder:text-pano-text-muted file:border-0 file:bg-transparent file:text-sm file:font-medium touch-target touch-action-manipulation',
-  {
-    variants: {
-      variant: {
-        // Default - Surface with subtle border
-        default: 'bg-pano-surface border-pano-border text-pano-text-primary focus:border-pano-primary focus:bg-pano-surface-elevated hover:border-pano-primary/50',
+import { cn } from "@/lib/utils"
 
-        // Filled - Darker background
-        filled: 'bg-pano-surface-elevated border-transparent text-pano-text-primary focus:border-pano-primary focus:bg-pano-surface hover:bg-pano-surface',
-
-        // Underlined - Bottom border only
-        underlined: 'bg-transparent border-0 border-b-2 border-pano-border rounded-none text-pano-text-primary focus:border-pano-primary hover:border-pano-primary/50',
-
-        // Glass - Glass morphism effect
-        glass: 'glass text-pano-text-primary border-pano-border/30 focus:border-pano-primary backdrop-blur-md hover:glass-dark',
-
-        // Ghost - Transparent with hover
-        ghost: 'bg-transparent border-transparent text-pano-text-primary hover:bg-pano-surface focus:bg-pano-surface focus:border-pano-border',
-      },
-      size: {
-        // Sizes optimized for touch and desktop
-        sm: 'h-10 px-3 text-sm rounded-md',
-        md: 'h-11 px-4 text-sm rounded-lg',  // default
-        lg: 'h-12 px-4 text-base rounded-lg',
-        xl: 'h-14 px-6 text-lg rounded-xl',
-      },
-      state: {
-        // Visual states for feedback
-        default: '',
-        error: 'border-pano-error focus:border-pano-error focus:ring-pano-error/20 text-pano-error',
-        success: 'border-pano-success focus:border-pano-success focus:ring-pano-success/20',
-        warning: 'border-pano-warning focus:border-pano-warning focus:ring-pano-warning/20',
-      },
-    },
-    defaultVariants: {
-      variant: 'default',
-      size: 'md',
-      state: 'default',
-    },
-  }
-)
-
-export interface InputProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'>,
-    VariantProps<typeof inputVariants> {
-  leftIcon?: React.ReactNode
-  rightIcon?: React.ReactNode
-  leftElement?: React.ReactNode
-  rightElement?: React.ReactNode
-  helperText?: string
-  errorMessage?: string
-  label?: string
-  isLoading?: boolean
-}
-
-const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({
-    className,
-    type = 'text',
-    variant,
-    size,
-    state,
-    leftIcon,
-    rightIcon,
-    leftElement,
-    rightElement,
-    helperText,
-    errorMessage,
-    label,
-    isLoading = false,
-    id,
-    ...props
-  }, ref) => {
-    const generatedId = React.useId()
-    const inputId = id || generatedId
-    const isError = state === 'error' || !!errorMessage
-    const finalState = isError ? 'error' : state
-
+const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
+  ({ className, type, ...props }, ref) => {
     return (
-      <div className="space-y-2">
-        {/* Label */}
-        {label && (
-          <label
-            htmlFor={inputId}
-            className="text-sm font-medium text-pano-text-primary"
-          >
-            {label}
-          </label>
+      <input
+        type={type}
+        className={cn(
+          "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+          className
         )}
-
-        {/* Input Container */}
-        <div className="relative">
-          {/* Left Icon/Element */}
-          {leftIcon && (
-            <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-pano-text-muted pointer-events-none">
-              {leftIcon}
-            </div>
-          )}
-          {leftElement && (
-            <div className="absolute left-0 top-1/2 transform -translate-y-1/2">
-              {leftElement}
-            </div>
-          )}
-
-          {/* Input Field */}
-          <input
-            id={inputId}
-            type={type}
-            className={cn(
-              inputVariants({ variant, size, state: finalState }),
-              {
-                'pl-10': leftIcon && !leftElement,
-                'pr-10': (rightIcon && !rightElement) || isLoading,
-              },
-              className
-            )}
-            ref={ref}
-            disabled={isLoading || props.disabled}
-            {...props}
-          />
-
-          {/* Loading Spinner */}
-          {isLoading && (
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-              <div className="loader-inline-sm" />
-            </div>
-          )}
-
-          {/* Right Icon/Element */}
-          {!isLoading && rightIcon && (
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-pano-text-muted pointer-events-none">
-              {rightIcon}
-            </div>
-          )}
-          {!isLoading && rightElement && (
-            <div className="absolute right-0 top-1/2 transform -translate-y-1/2">
-              {rightElement}
-            </div>
-          )}
-        </div>
-
-        {/* Helper Text / Error Message */}
-        {(helperText || errorMessage) && (
-          <p
-            className={cn(
-              'text-xs',
-              isError
-                ? 'text-pano-error'
-                : 'text-pano-text-muted'
-            )}
-          >
-            {errorMessage || helperText}
-          </p>
-        )}
-      </div>
+        ref={ref}
+        {...props}
+      />
     )
   }
 )
-Input.displayName = 'Input'
+Input.displayName = "Input"
 
-export { Input, inputVariants }
+export { Input }

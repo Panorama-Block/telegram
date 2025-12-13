@@ -1,64 +1,64 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #050505;
+  --foreground: #f5f5f5;
 
-  /* Landing page colors (existing) */
+  /* Landing page colors (existentes, alinhados ao look escuro) */
   --landing-background: 0 0% 2%;
   --landing-primary: 183 84% 9%;
   --landing-secondary: 180 65% 6%;
   --landing-tertiary: 0 0% 8%;
   --landing-title-color: 0 0% 100%;
   --landing-text-color: 0 0% 100% / 0.6;
-  --landing-highlight-color: 180 100% 50%;
+  --landing-highlight-color: 189 94% 53%;
   --landing-border-color: 0 0% 30% / 1;
   --landing-border-gradient: 0 0% 12%;
 
-  /* PanoramaBlock Design System v2.0 */
+  /* PanoramaBlock Design System v2.0 — alinhado ao SeniorFrontendUI (preto + ciano glass) */
   /* Base Colors */
   --pano-bg-primary: 0 0% 2%;           /* #050505 */
-  --pano-bg-secondary: 183 84% 9%;      /* #042f31 */
-  --pano-bg-tertiary: 0 0% 8%;         /* #141414 */
-  --pano-surface: 0 0% 12%;             /* #1f1f1f */
-  --pano-surface-elevated: 0 0% 16%;    /* #292929 */
-  --pano-border: 0 0% 30%;              /* #4d4d4d */
-  --pano-border-subtle: 0 0% 20%;       /* #333333 */
+  --pano-bg-secondary: 0 0% 4%;         /* #0a0a0a */
+  --pano-bg-tertiary: 0 0% 6%;          /* #0f0f0f */
+  --pano-surface: 0 0% 8%;              /* #141414 */
+  --pano-surface-elevated: 0 0% 12%;    /* #1f1f1f */
+  --pano-border: 0 0% 18%;              /* subtle border */
+  --pano-border-subtle: 0 0% 12%;
 
-  /* Accent Colors - Emerald Green Primary */
-  --pano-primary: 165 100% 50%;         /* #00FFC3 - Neon emerald green */
-  --pano-primary-muted: 165 70% 8%;     /* #041510 - Muted emerald */
-  --pano-primary-hover: 165 100% 45%;   /* #00E6B0 - Hover emerald */
-  --pano-secondary: 170 80% 25%;        /* #0d5f4a - Secondary green */
+  /* Accent Colors - Cyan neon */
+  --pano-primary: 189 94% 43%;          /* #06b6d4 */
+  --pano-primary-muted: 189 40% 12%;    /* muted cyan for surfaces */
+  --pano-primary-hover: 189 94% 53%;    /* #22d3ee */
+  --pano-secondary: 215 16% 47%;        /* slate-ish secondary */
   --pano-success: 142 76% 36%;          /* #16a34a */
   --pano-warning: 38 92% 50%;           /* #f59e0b */
   --pano-error: 0 84% 60%;              /* #dc2626 */
 
   /* Text Colors */
-  --pano-text-primary: 0 0% 100%;       /* #ffffff */
-  --pano-text-secondary: 0 0% 100% / 0.6; /* rgba(255,255,255,0.6) */
-  --pano-text-muted: 0 0% 100% / 0.4;   /* rgba(255,255,255,0.4) */
-  --pano-text-accent: 165 100% 50%;     /* #00FFC3 - Emerald green */
-  --pano-text-inverse: 0 0% 0%;         /* #000000 */
+  --pano-text-primary: 0 0% 98%;        /* near-white */
+  --pano-text-secondary: 0 0% 80%;
+  --pano-text-muted: 0 0% 60%;
+  --pano-text-accent: 189 94% 53%;      /* cyan accent */
+  --pano-text-inverse: 0 0% 0%;
 
-  /* Gradients - Emerald Theme */
-  --pano-gradient-primary: linear-gradient(135deg, hsl(165 100% 50%) 0%, hsl(170 80% 25%) 100%);
-  --pano-gradient-surface: linear-gradient(135deg, hsl(0 0% 12%) 0%, hsl(0 0% 8%) 100%);
-  --pano-gradient-background: linear-gradient(to bottom, rgba(0, 255, 195, 0.15) 0%, rgba(0, 0, 0, 1) 35%, rgba(0, 0, 0, 1) 65%, rgba(0, 255, 195, 0.15) 100%);
+  /* Gradients - Cyan Theme */
+  --pano-gradient-primary: linear-gradient(135deg, hsl(189 94% 53%) 0%, hsl(215 16% 30%) 100%);
+  --pano-gradient-surface: linear-gradient(135deg, hsl(0 0% 10%) 0%, hsl(0 0% 6%) 100%);
+  --pano-gradient-background: radial-gradient(ellipse at top, rgba(34,211,238,0.15) 0%, rgba(0,0,0,0.6) 40%, rgba(0,0,0,1) 80%);
 
   /* Shadows */
-  --pano-shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.05);
-  --pano-shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.06);
-  --pano-shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.1), 0 4px 6px -2px hsl(0 0% 0% / 0.05);
-  --pano-shadow-glow: 0 0 20px hsl(165 100% 50% / 0.3);
-  --pano-shadow-glow-strong: 0 0 40px hsl(165 100% 50% / 0.5);
+  --pano-shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.3);
+  --pano-shadow-md: 0 4px 10px -2px hsl(0 0% 0% / 0.45);
+  --pano-shadow-lg: 0 10px 30px -10px hsl(0 0% 0% / 0.6);
+  --pano-shadow-glow: 0 0 20px hsl(189 94% 53% / 0.3);
+  --pano-shadow-glow-strong: 0 0 40px hsl(189 94% 53% / 0.5);
 
   /* Transitions */
   --pano-transition-fast: 150ms ease-out;
   --pano-transition-base: 250ms ease-out;
   --pano-transition-slow: 350ms ease-out;
 
-  /* Breakpoints (for container queries) */
+  /* Breakpoints (para container queries) */
   --pano-breakpoint-xs: 375px;
   --pano-breakpoint-sm: 640px;
   --pano-breakpoint-md: 768px;
@@ -104,10 +104,29 @@
   --color-pano-text-accent: hsl(var(--pano-text-accent));
   --color-pano-text-inverse: hsl(var(--pano-text-inverse));
 
+  /* SeniorFrontendUI / Shadcn Mappings */
+  --color-card: hsl(var(--pano-bg-secondary));
+  --color-card-foreground: hsl(var(--pano-text-primary));
+  --color-popover: hsl(var(--pano-bg-secondary));
+  --color-popover-foreground: hsl(var(--pano-text-primary));
+  --color-primary: hsl(var(--pano-primary));
+  --color-primary-foreground: hsl(var(--pano-text-inverse));
+  --color-secondary: hsl(var(--pano-secondary));
+  --color-secondary-foreground: hsl(var(--pano-text-primary));
+  --color-muted: hsl(var(--pano-bg-tertiary));
+  --color-muted-foreground: hsl(var(--pano-text-muted));
+  --color-accent: hsl(var(--pano-primary));
+  --color-accent-foreground: hsl(var(--pano-text-inverse));
+  --color-destructive: hsl(var(--pano-error));
+  --color-destructive-foreground: hsl(var(--pano-text-primary));
+  --color-border: hsl(var(--pano-border));
+  --color-input: hsl(var(--pano-border));
+  --color-ring: hsl(var(--pano-primary));
+
   /* Typography */
-  --font-sans: 'SuisseIntl', system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-inter), 'SuisseIntl', system-ui, -apple-system, sans-serif;
   --font-display: 'AsgardTrial', serif;
-  --font-mono: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  --font-mono: var(--font-jetbrains), 'SF Mono', 'Monaco', 'Consolas', monospace;
 
   /* Spacing Scale */
   --spacing-0: 0px;
@@ -534,6 +553,25 @@ body {
   .container-pano {
     max-width: 1536px;
   }
+}
+
+/* SeniorFrontendUI-style utilities */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.text-glow {
+  text-shadow: 0 0 20px hsla(var(--pano-primary) / 0.5);
+}
+
+.box-glow {
+  box-shadow: 0 0 30px -10px hsla(var(--pano-primary) / 0.3);
 }
 
 /* Touch optimizations */

@@ -224,7 +224,7 @@ export default function NewChatPage() {
 
       console.log('✅ [NEWCHAT] Authentication succeeded! Redirecting to /chat...');
 
-      // 5. Redirect to /chat
+      // 5. Redirect to /chat (bootstrap will create a new conversation automatically)
       setTimeout(() => {
         router.push('/chat');
       }, 500);

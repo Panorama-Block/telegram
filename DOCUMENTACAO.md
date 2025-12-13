@@ -16,7 +16,7 @@ Arquitetura e módulos
   - Servidor Fastify com CORS, rate limiting, e HTTPS opcional (Let's Encrypt). Referência: `telegram/apps/gateway/src/server.ts:1`.
   - Servir manifest dinâmico para TonConnect: `GET /miniapp/manifest.json` calcula a `origin` a partir do host/proxy. Referência: `telegram/apps/gateway/src/server.ts:99`.
   - Proxy do MiniApp: redireciona `/miniapp/*` para o servidor Next local (`NEXTJS_URL`). Referência: `telegram/apps/gateway/src/server.ts:131`.
-  - Proxy para Swap Service: encaminha `/swap/*` para `SWAP_SERVICE_URL` (padrão `http://localhost:3002`). Referência: `telegram/apps/gateway/src/server.ts:163`.
+  - Proxy para Swap Service: encaminha `/swap/*` para `SWAP_SERVICE_URL` (padrão `http://localhost:3302`). Referência: `telegram/apps/gateway/src/server.ts:163`.
   - Bot Telegram (grammy): inicialização e webhook em `/telegram/webhook`. Comando `/start` responde com botão WebApp para abrir o MiniApp. Referências: `telegram/apps/gateway/src/handlers/commands.ts:5`, `telegram/apps/gateway/src/server.ts:222`.
   - Auth Telegram → backend: `POST /auth/telegram/verify` verifica assinatura via `auth-service`. Referências: `telegram/apps/gateway/src/routes/auth.ts`, `telegram/apps/gateway/src/services/authService.ts`.
   - Cliente de swap (opcional): `src/clients/swapClient.ts` com `quote()` e JWT opcional. Referência: `telegram/apps/gateway/src/clients/swapClient.ts:1`.
@@ -50,7 +50,7 @@ Fluxos principais
   - Após autenticar, redireciona para `/chat`.
 
 - Swap (via gateway → liquid-swap-service)
-  - MiniApp chama `swapApi.quote/prepare/status`; gateway repassa para `liquid-swap-service` (porta 3002). Referência: `telegram/apps/gateway/src/server.ts:163`.
+  - MiniApp chama `swapApi.quote/prepare/status`; gateway repassa para `liquid-swap-service` (porta 3302). Referência: `telegram/apps/gateway/src/server.ts:163`.
   - Backend seleciona provedor (Uniswap Trading API/Smart Router/Thirdweb) e retorna bundle de transações a serem assinadas pelo cliente.
 
 - Agentes
