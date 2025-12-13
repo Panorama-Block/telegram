@@ -7,43 +7,88 @@ import { PortfolioAsset, PortfolioStats } from './types';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { isNative } from '@/features/swap/utils';
 
-// Mock prices for demonstration until we have a real price feed
-const MOCK_PRICES: Record<string, number> = {
-  'ETH': 2650.50,
-  'WETH': 2650.50,
-  'BTC': 68500.20,
-  'WBTC': 68500.20,
+// Fallback prices - will be overwritten by real API prices when available
+// Only includes major tokens with reliable market prices
+const FALLBACK_PRICES: Record<string, number> = {
+  'ETH': 3900,
+  'WETH': 3900,
+  'BTC': 101000,
+  'WBTC': 101000,
   'USDC': 1.00,
   'USDT': 1.00,
   'DAI': 1.00,
-  'MATIC': 0.85,
-  'AVAX': 35.40,
-  'WAVAX': 35.40,
-  'BNB': 580.10,
-  'ARB': 1.20,
-  'OP': 2.50,
-  'WLD': 4.80,
-  'Confraria': 0.10,
-  'AAVE': 95.20,
-  'UNI': 8.50,
-  'LINK': 14.20
+  'MATIC': 0.55,
+  'POL': 0.55,
+  'AVAX': 50,
+  'WAVAX': 50,
+  'BNB': 720,
+  'ARB': 0.85,
+  'OP': 2.30,
+  'WLD': 2.50,
+  'AAVE': 370,
+  'UNI': 17,
+  'LINK': 28
 };
+
+// Fetch real prices from CoinGecko
+async function fetchRealPrices(): Promise<Record<string, number>> {
+  try {
+    const ids = 'ethereum,bitcoin,usd-coin,tether,dai,matic-network,avalanche-2,binancecoin,arbitrum,optimism,worldcoin-wld,aave,uniswap,chainlink';
+    const response = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`,
+      { next: { revalidate: 60 } } // Cache for 60 seconds
+    );
+
+    if (!response.ok) throw new Error('Price fetch failed');
+
+    const data = await response.json();
+
+    return {
+      'ETH': data.ethereum?.usd || FALLBACK_PRICES['ETH'],
+      'WETH': data.ethereum?.usd || FALLBACK_PRICES['WETH'],
+      'BTC': data.bitcoin?.usd || FALLBACK_PRICES['BTC'],
+      'WBTC': data.bitcoin?.usd || FALLBACK_PRICES['WBTC'],
+      'USDC': data['usd-coin']?.usd || 1,
+      'USDT': data.tether?.usd || 1,
+      'DAI': data.dai?.usd || 1,
+      'MATIC': data['matic-network']?.usd || FALLBACK_PRICES['MATIC'],
+      'POL': data['matic-network']?.usd || FALLBACK_PRICES['POL'],
+      'AVAX': data['avalanche-2']?.usd || FALLBACK_PRICES['AVAX'],
+      'WAVAX': data['avalanche-2']?.usd || FALLBACK_PRICES['WAVAX'],
+      'BNB': data.binancecoin?.usd || FALLBACK_PRICES['BNB'],
+      'ARB': data.arbitrum?.usd || FALLBACK_PRICES['ARB'],
+      'OP': data.optimism?.usd || FALLBACK_PRICES['OP'],
+      'WLD': data['worldcoin-wld']?.usd || FALLBACK_PRICES['WLD'],
+      'AAVE': data.aave?.usd || FALLBACK_PRICES['AAVE'],
+      'UNI': data.uniswap?.usd || FALLBACK_PRICES['UNI'],
+      'LINK': data.chainlink?.usd || FALLBACK_PRICES['LINK'],
+    };
+  } catch (e) {
+    console.warn('Failed to fetch real prices, using fallback:', e);
+    return FALLBACK_PRICES;
+  }
+}
 
 export function usePortfolioData() {
   const account = useActiveAccount();
   const [assets, setAssets] = useState<PortfolioAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [prices, setPrices] = useState<Record<string, number>>(FALLBACK_PRICES);
 
-  const client = useMemo(() => createThirdwebClient({ 
-    clientId: THIRDWEB_CLIENT_ID || '' 
+  const client = useMemo(() => createThirdwebClient({
+    clientId: THIRDWEB_CLIENT_ID || ''
   }), []);
 
   const fetchPortfolio = useCallback(async () => {
     if (!account || !client) return;
-    
+
     setLoading(true);
     const newAssets: PortfolioAsset[] = [];
+
+    // Fetch real prices first
+    const currentPrices = await fetchRealPrices();
+    setPrices(currentPrices);
 
     // Flatten all tokens to fetch
     const tasks = networks.flatMap(network => 
@@ -87,7 +132,7 @@ export function usePortfolioData() {
           }
 
           if (balanceRaw > 0n) {
-            const price = MOCK_PRICES[token.symbol] || 0;
+            const price = currentPrices[token.symbol] || 0;
             const value = parseFloat(balanceStr) * price;
 
             // Only add significant balances

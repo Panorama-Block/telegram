@@ -1,14 +1,15 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  ClipboardList, 
-  X, 
-  ChevronDown, 
+import {
+  ClipboardList,
+  X,
+  ChevronDown,
   ChevronRight,
   Info,
   ArrowLeft,
   Fuel,
   Calendar,
-  CheckCircle2
+  CheckCircle2,
+  Clock
 } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NeonButton } from "@/components/ui/NeonButton";
@@ -41,7 +42,7 @@ export function DCA({ onClose }: DCAProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div

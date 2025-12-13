@@ -1,14 +1,11 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeftRight } from "lucide-react";
-import { 
-  X, 
-  ArrowDown, 
-  Settings, 
-  Info, 
-  Check, 
+import {
+  X,
+  ArrowDown,
+  Check,
   ChevronRight,
-  Triangle,
-  ArrowLeft
+  Triangle
 } from "lucide-react";
 import * as Switch from '@radix-ui/react-switch';
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -17,7 +14,6 @@ import { NeonButton } from "@/components/ui/NeonButton";
 import { DataInput } from "@/components/ui/DataInput";
 import { cn } from "@/lib/utils";
 import { TokenSelectionModal } from "@/components/TokenSelectionModal";
-import { SettingsPopover } from "@/components/SettingsPopover";
 
 // API Integration
 import { swapApi, SwapApiError } from "@/features/swap/api";
@@ -37,6 +33,7 @@ interface SwapWidgetProps {
   onClose: () => void;
   initialFromToken?: any;
   initialToToken?: any;
+  initialAmount?: string;
 }
 
 type ViewState = 'input' | 'routing' | 'details' | 'confirm';
@@ -74,14 +71,13 @@ const getBaseChainId = (networkName: string): number => {
   }
 };
 
-export function SwapWidget({ onClose, initialFromToken, initialToToken }: SwapWidgetProps) {
+export function SwapWidget({ onClose, initialFromToken, initialToToken, initialAmount }: SwapWidgetProps) {
   const account = useActiveAccount();
   const clientId = THIRDWEB_CLIENT_ID;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
   const [viewState, setViewState] = useState<ViewState>('input');
   const [showTokenList, setShowTokenList] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [tosAccepted, setTosAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   
@@ -89,7 +85,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken }: SwapWi
   const [activeSlot, setActiveSlot] = useState<'sell' | 'buy'>('sell');
   const [sellToken, setSellToken] = useState(initialFromToken || DEFAULT_SELL_TOKEN);
   const [buyToken, setBuyToken] = useState(initialToToken || DEFAULT_BUY_TOKEN);
-  const [amount, setAmount] = useState<string>("10"); // Default small amount
+  const [amount, setAmount] = useState<string>(initialAmount || "10"); // Default small amount
   
   // Quote State
   const [quote, setQuote] = useState<any>(null);
@@ -241,9 +237,17 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken }: SwapWi
           gas: t.gasLimit ? BigInt(t.gasLimit) : undefined,
         });
 
-        const result = await safeExecuteTransactionV2(async () => {
-           return await sendTransaction({ account, transaction });
+        // Add timeout to prevent infinite waiting
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("Transaction timeout - wallet may not have responded. Please check your wallet and try again.")), 120000);
         });
+
+        const result = await Promise.race([
+          safeExecuteTransactionV2(async () => {
+            return await sendTransaction({ account, transaction });
+          }),
+          timeoutPromise
+        ]);
 
         if (!result.success || !result.transactionHash) {
           throw new Error(result.error || "Transaction failed");
@@ -306,7 +310,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken }: SwapWi
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div 
@@ -318,7 +322,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken }: SwapWi
         className="relative w-full md:max-w-[480px]" 
         onClick={(e) => e.stopPropagation()}
       >
-        <GlassCard className="w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 h-[85vh] md:h-auto md:min-h-[540px] flex flex-col rounded-t-3xl rounded-b-none md:rounded-2xl border-b-0 md:border-b pb-safe">
+        <GlassCard className="w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 max-h-[90vh] md:h-auto md:min-h-[540px] flex flex-col rounded-t-3xl rounded-b-none md:rounded-2xl border-b-0 md:border-b pb-safe">
           {/* Gradient Glow */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-32 bg-primary/10 blur-[60px] pointer-events-none" />
 
@@ -338,32 +342,18 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken }: SwapWi
                 className="flex flex-col h-full"
               >
                 {/* Header */}
-                <div className="p-6 flex items-center justify-between relative z-20">
+                <div className="p-4 md:p-6 flex items-center justify-between relative z-20">
                   <div className="flex items-center gap-3">
                     <ArrowLeftRight className="w-6 h-6 text-cyan-400" />
                     <h2 className="text-xl font-display font-bold text-white">Swap</h2>
                   </div>
-                  <div className="flex items-center gap-2 relative">
-                    <button 
-                      onClick={() => setShowSettings(!showSettings)}
-                      className={cn(
-                        "p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors",
-                        showSettings && "text-primary bg-primary/10"
-                      )}
-                    >
-                      <Settings className="w-5 h-5" />
-                    </button>
-                    
-                    <SettingsPopover isOpen={showSettings} onClose={() => setShowSettings(false)} />
-
-                    <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
+                  <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
 
                 {/* Content */}
-                <div className="px-6 pb-8 space-y-2 relative z-10 flex-1 flex flex-col">
+                <div className="px-4 md:px-6 pb-4 md:pb-6 space-y-2 relative z-10 flex-1 flex flex-col">
                   <DataInput
                     label="Sell"
                     balance={`${sellToken.balance} ${sellToken.ticker}`}
@@ -448,15 +438,15 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken }: SwapWi
                 exit={{ opacity: 0, x: -20 }}
                 className="flex flex-col h-full"
               >
-                 <div className="p-6 flex items-center justify-between relative z-10">
+                 <div className="p-4 md:p-6 flex items-center justify-between relative z-10">
                    <h2 className="text-lg font-display font-bold text-white">Order Routing</h2>
                    <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
                       <X className="w-5 h-5" />
                     </button>
                  </div>
 
-                 <div className="px-6 pb-8 flex-1 flex flex-col relative z-10">
-                    <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden mb-6">
+                 <div className="px-4 md:px-6 pb-4 md:pb-6 flex-1 flex flex-col relative z-10">
+                    <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden mb-4 md:mb-6">
                       <div className="bg-primary/10 px-4 py-3 border-b border-white/5 flex items-center justify-between">
                         <div className="flex items-center gap-2 text-primary font-medium text-sm">
                            <Check className="w-4 h-4" />
@@ -510,15 +500,15 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken }: SwapWi
                 exit={{ opacity: 0, x: -20 }}
                 className="flex flex-col h-full"
               >
-                 <div className="p-6 flex items-center justify-between relative z-10">
+                 <div className="p-4 md:p-6 flex items-center justify-between relative z-10">
                    <h2 className="text-lg font-display font-bold text-white">Confirm Swap</h2>
                    <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
                       <X className="w-5 h-5" />
                     </button>
                  </div>
 
-                 <div className="px-6 pb-8 flex-1 flex flex-col relative z-10">
-                    
+                 <div className="px-4 md:px-6 pb-4 md:pb-6 flex-1 flex flex-col relative z-10">
+
                     {txHashes.length > 0 ? (
                        <div className="flex flex-col items-center justify-center flex-1 space-y-4">
                           <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
@@ -547,11 +537,11 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken }: SwapWi
                        </div>
                     ) : (
                       <>
-                        <p className="text-sm text-zinc-400 mb-6">
+                        <p className="text-sm text-zinc-400 mb-4">
                             Please review the final details before executing.
                         </p>
 
-                        <div className="space-y-4 mb-8">
+                        <div className="space-y-3 md:space-y-4 mb-4 md:mb-6">
                              <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between">
                                 <span className="text-sm text-zinc-300">I agree to <span className="text-white underline decoration-zinc-500">Terms of Service</span></span>
                                 <Switch.Root 
@@ -601,7 +591,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken }: SwapWi
           </AnimatePresence>
 
           {/* FOOTER POWERED BY */}
-          <div className="py-8 relative z-10 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
+          <div className="py-4 md:py-6 relative z-10 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
             {isCrossChain ? (
                <>
                   <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center shadow-lg shadow-black/50 border border-white/5">

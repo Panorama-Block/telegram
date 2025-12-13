@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp } from 'lucide-react';
 
 // Window.ethereum type declaration
 declare global {
@@ -15,22 +17,22 @@ import MarkdownMessage from '@/shared/ui/MarkdownMessage';
 import Image from 'next/image';
 import '../../shared/ui/loader.css';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
-import UniswapIcon from '../../../public/icons/uniswap.svg';
-import AvalancheIcon from '../../../public/icons/Avalanche_Blockchain_Logo.svg';
 import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { swapApi } from '@/features/swap/api';
-import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
-import { LendingModal } from '@/features/lending/LendingModal';
-import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman } from '@/features/swap/utils';
+import { Lending } from '@/components/Lending';
+import { normalizeToApi, formatAmountHuman } from '@/features/swap/utils';
 import { networks, Token } from '@/features/swap/tokens';
-import { useActiveAccount, useActiveWallet, useDisconnect, useSwitchActiveWalletChain } from 'thirdweb/react';
-import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
-import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
-import type { PreparedTx, QuoteResponse } from '@/features/swap/types';
+import { useActiveAccount, useActiveWallet } from 'thirdweb/react';
+import { useLogout } from '@/shared/hooks/useLogout';
+import { createThirdwebClient } from 'thirdweb';
+import type { QuoteResponse } from '@/features/swap/types';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { SeniorAppShell } from '@/components/layout';
+import { SwapWidget } from '@/components/SwapWidget';
+import { Staking } from '@/components/Staking';
+import { Droplets } from 'lucide-react';
 
 
 interface Message {
@@ -73,20 +75,50 @@ function getTokenBySymbol(symbol: string, chainId: number): Token | null {
   return network.tokens.find(t => t.symbol.toUpperCase() === symbol.toUpperCase()) || null;
 }
 
-// Helper to check if swap involves Avalanche
-function isAvalancheSwap(metadata: Record<string, unknown> | null): boolean {
-  if (!metadata) return false;
-  const fromNetwork = metadata.from_network as string;
-  const toNetwork = metadata.to_network as string;
-  const fromToken = metadata.from_token as string;
-  const toToken = metadata.to_token as string;
+// Helper to convert chat metadata to SwapWidget token format
+function metadataToSwapTokens(metadata: Record<string, unknown> | null) {
+  if (!metadata) return null;
 
-  // Check if network is Avalanche or if token is AVAX/WAVAX
-  const isAvalancheNetwork = fromNetwork?.toLowerCase() === 'avalanche' || toNetwork?.toLowerCase() === 'avalanche';
-  const isAvaxToken = fromToken?.toUpperCase() === 'AVAX' || fromToken?.toUpperCase() === 'WAVAX' ||
-    toToken?.toUpperCase() === 'AVAX' || toToken?.toUpperCase() === 'WAVAX';
+  const fromNetwork = getNetworkByName(metadata.from_network as string);
+  const toNetwork = getNetworkByName(metadata.to_network as string);
 
-  return isAvalancheNetwork || isAvaxToken;
+  if (!fromNetwork || !toNetwork) return null;
+
+  const fromToken = fromNetwork.tokens.find(
+    t => t.symbol.toUpperCase() === (metadata.from_token as string).toUpperCase()
+  );
+  const toToken = toNetwork.tokens.find(
+    t => t.symbol.toUpperCase() === (metadata.to_token as string).toUpperCase()
+  );
+
+  const networkNameMap: Record<number, string> = {
+    1: 'Ethereum',
+    43114: 'Avalanche',
+    8453: 'Base',
+    42161: 'Arbitrum',
+    137: 'Polygon',
+    56: 'Binance Smart Chain',
+    10: 'Optimism',
+    480: 'World Chain',
+  };
+
+  return {
+    from: fromToken ? {
+      ticker: fromToken.symbol,
+      name: fromToken.name || fromToken.symbol,
+      network: networkNameMap[fromNetwork.chainId] || fromNetwork.name,
+      address: fromToken.address,
+      balance: '0.00',
+    } : null,
+    to: toToken ? {
+      ticker: toToken.symbol,
+      name: toToken.name || toToken.symbol,
+      network: networkNameMap[toNetwork.chainId] || toNetwork.name,
+      address: toToken.address,
+      balance: '0.00',
+    } : null,
+    amount: metadata.amount as string,
+  };
 }
 
 function normalizeContent(content: unknown): string {
@@ -155,6 +187,7 @@ function deriveConversationTitle(fallbackTitle: string, messages: Message[]): st
 
 export default function ChatPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -172,12 +205,12 @@ export default function ChatPage() {
   const { user, isLoading: authLoading } = useAuth();
   const isMountedRef = useRef(true);
   const bootstrapKeyRef = useRef<string | undefined>(undefined);
+  const lastBootstrapTimeRef = useRef<number>(0);
 
   // Thirdweb setup
   const account = useActiveAccount();
   const activeWallet = useActiveWallet();
-  const { disconnect } = useDisconnect();
-  const switchChain = useSwitchActiveWalletChain();
+  const { logout } = useLogout();
   const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
@@ -185,20 +218,27 @@ export default function ChatPage() {
   const [swapQuote, setSwapQuote] = useState<QuoteResponse | null>(null);
   const [swapLoading, setSwapLoading] = useState(false);
   const [swapError, setSwapError] = useState<string | null>(null);
-  const [swapSuccess, setSwapSuccess] = useState(false);
-  const [executingSwap, setExecutingSwap] = useState(false);
-  const [swapTxHashes, setSwapTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
-  const [swapStatusMessage, setSwapStatusMessage] = useState<string | null>(null);
 
-  // Swap flow states
-  const [swapFlowStep, setSwapFlowStep] = useState<'preview' | 'routing' | 'details' | 'confirm' | null>(null);
-  const [tosAccepted, setTosAccepted] = useState(false);
-  const [privacyAccepted, setPrivacyAccepted] = useState(false);
-  const [currentSwapMetadata, setCurrentSwapMetadata] = useState<Record<string, unknown> | null>(null);
+  // SwapWidget modal state
+  const [showSwapWidget, setShowSwapWidget] = useState(false);
+  const [swapWidgetTokens, setSwapWidgetTokens] = useState<{ from: any; to: any; amount?: string } | null>(null);
 
   // Lending states
   const [lendingModalOpen, setLendingModalOpen] = useState(false);
   const [currentLendingMetadata, setCurrentLendingMetadata] = useState<Record<string, unknown> | null>(null);
+
+  // Staking states
+  const [showStakingWidget, setShowStakingWidget] = useState(false);
+  const [currentStakingMetadata, setCurrentStakingMetadata] = useState<Record<string, unknown> | null>(null);
+
+  // Trending prompts state
+  const [showTrendingPrompts, setShowTrendingPrompts] = useState(false);
+  const trendingPrompts = [
+    { icon: <ArrowLeftRight className="w-4 h-4" />, text: 'Swap 0.1 ETH to USDC on Base' },
+    { icon: <Landmark className="w-4 h-4" />, text: 'Supply 100 USDC on Avalanche' },
+    { icon: <Droplets className="w-4 h-4" />, text: 'Stake 0.5 ETH with Lido' },
+    { icon: <PieChart className="w-4 h-4" />, text: 'What is my portfolio worth?' },
+  ];
 
   const debug = useCallback(
     (event: string, details?: Record<string, unknown>) => {
@@ -215,46 +255,21 @@ export default function ChatPage() {
     []
   );
 
-  // Function to force MetaMask window to open
-  const forceMetaMaskWindow = useCallback(async () => {
-    if (typeof window === 'undefined' || !window.ethereum) {
-      console.warn('MetaMask not available');
-      return false;
-    }
-
-    try {
-      console.log('🦊 Forcing MetaMask window to open...');
-      await window.ethereum.request({ method: 'eth_requestAccounts' });
-      console.log('✅ MetaMask window opened successfully');
-      return true;
-    } catch (error) {
-      console.log('⚠️ MetaMask window request failed:', error);
-      return false;
-    }
-  }, []);
-
-  const handleWalletDisconnect = useCallback(async () => {
-    try {
-      if (activeWallet) {
-        await disconnect(activeWallet);
-      }
-    } catch (error) {
-      console.error('[CHAT] Failed to disconnect wallet:', error);
-    } finally {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('authPayload');
-        localStorage.removeItem('authSignature');
-        localStorage.removeItem('telegram_user');
-        localStorage.removeItem('userAddress');
-        window.location.href = '/miniapp';
-      }
-    }
-  }, [activeWallet, disconnect]);
+  const handleWalletDisconnect = useCallback(() => {
+    logout();
+  }, [logout]);
 
   useEffect(() => {
     isMountedRef.current = true;
     debug('component:mount');
+
+    // Force fresh start on mount - clear old state
+    setConversations([]);
+    setMessagesByConversation({});
+    setActiveConversationId(null);
+    setSwapQuote(null);
+    setSwapError(null);
+    lastBootstrapTimeRef.current = Date.now();
 
     return () => {
       isMountedRef.current = false;
@@ -284,10 +299,12 @@ export default function ChatPage() {
   const isHistoryLoading = loadingConversationId === activeConversationId;
   const hasMessages = activeMessages.length > 0;
   const displayName = useMemo(() => {
-    if (user?.name) return user.name;
-    if (user?.username) return user.username;
-    return 'Alex';
-  }, [user?.name, user?.username]);
+    const address = account?.address || getWalletAddress();
+    if (address) {
+      return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    }
+    return 'User';
+  }, [account?.address, getWalletAddress]);
 
   // Debug userId
   useEffect(() => {
@@ -383,6 +400,13 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [activeMessages, activeConversationId]);
+
+  // Scroll to bottom when swap quote loads or swap state changes
+  useEffect(() => {
+    if (swapQuote || swapLoading || swapError) {
+      setTimeout(scrollToBottom, 100);
+    }
+  }, [swapQuote, swapLoading, swapError]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -589,6 +613,10 @@ export default function ChatPage() {
         console.log('✅ [CHAT] Lending intent detected via metadata event');
         console.log('📦 Lending metadata:', JSON.stringify(response.metadata, null, 2));
         // We don't auto-open modal, user clicks button
+      } else if (response.metadata?.event === 'staking_intent_ready') {
+        console.log('✅ [CHAT] Staking intent detected via metadata event');
+        console.log('📦 Staking metadata:', JSON.stringify(response.metadata, null, 2));
+        // We don't auto-open modal, user clicks button
       } else {
         console.log('❌ [CHAT] No swap_intent_ready event in metadata');
 
@@ -713,6 +741,38 @@ export default function ChatPage() {
     debug('conversation:select', { conversationId });
   };
 
+  // Handle ?new=true query parameter to create new chat
+  const newChatRequested = searchParams.get('new') === 'true';
+  const newChatTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    if (newChatRequested && !initializing && !isCreatingConversation && userId && !newChatTriggeredRef.current) {
+      console.log('[CHAT] Creating new chat from URL param...');
+      newChatTriggeredRef.current = true;
+      router.replace('/chat', { scroll: false });
+      createNewChat();
+    }
+
+    if (!newChatRequested) {
+      newChatTriggeredRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newChatRequested, initializing, isCreatingConversation, userId]);
+
+  // Listen for custom event from sidebar "+" button
+  useEffect(() => {
+    const handleNewChatEvent = () => {
+      console.log('[CHAT] New chat event received');
+      if (!initializing && !isCreatingConversation && userId) {
+        createNewChat();
+      }
+    };
+
+    window.addEventListener('panorama:newchat', handleNewChatEvent);
+    return () => window.removeEventListener('panorama:newchat', handleNewChatEvent);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initializing, isCreatingConversation, userId]);
+
   // Function to get quote based on message metadata
   const getSwapQuote = useCallback(async (metadata: Record<string, unknown>) => {
     if (!metadata || typeof metadata !== 'object') {
@@ -777,9 +837,7 @@ export default function ChatPage() {
 
       if (quoteResponse.success && quoteResponse.quote) {
         setSwapQuote(quoteResponse);
-        setCurrentSwapMetadata(metadata);
-        setSwapFlowStep('routing');
-        console.log('✅ Quote received successfully - Opening Order Routing modal');
+        console.log('✅ Quote received successfully');
       } else {
         const errorMsg = quoteResponse.message || 'Failed to get quote';
         console.error('❌ Quote failed:', errorMsg);
@@ -792,180 +850,6 @@ export default function ChatPage() {
       setSwapLoading(false);
     }
   }, [account?.address, getWalletAddress]);
-
-  // Function to execute swap - following swap page pattern
-  const executeSwap = useCallback(async (metadata: Record<string, unknown>) => {
-    console.log('🚀 Starting swap execution with metadata:', metadata);
-
-    if (!swapQuote?.quote) {
-      const errorMsg = 'Please wait for the quote to finish calculating';
-      console.error('❌', errorMsg);
-      setSwapError(errorMsg);
-      return;
-    }
-
-    const addressFromToken = getWalletAddress();
-    const userAddress = localStorage.getItem('userAddress');
-    const effectiveAddress = account?.address || addressFromToken || userAddress;
-
-    if (!effectiveAddress) {
-      const errorMsg = 'Authentication required. Please ensure you are logged in.';
-      console.error('❌', errorMsg);
-      setSwapError(errorMsg);
-      return;
-    }
-
-    if (!clientId || !client) {
-      const errorMsg = 'Missing THIRDWEB client configuration.';
-      console.error('❌', errorMsg);
-      setSwapError(errorMsg);
-      return;
-    }
-
-    setSwapError(null);
-    setSwapSuccess(false);
-
-    try {
-      setExecutingSwap(true);
-      setSwapStatusMessage('Preparing swap transaction...');
-      console.log('🔄 Preparing swap transaction...');
-
-      const { amount, from_network, from_token, to_network, to_token } = metadata;
-
-      // Get networks by name
-      const fromNetwork = getNetworkByName(from_network as string);
-      const toNetwork = getNetworkByName(to_network as string);
-
-      if (!fromNetwork || !toNetwork) {
-        throw new Error(`Unsupported network: ${from_network} or ${to_network}`);
-      }
-
-      // Get tokens by symbol
-      const fromToken = getTokenBySymbol(from_token as string, fromNetwork.chainId);
-      const toToken = getTokenBySymbol(to_token as string, toNetwork.chainId);
-
-      if (!fromToken || !toToken) {
-        throw new Error(`Token not found: ${from_token} or ${to_token}`);
-      }
-
-      console.log('📊 Token details:', { fromToken, toToken, fromNetwork, toNetwork });
-
-      const decimals = await getTokenDecimals({
-        client,
-        chainId: fromNetwork.chainId,
-        token: fromToken.address
-      });
-
-      const wei = parseAmountToWei(String(amount), decimals);
-      if (wei <= 0n) throw new Error('Invalid amount');
-
-      console.log('💰 Amount details:', { amount, decimals, wei: wei.toString() });
-
-      const prep = await swapApi.prepare({
-        fromChainId: fromNetwork.chainId,
-        toChainId: toNetwork.chainId,
-        fromToken: normalizeToApi(fromToken.address),
-        toToken: normalizeToApi(toToken.address),
-        amount: wei.toString(),
-        sender: effectiveAddress,
-      });
-
-      const seq = flattenPrepared(prep.prepared);
-
-      if (!seq.length) throw new Error('No transactions returned by prepare');
-
-      // Switch to the correct chain FIRST, before executing transactions
-      if (account && switchChain) {
-        const networkName = fromNetwork.name || `Chain ${fromNetwork.chainId}`;
-        console.log('🔄 Switching to source chain before executing swap...');
-        console.log('Target chain:', fromNetwork.chainId, networkName);
-
-        setSwapStatusMessage(`Switching to ${networkName}...`);
-
-        try {
-          await switchChain(defineChain(fromNetwork.chainId));
-          console.log('✅ Chain switched successfully to:', fromNetwork.chainId);
-        } catch (e: any) {
-          console.error('❌ Failed to switch chain:', e);
-          throw new Error(`Please approve the network switch to ${networkName} in your wallet.`);
-        }
-      }
-
-      setSwapTxHashes([]); // Reset transaction hashes
-      setSwapStatusMessage('Please confirm the transaction in your wallet...');
-
-      for (const t of seq) {
-        if (t.chainId !== fromNetwork.chainId) {
-          throw new Error(`Wallet chain mismatch. Switch to chain ${t.chainId} and retry.`);
-        }
-
-        const tx = prepareTransaction({
-          to: t.to as Address,
-          chain: defineChain(t.chainId),
-          client,
-          data: t.data as Hex,
-          value: t.value != null ? BigInt(t.value as any) : 0n,
-          gas: t.gasLimit != null ? BigInt(t.gasLimit as any) : undefined,
-          maxFeePerGas: t.maxFeePerGas != null ? BigInt(t.maxFeePerGas as any) : undefined,
-          maxPriorityFeePerGas:
-            t.maxPriorityFeePerGas != null ? BigInt(t.maxPriorityFeePerGas as any) : undefined,
-        });
-
-        if (!account) {
-          throw new Error('To execute the swap, you need to connect your wallet. Please go to the dashboard and connect your wallet first.');
-        }
-
-        console.log('📤 Sending transaction...', { to: t.to, chainId: t.chainId });
-
-        // Force MetaMask window to open
-        await forceMetaMaskWindow();
-        setSwapStatusMessage('Waiting for wallet confirmation...');
-
-        const result = await safeExecuteTransactionV2(async () => {
-          return await sendTransaction({ account, transaction: tx });
-        });
-
-        if (!result.success) {
-          throw new Error(`Transaction failed: ${result.error}`);
-        }
-
-        if (!result.transactionHash) {
-          throw new Error('Transaction failed: no transaction hash returned.');
-        }
-
-        // Store transaction hash
-        setSwapTxHashes(prev => [...prev, { hash: result.transactionHash!, chainId: t.chainId }]);
-        setSwapStatusMessage('Transaction submitted. Waiting for confirmation...');
-      }
-
-      setSwapSuccess(true);
-      setSwapQuote(null);
-      setSwapStatusMessage(null);
-    } catch (error) {
-      console.error('❌ Error executing swap:', error);
-      setSwapError(error instanceof Error ? error.message : 'Failed to execute swap');
-      setSwapStatusMessage(null);
-    } finally {
-      setExecutingSwap(false);
-      setSwapStatusMessage(null);
-    }
-  }, [swapQuote, client, account, clientId, getWalletAddress]);
-
-  // Helper function to flatten prepared transactions (from swap page)
-  function flattenPrepared(prepared: any): PreparedTx[] {
-    const out: PreparedTx[] = [];
-    if (prepared?.transactions) {
-      out.push(...prepared.transactions);
-    }
-    if (prepared?.steps) {
-      for (const step of prepared.steps) {
-        if (step.transactions) {
-          out.push(...step.transactions);
-        }
-      }
-    }
-    return out;
-  }
 
   return (
     <ProtectedRoute>
@@ -983,237 +867,382 @@ export default function ChatPage() {
         />
 
         <SeniorAppShell pageTitle="Zico AI Agent">
-          <div className="relative min-h-[100dvh] bg-[#050505] text-pano-text-primary">
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(ellipse_at_top,_rgba(16,131,171,0.16),_transparent_65%)] blur-[80px]" />
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_15%_15%,rgba(16,131,171,0.08),transparent_50%)]" />
+          <div className="flex flex-col h-full relative bg-black">
+            {/* Ambient God Ray */}
+            <div className="absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-500/20 via-slate-900/5 to-black blur-3xl pointer-events-none z-0" />
 
-            <div className="relative flex min-h-[100dvh] flex-col">
-              <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-6 sm:px-8 sm:py-10">
-                {initializing ? (
-                  <div className="flex h-full items-center justify-center text-sm text-pano-text-muted">
-                    Loading your conversations...
-                  </div>
-                ) : !activeConversationId ? (
-                  <div className="flex h-full items-center justify-center text-sm text-pano-text-muted">
-                    Crie um novo chat para começar.
-                  </div>
-                ) : initializationError && !hasMessages ? (
-                  <div className="flex h-full flex-col items-center justify-center space-y-4 text-center">
-                    <p className="text-pano-text-muted">{initializationError}</p>
-                    <button
-                      onClick={retryBootstrap}
-                      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-pano-text-primary transition hover:border-pano-primary/40 hover:bg-pano-primary/10"
-                    >
-                      Try again
-                    </button>
-                  </div>
-                ) : isHistoryLoading && !hasMessages ? (
-                  <div className="flex h-full items-center justify-center text-sm text-pano-text-muted">
-                    Loading conversation...
-                  </div>
-                ) : !hasMessages ? (
-                  <div className="mx-auto flex min-h-[70vh] max-w-6xl flex-col items-center justify-center gap-12 text-center px-4">
-                    <div className="space-y-3">
-                      <h1 className="text-5xl sm:text-[60px] font-extrabold tracking-tight text-white drop-shadow-[0_8px_40px_rgba(0,0,0,0.45)]">
+            <div className="flex-1 overflow-y-auto z-10 scrollbar-hide flex flex-col">
+              {initializing ? (
+                <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                  Loading your conversations...
+                </div>
+              ) : !activeConversationId ? (
+                <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                  Crie um novo chat para começar.
+                </div>
+              ) : initializationError && !hasMessages ? (
+                <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-center min-h-[50vh]">
+                  <p className="text-zinc-400">{initializationError}</p>
+                  <button
+                    onClick={retryBootstrap}
+                    className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : isHistoryLoading && !hasMessages ? (
+                <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                  Loading conversation...
+                </div>
+              ) : !hasMessages ? (
+                <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
+                  <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                    className="w-full max-w-3xl text-center flex flex-col items-center"
+                  >
+                    {/* Title & Subtitle */}
+                    <div className="space-y-2 md:space-y-4 relative mb-8">
+                      <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
                         Hello, {displayName}.
                       </h1>
-                      <p className="text-lg text-pano-text-secondary">Zico is ready to navigate the chain.</p>
+                      <p className="text-xl text-zinc-400 font-light">
+                        Zico is ready to navigate the chain.
+                      </p>
                     </div>
 
-                    <div className="w-full max-w-4xl">
-                      <div className="relative rounded-[16px] border border-white/10 bg-[#0b0f13]/90 px-5 py-3.5 shadow-[0_0_32px_rgba(0,0,0,0.45),0_0_28px_rgba(8,180,217,0.18)]">
-                        <div className="flex items-center gap-3">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-pano-text-muted">
-                            <circle cx="11" cy="11" r="6" strokeWidth="2" />
-                            <path strokeWidth="2" strokeLinecap="round" d="M20 20l-3.5-3.5" />
-                          </svg>
-                          <input
-                            type="text"
-                            value={inputMessage}
-                            onChange={(e) => setInputMessage(e.target.value)}
-                            onKeyPress={handleKeyPress}
-                            placeholder="Ask Zico anything..."
-                            disabled={isSending || !activeConversationId || initializing}
-                            className="flex-1 bg-transparent text-base text-white placeholder:text-pano-text-muted focus:outline-none"
-                          />
-                          <button
-                            type="button"
-                            className="rounded-full p-2 text-pano-text-muted hover:bg-white/5"
-                            disabled
-                          >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                              <polyline points="17 8 12 3 7 8" />
-                              <line x1="12" y1="3" x2="12" y2="15" />
-                            </svg>
+                    {/* Main Input Area */}
+                    <div className="relative group max-w-2xl mx-auto w-full my-8">
+                      <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
+                      <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 md:p-2 flex items-center gap-2 md:gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 group-focus-within:shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all duration-300">
+                        <div className="pl-2 md:pl-4 text-zinc-400">
+                          <Search className="w-5 h-5 md:w-6 md:h-6" />
+                        </div>
+                        <input
+                          type="text"
+                          value={inputMessage}
+                          onChange={(e) => setInputMessage(e.target.value)}
+                          onKeyPress={handleKeyPress}
+                          placeholder="Ask Zico anything..."
+                          disabled={isSending || !activeConversationId || initializing}
+                          className="flex-1 bg-transparent border-none outline-none text-base md:text-lg text-white placeholder:text-zinc-600 placeholder:text-sm md:placeholder:text-lg h-12 md:h-14"
+                        />
+                        <div className="flex items-center gap-2 pr-1 md:pr-2">
+                          <button className="hidden md:block p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+                            <Paperclip className="w-5 h-5" />
                           </button>
                           <button
                             onClick={() => sendMessage()}
                             disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                            className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#00d2ff] to-[#0094ff] text-black shadow-[0_0_28px_rgba(0,148,255,0.45)] transition hover:shadow-[0_0_34px_rgba(0,148,255,0.55)] disabled:cursor-not-allowed disabled:opacity-60"
+                            className="p-2 md:p-3 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
                             aria-label="Send message"
                           >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
-                            </svg>
+                            <ArrowUp className="w-5 h-5" />
                           </button>
                         </div>
                       </div>
                     </div>
 
-                    <div className="grid w-full max-w-5xl grid-cols-1 gap-3 sm:grid-cols-2">
+                    {/* Suggestions Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
                       {[
-                        { label: 'Analyze my portfolio performance', prompt: 'Analyze my portfolio performance' },
-                        { label: 'Bridge ETH to Optimism', prompt: 'Bridge ETH to Optimism' },
-                        { label: 'Find high yield staking pools', prompt: 'Find high yield staking pools' },
-                        { label: 'Explain this smart contract', prompt: 'Explain this smart contract' },
-                      ].map((item) => (
-                        <button
+                        { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
+                        { label: 'Supply 100 USDC on Avalanche', prompt: 'Supply 100 USDC on Avalanche' },
+                        { label: 'Stake 0.5 ETH with Lido', prompt: 'Stake 0.5 ETH with Lido' },
+                        { label: 'What is my portfolio worth?', prompt: 'What is my portfolio worth?' },
+                      ].map((item, i) => (
+                        <motion.button
                           key={item.label}
                           onClick={() => sendMessage(item.prompt)}
                           disabled={isSending || !activeConversationId}
-                          className="flex items-center justify-between gap-2 rounded-[14px] border border-white/10 bg-[#0b0f13]/90 px-4 py-3 text-left text-sm text-pano-text-secondary transition hover:border-[#08b4d9]/60 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.2 + (i * 0.1) }}
+                          className="flex items-center gap-3 p-3 md:p-4 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md hover:bg-white/10 hover:border-cyan-400/50 transition-all duration-300 group text-left shadow-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.1)] disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          <span className="flex items-center gap-2">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#08b4d9]">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
-                            </svg>
-                            {item.label}
-                          </span>
-                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white/5 border border-white/10">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-pano-text-muted">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                        </button>
+                          <Sparkles className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400 transition-colors shrink-0" />
+                          <span className="text-sm text-zinc-400 group-hover:text-zinc-200">{item.label}</span>
+                        </motion.button>
                       ))}
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {activeMessages.map((message, index) => {
-                      const timestampValue = message.timestamp.getTime();
-                      const hasValidTime = !Number.isNaN(timestampValue);
-                      const timeLabel = hasValidTime
-                        ? message.timestamp.toLocaleTimeString('en-US', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                        : '';
-                      const messageKey = hasValidTime
-                        ? `${message.role}-${timestampValue}-${index}`
-                        : `${message.role}-${index}`;
+                  </motion.div>
+                </div>
+              ) : (
+                <div className="max-w-3xl mx-auto w-full pt-8 pb-4 px-4 space-y-8">
+                  {activeMessages.map((message, index) => {
+                    const timestampValue = message.timestamp.getTime();
+                    const hasValidTime = !Number.isNaN(timestampValue);
+                    const timeLabel = hasValidTime
+                      ? message.timestamp.toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                      : '';
+                    const messageKey = hasValidTime
+                      ? `${message.role}-${timestampValue}-${index}`
+                      : `${message.role}-${index}`;
 
-                      return (
-                        <div key={messageKey} className="w-full">
-                          {message.role === 'user' ? (
-                            <div className="flex justify-end">
-                              <div className="max-w-2xl rounded-2xl border border-white/10 bg-white/5 px-4 py-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
-                                <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-pano-text-muted">
-                                  <span>You</span>
-                                  {timeLabel && <span className="text-[10px]">{timeLabel}</span>}
-                                </div>
-                                <div className="whitespace-pre-wrap text-sm leading-relaxed text-pano-text-primary">{message.content}</div>
-                              </div>
+                    return (
+                      <motion.div
+                        key={messageKey}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        {message.role === 'user' ? (
+                          <div className="max-w-[80%] bg-zinc-800/80 backdrop-blur-sm text-white px-6 py-4 rounded-2xl rounded-tr-sm border border-white/5 shadow-lg">
+                            <p className="text-base leading-relaxed">{message.content}</p>
+                          </div>
+                        ) : (
+                          <div className="flex gap-4 max-w-[90%]">
+                            <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,211,238,0.3)] overflow-hidden p-1">
+                              <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
                             </div>
-                          ) : (
-                            <div className="flex gap-3 sm:gap-4">
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 shadow-[0_0_18px_rgba(34,211,238,0.18)]">
-                                <Image src={zicoBlue} alt="Zico" width={24} height={24} />
+                            <div className="space-y-4">
+                              <div className="text-zinc-100 text-base leading-relaxed">
+                                <MarkdownMessage text={message.content} />
                               </div>
-                              <div className="flex-1 space-y-3">
-                                <div className="flex items-center gap-2 text-xs text-pano-text-muted">
-                                  <span className="text-sm font-semibold text-pano-text-primary">{message.agentName || 'Zico'}</span>
-                                  {timeLabel && <span>{timeLabel}</span>}
-                                </div>
-                                <div className="text-sm leading-relaxed text-pano-text-primary">
-                                  <MarkdownMessage text={message.content} />
-                                </div>
 
                                 {message.metadata?.event === 'swap_intent_ready' && (
-                                  <div className="mt-3">
-                                    {swapLoading && !swapQuote?.quote && (
-                                      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                                        <div className="flex items-center gap-2 text-pano-text-muted">
-                                          <div className="loader-inline-sm" />
-                                          <span className="text-sm">Getting quote...</span>
-                                        </div>
-                                      </div>
-                                    )}
+                                  <div className="mt-4 w-full max-w-sm">
+                                    {/* Swap Card - SwapWidget Style */}
+                                    <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                      {/* Gradient Glow */}
+                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
 
-                                    {swapStatusMessage && (
-                                      <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-5">
-                                        <div className="flex items-center gap-2 text-pano-text-muted">
-                                          {executingSwap && <div className="loader-inline-sm" />}
-                                          <span className="text-sm">{swapStatusMessage}</span>
-                                        </div>
+                                      {/* Header */}
+                                      <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
+                                        <ArrowLeftRight className="w-5 h-5 text-cyan-400" />
+                                        <span className="text-sm font-semibold text-white">Swap</span>
+                                        {swapLoading && <div className="loader-inline-sm ml-auto" />}
                                       </div>
-                                    )}
 
-                                    {swapError && !swapLoading && (
-                                      <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-                                        <p className="text-sm text-red-300">❌ {swapError}</p>
-                                      </div>
-                                    )}
-
-                                    {swapQuote?.quote && !swapFlowStep && !swapSuccess && !swapLoading && (
-                                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                                        <div className="flex items-center justify-between gap-3">
-                                          <div className="flex-1">
-                                            <p className="text-sm font-medium text-pano-text-primary">
-                                              Swap {String(message.metadata?.from_token)} → {String(message.metadata?.to_token)}
-                                            </p>
-                                            <p className="text-xs text-pano-text-muted">Quote ready. Click to continue with your swap.</p>
+                                      {/* Content */}
+                                      <div className="relative z-10 p-4 space-y-3">
+                                        {/* From Token */}
+                                        <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[10px] uppercase tracking-wider text-zinc-500">Sell</span>
                                           </div>
-                                          <button
-                                            onClick={() => {
-                                              setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
-                                              setSwapFlowStep('routing');
-                                            }}
-                                            disabled={executingSwap}
-                                            className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                          >
-                                            Resume Swap
-                                          </button>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xl font-medium text-white">{String(message.metadata?.amount)}</span>
+                                            <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                              <div className="w-5 h-5 rounded-full bg-zinc-600 flex items-center justify-center text-[9px] text-white font-bold">
+                                                {String(message.metadata?.from_token)?.[0]}
+                                              </div>
+                                              <span className="text-sm font-medium text-white">{String(message.metadata?.from_token)}</span>
+                                            </div>
+                                          </div>
+                                          <div className="text-[10px] text-zinc-500 mt-1">{String(message.metadata?.from_network)}</div>
                                         </div>
-                                      </div>
-                                    )}
 
-                                    {swapSuccess && (
-                                      <SwapSuccessCard
-                                        txHashes={swapTxHashes}
-                                        variant="compact"
-                                        onClose={() => {
-                                          setSwapSuccess(false);
-                                          setSwapTxHashes([]);
-                                        }}
-                                      />
-                                    )}
+                                        {/* Arrow */}
+                                        <div className="flex justify-center -my-1">
+                                          <div className="bg-[#0A0A0A] border border-white/10 p-1.5 rounded-lg">
+                                            <ArrowDown className="w-4 h-4 text-cyan-400" />
+                                          </div>
+                                        </div>
+
+                                        {/* To Token */}
+                                        <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[10px] uppercase tracking-wider text-zinc-500">Buy</span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xl font-medium text-white">
+                                              {swapLoading ? '...' : swapQuote?.quote ? formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount || 0), 18) : '~'}
+                                            </span>
+                                            <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                              <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-[9px] text-white font-bold">
+                                                {String(message.metadata?.to_token)?.[0]}
+                                              </div>
+                                              <span className="text-sm font-medium text-white">{String(message.metadata?.to_token)}</span>
+                                            </div>
+                                          </div>
+                                          <div className="text-[10px] text-zinc-500 mt-1">{String(message.metadata?.to_network)}</div>
+                                        </div>
+
+                                        {/* Error Message */}
+                                        {swapError && !swapLoading && (
+                                          <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
+                                            <p className="text-xs text-red-300">{swapError}</p>
+                                          </div>
+                                        )}
+
+                                        {/* Action Button */}
+                                        <button
+                                          onClick={() => {
+                                            const tokens = metadataToSwapTokens(message.metadata as Record<string, unknown>);
+                                            if (tokens) {
+                                              setSwapWidgetTokens(tokens);
+                                              setShowSwapWidget(true);
+                                            }
+                                          }}
+                                          disabled={swapLoading || !swapQuote?.quote}
+                                          className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                        >
+                                          {swapLoading ? 'Getting best price...' : 'Review Swap'}
+                                        </button>
+                                      </div>
+
+                                      {/* Footer */}
+                                      <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                        <div className="w-5 h-5 rounded-full bg-[#ff007a]/20 flex items-center justify-center">
+                                          <span className="text-[10px]">🦄</span>
+                                        </div>
+                                        <span className="text-[10px] text-zinc-500">Powered by Uniswap</span>
+                                      </div>
+                                    </div>
                                   </div>
                                 )}
 
                                 {message.metadata?.event === 'lending_intent_ready' && (
-                                  <div className="mt-3">
-                                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="flex-1">
-                                          <p className="text-sm font-medium text-pano-text-primary">
-                                            Lending Action: {String(message.metadata?.action || 'Unknown').toUpperCase()}
-                                          </p>
-                                          <p className="text-xs text-pano-text-muted">
-                                            {message.metadata?.amount ? `${message.metadata.amount} ` : ''}
-                                            {String(message.metadata?.asset || message.metadata?.token || '')}
-                                          </p>
+                                  <div className="mt-4 w-full max-w-sm">
+                                    {/* Lending Card - SwapWidget Style */}
+                                    <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                      {/* Gradient Glow */}
+                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+
+                                      {/* Header */}
+                                      <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
+                                        <Landmark className="w-5 h-5 text-cyan-400" />
+                                        <span className="text-sm font-semibold text-white">Lending</span>
+                                        <span className="ml-auto px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[10px] font-medium rounded-full border border-cyan-500/30">
+                                          {String(message.metadata?.action || 'Supply').toUpperCase()}
+                                        </span>
+                                      </div>
+
+                                      {/* Content */}
+                                      <div className="relative z-10 p-4 space-y-3">
+                                        {/* Amount Card */}
+                                        <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[10px] uppercase tracking-wider text-zinc-500">
+                                              {String(message.metadata?.action || 'Supply')}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xl font-medium text-white">
+                                              {String(message.metadata?.amount || '0')}
+                                            </span>
+                                            <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                              <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-[9px] text-white font-bold">
+                                                {String(message.metadata?.asset || message.metadata?.token || 'T')?.[0]}
+                                              </div>
+                                              <span className="text-sm font-medium text-white">
+                                                {String(message.metadata?.asset || message.metadata?.token || 'Token')}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div className="text-[10px] text-zinc-500 mt-1">
+                                            {String(message.metadata?.network || 'Avalanche')}
+                                          </div>
                                         </div>
+
+                                        {/* Action Button */}
                                         <button
                                           onClick={() => {
                                             setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
                                             setLendingModalOpen(true);
                                           }}
-                                          className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-gray-100"
+                                          className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                                         >
-                                          Resume Lending
+                                          Review {String(message.metadata?.action || 'Supply')}
                                         </button>
+                                      </div>
+
+                                      {/* Footer */}
+                                      <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                        <div className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center">
+                                          <Landmark className="w-3 h-3 text-cyan-400" />
+                                        </div>
+                                        <span className="text-[10px] text-zinc-500">Powered by Benqi</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {message.metadata?.event === 'staking_intent_ready' && (
+                                  <div className="mt-4 w-full max-w-sm">
+                                    {/* Staking Card - SwapWidget Style */}
+                                    <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                      {/* Gradient Glow */}
+                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-blue-500/10 blur-[40px] pointer-events-none" />
+
+                                      {/* Header */}
+                                      <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
+                                        <Droplets className="w-5 h-5 text-blue-400" />
+                                        <span className="text-sm font-semibold text-white">Liquid Staking</span>
+                                      </div>
+
+                                      {/* Content */}
+                                      <div className="relative z-10 p-4 space-y-3">
+                                        {/* Stake Input */}
+                                        <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xl font-medium text-white">
+                                              {String(message.metadata?.amount || '0')}
+                                            </span>
+                                            <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                              <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[9px] text-white font-bold">
+                                                {String(message.metadata?.token || 'ETH')?.[0]}
+                                              </div>
+                                              <span className="text-sm font-medium text-white">
+                                                {String(message.metadata?.token || 'ETH')}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Arrow */}
+                                        <div className="flex justify-center -my-1">
+                                          <div className="bg-[#0A0A0A] border border-white/10 p-1.5 rounded-lg">
+                                            <ArrowDown className="w-4 h-4 text-blue-400" />
+                                          </div>
+                                        </div>
+
+                                        {/* Receive Output */}
+                                        <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[10px] uppercase tracking-wider text-zinc-500">You Receive</span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xl font-medium text-white">
+                                              ~{(Number(message.metadata?.amount || 0) * 0.998).toFixed(4)}
+                                            </span>
+                                            <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                              <div className="w-5 h-5 rounded-full bg-sky-500 flex items-center justify-center text-[9px] text-white font-bold">
+                                                st
+                                              </div>
+                                              <span className="text-sm font-medium text-white">
+                                                st{String(message.metadata?.token || 'ETH')}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Action Button */}
+                                        <button
+                                          onClick={() => {
+                                            setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
+                                            setShowStakingWidget(true);
+                                          }}
+                                          className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                        >
+                                          Review Staking
+                                        </button>
+                                      </div>
+
+                                      {/* Footer */}
+                                      <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                        <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center">
+                                          <Droplets className="w-3 h-3 text-blue-400" />
+                                        </div>
+                                        <span className="text-[10px] text-zinc-500">Powered by Lido</span>
                                       </div>
                                     </div>
                                   </div>
@@ -1221,481 +1250,147 @@ export default function ChatPage() {
                               </div>
                             </div>
                           )}
-                        </div>
-                      );
-                    })}
+                        </motion.div>
+                    );
+                  })}
 
-                    {isSending && (
-                      <div className="flex gap-3 sm:gap-4">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 shadow-[0_0_18px_rgba(34,211,238,0.18)]">
-                          <Image src={zicoBlue} alt="Zico" width={24} height={24} />
-                        </div>
-                        <div className="flex items-center gap-2 pt-2">
-                          <div className="h-2 w-2 animate-pulse rounded-full bg-pano-text-muted" />
-                          <div className="h-2 w-2 animate-pulse rounded-full bg-pano-text-muted delay-75" />
-                          <div className="h-2 w-2 animate-pulse rounded-full bg-pano-text-muted delay-150" />
-                        </div>
+                  {isSending && (
+                    <div className="flex gap-4 max-w-[90%]">
+                      <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 animate-pulse overflow-hidden p-1">
+                        <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
                       </div>
-                    )}
+                      <div className="flex items-center gap-1 pt-3">
+                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.3s]" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.15s]" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce" />
+                      </div>
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </div>
 
-                    <div ref={messagesEndRef} />
-                  </div>
-                )}
-              </div>
-
+            {/* Sticky Bottom Input (Chat State) */}
+            <AnimatePresence>
               {hasMessages && (
-                <div className="relative border-t border-white/5 bg-[#050505]/90 px-3 py-4 pb-safe sm:px-6">
-                  <div className="group relative mx-auto max-w-4xl">
-                    <div className="absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-pano-primary/30 via-transparent to-pano-primary/25 blur opacity-0 transition duration-500 group-focus-within:opacity-100 group-hover:opacity-60" />
-                    <div className="relative flex items-center gap-3 rounded-2xl border border-white/10 bg-[#0A0A0A]/80 px-3 py-2 backdrop-blur-xl">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-pano-text-muted">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
-                        </svg>
-                      </div>
+                <motion.div
+                  initial={{ y: 100, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className="p-2 pt-3 bg-gradient-to-t from-black via-black/90 to-transparent z-20"
+                >
+                  <div className="max-w-3xl mx-auto relative group">
+                    {/* Trending Prompts Dropdown */}
+                    <AnimatePresence>
+                      {showTrendingPrompts && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          className="absolute bottom-full left-0 right-0 mb-2 bg-[#0A0A0A] border border-white/10 rounded-xl p-2 shadow-2xl z-30"
+                        >
+                          <div className="text-xs text-zinc-500 px-3 py-2 uppercase tracking-wider">Trending Prompts</div>
+                          <div className="space-y-1">
+                            {trendingPrompts.map((prompt, index) => (
+                              <button
+                                key={index}
+                                onClick={() => {
+                                  setInputMessage(prompt.text);
+                                  setShowTrendingPrompts(false);
+                                }}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors group"
+                              >
+                                <span className="text-zinc-500 group-hover:text-cyan-400 transition-colors">{prompt.icon}</span>
+                                <span>{prompt.text}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
+                    <div className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex items-center gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30">
+                      <button
+                        onClick={() => setShowTrendingPrompts(!showTrendingPrompts)}
+                        className="pl-2 text-zinc-400 hover:text-cyan-400 transition-colors"
+                        title="Trending prompts"
+                      >
+                        <Sparkles className="w-5 h-5" />
+                      </button>
                       <input
                         type="text"
                         value={inputMessage}
                         onChange={(e) => setInputMessage(e.target.value)}
                         onKeyPress={handleKeyPress}
-                        placeholder="Ask Zico anything..."
+                        onFocus={() => setShowTrendingPrompts(false)}
+                        placeholder="Send a message..."
                         disabled={isSending || !activeConversationId || initializing}
-                        className="flex-1 bg-transparent text-sm text-pano-text-primary placeholder:text-pano-text-muted focus:outline-none"
+                        className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder:text-zinc-600 h-12"
+                        autoFocus
                       />
                       <button
                         onClick={() => sendMessage()}
                         disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                        className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-500 text-black shadow-[0_0_20px_rgba(34,211,238,0.35)] transition hover:shadow-[0_0_28px_rgba(34,211,238,0.45)] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="p-2.5 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all disabled:cursor-not-allowed disabled:opacity-60"
                         aria-label="Send message"
                       >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
-                        </svg>
+                        <ArrowUp className="w-5 h-5" />
                       </button>
                     </div>
-                    <p className="mt-2 text-center text-[10px] uppercase tracking-[0.35em] text-pano-text-muted">
-                      AI-Native Web3 Interface
-                    </p>
+                    <div className="text-center mt-2">
+                      <p className="text-[10px] text-zinc-600 uppercase tracking-widest">AI-Native Web3 Interface</p>
+                    </div>
                   </div>
-                </div>
+                </motion.div>
               )}
-            </div>
+            </AnimatePresence>
           </div>
         </SeniorAppShell>
 
-
-{/* Order Routing Modal */}
-      {swapFlowStep === 'routing' && swapQuote?.quote && currentSwapMetadata && (
-        <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
-            // Just close the modal, keep swap state so user can resume
-            setSwapFlowStep(null);
-          }} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              {/* Header */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
-                <h3 className="text-base sm:text-lg font-semibold text-white">Order Routing</h3>
-                <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="px-4 py-4 sm:px-5 sm:py-5 space-y-3 sm:space-y-4">
-                {/* Select Swap API Label */}
-                <div className="text-xs sm:text-sm font-medium text-white">Select Swap API</div>
-
-                {/* Routing Option Card */}
-                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-                    {/* Radio Button + Label */}
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white flex items-center justify-center flex-shrink-0">
-                          <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-black"></div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {isAvalancheSwap(currentSwapMetadata) ? (
-                            <span className="text-white font-semibold text-xs sm:text-sm">Avalanche C-chain</span>
-                          ) : (
-                            <span className="text-white font-semibold text-xs sm:text-sm">UNI V3</span>
-                          )}
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
-                            <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
-                          </svg>
-                        </div>
-                      </div>
-                      <div className="text-[10px] sm:text-xs text-gray-400 ml-6 sm:ml-7">Est. Price Impact 1.1%</div>
-                    </div>
-
-                    {/* Swap Info */}
-                    <div className="flex-1 space-y-2 sm:space-y-3">
-                      <div className="flex items-start sm:items-center justify-between gap-2">
-                        <div className="text-sm sm:text-base font-medium text-white break-words">
-                          Swap {String(currentSwapMetadata?.from_token)} to {String(currentSwapMetadata?.to_token)}
-                        </div>
-                        <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1 flex-shrink-0">
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
-                          </svg>
-                          Suggested
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
-                        <div className="flex justify-between gap-2">
-                          <span className="text-gray-400">Amount in</span>
-                          <span className="text-white font-medium text-right break-words">
-                            {String(currentSwapMetadata?.amount)} {String(currentSwapMetadata?.from_token)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between gap-2">
-                          <span className="text-gray-400">Expected Amount Out</span>
-                          <span className="text-white font-medium text-right break-words">
-                            {formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)} {String(currentSwapMetadata?.to_token)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between gap-2">
-                          <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
-                          <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
-                            {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Button */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
-                <button
-                  onClick={() => setSwapFlowStep('details')}
-                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors"
-                >
-                  Continue
-                </button>
-                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
-                    {isAvalancheSwap(currentSwapMetadata) ? (
-                      <Image
-                        src={AvalancheIcon}
-                        alt="Avalanche"
-                        width={28}
-                        height={28}
-                        className="w-7 h-7"
-                      />
-                    ) : (
-                      <Image
-                        src={UniswapIcon}
-                        alt="Uniswap"
-                        width={44}
-                        height={44}
-                        className="w-11 h-11"
-                        style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
-                      />
-                    )}
-                  </div>
-                  <span>{isAvalancheSwap(currentSwapMetadata) ? 'Powered by Avalanche' : 'Powered by Uniswap'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Swap Details Modal */}
-      {swapFlowStep === 'details' && swapQuote?.quote && currentSwapMetadata && (
-        <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
-            // Just close the modal, keep swap state so user can resume
-            setSwapFlowStep(null);
-          }} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              {/* Header */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
-                <h3 className="text-base sm:text-lg font-semibold text-white">Swap Details</h3>
-                <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="px-4 py-4 sm:px-5 sm:py-5 space-y-3 sm:space-y-4">
-                {/* Select Swap API */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs sm:text-sm font-medium text-white">Select Swap API</span>
-                  <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
-                    Change API
-                  </button>
-                </div>
-
-                {/* Routing */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs sm:text-sm text-gray-400">Routing</span>
-                  <div className="flex items-center gap-1.5 sm:gap-2">
-                    {isAvalancheSwap(currentSwapMetadata) ? (
-                      <>
-                        <Image src={AvalancheIcon} alt="Avalanche" width={16} height={16} className="w-3 h-3 sm:w-4 sm:h-4" />
-                        <span className="text-xs sm:text-sm text-white">Avalanche C-chain</span>
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-white flex items-center justify-center">
-                          <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-black"></div>
-                        </div>
-                        <span className="text-xs sm:text-sm text-white">UNI V3</span>
-                      </>
-                    )}
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
-                      <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
-                    </svg>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
-                    </svg>
-                    Suggested
-                  </div>
-                  <span className="text-[10px] sm:text-xs text-gray-400">Est. Price Impact 1.1%</span>
-                </div>
-
-                {/* Swap Details Card */}
-                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
-                  <div className="text-sm sm:text-base font-semibold text-white mb-3 sm:mb-4 break-words">
-                    Swap {String(currentSwapMetadata?.from_token)} to {String(currentSwapMetadata?.to_token)}
-                  </div>
-
-                  <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-400">Amount in</span>
-                      <span className="text-white font-medium text-right break-words">
-                        {String(currentSwapMetadata?.amount)} {String(currentSwapMetadata?.from_token)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-400 text-[11px] sm:text-xs">Expected Amount Out</span>
-                      <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
-                        {formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)} {String(currentSwapMetadata?.to_token)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
-                      <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
-                        {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)} {String(currentSwapMetadata?.to_token)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Transaction Settings */}
-                <div className="space-y-2 sm:space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-white font-medium text-xs sm:text-sm">Transaction Settings</span>
-                    <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
-                      Change Settings
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Button */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
-                <button
-                  onClick={async () => {
-                    if (isAvalancheSwap(currentSwapMetadata)) {
-                      // For Avalanche, execute swap directly without confirmation modal
-                      setSwapFlowStep(null);
-                      await forceMetaMaskWindow();
-                      if (currentSwapMetadata) {
-                        await executeSwap(currentSwapMetadata);
-                      }
-                    } else {
-                      // For Uniswap, go to confirmation modal
-                      setSwapFlowStep('confirm');
-                    }
-                  }}
-                  disabled={executingSwap}
-                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {executingSwap ? 'Executing...' : 'Continue'}
-                </button>
-                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
-                    {isAvalancheSwap(currentSwapMetadata) ? (
-                      <Image
-                        src={AvalancheIcon}
-                        alt="Avalanche"
-                        width={28}
-                        height={28}
-                        className="w-7 h-7"
-                      />
-                    ) : (
-                      <Image
-                        src={UniswapIcon}
-                        alt="Uniswap"
-                        width={44}
-                        height={44}
-                        className="w-11 h-11"
-                        style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
-                      />
-                    )}
-                  </div>
-                  <span>{isAvalancheSwap(currentSwapMetadata) ? 'Powered by Avalanche' : 'Powered by Uniswap'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Confirm Details Modal - Only show for non-Avalanche swaps */}
-      {swapFlowStep === 'confirm' && swapQuote?.quote && currentSwapMetadata && !isAvalancheSwap(currentSwapMetadata) && (
-        <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
-            // Just close the modal, keep swap state so user can resume
-            setSwapFlowStep(null);
-          }} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-sm w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              {/* Header */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 sticky top-0 bg-black z-10">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <h3 className="text-sm sm:text-base font-semibold text-white mb-1">Confirm details</h3>
-                    <p className="text-[10px] sm:text-xs text-gray-400 pr-2">Review and accept Uniswap Labs Terms of Service & Privacy Policy to get started</p>
-                  </div>
-                  <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors flex-shrink-0">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* Content */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 space-y-3 sm:space-y-4">
-                {/* Terms of Service Toggles */}
-                <div className="space-y-2 sm:space-y-3">
-                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
-                    <span className="text-xs sm:text-sm text-white flex-1 pr-2">
-                      I have read and agreed with{' '}
-                      <a
-                        href="https://support.uniswap.org/hc/en-us/articles/30935100859661-Uniswap-Labs-Terms-of-Service"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline hover:text-cyan-400 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Uniswap Labs Terms of Service
-                      </a>
-                    </span>
-                    <div className="relative ml-2 sm:ml-4 flex-shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={tosAccepted}
-                        onChange={(e) => setTosAccepted(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${tosAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
-                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${tosAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
-                    <span className="text-xs sm:text-sm text-white flex-1 pr-2">
-                      I have read and agreed with{' '}
-                      <a
-                        href="https://support.uniswap.org/hc/en-us/articles/40074102704141-Uniswap-Labs-Privacy-Policy"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline hover:text-cyan-400 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Uniswap Labs Privacy Policy
-                      </a>
-                    </span>
-                    <div className="relative ml-2 sm:ml-4 flex-shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={privacyAccepted}
-                        onChange={(e) => setPrivacyAccepted(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${privacyAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
-                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${privacyAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
-                    </div>
-                  </label>
-                </div>
-
-              </div>
-
-              {/* Action Button */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
-                <button
-                  onClick={async () => {
-                    if (tosAccepted && privacyAccepted && currentSwapMetadata) {
-                      setSwapFlowStep(null);
-                      await forceMetaMaskWindow();
-                      await executeSwap(currentSwapMetadata);
-                    }
-                  }}
-                  disabled={!tosAccepted || !privacyAccepted || executingSwap}
-                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
-                >
-                  {executingSwap ? 'Executing...' : 'Confirm'}
-                </button>
-                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
-                    {isAvalancheSwap(currentSwapMetadata) ? (
-                      <Image
-                        src={AvalancheIcon}
-                        alt="Avalanche"
-                        width={28}
-                        height={28}
-                        className="w-7 h-7"
-                      />
-                    ) : (
-                      <Image
-                        src={UniswapIcon}
-                        alt="Uniswap"
-                        width={44}
-                        height={44}
-                        className="w-11 h-11"
-                        style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
-                      />
-                    )}
-                  </div>
-                  <span>{isAvalancheSwap(currentSwapMetadata) ? 'Powered by Avalanche' : 'Powered by Uniswap'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
       {/* Lending Modal */}
-      {lendingModalOpen && currentLendingMetadata && (
-        <LendingModal
-          isOpen={lendingModalOpen}
-          onClose={() => setLendingModalOpen(false)}
-          metadata={currentLendingMetadata}
-          onSuccess={() => {
-            // Optional: Add a system message or update UI on success
-            console.log('Lending transaction successful');
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {lendingModalOpen && (
+          <Lending
+            onClose={() => {
+              setLendingModalOpen(false);
+              setCurrentLendingMetadata(null);
+            }}
+            initialAmount={currentLendingMetadata?.amount as string | undefined}
+            initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
+            initialAction={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* SwapWidget Modal */}
+      <AnimatePresence>
+        {showSwapWidget && swapWidgetTokens && (
+          <SwapWidget
+            onClose={() => {
+              setShowSwapWidget(false);
+              setSwapWidgetTokens(null);
+            }}
+            initialFromToken={swapWidgetTokens.from}
+            initialToToken={swapWidgetTokens.to}
+            initialAmount={swapWidgetTokens.amount}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Staking Modal */}
+      <AnimatePresence>
+        {showStakingWidget && (
+          <Staking
+            onClose={() => {
+              setShowStakingWidget(false);
+              setCurrentStakingMetadata(null);
+            }}
+            initialAmount={currentStakingMetadata?.amount as string | undefined}
+            initialToken={currentStakingMetadata?.token as string | undefined}
+          />
+        )}
+      </AnimatePresence>
       </TransactionSettingsProvider>
     </ProtectedRoute>
   );

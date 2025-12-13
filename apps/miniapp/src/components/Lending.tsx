@@ -1,14 +1,10 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Landmark, 
-  ChevronDown, 
-  Info, 
-  Settings,
+import {
+  Landmark,
   X,
   ArrowLeft,
   Check,
   ChevronRight,
-  Triangle,
   Loader2
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
@@ -16,9 +12,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { NeonButton } from "@/components/ui/NeonButton";
 import { DataInput } from "@/components/ui/DataInput";
 import { cn } from "@/lib/utils";
-import * as Switch from '@radix-ui/react-switch';
 import { TokenSelectionModal } from "@/components/TokenSelectionModal";
-import { SettingsPopover } from "@/components/SettingsPopover";
 
 // Lending Hook
 import { useLendingData } from "@/features/lending/useLendingData";
@@ -28,6 +22,9 @@ import { useActiveAccount } from "thirdweb/react";
 
 interface LendingProps {
   onClose: () => void;
+  initialAmount?: string;
+  initialAsset?: string;
+  initialAction?: 'supply' | 'borrow';
 }
 
 type ViewState = 'input' | 'review' | 'success';
@@ -44,19 +41,18 @@ const getTokenColor = (token: any) => {
   return 'bg-zinc-500';
 };
 
-export function Lending({ onClose }: LendingProps) {
+export function Lending({ onClose, initialAmount, initialAsset, initialAction }: LendingProps) {
   const account = useActiveAccount();
   const { tokens, loading: loadingData, error: dataError } = useLendingData();
   const lendingApi = useLendingApi();
-  
+
   const [viewState, setViewState] = useState<ViewState>('input');
-  const [activeTab, setActiveTab] = useState<'supply' | 'borrow'>('supply');
-  const [collateralEnabled, setCollateralEnabled] = useState(true);
+  const [activeTab, setActiveTab] = useState<'supply' | 'borrow'>(initialAction || 'supply');
   const [showTokenList, setShowTokenList] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  
-  const [amount, setAmount] = useState("10.0");
+
+  const [amount, setAmount] = useState(initialAmount || "10.0");
   const [activeToken, setActiveToken] = useState<any>(null);
+  const [initialAssetSet, setInitialAssetSet] = useState(false);
 
   // Execution State
   const [preparing, setPreparing] = useState(false);
@@ -66,21 +62,31 @@ export function Lending({ onClose }: LendingProps) {
 
   // Initialize active token when data loads
   useEffect(() => {
-    if (tokens.length > 0 && !activeToken) {
+    if (tokens.length > 0 && !initialAssetSet) {
+      // Try to find the initial asset if specified
+      let selectedToken = tokens[0];
+      if (initialAsset) {
+        const found = tokens.find(t =>
+          t.symbol.toUpperCase() === initialAsset.toUpperCase()
+        );
+        if (found) selectedToken = found;
+      }
+
       // Create UI-friendly token object
       setActiveToken({
-        ticker: tokens[0].symbol,
-        name: tokens[0].symbol, // API doesn't return name yet
+        ticker: selectedToken.symbol,
+        name: selectedToken.symbol, // API doesn't return name yet
         network: "Avalanche", // API defaults to 43114 (Avalanche) usually
-        address: tokens[0].address,
+        address: selectedToken.address,
         balance: "0.00", // Need user balance fetch
-        decimals: tokens[0].decimals,
-        supplyAPY: tokens[0].supplyAPY,
-        borrowAPY: tokens[0].borrowAPY,
-        collateralFactor: tokens[0].collateralFactor
+        decimals: selectedToken.decimals,
+        supplyAPY: selectedToken.supplyAPY,
+        borrowAPY: selectedToken.borrowAPY,
+        collateralFactor: selectedToken.collateralFactor
       });
+      setInitialAssetSet(true);
     }
-  }, [tokens, activeToken]);
+  }, [tokens, initialAsset, initialAssetSet]);
 
   // Map lending tokens to UI format for modal
   const uiTokens = useMemo(() => {
@@ -132,25 +138,49 @@ export function Lending({ onClose }: LendingProps) {
          txData = await lendingApi.prepareBorrow(activeToken.address, amount);
       }
 
-      if (!txData || !txData.data) throw new Error("Failed to prepare transaction");
+      console.log('[LENDING] API Response:', JSON.stringify(txData, null, 2));
+
+      if (!txData || !txData.data) throw new Error("Failed to prepare transaction - no response");
 
       setPreparing(false);
       setExecuting(true);
 
-      // 2. Execute Transaction
-      // The API returns { data: { to, data, value, ... } }
-      // We need to map it to what executeTransaction expects if needed, 
-      // but lendingApiClient.executeTransaction handles it.
-      
-      // Need to normalize the data structure if API returns nested data
-      const transactionPayload = txData.data?.transactionData || txData.data; // Handle variance
-      
-      await lendingApi.executeTransaction(transactionPayload);
+      // API returns two transactions: validation (tax) + supply/borrow
+      // Structure: { data: { validation: {...}, supply: {...} } }
+      const validationTx = txData.data.validation;
+      const actionTx = txData.data.supply || txData.data.borrow;
+
+      // Step 1: Execute validation transaction (if exists)
+      if (validationTx?.to && validationTx?.data) {
+        console.log('[LENDING] Executing validation transaction...');
+        await lendingApi.executeTransaction({
+          to: validationTx.to,
+          data: validationTx.data,
+          value: validationTx.value || '0',
+          gas: validationTx.gas,
+          gasPrice: validationTx.gasPrice
+        });
+        console.log('[LENDING] Validation transaction completed!');
+      }
+
+      // Step 2: Execute the main action (supply/borrow)
+      if (actionTx?.to && actionTx?.data) {
+        console.log('[LENDING] Executing main transaction...');
+        await lendingApi.executeTransaction({
+          to: actionTx.to,
+          data: actionTx.data,
+          value: actionTx.value || '0',
+          gas: actionTx.gas,
+          gasPrice: actionTx.gasPrice
+        });
+        console.log('[LENDING] Main transaction completed!');
+      } else {
+        throw new Error('No valid supply/borrow transaction in API response');
+      }
 
       setExecuting(false);
       setViewState('success');
-      // Hack: assume success leads to hash eventually or we just show success state
-      setTxHash("0x..."); // We might need to capture hash from executeTransaction return
+      setTxHash("0x...");
 
     } catch (e: any) {
       console.error("Lending action failed:", e);
@@ -165,16 +195,12 @@ export function Lending({ onClose }: LendingProps) {
      return null; // Or show loading spinner modal
   }
 
-  const currentAPY = activeTab === 'supply' ? activeToken?.supplyAPY : activeToken?.borrowAPY;
-  const healthFactor = 1.10; // Mock current health
-  const nextHealthFactor = activeTab === 'supply' ? 1.25 : 1.05; // Mock impact
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
@@ -186,8 +212,8 @@ export function Lending({ onClose }: LendingProps) {
         className="w-full md:max-w-[480px]"
         onClick={(e) => e.stopPropagation()}
       >
-        <GlassCard 
-          className="w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 h-[85vh] md:h-auto md:min-h-[540px] flex flex-col rounded-t-3xl rounded-b-none md:rounded-2xl border-b-0 md:border-b pb-safe"
+        <GlassCard
+          className="w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 h-[85vh] md:h-[520px] flex flex-col rounded-t-3xl rounded-b-none md:rounded-2xl border-b-0 md:border-b pb-safe"
         >
           {/* Gradient Glow */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-32 bg-primary/10 blur-[60px] pointer-events-none" />
@@ -208,56 +234,44 @@ export function Lending({ onClose }: LendingProps) {
               className="flex flex-col h-full"
             >
               {/* Header */}
-              <div className="p-6 flex items-center justify-between relative z-10">
+              <div className="px-6 py-4 flex items-center justify-between relative z-10 shrink-0">
                  <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-primary/10 text-primary">
                       <Landmark className="w-5 h-5" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-display font-bold text-white">Lending</h2>
+                      <h2 className="text-lg font-display font-bold text-white">Lending</h2>
                       <div className="text-[10px] font-medium text-zinc-500 uppercase tracking-widest">
                         Manage Assets
                       </div>
                     </div>
                  </div>
-                 <div className="flex items-center gap-2 relative">
-                   <button 
-                    onClick={() => setShowSettings(!showSettings)}
-                    className={cn(
-                      "p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors",
-                      showSettings && "text-primary bg-primary/10"
-                    )}
-                   >
-                      <Settings className="w-5 h-5" />
-                   </button>
-                   <SettingsPopover isOpen={showSettings} onClose={() => setShowSettings(false)} />
-                   <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
-                      <X className="w-5 h-5" />
-                   </button>
-                 </div>
+                 <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
+                    <X className="w-5 h-5" />
+                 </button>
               </div>
 
-              <div className="px-6 pb-8 space-y-2 relative z-10 flex-1 flex flex-col">
-                
+              <div className="px-6 pb-4 relative z-10 flex-1 flex flex-col justify-center">
+
                 {/* Tabs */}
                 <div className="flex p-1 bg-zinc-900/80 border border-white/5 rounded-xl mb-4">
-                  <button 
+                  <button
                     onClick={() => setActiveTab('supply')}
                     className={cn(
                       "flex-1 py-2 rounded-lg text-sm font-medium transition-all",
-                      activeTab === 'supply' 
-                        ? 'bg-white/10 text-white shadow-sm' 
+                      activeTab === 'supply'
+                        ? 'bg-white/10 text-white shadow-sm'
                         : 'text-zinc-500 hover:text-zinc-300'
                     )}
                   >
                     Supply
                   </button>
-                  <button 
+                  <button
                     onClick={() => setActiveTab('borrow')}
                     className={cn(
                       "flex-1 py-2 rounded-lg text-sm font-medium transition-all",
-                      activeTab === 'borrow' 
-                        ? 'bg-white/10 text-white shadow-sm' 
+                      activeTab === 'borrow'
+                        ? 'bg-white/10 text-white shadow-sm'
                         : 'text-zinc-500 hover:text-zinc-300'
                     )}
                   >
@@ -269,11 +283,10 @@ export function Lending({ onClose }: LendingProps) {
                 {activeToken && (
                   <DataInput
                     label="Amount"
-                    balance={`Balance: ${activeToken.balance} ${activeToken.ticker}`}
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     rightElement={
-                      <button 
+                      <button
                         onClick={() => setShowTokenList(true)}
                         className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-1.5 hover:bg-zinc-900 transition-colors group"
                       >
@@ -286,28 +299,9 @@ export function Lending({ onClose }: LendingProps) {
                     }
                   />
                 )}
-                
-                <div className="mt-2 text-xs text-zinc-600 px-1">
-                  ~ $--.--
-                </div>
-
-                {/* Info Block */}
-                <div className="py-2 flex items-center justify-between text-xs px-2 mt-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1">
-                      <span className="text-zinc-500">{activeTab === 'supply' ? 'Supply' : 'Borrow'} APY</span>
-                      <span className="text-green-400 font-medium">{currentAPY?.toFixed(2)}%</span>
-                    </div>
-                     <div className="flex items-center gap-1">
-                      <span className="text-zinc-500">Max LTV</span>
-                      <span className="text-white font-medium">{(activeToken?.collateralFactor * 100).toFixed(0)}%</span>
-                    </div>
-                  </div>
-                  <Info className="w-3 h-3 text-zinc-600" />
-                </div>
 
                 {/* Action Button */}
-                <div className="mt-auto pt-4">
+                <div className="pt-6">
                   <NeonButton onClick={() => setViewState('review')} disabled={!activeToken || !amount}>
                     {activeTab === 'supply' ? 'Supply Assets' : 'Borrow Assets'}
                   </NeonButton>
@@ -327,92 +321,46 @@ export function Lending({ onClose }: LendingProps) {
               className="flex flex-col h-full"
             >
               {/* Header */}
-              <div className="p-6 flex items-center justify-between relative z-10">
+              <div className="px-6 py-4 flex items-center justify-between relative z-10 shrink-0">
                  <h2 className="text-lg font-display font-bold text-white">Review Transaction</h2>
-                 <button onClick={() => setViewState('input')} className="text-zinc-500 hover:text-white">
+                 <button onClick={() => setViewState('input')} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
                     <ArrowLeft className="w-5 h-5" />
                   </button>
               </div>
 
-              <div className="px-6 pb-8 flex-1 flex flex-col relative z-10 overflow-y-auto custom-scrollbar">
-                
-                {/* Top Highlights */}
-                <div className="flex items-center justify-between mb-6">
-                   <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 bg-green-500/10 text-green-400 text-[10px] font-bold rounded border border-green-500/20 flex items-center gap-1">
-                        <Check className="w-3 h-3" /> 
-                        {activeTab === 'supply' ? 'Collateralized' : 'Monitoring Risk'}
-                      </span>
-                   </div>
-                   <div className="text-xs text-zinc-500">
-                     APY <span className="text-white font-medium">{currentAPY?.toFixed(2)}%</span>
-                   </div>
-                </div>
+              <div className="px-6 pb-4 flex-1 flex flex-col relative z-10 justify-center">
 
-                {/* Main Details Card */}
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-4 mb-4">
-                   <div className="font-medium text-white text-sm mb-2">
+                {/* Main Details Card - Centered */}
+                <div className="bg-white/5 border border-white/10 rounded-xl p-6 space-y-4">
+                   <div className="font-medium text-white text-base text-center mb-2">
                      {activeTab === 'supply' ? 'Supply' : 'Borrow'} {activeToken?.ticker}
                    </div>
-                   
+
                    <div className="space-y-3 text-sm">
                        {/* Amount Row */}
-                       <div className="flex justify-between">
+                       <div className="flex justify-between items-center py-2">
                           <span className="text-zinc-500">Amount</span>
-                          <span className="text-white font-mono font-medium">{amount} {activeToken?.ticker}</span>
+                          <span className="text-white font-mono font-medium text-lg">{amount} {activeToken?.ticker}</span>
                        </div>
-
-                       {/* Health Factor Row */}
-                       <div className="flex flex-col gap-2 pt-2 border-t border-white/5">
-                          <div className="flex justify-between items-center">
-                            <span className="text-zinc-500">Health Factor</span>
-                            <span className={cn("font-mono font-medium", activeTab === 'supply' ? "text-green-400" : "text-orange-400")}>
-                              {healthFactor.toFixed(2)} → {nextHealthFactor.toFixed(2)}
-                            </span>
-                          </div>
-                          <div className="h-1.5 w-full bg-black/40 rounded-full overflow-hidden">
-                            <div 
-                              className={cn("h-full rounded-full transition-all", activeTab === 'supply' ? 'bg-green-500 w-[70%]' : 'bg-orange-500 w-[85%]')} 
-                            />
-                          </div>
-                       </div>
-                   </div>
-                </div>
-
-                {/* Secondary Info / Fees */}
-                <div className="space-y-3 mb-6">
-                   <div className="flex justify-between items-center text-sm">
-                      <span className="text-zinc-400">Collateral Enabled</span>
-                      <Switch.Root 
-                        checked={collateralEnabled}
-                        onCheckedChange={setCollateralEnabled}
-                        className={cn("w-8 h-5 rounded-full relative transition-colors", collateralEnabled ? 'bg-primary' : 'bg-zinc-700')}
-                      >
-                        <Switch.Thumb className={cn("block w-3 h-3 bg-white rounded-full transition-transform translate-x-1 translate-y-1 will-change-transform", collateralEnabled ? 'translate-x-4' : 'translate-x-1')} />
-                      </Switch.Root>
-                   </div>
-                   <div className="flex justify-between text-sm">
-                      <span className="text-zinc-400">Network Cost</span>
-                      <span className="text-white font-mono">~ $0.15</span>
                    </div>
                 </div>
 
                 {executionError && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-200 text-xs mb-4">
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-200 text-xs mt-4">
                     {executionError}
                   </div>
                 )}
 
                 {/* Final Button */}
-                <div className="mt-auto relative">
-                  <NeonButton 
-                    onClick={handleAction} 
+                <div className="pt-6 relative">
+                  <NeonButton
+                    onClick={handleAction}
                     className={cn("w-full bg-white text-black hover:bg-zinc-200 shadow-none")}
                     disabled={preparing || executing}
                   >
                     {executing ? 'Executing...' : preparing ? 'Simulating...' : `Confirm ${activeTab === 'supply' ? 'Supply' : 'Borrow'}`}
                   </NeonButton>
-                  
+
                   {(preparing || executing) && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-xl">
                        <Loader2 className="w-6 h-6 text-primary animate-spin" />
@@ -448,11 +396,11 @@ export function Lending({ onClose }: LendingProps) {
           </AnimatePresence>
 
           {/* FOOTER POWERED BY */}
-          <div className="py-8 relative z-10 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
-             <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center shadow-lg shadow-black/50 border border-white/5">
-               <Landmark className={cn("w-4 h-4", poweredBy.color)} />
+          <div className="py-4 relative z-10 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity shrink-0">
+             <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center shadow-lg shadow-black/50 border border-white/5">
+               <Landmark className={cn("w-3 h-3", poweredBy.color)} />
              </div>
-             <span className="text-sm font-medium text-zinc-400">Powered by {poweredBy.text}</span>
+             <span className="text-xs font-medium text-zinc-400">Powered by {poweredBy.text}</span>
           </div>
 
           {/* TOKEN SELECTION MODAL */}

@@ -224,9 +224,9 @@ export default function NewChatPage() {
 
       console.log('✅ [NEWCHAT] Authentication succeeded! Redirecting to /chat...');
 
-      // 5. Redirect to /dashboard
+      // 5. Redirect to /chat (bootstrap will create a new conversation automatically)
       setTimeout(() => {
-        router.push('/dashboard');
+        router.push('/chat');
       }, 500);
 
     } catch (err: any) {
@@ -253,7 +253,7 @@ export default function NewChatPage() {
     // Check if already authenticated
     const existingToken = localStorage.getItem('authToken');
     if (existingToken) {
-      router.replace('/dashboard');
+      router.replace('/chat');
       return;
     }
 

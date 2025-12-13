@@ -3,7 +3,8 @@
 import React, { useState } from 'react'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { useActiveAccount, useActiveWallet, useDisconnect } from 'thirdweb/react'
+import { useActiveAccount } from 'thirdweb/react'
+import { useLogout } from '@/shared/hooks/useLogout'
 import { cn } from '@/shared/lib/utils'
 import logo from '../../../public/panorama_block.svg'
 
@@ -26,31 +27,12 @@ export function AppHeader({ className, onMenuClick, showMenuButton = true }: App
   const pathname = usePathname()
   const router = useRouter()
   const account = useActiveAccount()
-  const activeWallet = useActiveWallet()
-  const { disconnect } = useDisconnect()
+  const { logout, isLoggingOut } = useLogout()
   const [walletOpen, setWalletOpen] = useState(false)
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = () => {
     setWalletOpen(false)
-    try {
-      if (activeWallet) {
-        await disconnect?.(activeWallet)
-      }
-    } catch (error) {
-      console.warn('[Header] disconnect failed:', error)
-    }
-
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('authToken')
-      localStorage.removeItem('authPayload')
-      localStorage.removeItem('authSignature')
-      localStorage.removeItem('telegram_user')
-      localStorage.removeItem('userAddress')
-      const clientId = process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID || process.env.VITE_THIRDWEB_CLIENT_ID
-      if (clientId) {
-        localStorage.removeItem(`walletToken-${clientId}`)
-      }
-    }
+    logout()
   }
 
   const shortAddress = account?.address
@@ -158,9 +140,10 @@ export function AppHeader({ className, onMenuClick, showMenuButton = true }: App
                   </button>
                   <button
                     onClick={handleDisconnect}
-                    className="w-full text-left px-4 py-3 text-sm text-pano-error hover:bg-pano-error/10 transition-colors"
+                    disabled={isLoggingOut}
+                    className="w-full text-left px-4 py-3 text-sm text-pano-error hover:bg-pano-error/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Disconnect
+                    {isLoggingOut ? 'Disconnecting...' : 'Disconnect'}
                   </button>
                 </div>
               </>

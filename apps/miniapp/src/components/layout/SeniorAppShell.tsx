@@ -3,15 +3,25 @@
 import React, { useMemo, useState } from 'react';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
+import { AnimatePresence } from 'framer-motion';
 import { NotificationCenter } from '@/shared/ui/NotificationCenter';
 import { cn } from '@/shared/lib/utils';
 import { useActiveAccount } from 'thirdweb/react';
+import { useLogout } from '@/shared/hooks/useLogout';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
+
+// Widget Modals
+import { SwapWidget } from '@/components/SwapWidget';
+import { Lending } from '@/components/Lending';
+import { Staking } from '@/components/Staking';
+import { DCA } from '@/components/DCA';
 
 type NavItem = {
   id: string;
   label: string;
-  href: string;
+  href?: string;
+  icon: React.ReactNode;
+  isModal?: boolean;
 };
 
 interface SeniorAppShellProps {
@@ -23,8 +33,15 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   const router = useRouter();
   const pathname = usePathname();
   const account = useActiveAccount();
+  const { logout, isLoggingOut } = useLogout();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  // Modal states
+  const [showSwap, setShowSwap] = useState(false);
+  const [showLending, setShowLending] = useState(false);
+  const [showStaking, setShowStaking] = useState(false);
+  const [showDCA, setShowDCA] = useState(false);
 
   const address = account?.address;
   const shortAddress = useMemo(() => {
@@ -33,21 +50,109 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   }, [address]);
 
   const navItems: NavItem[] = [
-    { id: 'chat', label: 'Chat', href: '/chat' },
-    { id: 'swap', label: 'Swap', href: '/swap' },
-    { id: 'lending', label: 'Lending', href: '/lending' },
-    { id: 'staking', label: 'Staking', href: '/staking' },
-    { id: 'dca', label: 'DCA', href: '/dca' },
+    {
+      id: 'chat',
+      label: 'Chat',
+      href: '/chat',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+      ),
+    },
+    {
+      id: 'portfolio',
+      label: 'Portfolio',
+      href: '/portfolio',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" />
+          <path strokeLinecap="round" d="M12 6v6l4 2" />
+        </svg>
+      ),
+    },
+    {
+      id: 'swap',
+      label: 'Swap',
+      isModal: true,
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+        </svg>
+      ),
+    },
+    {
+      id: 'lending',
+      label: 'Lending',
+      isModal: true,
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3" />
+        </svg>
+      ),
+    },
+    {
+      id: 'staking',
+      label: 'Liquid Staking',
+      isModal: true,
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z" />
+        </svg>
+      ),
+    },
+    {
+      id: 'dca',
+      label: 'DCA',
+      isModal: true,
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" />
+          <path strokeLinecap="round" d="M12 6v6l4 2" />
+        </svg>
+      ),
+    },
   ];
 
-  const isActive = (href: string) => {
-    if (href === '/chat') return pathname === '/chat';
-    return pathname.startsWith(href);
+  const isActive = (item: NavItem) => {
+    if (item.isModal) {
+      if (item.id === 'swap') return showSwap;
+      if (item.id === 'lending') return showLending;
+      if (item.id === 'staking') return showStaking;
+      if (item.id === 'dca') return showDCA;
+      return false;
+    }
+    if (item.href === '/chat') return pathname === '/chat';
+    return item.href ? pathname.startsWith(item.href) : false;
   };
 
-  const handleNavigate = (href: string) => {
+  const handleNavClick = (item: NavItem) => {
     setIsSidebarOpen(false);
-    router.push(href);
+
+    if (item.isModal) {
+      // Close all modals first
+      setShowSwap(false);
+      setShowLending(false);
+      setShowStaking(false);
+      setShowDCA(false);
+
+      // Open the selected modal
+      if (item.id === 'swap') setShowSwap(true);
+      if (item.id === 'lending') setShowLending(true);
+      if (item.id === 'staking') setShowStaking(true);
+      if (item.id === 'dca') setShowDCA(true);
+    } else if (item.id === 'chat') {
+      // Always create new chat when clicking Chat
+      if (pathname === '/chat') {
+        // Already on chat page, dispatch event to create new chat
+        window.dispatchEvent(new CustomEvent('panorama:newchat'));
+      } else {
+        // Navigate to chat with new=true to create fresh chat
+        router.push('/chat?new=true');
+      }
+    } else if (item.href) {
+      router.push(item.href);
+    }
   };
 
   return (
@@ -69,16 +174,13 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
-        <div className="p-6 flex items-center justify-between lg:justify-center border-b border-white/5">
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <div className="absolute inset-0 blur-xl bg-cyan-500/30" />
-              <Image src={zicoBlue} alt="Panorama Block" width={32} height={32} className="relative drop-shadow-[0_0_14px_rgba(34,211,238,0.55)]" />
-            </div>
-            <span className="font-semibold tracking-tight text-white">Panorama Block</span>
+        <div className="p-6 flex items-center justify-center border-b border-white/5 relative">
+          <div className="relative">
+            <div className="absolute inset-0 blur-xl bg-cyan-500/30" />
+            <Image src={zicoBlue} alt="Panorama Block" width={40} height={40} className="relative drop-shadow-[0_0_14px_rgba(34,211,238,0.55)]" />
           </div>
           <button
-            className="lg:hidden p-2 text-pano-text-muted hover:text-pano-text-primary rounded-lg hover:bg-white/5 transition-colors"
+            className="lg:hidden absolute right-4 p-2 text-pano-text-muted hover:text-pano-text-primary rounded-lg hover:bg-white/5 transition-colors"
             onClick={() => setIsSidebarOpen(false)}
             aria-label="Close sidebar"
           >
@@ -90,31 +192,46 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
 
         <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto custom-scrollbar">
           {navItems.map((item) => {
-            const active = isActive(item.href);
+            const active = isActive(item);
             return (
-              <button
-                key={item.id}
-                onClick={() => handleNavigate(item.href)}
-                className={cn(
-                  'w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden',
-                  active
-                    ? 'text-white'
-                    : 'text-pano-text-muted hover:text-white/80 hover:bg-white/5'
+              <div key={item.id} className="relative flex items-center">
+                <button
+                  onClick={() => handleNavClick(item)}
+                  className={cn(
+                    'flex-1 flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden',
+                    active
+                      ? 'text-white'
+                      : 'text-pano-text-muted hover:text-white/80 hover:bg-white/5'
+                  )}
+                >
+                  {active && (
+                    <div className="absolute inset-0 bg-cyan-500/10 border border-cyan-500/20 rounded-xl shadow-[0_0_0_1px_rgba(34,211,238,0.22)]" />
+                  )}
+                  <span className={cn('relative z-10', active && 'text-cyan-400')}>{item.icon}</span>
+                  <span className={cn('relative z-10 text-sm font-semibold tracking-wide', active && 'text-glow')}>{item.label}</span>
+                  {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-cyan-500 rounded-r-full blur-[2px]" />}
+                </button>
+
+                {/* New Chat button - only for Chat item */}
+                {item.id === 'chat' && (
+                  <button
+                    onClick={() => handleNavClick(item)}
+                    className="relative z-10 p-2 ml-1 text-pano-text-muted hover:text-cyan-400 hover:bg-white/5 rounded-lg transition-colors"
+                    title="New Chat"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
+                    </svg>
+                  </button>
                 )}
-              >
-                {active && (
-                  <div className="absolute inset-0 bg-cyan-500/10 border border-cyan-500/20 rounded-xl shadow-[0_0_0_1px_rgba(34,211,238,0.22)]" />
-                )}
-                <span className={cn('relative z-10 text-sm font-semibold tracking-wide', active && 'text-glow')}>{item.label}</span>
-                {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-cyan-500 rounded-r-full blur-[2px]" />}
-              </button>
+              </div>
             );
           })}
         </nav>
       </aside>
 
       {/* Main area */}
-      <div className="flex-1 flex flex-col min-w-0 relative z-10 lg:ml-64">
+      <div className="flex-1 flex flex-col min-w-0 relative z-10">
         {/* Mobile Header */}
         <div className="lg:hidden h-16 flex items-center justify-between px-4 border-b border-white/5 bg-pano-bg-secondary/90 backdrop-blur-md sticky top-0 z-30">
           <div className="flex items-center gap-3">
@@ -133,12 +250,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
 
         {/* Desktop Header */}
         <header className="hidden lg:flex h-20 items-center justify-between px-10 border-b border-white/5 bg-[#08090c]/90 backdrop-blur-2xl sticky top-0 z-30">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shadow-[0_0_18px_rgba(34,211,238,0.22)]">
-              <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">{pageTitle}</h1>
-          </div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">{pageTitle}</h1>
           <div className="flex items-center gap-4">
             <NotificationCenter />
             <div className="relative">
@@ -170,7 +282,10 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                   </div>
                   <div className="grid grid-cols-1 gap-2">
                     <button
-                      onClick={() => setIsProfileOpen(false)}
+                      onClick={() => {
+                        setIsProfileOpen(false);
+                        router.push('/portfolio');
+                      }}
                       className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-left"
                     >
                       Wallet Dashboard
@@ -183,9 +298,16 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                     </button>
                   </div>
                   <div className="h-px bg-white/5" />
-                  <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left">
-                    Disconnect
-                  </button>
+                  <button
+                      onClick={() => {
+                        setIsProfileOpen(false);
+                        logout();
+                      }}
+                      disabled={isLoggingOut}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoggingOut ? 'Disconnecting...' : 'Disconnect'}
+                    </button>
                 </div>
               )}
             </div>
@@ -197,6 +319,14 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
           {children}
         </main>
       </div>
+
+      {/* Widget Modals */}
+      <AnimatePresence>
+        {showSwap && <SwapWidget onClose={() => setShowSwap(false)} />}
+        {showLending && <Lending onClose={() => setShowLending(false)} />}
+        {showStaking && <Staking onClose={() => setShowStaking(false)} />}
+        {showDCA && <DCA onClose={() => setShowDCA(false)} />}
+      </AnimatePresence>
     </div>
   );
 }

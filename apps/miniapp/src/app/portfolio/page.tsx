@@ -3,13 +3,14 @@
 import { motion } from "framer-motion";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NotificationCenter } from "@/components/NotificationCenter";
-import { 
-  ArrowUpRight, 
-  ArrowRightLeft, 
-  Landmark, 
-  Clock, 
-  PieChart, 
-  TrendingUp, 
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import {
+  ArrowUpRight,
+  ArrowRightLeft,
+  Landmark,
+  Clock,
+  PieChart,
+  TrendingUp,
   Wallet,
   ArrowLeft,
   Droplets,
@@ -29,17 +30,18 @@ export default function PortfolioPage() {
   const { assets, stats, loading, refresh } = usePortfolioData();
 
   return (
+    <ProtectedRoute>
     <div className="min-h-[100dvh] bg-[#050505] relative overflow-x-hidden flex flex-col text-foreground font-sans">
       {/* Ambient God Ray */}
       <div className="absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-green-500/10 via-black/5 to-transparent blur-3xl pointer-events-none z-0" />
       
       {/* Navigation Header */}
       <div className="relative z-20 p-6 flex justify-between items-center max-w-7xl mx-auto w-full">
-        <Link href="/dashboard" className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors group">
+        <Link href="/chat?new=true" className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors group">
             <div className="p-2 rounded-full bg-white/5 border border-white/10 group-hover:bg-white/10 transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </div>
-            <span className="font-medium">Back to Dashboard</span>
+            <span className="font-medium">Back to Chat</span>
         </Link>
         <div className="flex items-center gap-3">
            <NotificationCenter />
@@ -104,7 +106,7 @@ export default function PortfolioPage() {
                 </div>
               </div>
               <div className="relative z-10">
-                <div className="text-zinc-400 text-sm mb-1">Net Worth</div>
+                <div className="text-zinc-400 text-sm mb-1">Total Balance</div>
                 <div className="text-4xl md:text-5xl font-bold font-display text-white tracking-tight">
                   {stats.netWorth}
                 </div>
@@ -112,19 +114,25 @@ export default function PortfolioPage() {
             </GlassCard>
           </motion.div>
 
-          {/* Card 2: P&L (Small) */}
+          {/* Card 2: P&L (Small) - Coming Soon */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
-            <GlassCard className="h-full p-6 flex flex-col justify-center bg-[#0A0A0A]/60 hover:bg-[#0A0A0A]/80 transition-colors">
-              <div className="text-zinc-400 text-sm mb-2">P&L 24h</div>
-              <div className="text-3xl font-bold font-display text-green-400">
-                {stats.pnl24h}
+            <GlassCard className="h-full p-6 flex flex-col justify-center bg-[#0A0A0A]/60 relative overflow-hidden">
+              {/* Blocked Overlay */}
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-10 flex items-center justify-center">
+                <div className="px-3 py-1.5 bg-zinc-800/90 border border-white/10 rounded-full text-xs font-medium text-zinc-400">
+                  Coming Soon
+                </div>
               </div>
-              <div className="text-sm font-medium text-green-500/80 mt-1">
-                ({stats.pnl24hPercent})
+              <div className="text-zinc-500 text-sm mb-2">P&L 24h</div>
+              <div className="text-3xl font-bold font-display text-zinc-600">
+                +$0.00
+              </div>
+              <div className="text-sm font-medium text-zinc-600 mt-1">
+                (0.00%)
               </div>
             </GlassCard>
           </motion.div>
@@ -159,7 +167,7 @@ export default function PortfolioPage() {
           </div>
         </motion.div>
 
-        {/* Section 3: Detailed Positions Table */}
+        {/* Section 3: Detailed Positions */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -168,7 +176,63 @@ export default function PortfolioPage() {
         >
           <h2 className="text-xl font-bold text-white">Active Positions</h2>
 
-          <GlassCard className="overflow-hidden bg-[#0A0A0A]/60">
+          {/* Empty/Loading States */}
+          {assets.length === 0 && !loading && (
+            <GlassCard className="p-8 text-center text-zinc-500 text-sm bg-[#0A0A0A]/60">
+              {account ? 'No assets found. Try creating a wallet or bridging funds.' : 'Connect wallet to view portfolio.'}
+            </GlassCard>
+          )}
+          {loading && assets.length === 0 && (
+            <GlassCard className="p-8 text-center text-zinc-500 text-sm bg-[#0A0A0A]/60">
+              Scanning blockchain...
+            </GlassCard>
+          )}
+
+          {/* Mobile Cards View */}
+          <div className="md:hidden space-y-3">
+            {assets.map((asset) => (
+              <GlassCard
+                key={`mobile-${asset.network}-${asset.symbol}-${asset.address}`}
+                className="p-4 bg-[#0A0A0A]/60"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-inner",
+                      "bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10"
+                    )}>
+                      {asset.icon ? (
+                        <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        asset.symbol[0]
+                      )}
+                    </div>
+                    <div>
+                      <div className="font-medium text-white">{asset.name}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-zinc-500">{asset.symbol}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-400 border border-white/5">{asset.network}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-white font-mono font-semibold">{asset.value}</div>
+                    <div className="text-xs text-zinc-500">{asset.price}</div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                  <div className="flex items-center gap-1.5 text-zinc-400 text-xs">
+                    <Wallet className="w-3 h-3" />
+                    <span>{asset.protocol}</span>
+                  </div>
+                  <div className="text-zinc-300 font-mono text-sm">{asset.balance}</div>
+                </div>
+              </GlassCard>
+            ))}
+          </div>
+
+          {/* Desktop Table View */}
+          <GlassCard className="overflow-hidden bg-[#0A0A0A]/60 hidden md:block">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -181,22 +245,8 @@ export default function PortfolioPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {assets.length === 0 && !loading && (
-                     <tr>
-                        <td colSpan={5} className="p-8 text-center text-zinc-500 text-sm">
-                           {account ? 'No assets found. Try creating a wallet or bridging funds.' : 'Connect wallet to view portfolio.'}
-                        </td>
-                     </tr>
-                  )}
-                  {loading && assets.length === 0 && (
-                     <tr>
-                        <td colSpan={5} className="p-8 text-center text-zinc-500 text-sm">
-                           Scanning blockchain...
-                        </td>
-                     </tr>
-                  )}
                   {assets.map((asset) => (
-                    <tr key={`${asset.network}-${asset.symbol}-${asset.address}`} className="group hover:bg-white/5 transition-colors">
+                    <tr key={`desktop-${asset.network}-${asset.symbol}-${asset.address}`} className="group hover:bg-white/5 transition-colors">
                       <td className="p-4">
                         <div className="flex items-center gap-3">
                           <div className={cn(
@@ -218,9 +268,11 @@ export default function PortfolioPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="p-4 text-zinc-400 text-sm flex items-center gap-2">
-                        {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3" />}
-                        {asset.protocol}
+                      <td className="p-4 text-zinc-400 text-sm">
+                        <div className="flex items-center gap-2">
+                          {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3" />}
+                          {asset.protocol}
+                        </div>
                       </td>
                       <td className="p-4 text-zinc-300 font-mono text-sm">{asset.balance}</td>
                       <td className="p-4 text-white font-mono font-medium text-sm">{asset.value}</td>
@@ -235,5 +287,6 @@ export default function PortfolioPage() {
 
       </div>
     </div>
+    </ProtectedRoute>
   );
 }
