@@ -74,6 +74,18 @@ export default function PortfolioPage() {
              {loading ? <Loader2 className="w-4 h-4 text-primary animate-spin" /> : <Scan className="w-4 h-4 text-primary" />}
              {loading ? 'Scanning...' : 'Scan Wallet'}
           </motion.button>
+          
+          <Link href="/smart-wallets">
+            <motion.button
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
+              className="flex items-center gap-2 px-4 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-xl text-sm font-medium text-cyan-400 transition-colors"
+            >
+               <Wallet className="w-4 h-4" />
+               Smart Wallets
+            </motion.button>
+          </Link>
         </div>
 
         {/* Section 1: Bento Grid Header */}

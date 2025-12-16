@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp } from 'lucide-react';
+import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp, Plus, MessageSquare, Loader2 } from 'lucide-react';
 
 // Window.ethereum type declaration
 declare global {
@@ -33,6 +33,7 @@ import { SeniorAppShell } from '@/components/layout';
 import { SwapWidget } from '@/components/SwapWidget';
 import { Staking } from '@/components/Staking';
 import { Droplets } from 'lucide-react';
+import { cn } from '@/shared/lib/utils';
 
 
 interface Message {
@@ -49,6 +50,9 @@ interface Conversation {
 }
 
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
+const LAST_CONVERSATION_STORAGE_KEY = 'chat:lastConversationId';
+const CONVERSATION_CACHE_PREFIX = 'chat:cache';
+const CONVERSATION_LIST_KEY = 'chat:ids';
 const DEBUG_CHAT_FLAG = (process.env.NEXT_PUBLIC_MINIAPP_DEBUG_CHAT ?? process.env.MINIAPP_DEBUG_CHAT ?? '').toLowerCase();
 const DEBUG_CHAT_ENABLED = ['1', 'true', 'on', 'yes'].includes(DEBUG_CHAT_FLAG);
 
@@ -306,6 +310,83 @@ export default function ChatPage() {
     return 'User';
   }, [account?.address, getWalletAddress]);
 
+  const getConversationPreview = useCallback(
+    (conversationId: string) => {
+      const msgs = messagesByConversation[conversationId];
+      if (!msgs || msgs.length === 0) return 'Start chatting';
+      const last = msgs[msgs.length - 1];
+      const text = last.content || '';
+      if (text.length > 80) return `${text.slice(0, 80)}…`;
+      return text;
+    },
+    [messagesByConversation]
+  );
+
+  const buildMessageCacheKey = useCallback((userKey: string, conversationId: string) => {
+    return `${CONVERSATION_CACHE_PREFIX}:${userKey}:${conversationId}`;
+  }, []);
+
+  const saveMessagesToCache = useCallback((userKey: string, conversationId: string, messages: Message[]) => {
+    try {
+      const payload = messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp.toISOString(),
+        agentName: m.agentName ?? null,
+        metadata: m.metadata ?? null,
+      }));
+      localStorage.setItem(buildMessageCacheKey(userKey, conversationId), JSON.stringify(payload));
+    } catch (e) {
+      console.warn('[CHAT CACHE] Failed to persist messages', e);
+    }
+  }, [buildMessageCacheKey]);
+
+  const loadMessagesFromCache = useCallback((userKey: string, conversationId: string): Message[] | null => {
+    try {
+      const cached = localStorage.getItem(buildMessageCacheKey(userKey, conversationId));
+      if (!cached) return null;
+      const parsed = JSON.parse(cached) as Array<{ role: 'user' | 'assistant'; content: string; timestamp: string; agentName?: string | null; metadata?: Record<string, unknown> | null; }>;
+      return parsed.map((m) => ({
+        role: m.role,
+        content: m.content,
+        timestamp: new Date(m.timestamp),
+        agentName: m.agentName ?? null,
+        metadata: m.metadata ?? null,
+      }));
+    } catch (e) {
+      console.warn('[CHAT CACHE] Failed to read messages', e);
+      return null;
+    }
+  }, [buildMessageCacheKey]);
+
+  const clearCachedUserData = useCallback((userKey?: string) => {
+    if (!userKey) return;
+    try {
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith(`${CONVERSATION_CACHE_PREFIX}:${userKey}:`)) {
+          localStorage.removeItem(key);
+        }
+      });
+      const storedListKey = `${CONVERSATION_LIST_KEY}:${userKey}`;
+      localStorage.removeItem(storedListKey);
+      localStorage.removeItem(LAST_CONVERSATION_STORAGE_KEY);
+    } catch (e) {
+      console.warn('[CHAT CACHE] Failed to clear cached data', e);
+    }
+  }, []);
+
+  const loadCachedConversationIds = useCallback((userKey: string): string[] => {
+    try {
+      const cached = localStorage.getItem(`${CONVERSATION_LIST_KEY}:${userKey}`);
+      if (!cached) return [];
+      const parsed = JSON.parse(cached);
+      return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string' && id.length > 0) : [];
+    } catch (e) {
+      console.warn('[CHAT CACHE] Failed to read conversation list', e);
+      return [];
+    }
+  }, []);
+
   // Debug userId
   useEffect(() => {
     if (userId) {
@@ -326,9 +407,12 @@ export default function ChatPage() {
       setMessagesByConversation({});
       setActiveConversationId(null);
       setInitializationError(null);
+      try {
+        clearCachedUserData(bootstrapKeyRef.current);
+      } catch {}
       // Bootstrap will be triggered by the useEffect below
     }
-  }, [account?.address, getWalletAddress]);
+  }, [account?.address, getWalletAddress, clearCachedUserData]);
 
   const getAuthOptions = useCallback(() => {
     if (typeof window === 'undefined') return undefined;
@@ -345,6 +429,16 @@ export default function ChatPage() {
 
       try {
         const authOpts = getAuthOptions();
+
+        // First, try local cache for immediate render
+        const cached = loadMessagesFromCache(userKey, conversationId);
+        if (cached && cached.length > 0) {
+          setMessagesByConversation((prev) => ({
+            ...prev,
+            [conversationId]: cached,
+          }));
+        }
+
         const history = await agentsClient.fetchMessages(userId, conversationId, authOpts);
         if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) return;
 
@@ -363,10 +457,13 @@ export default function ChatPage() {
 
         setInitializationError(null);
         debug('messages:load:success', { conversationId, messages: mappedHistory.length });
+        // If backend returned empty but we have cached messages, keep cached
+        const finalHistory = mappedHistory.length === 0 && cached && cached.length > 0 ? cached : mappedHistory;
         setMessagesByConversation((prev) => ({
           ...prev,
-          [conversationId]: mappedHistory,
+          [conversationId]: finalHistory,
         }));
+        saveMessagesToCache(userKey, conversationId, finalHistory);
 
         setConversations((prev) =>
           prev.map((conversation) =>
@@ -390,7 +487,7 @@ export default function ChatPage() {
         debug('messages:load:complete', { conversationId });
       }
     },
-    [agentsClient, debug, getAuthOptions, userId]
+    [agentsClient, debug, getAuthOptions, userId, loadMessagesFromCache, saveMessagesToCache]
   );
 
   const scrollToBottom = () => {
@@ -451,6 +548,33 @@ export default function ChatPage() {
         }
 
         if (conversationsRequestFailed) {
+          // Try to recover from local cache when API is unreachable
+          const cachedIds = loadCachedConversationIds(userKey);
+          if (cachedIds.length > 0) {
+            debug('bootstrap:offlineRestore', { count: cachedIds.length });
+            const fallbackConversations: Conversation[] = cachedIds.map((id, index) => ({
+              id,
+              title: `Chat ${index + 1}`,
+            }));
+            setConversations(fallbackConversations);
+
+            const storedConversationId =
+              typeof window !== 'undefined' ? localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY) : null;
+            const targetConversationId = storedConversationId && cachedIds.includes(storedConversationId)
+              ? storedConversationId
+              : cachedIds[0];
+
+            if (targetConversationId) {
+              setMessagesByConversation((prev) => ({
+                ...prev,
+                [targetConversationId]: prev[targetConversationId] ?? loadMessagesFromCache(userKey, targetConversationId) ?? [],
+              }));
+              setActiveConversation(targetConversationId);
+              setInitializationError(null);
+              return;
+            }
+          }
+
           setConversations([]);
           setMessagesByConversation({});
           setActiveConversationId(null);
@@ -458,45 +582,68 @@ export default function ChatPage() {
           return;
         }
 
-        // Always create a new conversation on login/page load
-        let ensuredConversationId: string | null = null;
-        try {
-          ensuredConversationId = await agentsClient.createConversation(userId, authOpts);
-          if (ensuredConversationId) {
-            conversationIds = [ensuredConversationId, ...conversationIds.filter((id) => id !== ensuredConversationId)];
+        // Decide which conversation to open:
+        // 1) Previously active (stored locally) if it still exists
+        // 2) First conversation returned by the backend
+        // 3) If none exist, create a fresh one
+        let targetConversationId: string | null = null;
+        const storedConversationId =
+          typeof window !== 'undefined' ? localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY) : null;
+
+        if (conversationIds.length > 0) {
+          if (storedConversationId && conversationIds.includes(storedConversationId)) {
+            targetConversationId = storedConversationId;
+            debug('bootstrap:restoreStoredConversation', { targetConversationId });
+          } else {
+            targetConversationId = conversationIds[0];
+            debug('bootstrap:useFirstConversation', { targetConversationId });
           }
-          debug('bootstrap:createConversation', { ensuredConversationId });
-        } catch (error) {
-          console.error('Error creating initial conversation:', error);
-          debug('bootstrap:createConversation:error', {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
-            setInitializationError('We could not start a conversation. Please try again.');
+        } else {
+          try {
+            targetConversationId = await agentsClient.createConversation(userId, authOpts);
+            if (targetConversationId) {
+              conversationIds = [targetConversationId];
+            }
+            debug('bootstrap:createConversation', { targetConversationId });
+          } catch (error) {
+            console.error('Error creating initial conversation:', error);
+            debug('bootstrap:createConversation:error', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+            if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
+              setInitializationError('We could not start a conversation. Please try again.');
+            }
+            // Keep targetConversationId as null to avoid setting active conversation
           }
-          // Fallback to first existing conversation if creation fails
-          ensuredConversationId = conversationIds[0] ?? null;
         }
 
         if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) return;
 
         const mappedConversations: Conversation[] = conversationIds.length > 0
           ? conversationIds.map((id, index) => ({ id, title: `Chat ${index + 1}` }))
-          : ensuredConversationId
-            ? [{ id: ensuredConversationId, title: 'New Chat' }]
+          : targetConversationId
+            ? [{ id: targetConversationId, title: 'New Chat' }]
             : [];
 
         setConversations(mappedConversations);
+        try {
+          localStorage.setItem(`${CONVERSATION_LIST_KEY}:${userKey}`, JSON.stringify(conversationIds));
+        } catch (e) {
+          console.warn('[CHAT CACHE] Failed to store conversation list', e);
+        }
 
-        // Initialize messagesByConversation with empty array for new conversation
-        setMessagesByConversation(ensuredConversationId ? {
-          [ensuredConversationId]: []
-        } : {});
+        // Initialize messagesByConversation with empty array for target conversation
+        if (targetConversationId) {
+          setMessagesByConversation((prev) => ({
+            ...prev,
+            [targetConversationId as string]: prev[targetConversationId as string] ?? [],
+          }));
+        }
 
-        // Always use the new conversation (ensuredConversationId) as the active one
-        setActiveConversationId(ensuredConversationId);
+        // Use the selected/remembered conversation as the active one
+        setActiveConversation(targetConversationId);
         setInitializationError(null);
-        debug('bootstrap:targetSelected', { targetId: ensuredConversationId, totalConversations: mappedConversations.length });
+        debug('bootstrap:targetSelected', { targetId: targetConversationId, totalConversations: mappedConversations.length });
       } catch (error) {
         console.error('Error initialising chat:', error);
         debug('bootstrap:error', { error: error instanceof Error ? error.message : String(error) });
@@ -512,12 +659,21 @@ export default function ChatPage() {
     };
 
     initialise();
-  }, [agentsClient, authLoading, bootstrapVersion, debug, getAuthOptions, loadConversationMessages, userId]);
+  }, [agentsClient, authLoading, bootstrapVersion, debug, getAuthOptions, loadConversationMessages, loadCachedConversationIds, userId]);
 
   const retryBootstrap = useCallback(() => {
     debug('bootstrap:retry');
     setBootstrapVersion((prev) => prev + 1);
   }, [debug]);
+
+  const setActiveConversation = useCallback((conversationId: string | null) => {
+    setActiveConversationId(conversationId);
+    if (conversationId) {
+      try {
+        localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, conversationId);
+      } catch {}
+    }
+  }, []);
 
   const sendMessage = async (content?: string) => {
     const messageContent = content ?? inputMessage.trim();
@@ -537,6 +693,7 @@ export default function ChatPage() {
       ...prev,
       [conversationId]: updatedMessages,
     }));
+    saveMessagesToCache(userId ?? '__anonymous__', conversationId, updatedMessages);
 
     setConversations((prev) => {
       const ensureConversationExists = prev.some((conversation) => conversation.id === conversationId)
@@ -651,10 +808,12 @@ export default function ChatPage() {
 
       setMessagesByConversation((prev) => {
         const prevMessages = prev[conversationId] ?? [];
-        return {
+        const nextMessages = {
           ...prev,
           [conversationId]: [...prevMessages, assistantMessage],
         };
+        saveMessagesToCache(userId ?? '__anonymous__', conversationId, nextMessages[conversationId]);
+        return nextMessages;
       });
     } catch (error) {
       console.error('Error sending message:', error);
@@ -676,10 +835,12 @@ export default function ChatPage() {
       if (isMountedRef.current) {
         setMessagesByConversation((prev) => {
           const prevMessages = prev[conversationId] ?? [];
-          return {
+          const nextMessages = {
             ...prev,
             [conversationId]: [...prevMessages, fallbackMessage],
           };
+          saveMessagesToCache(userId ?? '__anonymous__', conversationId, nextMessages[conversationId]);
+          return nextMessages;
         });
       }
     } finally {
@@ -717,7 +878,7 @@ export default function ChatPage() {
         [newConversationId]: [],
       }));
       setInitializationError(null);
-      setActiveConversationId(newConversationId);
+      setActiveConversation(newConversationId);
       debug('conversation:create:success', { newConversationId });
     } catch (error) {
       console.error('Error creating chat conversation:', error);
@@ -736,7 +897,7 @@ export default function ChatPage() {
   };
 
   const handleSelectConversation = (conversationId: string) => {
-    setActiveConversationId(conversationId);
+    setActiveConversation(conversationId);
     setInitializationError(null);
     debug('conversation:select', { conversationId });
   };
@@ -854,6 +1015,7 @@ export default function ChatPage() {
   return (
     <ProtectedRoute>
       <TransactionSettingsProvider>
+        <React.Fragment>
         <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
         <GlobalLoader
           isLoading={isNavigating}
@@ -867,110 +1029,163 @@ export default function ChatPage() {
         />
 
         <SeniorAppShell pageTitle="Zico AI Agent">
-          <div className="flex flex-col h-full relative bg-black">
+          <div className="flex flex-col lg:flex-row gap-6 h-full relative bg-black">
             {/* Ambient God Ray */}
             <div className="absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-500/20 via-slate-900/5 to-black blur-3xl pointer-events-none z-0" />
 
-            <div className="flex-1 overflow-y-auto z-10 scrollbar-hide flex flex-col">
-              {initializing ? (
-                <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                  Loading your conversations...
-                </div>
-              ) : !activeConversationId ? (
-                <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                  Crie um novo chat para começar.
-                </div>
-              ) : initializationError && !hasMessages ? (
-                <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-center min-h-[50vh]">
-                  <p className="text-zinc-400">{initializationError}</p>
+            {/* Conversations Panel */}
+            <aside className="w-full lg:w-80 shrink-0 z-10">
+              <div className="bg-[#0b0d10]/90 border border-white/10 rounded-2xl p-4 shadow-[0_12px_40px_rgba(0,0,0,0.45)] space-y-4 backdrop-blur-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                    <MessageSquare className="w-4 h-4 text-cyan-400" />
+                    Conversations
+                  </div>
                   <button
-                    onClick={retryBootstrap}
-                    className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
+                    onClick={() => createNewChat()}
+                    disabled={isCreatingConversation}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black hover:bg-zinc-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    Try again
+                    {isCreatingConversation ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                    New
                   </button>
                 </div>
-              ) : isHistoryLoading && !hasMessages ? (
-                <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                  Loading conversation...
-                </div>
-              ) : !hasMessages ? (
-                <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
-                  <motion.div
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ duration: 0.8, ease: "easeOut" }}
-                    className="w-full max-w-3xl text-center flex flex-col items-center"
-                  >
-                    {/* Title & Subtitle */}
-                    <div className="space-y-2 md:space-y-4 relative mb-8">
-                      <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
-                        Hello, {displayName}.
-                      </h1>
-                      <p className="text-xl text-zinc-400 font-light">
-                        Zico is ready to navigate the chain.
-                      </p>
-                    </div>
 
-                    {/* Main Input Area */}
-                    <div className="relative group max-w-2xl mx-auto w-full my-8">
-                      <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                      <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 md:p-2 flex items-center gap-2 md:gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 group-focus-within:shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all duration-300">
-                        <div className="pl-2 md:pl-4 text-zinc-400">
-                          <Search className="w-5 h-5 md:w-6 md:h-6" />
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
+                  {initializing && (
+                    <div className="text-xs text-zinc-500 flex items-center gap-2 px-2">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+                    </div>
+                  )}
+                  {!initializing && conversations.length === 0 && (
+                    <div className="text-sm text-zinc-500 px-2">No chats yet. Start a new one.</div>
+                  )}
+                  {conversations.map((conversation) => {
+                    const isActive = activeConversationId === conversation.id;
+                    const preview = getConversationPreview(conversation.id);
+                    const isLoadingConv = loadingConversationId === conversation.id;
+                    return (
+                      <button
+                        key={conversation.id}
+                        onClick={() => handleSelectConversation(conversation.id)}
+                        className={cn(
+                          'w-full text-left rounded-xl border px-3 py-2 transition-all hover:border-cyan-500/40 hover:bg-white/5 flex flex-col gap-1',
+                          isActive ? 'border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_0_1px_rgba(34,211,238,0.15)]' : 'border-white/10 bg-white/5'
+                        )}
+                      >
+                        <div className="flex items-center justify-between text-xs text-zinc-400">
+                          <span className="font-semibold text-white">{conversation.title}</span>
+                          {isLoadingConv && <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />}
                         </div>
-                        <input
-                          type="text"
-                          value={inputMessage}
-                          onChange={(e) => setInputMessage(e.target.value)}
-                          onKeyPress={handleKeyPress}
-                          placeholder="Ask Zico anything..."
-                          disabled={isSending || !activeConversationId || initializing}
-                          className="flex-1 bg-transparent border-none outline-none text-base md:text-lg text-white placeholder:text-zinc-600 placeholder:text-sm md:placeholder:text-lg h-12 md:h-14"
-                        />
-                        <div className="flex items-center gap-2 pr-1 md:pr-2">
-                          <button className="hidden md:block p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
-                            <Paperclip className="w-5 h-5" />
-                          </button>
-                          <button
-                            onClick={() => sendMessage()}
-                            disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                            className="p-2 md:p-3 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
-                            aria-label="Send message"
-                          >
-                            <ArrowUp className="w-5 h-5" />
-                          </button>
+                        <p className="text-[11px] text-zinc-500 line-clamp-2">{preview}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </aside>
+
+            <div className="flex-1 min-w-0 flex flex-col overflow-hidden z-10">
+              <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col">
+                {initializing ? (
+                  <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                    Loading your conversations...
+                  </div>
+                ) : !activeConversationId ? (
+                  <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                    Crie um novo chat para começar.
+                  </div>
+                ) : initializationError && !hasMessages ? (
+                  <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-center min-h-[50vh]">
+                    <p className="text-zinc-400">{initializationError}</p>
+                    <button
+                      onClick={retryBootstrap}
+                      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : isHistoryLoading && !hasMessages ? (
+                  <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                    Loading conversation...
+                  </div>
+                ) : !hasMessages ? (
+                  <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
+                    <motion.div
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ duration: 0.8, ease: "easeOut" }}
+                      className="w-full max-w-3xl text-center flex flex-col items-center"
+                    >
+                      {/* Title & Subtitle */}
+                      <div className="space-y-2 md:space-y-4 relative mb-8">
+                        <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
+                          Hello, {displayName}.
+                        </h1>
+                        <p className="text-xl text-zinc-400 font-light">
+                          Zico is ready to navigate the chain.
+                        </p>
+                      </div>
+
+                      {/* Main Input Area */}
+                      <div className="relative group max-w-2xl mx-auto w-full my-8">
+                        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
+                        <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 md:p-2 flex items-center gap-2 md:gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 group-focus-within:shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all duration-300">
+                          <div className="pl-2 md:pl-4 text-zinc-400">
+                            <Search className="w-5 h-5 md:w-6 md:h-6" />
+                          </div>
+                          <input
+                            type="text"
+                            value={inputMessage}
+                            onChange={(e) => setInputMessage(e.target.value)}
+                            onKeyPress={handleKeyPress}
+                            placeholder="Ask Zico anything..."
+                            disabled={isSending || !activeConversationId || initializing}
+                            className="flex-1 bg-transparent border-none outline-none text-base md:text-lg text-white placeholder:text-zinc-600 placeholder:text-sm md:placeholder:text-lg h-12 md:h-14"
+                          />
+                          <div className="flex items-center gap-2 pr-1 md:pr-2">
+                            <button className="hidden md:block p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+                              <Paperclip className="w-5 h-5" />
+                            </button>
+                            <button
+                              onClick={() => sendMessage()}
+                              disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
+                              className="p-2 md:p-3 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
+                              aria-label="Send message"
+                            >
+                              <ArrowUp className="w-5 h-5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Suggestions Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
-                      {[
-                        { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
-                        { label: 'Supply 100 USDC on Avalanche', prompt: 'Supply 100 USDC on Avalanche' },
-                        { label: 'Stake 0.5 ETH with Lido', prompt: 'Stake 0.5 ETH with Lido' },
-                        { label: 'What is my portfolio worth?', prompt: 'What is my portfolio worth?' },
-                      ].map((item, i) => (
-                        <motion.button
-                          key={item.label}
-                          onClick={() => sendMessage(item.prompt)}
-                          disabled={isSending || !activeConversationId}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.2 + (i * 0.1) }}
-                          className="flex items-center gap-3 p-3 md:p-4 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md hover:bg-white/10 hover:border-cyan-400/50 transition-all duration-300 group text-left shadow-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.1)] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <Sparkles className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400 transition-colors shrink-0" />
-                          <span className="text-sm text-zinc-400 group-hover:text-zinc-200">{item.label}</span>
-                        </motion.button>
-                      ))}
-                    </div>
-                  </motion.div>
-                </div>
-              ) : (
-                <div className="max-w-3xl mx-auto w-full pt-8 pb-4 px-4 space-y-8">
-                  {activeMessages.map((message, index) => {
+                      {/* Suggestions Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
+                        {[
+                          { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
+                          { label: 'Supply 100 USDC on Avalanche', prompt: 'Supply 100 USDC on Avalanche' },
+                          { label: 'Stake 0.5 ETH with Lido', prompt: 'Stake 0.5 ETH with Lido' },
+                          { label: 'What is my portfolio worth?', prompt: 'What is my portfolio worth?' },
+                        ].map((item, i) => (
+                          <motion.button
+                            key={item.label}
+                            onClick={() => sendMessage(item.prompt)}
+                            disabled={isSending || !activeConversationId}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.2 + (i * 0.1) }}
+                            className="flex items-center gap-3 p-3 md:p-4 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md hover:bg-white/10 hover:border-cyan-400/50 transition-all duration-300 group text-left shadow-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.1)] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Sparkles className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400 transition-colors shrink-0" />
+                            <span className="text-sm text-zinc-400 group-hover:text-zinc-200">{item.label}</span>
+                          </motion.button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  </div>
+                ) : (
+                  <div className="max-w-3xl mx-auto w-full pt-8 pb-4 px-4 space-y-8">
+                    {activeMessages.map((message, index) => {
                     const timestampValue = message.timestamp.getTime();
                     const hasValidTime = !Number.isNaN(timestampValue);
                     const timeLabel = hasValidTime
@@ -1348,50 +1563,51 @@ export default function ChatPage() {
           </div>
         </SeniorAppShell>
 
-      {/* Lending Modal */}
-      <AnimatePresence>
-        {lendingModalOpen && (
-          <Lending
-            onClose={() => {
-              setLendingModalOpen(false);
-              setCurrentLendingMetadata(null);
-            }}
-            initialAmount={currentLendingMetadata?.amount as string | undefined}
-            initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
-            initialAction={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
-          />
-        )}
-      </AnimatePresence>
+        {/* Lending Modal */}
+        <AnimatePresence>
+          {lendingModalOpen && (
+            <Lending
+              onClose={() => {
+                setLendingModalOpen(false);
+                setCurrentLendingMetadata(null);
+              }}
+              initialAmount={currentLendingMetadata?.amount as string | undefined}
+              initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
+              initialAction={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
+            />
+          )}
+        </AnimatePresence>
 
-      {/* SwapWidget Modal */}
-      <AnimatePresence>
-        {showSwapWidget && swapWidgetTokens && (
-          <SwapWidget
-            onClose={() => {
-              setShowSwapWidget(false);
-              setSwapWidgetTokens(null);
-            }}
-            initialFromToken={swapWidgetTokens.from}
-            initialToToken={swapWidgetTokens.to}
-            initialAmount={swapWidgetTokens.amount}
-          />
-        )}
-      </AnimatePresence>
+        {/* SwapWidget Modal */}
+        <AnimatePresence>
+          {showSwapWidget && swapWidgetTokens && (
+            <SwapWidget
+              onClose={() => {
+                setShowSwapWidget(false);
+                setSwapWidgetTokens(null);
+              }}
+              initialFromToken={swapWidgetTokens.from}
+              initialToToken={swapWidgetTokens.to}
+              initialAmount={swapWidgetTokens.amount}
+            />
+          )}
+        </AnimatePresence>
 
-      {/* Staking Modal */}
-      <AnimatePresence>
-        {showStakingWidget && (
-          <Staking
-            onClose={() => {
-              setShowStakingWidget(false);
-              setCurrentStakingMetadata(null);
-            }}
-            initialAmount={currentStakingMetadata?.amount as string | undefined}
-            initialToken={currentStakingMetadata?.token as string | undefined}
-          />
-        )}
-      </AnimatePresence>
-      </TransactionSettingsProvider>
-    </ProtectedRoute>
+        {/* Staking Modal */}
+        <AnimatePresence>
+          {showStakingWidget && (
+            <Staking
+              onClose={() => {
+                setShowStakingWidget(false);
+                setCurrentStakingMetadata(null);
+              }}
+              initialAmount={currentStakingMetadata?.amount as string | undefined}
+              initialToken={currentStakingMetadata?.token as string | undefined}
+            />
+          )}
+        </AnimatePresence>
+      </React.Fragment>
+    </TransactionSettingsProvider>
+  </ProtectedRoute>
   );
 }

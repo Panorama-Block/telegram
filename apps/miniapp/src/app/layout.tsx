@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { ClientProviders } from "./providers";
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-jetbrains",
+  display: "swap",
+});
+
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  variable: "--font-jakarta",
   display: "swap",
 });
 
@@ -158,7 +158,7 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://api.coingecko.com" />
         <link rel="dns-prefetch" href="https://api.1inch.io" />
       </head>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} h-full bg-pano-bg-primary text-pano-text-primary antialiased overflow-x-hidden`}>
+      <body className={`${jetbrainsMono.variable} ${plusJakarta.variable} h-full bg-pano-bg-primary text-pano-text-primary antialiased overflow-x-hidden`}>
         <ClientProviders>
           {children}
         </ClientProviders>

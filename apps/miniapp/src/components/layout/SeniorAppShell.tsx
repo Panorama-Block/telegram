@@ -52,7 +52,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   const navItems: NavItem[] = [
     {
       id: 'chat',
-      label: 'Chat',
+      label: 'New Chat',
       href: '/chat',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -66,8 +66,8 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       href: '/portfolio',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <path strokeLinecap="round" d="M12 6v6l4 2" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h18M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M7 11h1m4 0h5M7 15h1m4 0h5M7 19h1m4 0h5" />
+          <rect x="4" y="7" width="16" height="14" rx="2" ry="2" />
         </svg>
       ),
     },
@@ -107,8 +107,8 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       isModal: true,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <path strokeLinecap="round" d="M12 6v6l4 2" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 17.5 9.5 12l3 3 7.5-7.5" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.5 7.5H20v4.5" />
         </svg>
       ),
     },
@@ -191,10 +191,12 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
         </div>
 
         <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto custom-scrollbar">
-          {navItems.map((item) => {
+          {navItems.map((item, idx) => {
             const active = isActive(item);
+            const needsDivider = idx > 0 && navItems[idx - 1].id === 'chat';
             return (
-              <div key={item.id} className="relative flex items-center">
+              <div key={item.id} className="relative flex flex-col">
+                {needsDivider && <div className="my-2 h-px bg-white/10" />}
                 <button
                   onClick={() => handleNavClick(item)}
                   className={cn(

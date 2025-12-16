@@ -124,9 +124,9 @@
   --color-ring: hsl(var(--pano-primary));
 
   /* Typography */
-  --font-sans: var(--font-inter), 'SuisseIntl', system-ui, -apple-system, sans-serif;
-  --font-display: 'AsgardTrial', serif;
-  --font-mono: var(--font-jetbrains), 'SF Mono', 'Monaco', 'Consolas', monospace;
+  --font-sans: var(--font-jetbrains), 'SuisseIntl', system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-jakarta), 'AsgardTrial', 'SuisseIntl', system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), 'SuisseIntl', 'SF Mono', 'Monaco', 'Consolas', monospace;
 
   /* Spacing Scale */
   --spacing-0: 0px;
@@ -257,7 +257,12 @@ html, body {
 body {
   background: #000000;
   color: var(--foreground);
-  font-family: 'SuisseIntl', Arial, Helvetica, sans-serif;
+  font-family: 'JetBrains Mono', 'SuisseIntl', Arial, Helvetica, monospace;
+}
+
+h1, h2, h3, .font-display, .font-heading {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
 }
 
 /* Panorama Block Signature Background - Solid Black */
