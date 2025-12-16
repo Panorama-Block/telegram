@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { AuthProvider } from '@/shared/contexts/AuthContext';
+import { ChatProvider } from '@/shared/contexts/ChatContext';
 import { TransactionSettingsProvider } from '@/context/TransactionSettingsContext';
 import { AuthGuard } from '@/shared/ui/AuthGuard';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
@@ -127,37 +128,39 @@ export function ClientProviders({ children }: ClientProvidersProps) {
             <AuthProvider>
               <TransactionSettingsProvider>
                 <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
-                  <thirdwebReact.ThirdwebProvider>
+                <thirdwebReact.ThirdwebProvider>
                     {AutoConnectHandler && <AutoConnectHandler />}
                     {WalletSessionGuard && <WalletSessionGuard />}
-                    <AuthGuard>
-                      {children}
-                      {/* PWA Components */}
-                      {PWAInstallPrompt && (
-                        <PWAInstallPrompt
-                          variant="toast"
-                          position="bottom"
-                          showOnMobile={true}
-                          showOnDesktop={true}
-                          autoShow={true}
-                          delay={5000}
-                        />
-                      )}
-                      {PWAUpdateNotification && (
-                        <PWAUpdateNotification
-                          variant="toast"
-                          position="bottom"
-                          autoUpdate={false}
-                        />
-                      )}
-                      {OfflineIndicator && (
-                        <OfflineIndicator
-                          variant="banner"
-                          position="top"
-                          showOnlineStatus={true}
-                        />
-                      )}
-                    </AuthGuard>
+                    <ChatProvider>
+                      <AuthGuard>
+                        {children}
+                        {/* PWA Components */}
+                        {PWAInstallPrompt && (
+                          <PWAInstallPrompt
+                            variant="toast"
+                            position="bottom"
+                            showOnMobile={true}
+                            showOnDesktop={true}
+                            autoShow={true}
+                            delay={5000}
+                          />
+                        )}
+                        {PWAUpdateNotification && (
+                          <PWAUpdateNotification
+                            variant="toast"
+                            position="bottom"
+                            autoUpdate={false}
+                          />
+                        )}
+                        {OfflineIndicator && (
+                          <OfflineIndicator
+                            variant="banner"
+                            position="top"
+                            showOnlineStatus={true}
+                          />
+                        )}
+                      </AuthGuard>
+                    </ChatProvider>
                   </thirdwebReact.ThirdwebProvider>
                 </tonConnect.TonConnectUIProvider>
               </TransactionSettingsProvider>

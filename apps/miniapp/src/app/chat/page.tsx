@@ -204,6 +204,8 @@ export default function ChatPage() {
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [navigationType, setNavigationType] = useState<'swap' | 'lending' | 'staking' | 'dca' | null>(null);
+  // Pending new chat state - when true, we show welcome screen without creating backend conversation
+  const [pendingNewChat, setPendingNewChat] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
   const { user, isLoading: authLoading } = useAuth();
@@ -299,9 +301,16 @@ export default function ChatPage() {
   // CRITICAL: Use the currently connected wallet address as the primary userId
   // This ensures each user sees only their own chats, even on shared devices
   const userId = account?.address?.toLowerCase() || getWalletAddress() || (user?.id ? String(user.id) : undefined);
-  const activeMessages = activeConversationId ? (messagesByConversation[activeConversationId] ?? []) : [];
+  
+  // Filter out disclaimer messages from the backend
+  const DISCLAIMER_TEXT = 'This highly experimental chatbot is not intended for making important decisions';
+  const rawMessages = activeConversationId ? (messagesByConversation[activeConversationId] ?? []) : [];
+  const activeMessages = rawMessages.filter((msg) => !msg.content.includes(DISCLAIMER_TEXT));
+  
   const isHistoryLoading = loadingConversationId === activeConversationId;
-  const hasMessages = activeMessages.length > 0;
+  // When pendingNewChat is true, we're in "new chat" mode without a backend conversation
+  // In this case, always show the welcome screen (hasMessages = false)
+  const hasMessages = pendingNewChat ? false : activeMessages.length > 0;
   const displayName = useMemo(() => {
     const address = account?.address || getWalletAddress();
     if (address) {
@@ -677,9 +686,41 @@ export default function ChatPage() {
 
   const sendMessage = async (content?: string) => {
     const messageContent = content ?? inputMessage.trim();
-    if (!messageContent || isSending || !activeConversationId) return;
+    if (!messageContent || isSending) return;
 
-    const conversationId = activeConversationId;
+    // Handle pending new chat - create conversation on first message
+    let conversationId = activeConversationId;
+    if (pendingNewChat || !conversationId) {
+      console.log('[CHAT] Creating conversation on first message...');
+      setIsSending(true);
+      try {
+        const newConversationId = await agentsClient.createConversation(userId, getAuthOptions());
+        if (!newConversationId || !isMountedRef.current) {
+          setIsSending(false);
+          return;
+        }
+        
+        conversationId = newConversationId;
+        const newConversation: Conversation = {
+          id: newConversationId,
+          title: 'New Chat',
+        };
+
+        setConversations((prev) => [newConversation, ...prev.filter((c) => c.id !== newConversationId)]);
+        setMessagesByConversation((prev) => ({
+          ...prev,
+          [newConversationId]: [],
+        }));
+        setActiveConversation(newConversationId);
+        setPendingNewChat(false);
+        console.log('[CHAT] Created conversation:', newConversationId);
+      } catch (error) {
+        console.error('[CHAT] Error creating conversation:', error);
+        setIsSending(false);
+        return;
+      }
+    }
+
     const userMessage: Message = {
       role: 'user',
       content: messageContent,
@@ -902,35 +943,75 @@ export default function ChatPage() {
     debug('conversation:select', { conversationId });
   };
 
-  // Handle ?new=true query parameter to create new chat
+  // Handle ?new=true query parameter to show new chat welcome screen
   const newChatRequested = searchParams.get('new') === 'true';
   const newChatTriggeredRef = useRef(false);
 
   useEffect(() => {
-    if (newChatRequested && !initializing && !isCreatingConversation && userId && !newChatTriggeredRef.current) {
-      console.log('[CHAT] Creating new chat from URL param...');
+    if (newChatRequested && !initializing && userId && !newChatTriggeredRef.current) {
+      console.log('[CHAT] Setting pending new chat from URL param...');
       newChatTriggeredRef.current = true;
       router.replace('/chat', { scroll: false });
-      createNewChat();
+      // Don't create conversation - just show welcome screen
+      setPendingNewChat(true);
+      setActiveConversationId(null);
     }
 
     if (!newChatRequested) {
       newChatTriggeredRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newChatRequested, initializing, isCreatingConversation, userId]);
+  }, [newChatRequested, initializing, userId]);
 
   // Listen for custom event from sidebar "+" button
   useEffect(() => {
-    const handleNewChatEvent = () => {
+    const handleNewChatEvent = (event: Event) => {
       console.log('[CHAT] New chat event received');
-      if (!initializing && !isCreatingConversation && userId) {
-        createNewChat();
+      const customEvent = event as CustomEvent<{ pending?: boolean; conversationId?: string }>;
+      
+      if (customEvent.detail?.pending) {
+        // Show welcome screen without creating backend conversation
+        // Conversation will be created when user sends first message
+        console.log('[CHAT] Setting pending new chat mode');
+        setPendingNewChat(true);
+        setActiveConversationId(null); // Clear active conversation to show welcome
+        setInitializationError(null);
+      } else if (customEvent.detail?.conversationId) {
+        // Legacy: Conversation was already created, set it up
+        const newConversationId = customEvent.detail.conversationId;
+        console.log('[CHAT] Setting up new conversation:', newConversationId);
+        
+        const newConversation: Conversation = {
+          id: newConversationId,
+          title: 'New Chat',
+        };
+
+        setConversations((prev) => [newConversation, ...prev.filter((c) => c.id !== newConversationId)]);
+        setMessagesByConversation((prev) => ({
+          ...prev,
+          [newConversationId]: [],
+        }));
+        setInitializationError(null);
+        setPendingNewChat(false);
+        setActiveConversation(newConversationId);
+      }
+    };
+
+    const handleSelectChatEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<{ conversationId: string }>;
+      console.log('[CHAT] Select chat event received:', customEvent.detail?.conversationId);
+      if (customEvent.detail?.conversationId) {
+        setPendingNewChat(false); // Exit pending mode when selecting existing chat
+        handleSelectConversation(customEvent.detail.conversationId);
       }
     };
 
     window.addEventListener('panorama:newchat', handleNewChatEvent);
-    return () => window.removeEventListener('panorama:newchat', handleNewChatEvent);
+    window.addEventListener('panorama:selectchat', handleSelectChatEvent);
+    return () => {
+      window.removeEventListener('panorama:newchat', handleNewChatEvent);
+      window.removeEventListener('panorama:selectchat', handleSelectChatEvent);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initializing, isCreatingConversation, userId]);
 
@@ -1029,61 +1110,9 @@ export default function ChatPage() {
         />
 
         <SeniorAppShell pageTitle="Zico AI Agent">
-          <div className="flex flex-col lg:flex-row gap-6 h-full relative bg-black">
+          <div className="flex flex-col h-full relative bg-black">
             {/* Ambient God Ray */}
             <div className="absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-500/20 via-slate-900/5 to-black blur-3xl pointer-events-none z-0" />
-
-            {/* Conversations Panel */}
-            <aside className="w-full lg:w-80 shrink-0 z-10">
-              <div className="bg-[#0b0d10]/90 border border-white/10 rounded-2xl p-4 shadow-[0_12px_40px_rgba(0,0,0,0.45)] space-y-4 backdrop-blur-xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                    <MessageSquare className="w-4 h-4 text-cyan-400" />
-                    Conversations
-                  </div>
-                  <button
-                    onClick={() => createNewChat()}
-                    disabled={isCreatingConversation}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black hover:bg-zinc-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {isCreatingConversation ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-                    New
-                  </button>
-                </div>
-
-                <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
-                  {initializing && (
-                    <div className="text-xs text-zinc-500 flex items-center gap-2 px-2">
-                      <Loader2 className="w-3 h-3 animate-spin" /> Loading...
-                    </div>
-                  )}
-                  {!initializing && conversations.length === 0 && (
-                    <div className="text-sm text-zinc-500 px-2">No chats yet. Start a new one.</div>
-                  )}
-                  {conversations.map((conversation) => {
-                    const isActive = activeConversationId === conversation.id;
-                    const preview = getConversationPreview(conversation.id);
-                    const isLoadingConv = loadingConversationId === conversation.id;
-                    return (
-                      <button
-                        key={conversation.id}
-                        onClick={() => handleSelectConversation(conversation.id)}
-                        className={cn(
-                          'w-full text-left rounded-xl border px-3 py-2 transition-all hover:border-cyan-500/40 hover:bg-white/5 flex flex-col gap-1',
-                          isActive ? 'border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_0_1px_rgba(34,211,238,0.15)]' : 'border-white/10 bg-white/5'
-                        )}
-                      >
-                        <div className="flex items-center justify-between text-xs text-zinc-400">
-                          <span className="font-semibold text-white">{conversation.title}</span>
-                          {isLoadingConv && <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />}
-                        </div>
-                        <p className="text-[11px] text-zinc-500 line-clamp-2">{preview}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </aside>
 
             <div className="flex-1 min-w-0 flex flex-col overflow-hidden z-10">
               <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col">
@@ -1091,11 +1120,11 @@ export default function ChatPage() {
                   <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
                     Loading your conversations...
                   </div>
-                ) : !activeConversationId ? (
+                ) : !activeConversationId && !pendingNewChat ? (
                   <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
                     Crie um novo chat para começar.
                   </div>
-                ) : initializationError && !hasMessages ? (
+                ) : initializationError && !hasMessages && !pendingNewChat ? (
                   <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-center min-h-[50vh]">
                     <p className="text-zinc-400">{initializationError}</p>
                     <button
@@ -1105,11 +1134,11 @@ export default function ChatPage() {
                       Try again
                     </button>
                   </div>
-                ) : isHistoryLoading && !hasMessages ? (
+                ) : isHistoryLoading && !hasMessages && !pendingNewChat ? (
                   <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
                     Loading conversation...
                   </div>
-                ) : !hasMessages ? (
+                ) : !hasMessages || pendingNewChat ? (
                   <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
                     <motion.div
                       initial={{ y: 20, opacity: 0 }}
@@ -1140,7 +1169,7 @@ export default function ChatPage() {
                             onChange={(e) => setInputMessage(e.target.value)}
                             onKeyPress={handleKeyPress}
                             placeholder="Ask Zico anything..."
-                            disabled={isSending || !activeConversationId || initializing}
+                            disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
                             className="flex-1 bg-transparent border-none outline-none text-base md:text-lg text-white placeholder:text-zinc-600 placeholder:text-sm md:placeholder:text-lg h-12 md:h-14"
                           />
                           <div className="flex items-center gap-2 pr-1 md:pr-2">
@@ -1149,7 +1178,7 @@ export default function ChatPage() {
                             </button>
                             <button
                               onClick={() => sendMessage()}
-                              disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
+                              disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing || !inputMessage.trim()}
                               className="p-2 md:p-3 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
                               aria-label="Send message"
                             >
@@ -1170,7 +1199,7 @@ export default function ChatPage() {
                           <motion.button
                             key={item.label}
                             onClick={() => sendMessage(item.prompt)}
-                            disabled={isSending || !activeConversationId}
+                            disabled={isSending || (!activeConversationId && !pendingNewChat)}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.2 + (i * 0.1) }}
