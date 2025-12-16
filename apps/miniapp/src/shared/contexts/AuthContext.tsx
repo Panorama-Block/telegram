@@ -35,6 +35,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Error parsing stored user:', error);
         localStorage.removeItem('telegram_user');
       }
+    } else {
+      // Fallback: decode authToken if available to recover a user id
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        try {
+          const [, payloadB64] = token.split('.');
+          if (payloadB64) {
+            const decoded = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')));
+            const id = decoded.sub || decoded.userId || decoded.id;
+            if (id) {
+              const recoveredUser: TelegramUser = {
+                id: Number(id) || id,
+                first_name: decoded.name || 'User',
+                username: decoded.username || decoded.address || undefined
+              };
+              setUser(recoveredUser);
+              localStorage.setItem('telegram_user', JSON.stringify(recoveredUser));
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to decode authToken for user recovery', err);
+        }
+      }
     }
     setIsLoading(false);
   }, []);

@@ -21,7 +21,7 @@ export const networks: Network[] = [
     name: 'TON',
     nativeCurrency: { symbol: 'TON', address: 'ton', icon: 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png', decimals: 9, name: 'Toncoin' },
     tokens: [
-      { symbol: 'TON', address: 'ton', icon: 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png', decimals: 9, name: 'Toncoin' },
+      { symbol: 'USDT', address: 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixq3zzjXVmon_e', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
     ],
   },
   {

@@ -7,20 +7,22 @@ import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
 import UniswapIcon from '../../../public/icons/uniswap.svg';
 import AvalancheIcon from '../../../public/icons/Avalanche_Blockchain_Logo.svg';
+import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
 import { networks, Token, TON_CHAIN_ID } from '@/features/swap/tokens';
-import { swapApi, SwapApiError } from '@/features/swap/api';
+import { swapApi } from '@/features/swap/api';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl } from '@/features/swap/utils';
-import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
-import { useActiveAccount, PayEmbed, useSwitchActiveWalletChain } from 'thirdweb/react';
+import { useActiveAccount, PayEmbed, useSwitchActiveWalletChain, ConnectButton } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
+import { beginCell, toNano, Address as TonAddress } from '@ton/core';
+import { getUserJettonWallet, toUSDT } from '@/lib/ton-helpers';
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx } from '@/features/swap/types';
+import { inAppWallet } from 'thirdweb/wallets';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { useWalletIdentity } from '@/shared/contexts/WalletIdentityContext';
-import { useTacQuote } from '@/features/tac/hooks';
-import { useTacOperation } from '@/features/tac/useTacOperation';
 import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
+import { bridgeApi } from '@/features/swap/bridgeApi';
 
 
 interface TokenSelectorProps {
@@ -103,11 +105,10 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
             <div className="flex items-center gap-2 mt-4 overflow-x-auto pb-2 scrollbar-hide">
               <button
                 onClick={() => setSelectedChain(null)}
-                className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 ${
-                  selectedChain === null
-                    ? 'bg-white text-black'
-                    : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
-                }`}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 ${selectedChain === null
+                  ? 'bg-white text-black'
+                  : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
+                  }`}
               >
                 All Chains
               </button>
@@ -115,11 +116,10 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
                 <button
                   key={network.chainId}
                   onClick={() => setSelectedChain(network.chainId)}
-                  className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 ${
-                    selectedChain === network.chainId
-                      ? 'bg-white text-black'
-                      : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
-                  }`}
+                  className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 ${selectedChain === network.chainId
+                    ? 'bg-white text-black'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
+                    }`}
                 >
                   {network.name}
                 </button>
@@ -201,15 +201,28 @@ function getAddressFromToken(): string | null {
   }
 }
 
+function logBridgeDebug(step: string, payload?: unknown) {
+  const timestamp = new Date().toISOString();
+  try {
+    console.info(`[Bridge][${timestamp}] ${step}`, payload);
+  } catch {
+    console.info(`[Bridge][${timestamp}] ${step}`);
+  }
+}
+
 export default function SwapPage() {
   const router = useRouter();
   const account = useActiveAccount();
   const { chainType, address, isTelegram } = useWalletIdentity();
-  const { getQuote: getTacQuote, loading: tacLoading, error: tacError, quote: tacQuote } = useTacQuote();
-  const { startOperation: startTacOperation, loading: tacOpLoading, error: tacOpError, operation: tacOp } = useTacOperation();
+  const [tonConnectUI] = useTonConnectUI();
+  const tonWallet = useTonWallet();
   const switchChain = useSwitchActiveWalletChain();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
+  const wallets = useMemo(
+    () => client ? [inAppWallet({ auth: { options: ['telegram'], mode: 'popup' } })] : [],
+    [client]
+  );
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const userAddress = localStorage.getItem('userAddress');
@@ -232,14 +245,21 @@ export default function SwapPage() {
   // Quote and swap states
   const [quote, setQuote] = useState<any | null>(null);
   const [quoting, setQuoting] = useState(false);
+  const [bridgeQuoting, setBridgeQuoting] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [tacResult, setTacResult] = useState<any | null>(null);
+  const [bridgeQuote, setBridgeQuote] = useState<any | null>(null);
+  const [bridgeStatus, setBridgeStatus] = useState<string | null>(null);
+  const [bridgeTransaction, setBridgeTransaction] = useState<any | null>(null);
+  const [bridgePayload, setBridgePayload] = useState<any | null>(null);
+  const [bridgeSendStatus, setBridgeSendStatus] = useState<string | null>(null);
+  const [sendingBridgeTx, setSendingBridgeTx] = useState(false);
   const [showFundWallet, setShowFundWallet] = useState(false);
   const [txHashes, setTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
   const quoteRequestRef = useRef(0);
+  const bridgePollRef = useRef<NodeJS.Timeout | null>(null);
 
   // Swap flow states
   const [swapFlowStep, setSwapFlowStep] = useState<'routing' | 'details' | 'confirm' | null>(null);
@@ -250,9 +270,9 @@ export default function SwapPage() {
   const isAvalancheSwap = useMemo(() => {
     const isAvalancheChain = fromChainId === 43114 || toChainId === 43114;
     const isAvaxToken = sellToken?.symbol?.toUpperCase() === 'AVAX' ||
-                        sellToken?.symbol?.toUpperCase() === 'WAVAX' ||
-                        buyToken?.symbol?.toUpperCase() === 'AVAX' ||
-                        buyToken?.symbol?.toUpperCase() === 'WAVAX';
+      sellToken?.symbol?.toUpperCase() === 'WAVAX' ||
+      buyToken?.symbol?.toUpperCase() === 'AVAX' ||
+      buyToken?.symbol?.toUpperCase() === 'WAVAX';
     return isAvalancheChain || isAvaxToken;
   }, [fromChainId, toChainId, sellToken, buyToken]);
 
@@ -260,6 +280,10 @@ export default function SwapPage() {
   const canQuote = useMemo(() => {
     return Boolean(sellToken && buyToken && sellAmount && Number(sellAmount) > 0);
   }, [sellToken, buyToken, sellAmount]);
+  const requiresEvmWallet = useMemo(
+    () => chainType === 'ton' && sellToken?.symbol?.toUpperCase() === 'USDT',
+    [chainType, sellToken]
+  );
 
   // Auto-quote effect
   useEffect(() => {
@@ -362,27 +386,447 @@ export default function SwapPage() {
     return out;
   }
 
+  function looksLikeTonAddress(addr: string | undefined | null): boolean {
+    if (!addr || typeof addr !== 'string') return false;
+    // Ton user-friendly addresses typically start with EQ/UQ (base64url). Raw hex (0x...) is invalid for TonConnect send.
+    if (/^0x/i.test(addr)) return false;
+    return /^E[Qq]|^U[Qq]/.test(addr);
+  }
+
+  function extractTonBridgePayload(tx: any) {
+    const payload =
+      tx?.transaction?.payload ||
+      tx?.transactionPayload ||
+      tx?.payload ||
+      tx?.metadata?.transactionPayload ||
+      tx?.data?.transactionPayload ||
+      tx?.data?.bridge?.metadata?.transactionPayload ||
+      tx?.bridge?.metadata?.transactionPayload ||
+      null;
+
+    if (payload) return payload;
+
+    const depositAddr =
+      tx?.transaction?.depositAddress ||
+      tx?.depositAddress ||
+      tx?.transaction?.to;
+
+    if (depositAddr && looksLikeTonAddress(depositAddr)) {
+      return {
+        to: depositAddr,
+        value: undefined,
+        body: null,
+      };
+    }
+
+    return null;
+  }
+
+  function extractBridgeComment(tx: any, fallbackSwapId?: string): string | null {
+    const txData = tx?.transaction || tx;
+    const payload =
+      txData?.transactionPayload ||
+      txData?.payload ||
+      tx?.transactionPayload ||
+      tx?.payload;
+
+    const swapId =
+      fallbackSwapId ||
+      txData?.swapId ||
+      tx?.swapId ||
+      txData?.id ||
+      tx?.id;
+
+    const parseCallData = (raw: any): any => {
+      if (!raw) return null;
+      if (typeof raw === 'string') {
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return null;
+        }
+      }
+      return raw;
+    };
+
+    const extractFromObj = (obj: any): string | null => {
+      if (!obj) return null;
+      const direct =
+        obj.comment ??
+        obj.commentText ??
+        obj.memo ??
+        obj.memoText ??
+        obj.sequenceNumber ??
+        obj.seqNumber ??
+        obj.seq;
+      if (direct !== undefined && direct !== null && String(direct) !== '') {
+        return String(direct);
+      }
+      const callData = parseCallData(obj.call_data ?? obj.callData);
+      if (callData) {
+        const cdDirect =
+          callData.comment ??
+          callData.commentText ??
+          callData.memo ??
+          callData.memoText ??
+          callData.sequenceNumber ??
+          callData.seqNumber ??
+          callData.seq ??
+          callData.memo_text;
+        if (cdDirect !== undefined && cdDirect !== null && String(cdDirect) !== '') {
+          return String(cdDirect);
+        }
+      }
+      return null;
+    };
+
+    const fromPayload = extractFromObj(payload);
+    if (fromPayload) return fromPayload;
+
+    const depositActions =
+      payload?.depositActions ||
+      payload?.deposit_actions ||
+      txData?.depositActions ||
+      txData?.deposit_actions ||
+      tx?.depositActions ||
+      tx?.deposit_actions;
+
+    if (Array.isArray(depositActions)) {
+      for (const action of depositActions) {
+        const fromAction = extractFromObj(action);
+        if (fromAction) return fromAction;
+      }
+    }
+
+    if (swapId) return String(swapId);
+    return null;
+  }
+
+  function extractBridgeDepositAddress(tx: any): string | null {
+    const txData = tx?.transaction || tx;
+    const depositAddress = txData?.depositAddress;
+
+    if (looksLikeTonAddress(depositAddress)) return depositAddress;
+
+    const depositActions =
+      txData?.depositActions ||
+      txData?.deposit_actions ||
+      tx?.depositActions ||
+      tx?.deposit_actions;
+
+    if (Array.isArray(depositActions)) {
+      for (const action of depositActions) {
+        const addr = action?.to_address || action?.to;
+        if (looksLikeTonAddress(addr)) {
+          return addr;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function toAtomicAmount(amountStr: string, decimals: number): string {
+    if (!amountStr || Number.isNaN(Number(amountStr))) return '0';
+    const [intPart, fracRaw = ''] = amountStr.split('.');
+    const frac = fracRaw.slice(0, decimals).padEnd(decimals, '0');
+    try {
+      const base = BigInt(intPart || '0') * 10n ** BigInt(decimals);
+      return (base + BigInt(frac)).toString();
+    } catch {
+      return '0';
+    }
+  }
+
+  function getCurrentSwapId(tx?: any): string | null {
+    const source = tx || bridgeTransaction;
+    return (
+      source?.swapId ||
+      source?.transaction?.swapId ||
+      source?.transaction?.id ||
+      null
+    );
+  }
+
+  function stopBridgePolling() {
+    if (bridgePollRef.current) {
+      clearInterval(bridgePollRef.current);
+      bridgePollRef.current = null;
+    }
+  }
+
+  async function pollBridgeStatusOnce(swapId: string) {
+    try {
+      const statusRes = await bridgeApi.getStatus(swapId);
+      const statusValue = statusRes?.status || statusRes?.data?.status || statusRes?.swap?.status || 'unknown';
+      setBridgeStatus(statusValue);
+      logBridgeDebug('Bridge status polled', statusRes);
+      const terminal = ['completed', 'failed', 'expired', 'cancelled'].includes(
+        String(statusValue).toLowerCase()
+      );
+      if (terminal) {
+        stopBridgePolling();
+        setSendingBridgeTx(false);
+        setBridgeSendStatus(`Bridge ${statusValue}`);
+      }
+    } catch (err) {
+      logBridgeDebug('Bridge status poll failed', err);
+    }
+  }
+
+  function startBridgePolling(swapId: string) {
+    stopBridgePolling();
+    void pollBridgeStatusOnce(swapId);
+    bridgePollRef.current = setInterval(() => void pollBridgeStatusOnce(swapId), 12000);
+  }
+
+  async function sendTonBridgeTransaction(payloadOverride?: any, swapIdOverride?: string) {
+    logBridgeDebug('TON bridge send: invoked', {
+      hasPayloadOverride: !!payloadOverride,
+      hasStoredPayload: !!bridgePayload,
+      hasBridgeTx: !!bridgeTransaction,
+      hasTonWallet: !!tonWallet,
+    });
+    const activePayload = payloadOverride || bridgePayload || extractTonBridgePayload(bridgeTransaction);
+    if (!activePayload && !bridgeTransaction) {
+      setBridgeSendStatus('No TON payload to send yet. Create the bridge first.');
+      logBridgeDebug('TON bridge send: aborted (no payload)', { activePayload, bridgeTransaction });
+      return;
+    }
+    if (!tonConnectUI || !tonWallet) {
+      setBridgeSendStatus('Connect your TON wallet to send the bridge transaction.');
+      logBridgeDebug('TON bridge send: aborted (no ton wallet/ui)', {
+        hasTonConnectUI: !!tonConnectUI,
+        hasTonWallet: !!tonWallet,
+      });
+      try {
+        tonConnectUI?.openModal();
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    if (!activePayload) {
+      setBridgeSendStatus('Backend did not return a TON transaction payload.');
+      return;
+    }
+
+    const to = activePayload.to || activePayload.address || activePayload.depositAddress;
+    const body = activePayload.body || activePayload.payload;
+    const decimals = sellToken?.decimals ?? 9;
+    const amount =
+      activePayload.value ??
+      activePayload.amount ??
+      activePayload.amountRaw ??
+      activePayload.sendAmount ??
+      toAtomicAmount(sellAmount, decimals);
+
+    if (!to) {
+      setBridgeSendStatus('Missing destination address for TON transaction.');
+      return;
+    }
+
+    setSendingBridgeTx(true);
+    setBridgeSendStatus('Requesting signature in TON wallet...');
+
+    try {
+      const tx = {
+        validUntil: Math.floor(Date.now() / 1000) + 600,
+        messages: [
+          {
+            address: to,
+            amount: String(amount ?? '0'),
+            payload: body,
+          },
+        ],
+      };
+
+      logBridgeDebug('Sending TON bridge transaction via TonConnect', {
+        to,
+        amount: String(amount ?? '0'),
+        hasPayload: !!body,
+      });
+
+      await tonConnectUI.sendTransaction(tx);
+      setBridgeSendStatus('Transaction sent to TON wallet.');
+      const swapId = swapIdOverride || getCurrentSwapId();
+      if (swapId) {
+        startBridgePolling(swapId);
+      }
+    } catch (err: any) {
+      console.error('[TON Bridge] sendTransaction failed', err);
+      setBridgeSendStatus(`TON send failed: ${err?.message || String(err)}`);
+    } finally {
+      setSendingBridgeTx(false);
+    }
+  }
+
   // Function to start swap flow - opens first modal
   async function handleStartSwap() {
     if (chainType === 'ton') {
-      // Use TAC operation flow
+      if (!tonWallet) {
+        setError('Connect your TON wallet to send the bridge transaction.');
+        try {
+          tonConnectUI?.openModal();
+        } catch {
+          // ignore
+        }
+        return;
+      }
+      if (requiresEvmWallet && !account) {
+        setError('Connect your in-app EVM wallet to receive the bridged assets.');
+        return;
+      }
       if (!sellToken || !buyToken) {
         setError('Select tokens first.');
         return;
       }
-      const fromChainName = networks.find(n => n.chainId === fromChainId)?.name.toLowerCase() || String(fromChainId);
-      const toChainName = networks.find(n => n.chainId === toChainId)?.name.toLowerCase() || String(toChainId);
-      await startTacOperation({
-        operationType: 'cross_chain_swap',
-        sourceChain: fromChainName,
-        targetChain: toChainName,
-        inputToken: normalizeToApi(sellToken.address),
-        inputAmount: Number(sellAmount),
-        outputToken: normalizeToApi(buyToken.address),
-        protocol: 'uniswap',
-        protocolAction: 'swap',
-        slippage: 0.5
-      });
+      const amountNum = Number(sellAmount);
+      if (!amountNum || Number.isNaN(amountNum) || amountNum <= 0) {
+        setError('Enter a valid amount to bridge.');
+        return;
+      }
+      try {
+        setError(null);
+        setBridgeTransaction(null);
+        setBridgePayload(null);
+        setBridgeSendStatus(null);
+        setBridgeStatus('Requesting bridge transaction...');
+        const destinationAddress = account?.address || effectiveAddress;
+        logBridgeDebug('Starting TON bridge transaction', {
+          amount: amountNum,
+          destinationAddress,
+          sellToken,
+          buyToken,
+        });
+        const tx = await bridgeApi.createTransaction(amountNum, destinationAddress || '');
+        if (!tx) {
+          logBridgeDebug("Transaction not present. ERROR");
+        }
+        logBridgeDebug('Bridge transaction payload received', tx);
+        setBridgeTransaction(tx);
+
+        let tonPayload = null;
+
+        // CHECK IF USDT (Jetton Transfer)
+        if (sellToken.symbol === 'USDT') {
+          try {
+            const userTonAddress = tonConnectUI.account?.address;
+            if (!userTonAddress) throw new Error("TON Wallet not connected");
+
+            const txData = (tx as any)?.transaction || tx;
+            const swapId = tx.id || tx.swapId;
+
+            // Prioritize the dynamic deposit address from Layerswap (via backend)
+            const depositAddr = extractBridgeDepositAddress(tx);
+            console.log("depositAddress: ", depositAddr);
+            if (!depositAddr) {
+              throw new Error('Bridge payload missing deposit address for TON transfer.');
+            }
+
+            // Extract the specific comment (sequence number) from the payload if available
+            // Layerswap requires this specific number, not the UUID
+            const comment = extractBridgeComment(tx, swapId);
+            if (!comment) {
+              throw new Error('Bridge payload is missing the required comment/sequence number.');
+            }
+
+            // 1. Get User's USDT Wallet
+            const myUsdtWallet = await getUserJettonWallet(userTonAddress);
+
+            console.log('DEBUG TON SWAP (Page):', {
+              userTonAddress,
+              depositAddr,
+              myUsdtWallet: myUsdtWallet.toString(),
+              swapId,
+              comment,
+              amountUSDT: toUSDT(amountNum).toString()
+            });
+
+            // 2. Construct Forward Payload (Comment with SwapID/Sequence Number)
+            const forwardPayload = beginCell()
+              .storeUint(0, 32) // 0 = Text Comment
+              .storeStringTail(comment)
+              .endCell();
+
+            // 3. Construct Jetton Transfer Body
+            const body = beginCell()
+              .storeUint(0xf8a7ea5, 32) // OpCode: Transfer
+              .storeUint(0, 64)         // QueryID
+              .storeCoins(toUSDT(amountNum)) // USDT Amount (6 decimals)
+              .storeAddress(TonAddress.parse(depositAddr))
+              .storeAddress(TonAddress.parse(userTonAddress)) // Response Address
+              .storeBit(0) // Custom Payload
+              .storeCoins(toNano('0.05')) // Forward Amount: enough for jUSDT -> Layerswap
+              .storeBit(1) // Forward Payload as Ref
+              .storeRef(forwardPayload)
+              .endCell();
+
+            tonPayload = {
+              to: myUsdtWallet.toString(),
+              value: toNano('0.15').toString(), // Gas: cover transfer + forward
+              body: body.toBoc().toString('base64')
+            };
+
+            logBridgeDebug('Constructed USDT Jetton Payload', tonPayload);
+
+          } catch (err) {
+            console.error("Failed to construct USDT payload", err);
+            setError("Failed to prepare USDT transfer: " + (err as Error).message);
+            return;
+          }
+        } else {
+          // NATIVE TON TRANSFER LOGIC
+          const txData = (tx as any)?.transaction || tx;
+          const derivedPayload =
+            txData?.depositAddress && looksLikeTonAddress(txData.depositAddress)
+              ? {
+                to: txData.depositAddress,
+                value: toAtomicAmount(
+                  String(txData.amount ?? amountNum ?? sellAmount ?? '0'),
+                  sellToken?.decimals ?? 9
+                ),
+                body: null,
+              }
+              : null;
+
+          tonPayload = extractTonBridgePayload(tx) || derivedPayload;
+        }
+
+        logBridgeDebug('Bridge TON payload (final)', tonPayload ?? 'null/undefined');
+        if (tonPayload) {
+          setBridgePayload(tonPayload);
+          logBridgeDebug('Bridge TON payload extracted', tonPayload);
+        } else {
+          setBridgeSendStatus('Bridge payload missing; cannot auto-send.');
+          logBridgeDebug('TON bridge auto-send skipped: no TON payload extracted', tx);
+        }
+        setBridgeStatus('Bridge created. Send your TON USDT to the deposit address shown to complete the swap.');
+        setSuccess(false);
+
+        // Auto-send via TonConnect if payload exists and wallet is connected
+        if (tonPayload) {
+          const swapId = getCurrentSwapId(tx);
+          logBridgeDebug('Auto-sending TON bridge transaction', {
+            swapId,
+            hasTonWallet: !!tonWallet,
+            hasTonConnectUI: !!tonConnectUI,
+          });
+          try {
+            await sendTonBridgeTransaction(tonPayload, swapId || undefined);
+          } catch (sendErr) {
+            console.error('[TON Bridge] auto-send failed', sendErr);
+          }
+        } else {
+          logBridgeDebug('TON bridge auto-send skipped: no TON payload extracted', tx);
+          setBridgeSendStatus('Bridge payload missing; cannot auto-send.');
+        }
+      } catch (e: any) {
+        console.error('Failed to initiate bridge transaction:', e);
+        logBridgeDebug('Bridge transaction creation failed', e);
+        setError(e?.message || 'Failed to initiate bridge transaction');
+      }
       return;
     }
 
@@ -493,7 +937,7 @@ export default function SwapPage() {
 
       // Check if we should skip simulation (for Uniswap Smart Router)
       const shouldSkipSimulation = prep.provider === 'uniswap-smart-router' ||
-                                   prep.prepared?.metadata?.skipSimulation === true;
+        prep.prepared?.metadata?.skipSimulation === true;
 
       if (shouldSkipSimulation) {
         console.log('⚠️ Using Uniswap Smart Router - MetaMask may show a simulation warning');
@@ -619,9 +1063,9 @@ export default function SwapPage() {
 
       // Check if it's an insufficient funds error
       if (lowerError.includes('insufficient funds') ||
-          lowerError.includes('have 0 want') ||
-          lowerError.includes('32003') ||
-          lowerError.includes('gas required exceeds allowance')) {
+        lowerError.includes('have 0 want') ||
+        lowerError.includes('32003') ||
+        lowerError.includes('gas required exceeds allowance')) {
         setShowFundWallet(true);
       }
 
@@ -644,7 +1088,7 @@ export default function SwapPage() {
       setBuyToken(temp);
       setSellAmount(buyAmount);
       setBuyAmount(sellAmount);
-      
+
       // Also swap the chain IDs
       const tempChainId = fromChainId;
       setFromChainId(toChainId);
@@ -666,21 +1110,30 @@ export default function SwapPage() {
     return undefined;
   };
 
-  const handleTacQuote = async () => {
+  const handleBridgeQuote = async () => {
     if (!canQuote || !sellToken || !buyToken) return;
-    const fromChainName = networks.find(n => n.chainId === fromChainId)?.name.toLowerCase() || String(fromChainId);
-    const toChainName = networks.find(n => n.chainId === toChainId)?.name.toLowerCase() || String(toChainId);
-    const amountNum = Number(sellAmount);
-    const data = await getTacQuote({
-      fromChain: fromChainName,
-      toChain: toChainName,
-      fromToken: normalizeToApi(sellToken.address),
-      toToken: normalizeToApi(buyToken.address),
-      amount: amountNum,
-      operationType: 'cross_chain_swap',
-      slippage: 0.5
-    });
-    if (data) setTacResult(data);
+    if (chainType !== 'ton') return;
+    try {
+      setBridgeQuoting(true);
+      setError(null);
+      logBridgeDebug('Requesting bridge quote', {
+        amount: sellAmount,
+        fromChainId,
+        toChainId,
+        sellToken,
+        buyToken,
+      });
+      const res = await bridgeApi.quote(Number(sellAmount));
+      setBridgeQuote(res.quote || res.data || res);
+      setBridgeStatus('Bridge quote fetched.');
+      logBridgeDebug('Bridge quote payload received', res);
+    } catch (e: any) {
+      console.error('Failed to fetch bridge quote:', e);
+      logBridgeDebug('Bridge quote failed', e);
+      setError(e?.message || 'Failed to fetch bridge quote');
+    } finally {
+      setBridgeQuoting(false);
+    }
   };
 
   // When connected via TON, default the "from" side to TON so the selector shows TON
@@ -691,539 +1144,741 @@ export default function SwapPage() {
       if (fromChainId !== TON_CHAIN_ID) {
         setFromChainId(TON_CHAIN_ID);
       }
-      if (!sellToken || sellToken.symbol !== 'TON') {
-        setSellToken(tonNetwork.nativeCurrency);
+      const tonUsdt = tonNetwork.tokens.find(t => t.symbol === 'USDT') || tonNetwork.nativeCurrency;
+      if (!sellToken || sellToken.symbol !== 'USDT') {
+        setSellToken(tonUsdt);
       }
     }
   }, [chainType, fromChainId, sellToken]);
 
+  useEffect(() => {
+    if (bridgeTransaction) {
+      logBridgeDebug('Bridge transaction state updated', bridgeTransaction);
+    }
+  }, [bridgeTransaction]);
+
+  useEffect(() => {
+    if (bridgeStatus) {
+      logBridgeDebug('Bridge status update', bridgeStatus);
+    }
+  }, [bridgeStatus]);
+
+  useEffect(() => {
+    if (bridgePayload) {
+      logBridgeDebug('Bridge TON payload updated', bridgePayload);
+    }
+  }, [bridgePayload]);
+
+  useEffect(() => {
+    return () => {
+      stopBridgePolling();
+    };
+  }, []);
+
   return (
     <ProtectedRoute>
       <div className="h-screen text-white flex flex-col overflow-hidden relative">
-      {/* Animated Background */}
-      <AnimatedBackground />
+        {/* Animated Background */}
+        <AnimatedBackground />
 
-      {/* Top Navbar - Same as chat */}
-      <header className="flex-shrink-0 bg-black/40 backdrop-blur-md border-b-2 border-white/15 px-6 py-3 z-50">
-        <div className="flex items-center justify-between max-w-[1920px] mx-auto">
-          {/* Left: Logo */}
-          <div className="flex items-center gap-2">
-            <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
-            <span className="text-white font-semibold text-sm tracking-wide hidden md:inline">PANORAMA BLOCK</span>
-          </div>
+        {/* Top Navbar - Same as chat */}
+        <header className="flex-shrink-0 bg-black/40 backdrop-blur-md border-b-2 border-white/15 px-6 py-3 z-50">
+          <div className="flex items-center justify-between max-w-[1920px] mx-auto">
+            {/* Left: Logo */}
+            <div className="flex items-center gap-2">
+              <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
+              <span className="text-white font-semibold text-sm tracking-wide hidden md:inline">PANORAMA BLOCK</span>
+            </div>
 
-          {/* Right: Explore + Docs + Notifications + Wallet Address */}
-          <div className="flex items-center gap-3">
-            {/* Navigation Menu */}
-            <nav className="flex items-center gap-6 text-sm mr-3">
-              {/* Explore Dropdown */}
-              <div className="relative">
-                <button
-                  onClick={() => setExploreDropdownOpen(!exploreDropdownOpen)}
-                  className="text-gray-400 hover:text-white transition-colors flex items-center gap-1"
-                >
-                  Explore
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
+            {/* Right: Explore + Docs + Notifications + Wallet Address */}
+            <div className="flex items-center gap-3">
+              {/* Navigation Menu */}
+              <nav className="flex items-center gap-6 text-sm mr-3">
+                {/* Explore Dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={() => setExploreDropdownOpen(!exploreDropdownOpen)}
+                    className="text-gray-400 hover:text-white transition-colors flex items-center gap-1"
+                  >
+                    Explore
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
 
-                {/* Dropdown Menu */}
-                {exploreDropdownOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={() => setExploreDropdownOpen(false)}
-                    />
-                    <div className="absolute top-full right-0 mt-2 w-48 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg shadow-xl z-20">
-                      <div className="py-2">
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/chat');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" stroke="#4BC3C5" fill="none" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                          </svg>
-                          Chat
-                        </button>
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/swap');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" stroke="#4BC3C5" fill="none" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                          </svg>
-                          Swap
-                        </button>
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/lending');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          Lending
-                        </button>
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/staking');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                          Staking
-                        </button>
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/account');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                          Account
-                        </button>
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/dca');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          DCA
-                        </button>
+                  {/* Dropdown Menu */}
+                  {exploreDropdownOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setExploreDropdownOpen(false)}
+                      />
+                      <div className="absolute top-full right-0 mt-2 w-48 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg shadow-xl z-20">
+                        <div className="py-2">
+                          <button
+                            onClick={() => {
+                              setExploreDropdownOpen(false);
+                              router.push('/chat');
+                            }}
+                            className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" stroke="#4BC3C5" fill="none" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            Chat
+                          </button>
+                          <button
+                            onClick={() => {
+                              setExploreDropdownOpen(false);
+                              router.push('/swap');
+                            }}
+                            className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" stroke="#4BC3C5" fill="none" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                            </svg>
+                            Swap
+                          </button>
+                          <button
+                            onClick={() => {
+                              setExploreDropdownOpen(false);
+                              router.push('/lending');
+                            }}
+                            className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Lending
+                          </button>
+                          <button
+                            onClick={() => {
+                              setExploreDropdownOpen(false);
+                              router.push('/staking');
+                            }}
+                            className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            Staking
+                          </button>
+                          <button
+                            onClick={() => {
+                              setExploreDropdownOpen(false);
+                              router.push('/account');
+                            }}
+                            className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                            Account
+                          </button>
+                          <button
+                            onClick={() => {
+                              setExploreDropdownOpen(false);
+                              router.push('/dca');
+                            }}
+                            className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            DCA
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </>
+                    </>
+                  )}
+                </div>
+
+                {/* Docs Link */}
+                <a
+                  href="https://docs.panoramablock.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  Docs
+                </a>
+              </nav>
+
+              {/* Notifications Icon */}
+              <button className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+              </button>
+
+              {/* Wallet Address Display */}
+              {(account?.address || getWalletAddress()) && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
+                  <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
+                  <span className="text-white text-xs font-mono">
+                    {account?.address
+                      ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                      : getWalletAddress()
+                        ? `${getWalletAddress()!.slice(0, 6)}...${getWalletAddress()!.slice(-4)}`
+                        : ''}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+
+        {/* Bridge helper */}
+        <div className="px-4 py-3 text-sm text-white/80 bg-white/5 border-b border-white/10">
+          <div className="max-w-[1200px] mx-auto flex flex-col gap-2">
+            <div>
+              Mode: {chainType === 'ton' ? 'TON (Bridge)' : chainType === 'evm' ? 'EVM (Thirdweb)' : 'Not connected'}
+              {isTelegram && chainType !== 'ton' && ' — connect your TON wallet via TonConnect'}
+            </div>
+            {chainType === 'ton' && (
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={handleBridgeQuote}
+                  disabled={!canQuote || bridgeQuoting}
+                  className="px-4 py-2 rounded-lg bg-white text-black text-sm font-semibold disabled:opacity-50"
+                >
+                  {bridgeQuoting ? 'Fetching bridge quote...' : 'Get Bridge Quote'}
+                </button>
+                {bridgeQuote && (
+                  <span className="text-green-400 text-xs">
+                    Est. Receive: {bridgeQuote?.estimatedReceiveAmount ?? bridgeQuote?.quote?.estimatedReceiveAmount ?? '—'}
+                  </span>
                 )}
-              </div>
-
-              {/* Docs Link */}
-              <a
-                href="https://docs.panoramablock.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                Docs
-              </a>
-            </nav>
-
-            {/* Notifications Icon */}
-            <button className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-            </button>
-
-            {/* Wallet Address Display */}
-            {(account?.address || getWalletAddress()) && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
-                <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
-                <span className="text-white text-xs font-mono">
-                  {account?.address
-                    ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
-                    : getWalletAddress()
-                      ? `${getWalletAddress()!.slice(0, 6)}...${getWalletAddress()!.slice(-4)}`
-                      : ''}
-                </span>
+                {bridgeStatus && <span className="text-blue-300 text-xs">{bridgeStatus}</span>}
               </div>
             )}
           </div>
         </div>
-      </header>
-      
-      {/* TAC mode helper */}
-      <div className="px-4 py-3 text-sm text-white/80 bg-white/5 border-b border-white/10">
-        <div className="max-w-[1200px] mx-auto flex flex-col gap-2">
-          <div>
-            Mode: {chainType === 'ton' ? 'TON (TAC-enabled)' : chainType === 'evm' ? 'EVM (Thirdweb)' : 'Not connected'}
-            {isTelegram && chainType !== 'ton' && ' — connect your TON wallet via TonConnect'}
-          </div>
-          {chainType === 'ton' && (
-            <div className="flex items-center gap-3 flex-wrap">
-              <button
-                onClick={handleTacQuote}
-                disabled={!canQuote || tacLoading}
-                className="px-4 py-2 rounded-lg bg-white text-black text-sm font-semibold disabled:opacity-50"
-              >
-                {tacLoading ? 'Fetching TAC quote...' : 'Get TAC Quote'}
-              </button>
-              {tacError && <span className="text-red-400 text-xs">{tacError}</span>}
-              {tacResult?.data?.quote && (
-                <span className="text-green-400 text-xs">
-                  Route: {tacResult.data.quote.route.provider} · Est. Output: {tacResult.data.quote.route.estimatedOutput}
-                </span>
-              )}
-              {tacOpError && <span className="text-red-400 text-xs">{tacOpError}</span>}
-              {tacOpLoading && <span className="text-white/70 text-xs">Starting TAC operation…</span>}
-              {tacOp && (
-                <span className="text-blue-300 text-xs">
-                  TAC Operation {tacOp.operationId || tacOp.id || ''} · Status: {tacOp.status || 'in_progress'}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-hidden">
-        {/* Swap Interface */}
-        <div className="h-full flex items-center justify-center p-4">
-          <div className="w-full max-w-xs">
-            {/* Swap Card */}
-            <div className="bg-[#202020]/75 backdrop-blur-xl rounded-[25px] p-4 shadow-[0px_16px_57.7px_0px_rgba(0,0,0,0.42)] border border-white/10">
-              {/* Sell Section */}
-              <div className="mb-2">
-                <label className="text-xs text-gray-400 mb-2 block">Sell</label>
-                <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10">
-                  <input
-                    type="text"
-                    value={sellAmount}
-                    onChange={(e) => setSellAmount(e.target.value)}
-                    placeholder="0"
-                    className="bg-transparent text-3xl font-light text-white outline-none w-full mb-2"
-                  />
-                  <div className="flex items-center justify-end">
-                    <button
-                      onClick={() => setShowSellSelector(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-black hover:bg-gray-200 transition-colors text-sm"
-                    >
-                      <Image
-                        src={sellToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
-                        alt={sellToken.symbol}
-                        width={20}
-                        height={20}
-                        className="w-5 h-5 rounded-full"
-                        unoptimized
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
-                        }}
-                      />
-                      <span className="font-medium">{sellToken.symbol}</span>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Swap Button */}
-              <div className="flex justify-center -my-1 relative z-10">
-                <button
-                  onClick={handleSwapTokens}
-                  className="bg-[#2A2A2A]/80 border border-white/10 rounded-lg p-1.5 hover:bg-[#343434]/80 transition-colors"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-white">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Buy Section */}
-              <div className="mb-3">
-                <label className="text-xs text-gray-400 mb-2 block">Buy</label>
-                <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10">
-                  <input
-                    type="text"
-                    value={buyAmount}
-                    onChange={(e) => setBuyAmount(e.target.value)}
-                    placeholder="0"
-                    className="bg-transparent text-3xl font-light text-white outline-none w-full mb-2"
-                    readOnly
-                  />
-                  <div className="flex items-center justify-end">
-                    <button
-                      onClick={() => setShowBuySelector(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-black hover:bg-gray-200 transition-colors text-sm"
-                    >
-                      {buyToken ? (
-                        <>
-                          <Image
-                            src={buyToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
-                            alt={buyToken.symbol}
-                            width={20}
-                            height={20}
-                            className="w-5 h-5 rounded-full"
-                            unoptimized
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
-                            }}
-                          />
-                          <span className="font-medium">{buyToken.symbol}</span>
-                        </>
-                      ) : (
-                        <span className="font-medium">Select token</span>
-                      )}
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Start Button */}
-              <button
-                onClick={handleStartSwap}
-                disabled={
-                  (chainType === 'ton' ? (!canQuote || tacLoading || tacOpLoading) : (!quote || quoting || preparing || executing))
-                }
-                className="w-full py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-gray-100"
-              >
-                {chainType === 'ton'
-                  ? tacOpLoading
-                    ? 'Starting TAC operation...'
-                    : tacLoading
-                      ? 'Fetching TAC quote...'
-                      : 'Start TAC Swap'
-                  : executing
-                    ? 'Executing swap...'
-                    : preparing
-                      ? 'Preparing transaction...'
-                      : quoting
-                        ? 'Getting quote...'
-                        : 'Get started'}
-              </button>
-
-              {/* Description */}
-              <div className="mt-3 text-center">
-                <p className="text-xs text-gray-400 leading-relaxed">
-                  Buy and sell crypto on 15+ networks including Ethereum, Base, and Arbitrum
-                </p>
-              </div>
-
-              {/* Powered by Uniswap/Avalanche */}
-              <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-400">
-                {isAvalancheSwap ? (
-                  <>
-                    <Image
-                      src={AvalancheIcon}
-                      alt="Avalanche"
-                      width={28}
-                      height={28}
-                      className="w-7 h-7"
+        {/* Main Content */}
+        <div className="flex-1 overflow-hidden">
+          {/* Swap Interface */}
+          <div className="h-full flex items-center justify-center p-4">
+            <div className="w-full max-w-xs">
+              {/* Swap Card */}
+              <div className="bg-[#202020]/75 backdrop-blur-xl rounded-[25px] p-4 shadow-[0px_16px_57.7px_0px_rgba(0,0,0,0.42)] border border-white/10">
+                {/* Sell Section */}
+                <div className="mb-2">
+                  <label className="text-xs text-gray-400 mb-2 block">Sell</label>
+                  <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10">
+                    <input
+                      type="text"
+                      value={sellAmount}
+                      onChange={(e) => setSellAmount(e.target.value)}
+                      placeholder="0"
+                      className="bg-transparent text-3xl font-light text-white outline-none w-full mb-2"
                     />
-                    <span>Powered by Avalanche</span>
-                  </>
-                ) : (
-                  <>
-                    <Image
-                      src={UniswapIcon}
-                      alt="Uniswap"
-                      width={44}
-                      height={44}
-                      className="w-11 h-11"
-                      style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
-                    />
-                    <span>Powered by Uniswap</span>
-                  </>
-                )}
-              </div>
-
-              {/* Error Message */}
-              {error && (
-                <div className="mt-4 p-3 rounded-lg bg-red-500/10 backdrop-blur-sm border border-red-500/30">
-                  <div className="text-sm text-red-400">{error}</div>
-                </div>
-              )}
-
-              {/* Success Message */}
-              {success && (
-                <div className="mt-4 p-3 rounded-lg bg-green-500/10 backdrop-blur-sm border border-green-500/30">
-                  <div className="text-sm text-green-400 mb-3">✅ Swap executed successfully!</div>
-                  
-                  {/* Transaction Hashes */}
-                  {txHashes.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-xs text-gray-400">Transaction Hashes:</div>
-                      {txHashes.map((tx, index) => {
-                        const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
-                        return (
-                          <div key={index} className="flex items-center justify-between bg-gray-800/50 rounded p-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs text-gray-300 font-mono truncate">
-                                {tx.hash}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                Chain ID: {tx.chainId}
-                              </div>
-                            </div>
-                            {explorerUrl && (
-                              <a
-                                href={explorerUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors"
-                              >
-                                View
-                              </a>
-                            )}
-                          </div>
-                        );
-                      })}
+                    <div className="flex items-center justify-end">
+                      <button
+                        onClick={() => setShowSellSelector(true)}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-black hover:bg-gray-200 transition-colors text-sm"
+                      >
+                        <Image
+                          src={sellToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
+                          alt={sellToken.symbol}
+                          width={20}
+                          height={20}
+                          className="w-5 h-5 rounded-full"
+                          unoptimized
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
+                          }}
+                        />
+                        <span className="font-medium">{sellToken.symbol}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
                     </div>
+                  </div>
+                </div>
+
+                {/* Swap Button */}
+                <div className="flex justify-center -my-1 relative z-10">
+                  <button
+                    onClick={handleSwapTokens}
+                    className="bg-[#2A2A2A]/80 border border-white/10 rounded-lg p-1.5 hover:bg-[#343434]/80 transition-colors"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-white">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Buy Section */}
+                <div className="mb-3">
+                  <label className="text-xs text-gray-400 mb-2 block">Buy</label>
+                  <div className="bg-[#2A2A2A]/80 rounded-xl p-3 border border-white/10">
+                    <input
+                      type="text"
+                      value={buyAmount}
+                      onChange={(e) => setBuyAmount(e.target.value)}
+                      placeholder="0"
+                      className="bg-transparent text-3xl font-light text-white outline-none w-full mb-2"
+                      readOnly
+                    />
+                    <div className="flex items-center justify-end">
+                      <button
+                        onClick={() => setShowBuySelector(true)}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white text-black hover:bg-gray-200 transition-colors text-sm"
+                      >
+                        {buyToken ? (
+                          <>
+                            <Image
+                              src={buyToken.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
+                              alt={buyToken.symbol}
+                              width={20}
+                              height={20}
+                              className="w-5 h-5 rounded-full"
+                              unoptimized
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
+                              }}
+                            />
+                            <span className="font-medium">{buyToken.symbol}</span>
+                          </>
+                        ) : (
+                          <span className="font-medium">Select token</span>
+                        )}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* EVM wallet requirement for TON → EVM flows */}
+                {requiresEvmWallet && !account && client && (
+                  <div className="mb-3 p-3 rounded-lg border border-white/10 bg-black/30">
+                    <div className="text-xs text-gray-300 mb-2">
+                      Connect your in-app EVM wallet to receive bridged USDT.
+                    </div>
+                    <ConnectButton
+                      client={client}
+                      wallets={wallets}
+                      theme="dark"
+                      auth={{}}
+                    />
+                  </div>
+                )}
+
+                {/* Start Button */}
+                <button
+                  onClick={handleStartSwap}
+                  disabled={
+                    (chainType === 'ton'
+                      ? (!canQuote || bridgeQuoting || (requiresEvmWallet && !account))
+                      : (!quote || quoting || preparing || executing))
+                  }
+                  className="w-full py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-gray-100"
+                >
+                  {chainType === 'ton'
+                    ? bridgeQuoting
+                      ? 'Fetching bridge quote...'
+                      : requiresEvmWallet && !account
+                        ? 'Connect EVM wallet to proceed'
+                        : 'Start Swap'
+                    : executing
+                      ? 'Executing swap...'
+                      : preparing
+                        ? 'Preparing transaction...'
+                        : quoting
+                          ? 'Getting quote...'
+                          : 'Get started'}
+                </button>
+
+                {/* Description */}
+                <div className="mt-3 text-center">
+                  <p className="text-xs text-gray-400 leading-relaxed">
+                    Buy and sell crypto on 15+ networks including Ethereum, Base, and Arbitrum
+                  </p>
+                </div>
+
+                {/* Bridge transaction details (TON mode) */}
+                {chainType === 'ton' && bridgeTransaction && (
+                  <div className="mt-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30 text-xs text-white">
+                    <div className="font-semibold text-sm mb-1">Bridge created</div>
+                    <div className="text-gray-200 break-all">
+                      Deposit address: <span className="font-mono">{bridgeTransaction.depositAddress || bridgeTransaction.transaction?.depositAddress || '—'}</span>
+                    </div>
+                    {(bridgeTransaction.swapId || bridgeTransaction.transaction?.swapId || bridgeTransaction.transaction?.id) && (
+                      <div className="text-gray-300 mt-1">
+                        Bridge ID: <span className="font-mono">{bridgeTransaction.swapId || bridgeTransaction.transaction?.swapId || bridgeTransaction.transaction?.id}</span>
+                      </div>
+                    )}
+                    <div className="text-gray-300 mt-1">
+                      Status: {bridgeTransaction.status || bridgeTransaction.transaction?.status || 'pending'}
+                    </div>
+                    {bridgePayload && (
+                      <div className="mt-2 flex flex-col gap-2">
+                        <button
+                          onClick={sendTonBridgeTransaction}
+                          disabled={sendingBridgeTx || !tonWallet}
+                          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${sendingBridgeTx || !tonWallet
+                            ? 'bg-gray-600 cursor-not-allowed opacity-60'
+                            : 'bg-white text-black hover:bg-gray-200'
+                            }`}
+                        >
+                          {sendingBridgeTx ? 'Awaiting TON signature...' : tonWallet ? 'Send with TON wallet' : 'Connect TON wallet'}
+                        </button>
+                        {bridgeSendStatus && (
+                          <div className="text-[11px] text-gray-200">
+                            {bridgeSendStatus}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Powered by Uniswap/Avalanche */}
+                <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-400">
+                  {isAvalancheSwap ? (
+                    <>
+                      <Image
+                        src={AvalancheIcon}
+                        alt="Avalanche"
+                        width={28}
+                        height={28}
+                        className="w-7 h-7"
+                      />
+                      <span>Powered by Avalanche</span>
+                    </>
+                  ) : (
+                    <>
+                      <Image
+                        src={UniswapIcon}
+                        alt="Uniswap"
+                        width={44}
+                        height={44}
+                        className="w-11 h-11"
+                        style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                      />
+                      <span>Powered by Uniswap</span>
+                    </>
                   )}
                 </div>
-              )}
 
-              {/* Fund Wallet Modal */}
-              {showFundWallet && client && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-lg z-50 flex items-center justify-center p-4">
-                  <div className="bg-[#1a1a1a]/90 backdrop-blur-2xl border border-cyan-500/30 rounded-2xl max-w-md w-full p-6 relative shadow-2xl">
-                    <button
-                      onClick={() => setShowFundWallet(false)}
-                      className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
-                    >
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+                {/* Error Message */}
+                {error && (
+                  <div className="mt-4 p-3 rounded-lg bg-red-500/10 backdrop-blur-sm border border-red-500/30">
+                    <div className="text-sm text-red-400">{error}</div>
+                  </div>
+                )}
 
-                    <h3 className="text-xl font-bold text-white mb-2">💰 Fund Wallet</h3>
-                    <p className="text-gray-400 text-sm mb-4">
-                      Your balance is insufficient to execute this transaction. Add funds to your wallet.
-                    </p>
+                {/* Success Message */}
+                {success && (
+                  <div className="mt-4 p-3 rounded-lg bg-green-500/10 backdrop-blur-sm border border-green-500/30">
+                    <div className="text-sm text-green-400 mb-3">✅ Swap executed successfully!</div>
 
-                    <div className="mb-4">
-                      <PayEmbed
-                        client={client}
-                        theme="dark"
-                        payOptions={{
-                          mode: 'fund_wallet',
-                          metadata: {
-                            name: 'Add funds for swap',
-                          },
-                          prefillBuy: {
-                            chain: defineChain(fromChainId),
-                            token: sellToken.address === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
-                              ? undefined
-                              : {
+                    {/* Transaction Hashes */}
+                    {txHashes.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-xs text-gray-400">Transaction Hashes:</div>
+                        {txHashes.map((tx, index) => {
+                          const explorerUrl = explorerTxUrl(tx.chainId, tx.hash);
+                          return (
+                            <div key={index} className="flex items-center justify-between bg-gray-800/50 rounded p-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs text-gray-300 font-mono truncate">
+                                  {tx.hash}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  Chain ID: {tx.chainId}
+                                </div>
+                              </div>
+                              {explorerUrl && (
+                                <a
+                                  href={explorerUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="ml-2 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded transition-colors"
+                                >
+                                  View
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Fund Wallet Modal */}
+                {showFundWallet && client && (
+                  <div className="fixed inset-0 bg-black/70 backdrop-blur-lg z-50 flex items-center justify-center p-4">
+                    <div className="bg-[#1a1a1a]/90 backdrop-blur-2xl border border-cyan-500/30 rounded-2xl max-w-md w-full p-6 relative shadow-2xl">
+                      <button
+                        onClick={() => setShowFundWallet(false)}
+                        className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+                      >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+
+                      <h3 className="text-xl font-bold text-white mb-2">💰 Fund Wallet</h3>
+                      <p className="text-gray-400 text-sm mb-4">
+                        Your balance is insufficient to execute this transaction. Add funds to your wallet.
+                      </p>
+
+                      <div className="mb-4">
+                        <PayEmbed
+                          client={client}
+                          theme="dark"
+                          payOptions={{
+                            mode: 'fund_wallet',
+                            metadata: {
+                              name: 'Add funds for swap',
+                            },
+                            prefillBuy: {
+                              chain: defineChain(fromChainId),
+                              token: sellToken.address === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+                                ? undefined
+                                : {
                                   address: sellToken.address as Address,
                                   name: sellToken.symbol,
                                   symbol: sellToken.symbol,
                                 }
-                          }
-                        }}
-                      />
-                    </div>
+                            }
+                          }}
+                        />
+                      </div>
 
-                    <button
-                      onClick={() => setShowFundWallet(false)}
-                      className="w-full py-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-medium transition-colors"
-                    >
-                      Close
-                    </button>
+                      <button
+                        onClick={() => setShowFundWallet(false)}
+                        className="w-full py-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-medium transition-colors"
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Token Selectors */}
-      <TokenSelector
-        isOpen={showSellSelector}
-        onClose={() => setShowSellSelector(false)}
-        onSelect={(token, chainId) => {
-          setSellToken(token);
-          setFromChainId(chainId);
-        }}
-        title="Select a token to sell"
-        currentChainId={fromChainId}
-      />
-      <TokenSelector
-        isOpen={showBuySelector}
-        onClose={() => setShowBuySelector(false)}
-        onSelect={(token, chainId) => {
-          setBuyToken(token);
-          setToChainId(chainId);
-        }}
-        title="Select a token to buy"
-        currentChainId={toChainId}
-      />
+        {/* Token Selectors */}
+        <TokenSelector
+          isOpen={showSellSelector}
+          onClose={() => setShowSellSelector(false)}
+          onSelect={(token, chainId) => {
+            setSellToken(token);
+            setFromChainId(chainId);
+          }}
+          title="Select a token to sell"
+          currentChainId={fromChainId}
+        />
+        <TokenSelector
+          isOpen={showBuySelector}
+          onClose={() => setShowBuySelector(false)}
+          onSelect={(token, chainId) => {
+            setBuyToken(token);
+            setToChainId(chainId);
+          }}
+          title="Select a token to buy"
+          currentChainId={toChainId}
+        />
 
-      {/* Order Routing Modal */}
-      {swapFlowStep === 'routing' && quote && (
-        <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
-            // Just close the modal, keep swap state so user can resume
-            setSwapFlowStep(null);
-          }} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              {/* Header */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
-                <h3 className="text-base sm:text-lg font-semibold text-white">Order Routing</h3>
-                <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+        {/* Order Routing Modal */}
+        {swapFlowStep === 'routing' && quote && (
+          <>
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+              // Just close the modal, keep swap state so user can resume
+              setSwapFlowStep(null);
+            }} />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+              <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                {/* Header */}
+                <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
+                  <h3 className="text-base sm:text-lg font-semibold text-white">Order Routing</h3>
+                  <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
 
-              {/* Content */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4">
-                {/* Route Info */}
-                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-3 sm:mb-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-5 h-5 rounded-full bg-cyan-400 flex items-center justify-center">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth={3}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
+                {/* Content */}
+                <div className="px-4 py-3 sm:px-5 sm:py-4">
+                  {/* Route Info */}
+                  <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-3 sm:mb-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-5 h-5 rounded-full bg-cyan-400 flex items-center justify-center">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <span className="text-xs sm:text-sm text-cyan-400 font-semibold">Best price route</span>
                     </div>
-                    <span className="text-xs sm:text-sm text-cyan-400 font-semibold">Best price route</span>
-                  </div>
 
-                  <div className="space-y-2 sm:space-y-3">
-                    <div className="space-y-2">
-                      <div className="flex items-start sm:items-center justify-between gap-2">
-                        <div className="text-sm sm:text-base font-medium text-white break-words">
-                          Swap {sellToken.symbol} to {buyToken?.symbol || 'Token'}
+                    <div className="space-y-2 sm:space-y-3">
+                      <div className="space-y-2">
+                        <div className="flex items-start sm:items-center justify-between gap-2">
+                          <div className="text-sm sm:text-base font-medium text-white break-words">
+                            Swap {sellToken.symbol} to {buyToken?.symbol || 'Token'}
+                          </div>
+                          <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1 flex-shrink-0">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            FAST
+                          </div>
                         </div>
-                        <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1 flex-shrink-0">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                          FAST
+
+                        <div className="flex items-center justify-between text-xs sm:text-sm">
+                          <span className="text-gray-400">Amount in</span>
+                          <span className="text-white font-medium text-right break-words">
+                            {sellAmount} {sellToken.symbol}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs sm:text-sm">
+                          <span className="text-gray-400">Expected Amount Out</span>
+                          <span className="text-white font-medium text-right break-words">
+                            {buyAmount} {buyToken?.symbol || ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] sm:text-xs">
+                          <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
+                          <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
+                            {(parseFloat(buyAmount || '0') * 0.99).toFixed(6)} {buyToken?.symbol || ''}
+                          </span>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
 
-                      <div className="flex items-center justify-between text-xs sm:text-sm">
+                {/* Action Button */}
+                <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
+                  <button
+                    onClick={() => setSwapFlowStep('details')}
+                    className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors"
+                  >
+                    Continue
+                  </button>
+                  <div className="mt-2 sm:mt-3 flex items-center justify-center gap-2 text-xs sm:text-sm text-gray-400">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                      {isAvalancheSwap ? (
+                        <Image
+                          src={AvalancheIcon}
+                          alt="Avalanche"
+                          width={28}
+                          height={28}
+                          className="w-7 h-7"
+                        />
+                      ) : (
+                        <Image
+                          src={UniswapIcon}
+                          alt="Uniswap"
+                          width={44}
+                          height={44}
+                          className="w-11 h-11"
+                          style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                        />
+                      )}
+                    </div>
+                    <span>{isAvalancheSwap ? 'Powered by Avalanche' : 'Powered by Uniswap'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Swap Details Modal */}
+        {swapFlowStep === 'details' && quote && (
+          <>
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+              // Just close the modal, keep swap state so user can resume
+              setSwapFlowStep(null);
+            }} />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+              <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                {/* Header */}
+                <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
+                  <h3 className="text-base sm:text-lg font-semibold text-white">Swap Details</h3>
+                  <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="px-4 py-4 sm:px-5 sm:py-5 space-y-3 sm:space-y-4">
+                  {/* Select Swap API */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs sm:text-sm font-medium text-white">Select Swap API</span>
+                    <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
+                      Change API
+                    </button>
+                  </div>
+
+                  {/* Routing */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs sm:text-sm text-gray-400">Routing</span>
+                    <div className="flex items-center gap-1.5 sm:gap-2">
+                      {isAvalancheSwap ? (
+                        <>
+                          <Image src={AvalancheIcon} alt="Avalanche" width={16} height={16} className="w-3 h-3 sm:w-4 sm:h-4" />
+                          <span className="text-xs sm:text-sm text-white">Avalanche C-chain</span>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-white flex items-center justify-center">
+                            <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-black"></div>
+                          </div>
+                          <span className="text-xs sm:text-sm text-white">UNI V3</span>
+                        </>
+                      )}
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
+                        <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                      </svg>
+                      Suggested
+                    </div>
+                    <span className="text-[10px] sm:text-xs text-gray-400">Est. Price Impact 1.1%</span>
+                  </div>
+
+                  {/* Swap Details Card */}
+                  <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
+                    <div className="text-sm sm:text-base font-semibold text-white mb-3 sm:mb-4 break-words">
+                      Swap {sellToken.symbol} to {buyToken?.symbol || 'Token'}
+                    </div>
+
+                    <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                      <div className="flex justify-between gap-2">
                         <span className="text-gray-400">Amount in</span>
                         <span className="text-white font-medium text-right break-words">
                           {sellAmount} {sellToken.symbol}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between text-xs sm:text-sm">
-                        <span className="text-gray-400">Expected Amount Out</span>
-                        <span className="text-white font-medium text-right break-words">
+                      <div className="flex justify-between gap-2">
+                        <span className="text-gray-400 text-[11px] sm:text-xs">Expected Amount Out</span>
+                        <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
                           {buyAmount} {buyToken?.symbol || ''}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between text-[11px] sm:text-xs">
+                      <div className="flex justify-between gap-2">
                         <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
                         <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
                           {(parseFloat(buyAmount || '0') * 0.99).toFixed(6)} {buyToken?.symbol || ''}
@@ -1231,321 +1886,191 @@ export default function SwapPage() {
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              {/* Action Button */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
-                <button
-                  onClick={() => setSwapFlowStep('details')}
-                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors"
-                >
-                  Continue
-                </button>
-                <div className="mt-2 sm:mt-3 flex items-center justify-center gap-2 text-xs sm:text-sm text-gray-400">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
-                    {isAvalancheSwap ? (
-                      <Image
-                        src={AvalancheIcon}
-                        alt="Avalanche"
-                        width={28}
-                        height={28}
-                        className="w-7 h-7"
-                      />
-                    ) : (
-                      <Image
-                        src={UniswapIcon}
-                        alt="Uniswap"
-                        width={44}
-                        height={44}
-                        className="w-11 h-11"
-                        style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
-                      />
-                    )}
+                  {/* Aperture Fee & Transaction Settings */}
+                  <div className="space-y-2 sm:space-y-3">
+                    <div className="flex items-center justify-between text-xs sm:text-sm">
+                      <span className="text-gray-400">Aperture Fee</span>
+                      <span className="text-white font-medium">0.9% {'(<$0.01)'}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-white font-medium text-xs sm:text-sm">Transaction Setting</span>
+                      <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
+                        Change Settings
+                      </button>
+                    </div>
                   </div>
-                  <span>{isAvalancheSwap ? 'Powered by Avalanche' : 'Powered by Uniswap'}</span>
+                </div>
+
+                {/* Action Button */}
+                <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
+                  <button
+                    onClick={async () => {
+                      if (isAvalancheSwap) {
+                        // For Avalanche, execute swap directly without confirmation modal
+                        setSwapFlowStep(null);
+                        await executeSwap();
+                      } else {
+                        // For Uniswap, go to confirmation modal
+                        setSwapFlowStep('confirm');
+                      }
+                    }}
+                    disabled={executing}
+                    className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {executing ? 'Executing...' : 'Continue'}
+                  </button>
+                  <div className="mt-2 sm:mt-3 flex items-center justify-center gap-2 text-xs sm:text-sm text-gray-400">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                      {isAvalancheSwap ? (
+                        <Image
+                          src={AvalancheIcon}
+                          alt="Avalanche"
+                          width={28}
+                          height={28}
+                          className="w-7 h-7"
+                        />
+                      ) : (
+                        <Image
+                          src={UniswapIcon}
+                          alt="Uniswap"
+                          width={44}
+                          height={44}
+                          className="w-11 h-11"
+                          style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                        />
+                      )}
+                    </div>
+                    <span>{isAvalancheSwap ? 'Powered by Avalanche' : 'Powered by Uniswap'}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
 
-      {/* Swap Details Modal */}
-      {swapFlowStep === 'details' && quote && (
-        <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
-            // Just close the modal, keep swap state so user can resume
-            setSwapFlowStep(null);
-          }} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              {/* Header */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-black z-10">
-                <h3 className="text-base sm:text-lg font-semibold text-white">Swap Details</h3>
-                <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="px-4 py-4 sm:px-5 sm:py-5 space-y-3 sm:space-y-4">
-                {/* Select Swap API */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs sm:text-sm font-medium text-white">Select Swap API</span>
-                  <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
-                    Change API
-                  </button>
-                </div>
-
-                {/* Routing */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs sm:text-sm text-gray-400">Routing</span>
-                  <div className="flex items-center gap-1.5 sm:gap-2">
-                    {isAvalancheSwap ? (
-                      <>
-                        <Image src={AvalancheIcon} alt="Avalanche" width={16} height={16} className="w-3 h-3 sm:w-4 sm:h-4" />
-                        <span className="text-xs sm:text-sm text-white">Avalanche C-chain</span>
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-white flex items-center justify-center">
-                          <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-black"></div>
-                        </div>
-                        <span className="text-xs sm:text-sm text-white">UNI V3</span>
-                      </>
-                    )}
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500">
-                      <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
-                    </svg>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
-                    </svg>
-                    Suggested
-                  </div>
-                  <span className="text-[10px] sm:text-xs text-gray-400">Est. Price Impact 1.1%</span>
-                </div>
-
-                {/* Swap Details Card */}
-                <div className="bg-[#0A0A0A] border border-white/10 rounded-lg sm:rounded-xl p-3 sm:p-4">
-                  <div className="text-sm sm:text-base font-semibold text-white mb-3 sm:mb-4 break-words">
-                    Swap {sellToken.symbol} to {buyToken?.symbol || 'Token'}
-                  </div>
-
-                  <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-400">Amount in</span>
-                      <span className="text-white font-medium text-right break-words">
-                        {sellAmount} {sellToken.symbol}
-                      </span>
+        {/* Confirm Details Modal - Only show for non-Avalanche swaps */}
+        {swapFlowStep === 'confirm' && quote && !isAvalancheSwap && (
+          <>
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
+              // Just close the modal, keep swap state so user can resume
+              setSwapFlowStep(null);
+            }} />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+              <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-sm w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                {/* Header */}
+                <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 sticky top-0 bg-black z-10">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <h3 className="text-sm sm:text-base font-semibold text-white mb-1">Confirm details</h3>
+                      <p className="text-[10px] sm:text-xs text-gray-400 pr-2">Review and accept Uniswap Labs Terms of Service & Privacy Policy to get started</p>
                     </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-400 text-[11px] sm:text-xs">Expected Amount Out</span>
-                      <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
-                        {buyAmount} {buyToken?.symbol || ''}
-                      </span>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
-                      <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
-                        {(parseFloat(buyAmount || '0') * 0.99).toFixed(6)} {buyToken?.symbol || ''}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Aperture Fee & Transaction Settings */}
-                <div className="space-y-2 sm:space-y-3">
-                  <div className="flex items-center justify-between text-xs sm:text-sm">
-                    <span className="text-gray-400">Aperture Fee</span>
-                    <span className="text-white font-medium">0.9% {'(<$0.01)'}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-white font-medium text-xs sm:text-sm">Transaction Setting</span>
-                    <button disabled className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#202020] text-gray-400 text-[10px] sm:text-xs font-medium cursor-not-allowed flex-shrink-0">
-                      Change Settings
+                    <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors flex-shrink-0">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
                     </button>
                   </div>
                 </div>
-              </div>
 
-              {/* Action Button */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
-                <button
-                  onClick={async () => {
-                    if (isAvalancheSwap) {
-                      // For Avalanche, execute swap directly without confirmation modal
-                      setSwapFlowStep(null);
-                      await executeSwap();
-                    } else {
-                      // For Uniswap, go to confirmation modal
-                      setSwapFlowStep('confirm');
-                    }
-                  }}
-                  disabled={executing}
-                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {executing ? 'Executing...' : 'Continue'}
-                </button>
-                <div className="mt-2 sm:mt-3 flex items-center justify-center gap-2 text-xs sm:text-sm text-gray-400">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
-                    {isAvalancheSwap ? (
-                      <Image
-                        src={AvalancheIcon}
-                        alt="Avalanche"
-                        width={28}
-                        height={28}
-                        className="w-7 h-7"
-                      />
-                    ) : (
-                      <Image
-                        src={UniswapIcon}
-                        alt="Uniswap"
-                        width={44}
-                        height={44}
-                        className="w-11 h-11"
-                        style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
-                      />
-                    )}
+                {/* Content */}
+                <div className="px-4 py-3 sm:px-5 sm:py-4 space-y-3 sm:space-y-4">
+                  {/* Terms of Service Toggles */}
+                  <div className="space-y-2 sm:space-y-3">
+                    <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
+                      <span className="text-xs sm:text-sm text-white flex-1 pr-2">
+                        I have read and agreed with{' '}
+                        <a
+                          href="https://support.uniswap.org/hc/en-us/articles/30935100859661-Uniswap-Labs-Terms-of-Service"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline hover:text-cyan-400 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Uniswap Labs Terms of Service
+                        </a>
+                      </span>
+                      <div className="relative ml-2 sm:ml-4 flex-shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={tosAccepted}
+                          onChange={(e) => setTosAccepted(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${tosAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${tosAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
+                      <span className="text-xs sm:text-sm text-white flex-1 pr-2">
+                        I have read and agreed with{' '}
+                        <a
+                          href="https://support.uniswap.org/hc/en-us/articles/40074102704141-Uniswap-Labs-Privacy-Policy"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline hover:text-cyan-400 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Uniswap Labs Privacy Policy
+                        </a>
+                      </span>
+                      <div className="relative ml-2 sm:ml-4 flex-shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={privacyAccepted}
+                          onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${privacyAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${privacyAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
+                      </div>
+                    </label>
                   </div>
-                  <span>{isAvalancheSwap ? 'Powered by Avalanche' : 'Powered by Uniswap'}</span>
+
                 </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
 
-      {/* Confirm Details Modal - Only show for non-Avalanche swaps */}
-      {swapFlowStep === 'confirm' && quote && !isAvalancheSwap && (
-        <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => {
-            // Just close the modal, keep swap state so user can resume
-            setSwapFlowStep(null);
-          }} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-            <div className="bg-black border border-black rounded-xl sm:rounded-2xl overflow-hidden max-w-sm w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              {/* Header */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-white/10 sticky top-0 bg-black z-10">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <h3 className="text-sm sm:text-base font-semibold text-white mb-1">Confirm details</h3>
-                    <p className="text-[10px] sm:text-xs text-gray-400 pr-2">Review and accept Uniswap Labs Terms of Service & Privacy Policy to get started</p>
-                  </div>
-                  <button onClick={() => setSwapFlowStep(null)} className="text-gray-400 hover:text-white transition-colors flex-shrink-0">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                {/* Action Button */}
+                <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
+                  <button
+                    onClick={async () => {
+                      if (tosAccepted && privacyAccepted) {
+                        await executeSwap();
+                      }
+                    }}
+                    disabled={!tosAccepted || !privacyAccepted || executing}
+                    className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
+                  >
+                    {executing ? 'Executing...' : 'Confirm'}
                   </button>
-                </div>
-              </div>
-
-              {/* Content */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 space-y-3 sm:space-y-4">
-                {/* Terms of Service Toggles */}
-                <div className="space-y-2 sm:space-y-3">
-                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
-                    <span className="text-xs sm:text-sm text-white flex-1 pr-2">
-                      I have read and agreed with{' '}
-                      <a
-                        href="https://support.uniswap.org/hc/en-us/articles/30935100859661-Uniswap-Labs-Terms-of-Service"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline hover:text-cyan-400 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Uniswap Labs Terms of Service
-                      </a>
-                    </span>
-                    <div className="relative ml-2 sm:ml-4 flex-shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={tosAccepted}
-                        onChange={(e) => setTosAccepted(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${tosAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
-                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${tosAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
+                  <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
+                      {isAvalancheSwap ? (
+                        <Image
+                          src={AvalancheIcon}
+                          alt="Avalanche"
+                          width={28}
+                          height={28}
+                          className="w-7 h-7"
+                        />
+                      ) : (
+                        <Image
+                          src={UniswapIcon}
+                          alt="Uniswap"
+                          width={44}
+                          height={44}
+                          className="w-11 h-11"
+                          style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
+                        />
+                      )}
                     </div>
-                  </label>
-
-                  <label className="flex items-center justify-between cursor-pointer bg-black border border-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:bg-[#0A0A0A] transition-colors">
-                    <span className="text-xs sm:text-sm text-white flex-1 pr-2">
-                      I have read and agreed with{' '}
-                      <a
-                        href="https://support.uniswap.org/hc/en-us/articles/40074102704141-Uniswap-Labs-Privacy-Policy"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline hover:text-cyan-400 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Uniswap Labs Privacy Policy
-                      </a>
-                    </span>
-                    <div className="relative ml-2 sm:ml-4 flex-shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={privacyAccepted}
-                        onChange={(e) => setPrivacyAccepted(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className={`w-9 h-5 sm:w-11 sm:h-6 rounded-full transition-colors ${privacyAccepted ? 'bg-cyan-400' : 'bg-gray-600'}`}></div>
-                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full transition-transform ${privacyAccepted ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'}`}></div>
-                    </div>
-                  </label>
-                </div>
-
-              </div>
-
-              {/* Action Button */}
-              <div className="px-4 py-3 sm:px-5 sm:py-4 border-t border-white/10 sticky bottom-0 bg-black">
-                <button
-                  onClick={async () => {
-                    if (tosAccepted && privacyAccepted) {
-                      await executeSwap();
-                    }
-                  }}
-                  disabled={!tosAccepted || !privacyAccepted || executing}
-                  className="w-full sm:w-auto px-8 sm:px-12 py-2.5 rounded-lg bg-white hover:bg-gray-100 text-black text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
-                >
-                  {executing ? 'Executing...' : 'Confirm'}
-                </button>
-                <div className="mt-2 sm:mt-3 flex items-center justify-start gap-2 text-xs sm:text-sm text-gray-400">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#202020] flex items-center justify-center flex-shrink-0">
-                    {isAvalancheSwap ? (
-                      <Image
-                        src={AvalancheIcon}
-                        alt="Avalanche"
-                        width={28}
-                        height={28}
-                        className="w-7 h-7"
-                      />
-                    ) : (
-                      <Image
-                        src={UniswapIcon}
-                        alt="Uniswap"
-                        width={44}
-                        height={44}
-                        className="w-11 h-11"
-                        style={{ filter: 'invert(29%) sepia(92%) saturate(6348%) hue-rotate(318deg) brightness(103%) contrast(106%)' }}
-                      />
-                    )}
+                    <span>{isAvalancheSwap ? 'Powered by Avalanche' : 'Powered by Uniswap'}</span>
                   </div>
-                  <span>{isAvalancheSwap ? 'Powered by Avalanche' : 'Powered by Uniswap'}</span>
                 </div>
               </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
       </div>
     </ProtectedRoute>
   );

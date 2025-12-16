@@ -411,7 +411,10 @@ export default function NewChatPage() {
     const provisionReceiver = async () => {
       try {
         tacProvisioningRef.current = true;
-        const chainId = (process.env.NEXT_PUBLIC_TAC_CHAIN_ID as string) || (process.env.VITE_TAC_CHAIN_ID as string) || 'tac';
+        const chainId =
+          (process.env.NEXT_PUBLIC_TAC_EVM_CHAIN_ID as string) ||
+          (process.env.VITE_TAC_EVM_CHAIN_ID as string) ||
+          '1';
         console.log('🛰️ [NEWCHAT] Ensuring TAC receiver for TON address...', {
           tonAddress,
           chainId,

@@ -83,7 +83,7 @@ function getNetworkByName(networkName: string) {
     'bsc': 56,
     'optimism': 10,
   };
-  
+
   const chainId = networkMap[networkName.toLowerCase()];
   return networks.find(n => n.chainId === chainId);
 }
@@ -106,7 +106,7 @@ function isAvalancheSwap(metadata: Record<string, unknown> | null): boolean {
   // Check if network is Avalanche or if token is AVAX/WAVAX
   const isAvalancheNetwork = fromNetwork?.toLowerCase() === 'avalanche' || toNetwork?.toLowerCase() === 'avalanche';
   const isAvaxToken = fromToken?.toUpperCase() === 'AVAX' || fromToken?.toUpperCase() === 'WAVAX' ||
-                      toToken?.toUpperCase() === 'AVAX' || toToken?.toUpperCase() === 'WAVAX';
+    toToken?.toUpperCase() === 'AVAX' || toToken?.toUpperCase() === 'WAVAX';
 
   return isAvalancheNetwork || isAvaxToken;
 }
@@ -461,7 +461,7 @@ export default function ChatPage() {
           }
         }
 
-        if (!isMountedRef.current || bootstrapKeyRef.current !== userKey)  {
+        if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) {
           console.log("return early: ", isMountedRef.current, bootstrapKeyRef.current)
           return;
         }
@@ -761,9 +761,9 @@ export default function ChatPage() {
     }
 
     const { amount, from_network, from_token, to_network, to_token } = metadata;
-    
+
     console.log('📊 Getting swap quote with metadata:', { amount, from_network, from_token, to_network, to_token });
-    
+
     if (!amount || !from_network || !from_token || !to_network || !to_token) {
       const errorMsg = 'Invalid swap metadata - missing required fields';
       console.error('❌', errorMsg, { amount, from_network, from_token, to_network, to_token });
@@ -836,7 +836,7 @@ export default function ChatPage() {
   // Function to execute swap - following swap page pattern
   const executeSwap = useCallback(async (metadata: Record<string, unknown>) => {
     console.log('🚀 Starting swap execution with metadata:', metadata);
-    
+
     if (!swapQuote?.quote) {
       const errorMsg = 'Please wait for the quote to finish calculating';
       console.error('❌', errorMsg);
@@ -871,7 +871,7 @@ export default function ChatPage() {
       console.log('🔄 Preparing swap transaction...');
 
       const { amount, from_network, from_token, to_network, to_token } = metadata;
-      
+
       // Get networks by name
       const fromNetwork = getNetworkByName(from_network as string);
       const toNetwork = getNetworkByName(to_network as string);
@@ -993,10 +993,10 @@ export default function ChatPage() {
 
   const handleSignatureApproval = useCallback(async (metadata: Record<string, unknown>) => {
     console.log('✅ Signature approved');
-    
+
     // Force MetaMask window to open before executing swap
     await forceMetaMaskWindow();
-    
+
     await executeSwap(metadata);
   }, [executeSwap, forceMetaMaskWindow]);
 
@@ -1027,89 +1027,293 @@ export default function ChatPage() {
         isLoading={isNavigating}
         message={
           navigationType === 'lending' ? 'Loading Lending...' :
-          navigationType === 'staking' ? 'Loading Staking...' :
-          navigationType === 'swap' ? 'Loading Swap...' :
-          navigationType === 'dca' ? 'Loading DCA...' :
-          'Loading...'
+            navigationType === 'staking' ? 'Loading Staking...' :
+              navigationType === 'swap' ? 'Loading Swap...' :
+                navigationType === 'dca' ? 'Loading DCA...' :
+                  'Loading...'
         }
       />
       <div className="h-screen pano-gradient-bg text-white flex flex-col overflow-hidden">
-      {/* Top Navbar - Horizontal across full width */}
-      <header className="sticky top-0 flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
-        <div className="flex items-center justify-between max-w-[1920px] mx-auto">
-          {/* Left: Menu toggle (mobile only) + Logo (desktop only) + Navigation */}
-          <div className="flex items-center gap-8">
-            {!isLargeScreen && (
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="text-gray-400 hover:text-white"
-                aria-label="Open menu"
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+        {/* Top Navbar - Horizontal across full width */}
+        <header className="sticky top-0 flex-shrink-0 bg-black border-b-2 border-white/15 px-6 py-3 z-50">
+          <div className="flex items-center justify-between max-w-[1920px] mx-auto">
+            {/* Left: Menu toggle (mobile only) + Logo (desktop only) + Navigation */}
+            <div className="flex items-center gap-8">
+              {!isLargeScreen && (
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="text-gray-400 hover:text-white"
+                  aria-label="Open menu"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
+              )}
+
+              {/* Logo - Desktop on left, Mobile just icon */}
+              {!isLargeScreen ? (
+                <div className="flex items-center gap-2">
+                  <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
+                  <span className="text-white font-semibold text-sm tracking-wide">PANORAMA BLOCK</span>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Explore + Docs + Notifications + Wallet Address */}
+            <div className="flex items-center gap-3">
+              {/* Navigation Menu - Desktop only */}
+              {isLargeScreen && (
+                <nav className="flex items-center gap-6 text-sm mr-3">
+                  {/* Explore Dropdown */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setExploreDropdownOpen(!exploreDropdownOpen)}
+                      className="text-gray-400 hover:text-white transition-colors flex items-center gap-1"
+                    >
+                      Explore
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {exploreDropdownOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setExploreDropdownOpen(false)}
+                        />
+                        <div className="absolute top-full right-0 mt-2 w-48 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg shadow-xl z-20">
+                          <div className="py-2">
+                            <button
+                              onClick={() => {
+                                setExploreDropdownOpen(false);
+                                router.push('/chat');
+                              }}
+                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4BC3C5" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                              </svg>
+                              Chat
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsNavigating(true);
+                                setNavigationType('swap');
+                                setExploreDropdownOpen(false);
+                                router.push('/swap');
+                              }}
+                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                            >
+                              <Image src={SwapIcon} alt="Swap" width={16} height={16} />
+                              Swap
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsNavigating(true);
+                                setNavigationType('lending');
+                                setExploreDropdownOpen(false);
+                                router.push('/lending');
+                              }}
+                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Lending
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsNavigating(true);
+                                setNavigationType('staking');
+                                setExploreDropdownOpen(false);
+                                router.push('/staking');
+                              }}
+                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                              </svg>
+                              Staking
+                            </button>
+                            <button
+                              onClick={() => {
+                                setExploreDropdownOpen(false);
+                                router.push('/account');
+                              }}
+                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
+                              Account
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsNavigating(true);
+                                setNavigationType('dca');
+                                setExploreDropdownOpen(false);
+                                router.push('/dca');
+                              }}
+                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              DCA
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsNavigating(true);
+                                setNavigationType('bridge');
+                                setExploreDropdownOpen(false);
+                                router.push('/bridge');
+                              }}
+                              className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                              </svg>
+                              Bridge
+                            </button>
+                          </div>
+                        </div>
+
+                      </>
+                    )}
+                  </div>
+
+                  {/* Docs Link */}
+                  <a
+                    href="https://docs.panoramablock.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    Docs
+                  </a>
+                </nav>
+              )}
+              {/* Notifications Icon */}
+              <button className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
               </button>
-            )}
 
-            {/* Logo - Desktop on left, Mobile just icon */}
-            {!isLargeScreen ? (
-              <div className="flex items-center gap-2">
-                <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
-                <span className="text-white font-semibold text-sm tracking-wide">PANORAMA BLOCK</span>
-              </div>
-            )}
+              {/* Wallet Address Display */}
+              {(account?.address || getWalletAddress()) && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
+                  <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
+                  <span className="text-white text-xs font-mono">
+                    {account?.address
+                      ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                      : getWalletAddress()
+                        ? `${getWalletAddress()!.slice(0, 6)}...${getWalletAddress()!.slice(-4)}`
+                        : ''}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
+        </header>
 
-          {/* Right: Explore + Docs + Notifications + Wallet Address */}
-          <div className="flex items-center gap-3">
-            {/* Navigation Menu - Desktop only */}
-            {isLargeScreen && (
-              <nav className="flex items-center gap-6 text-sm mr-3">
-                {/* Explore Dropdown */}
-                <div className="relative">
-                  <button
-                    onClick={() => setExploreDropdownOpen(!exploreDropdownOpen)}
-                    className="text-gray-400 hover:text-white transition-colors flex items-center gap-1"
-                  >
-                    Explore
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
+        {/* Main content area with sidebar and messages */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Sidebar - Below navbar */}
+          {(isLargeScreen || sidebarOpen) && (
+            <>
+              {/* Mobile backdrop */}
+              {!isLargeScreen && sidebarOpen && (
+                <div
+                  className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+                  onClick={() => setSidebarOpen(false)}
+                />
+              )}
 
-                  {/* Dropdown Menu */}
-                  {exploreDropdownOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-10"
-                        onClick={() => setExploreDropdownOpen(false)}
-                      />
-                      <div className="absolute top-full right-0 mt-2 w-48 bg-black/80 backdrop-blur-xl border border-white/20 rounded-lg shadow-xl z-20">
-                        <div className="py-2">
+              {/* Sidebar content */}
+              <aside className={`
+              ${isLargeScreen ? 'relative' : 'fixed inset-y-0 left-0 z-50'}
+              w-80 bg-black border-r-2 border-white/15 flex flex-col
+              ${!isLargeScreen && !sidebarOpen ? 'hidden' : ''}
+            `}>
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
+                  {/* New Chat Button */}
+                  <div className="px-4">
+                    <button
+                      onClick={createNewChat}
+                      disabled={isCreatingConversation}
+                      className="w-full px-4 py-2 rounded-full border border-white bg-transparent hover:bg-gray-900 text-white text-sm font-normal transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {isCreatingConversation ? (
+                        <>
+                          <div className="loader-inline-sm" />
+                          <span>Creating...</span>
+                        </>
+                      ) : (
+                        <span>New Chat</span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Past Conversations */}
+                  {conversations.length > 0 && (
+                    <div className="max-h-[180px] overflow-y-auto custom-scrollbar pr-2 px-4">
+                      <div className="space-y-3">
+                        {conversations.map((conversation) => (
                           <button
-                            onClick={() => {
-                              setExploreDropdownOpen(false);
-                              router.push('/chat');
-                            }}
-                            className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                            key={conversation.id}
+                            onClick={() => handleSelectConversation(conversation.id)}
+                            className={`w-full text-left px-3 py-2 transition-colors text-sm flex items-center gap-3 rounded-md ${activeConversationId === conversation.id
+                                ? 'text-white bg-[#202020]'
+                                : 'text-gray-400 hover:text-white hover:bg-[#202020]'
+                              }`}
                           >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4BC3C5" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                            </svg>
-                            Chat
+                            <Image src={ChatIcon} alt="Chat" width={20} height={20} className="shrink-0" />
+                            <div className="truncate">{conversation.title}</div>
                           </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Separator Line */}
+                  <div className="border-t border-white/20 my-6"></div>
+
+                  {/* Mobile Explore Navigation */}
+                  {!isLargeScreen && (
+                    <div className="space-y-3 px-4">
+                      <div className="flex items-center gap-2">
+                        <Image src={LightningIcon} alt="Explore" width={18} height={18} />
+                        <h3 className="text-sm font-semibold text-white">
+                          Explore
+                        </h3>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => {
+                            setSidebarOpen(false);
+                            router.push('/chat');
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
+                        >
+                          <Image src={ChatIcon} alt="Chat" width={16} height={16} />
+                          Chat
+                        </button>
                         <button
                           onClick={() => {
                             setIsNavigating(true);
                             setNavigationType('swap');
-                            setExploreDropdownOpen(false);
+                            setSidebarOpen(false);
                             router.push('/swap');
                           }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
                         >
                           <Image src={SwapIcon} alt="Swap" width={16} height={16} />
                           Swap
@@ -1118,10 +1322,10 @@ export default function ChatPage() {
                           onClick={() => {
                             setIsNavigating(true);
                             setNavigationType('lending');
-                            setExploreDropdownOpen(false);
+                            setSidebarOpen(false);
                             router.push('/lending');
                           }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1132,10 +1336,10 @@ export default function ChatPage() {
                           onClick={() => {
                             setIsNavigating(true);
                             setNavigationType('staking');
-                            setExploreDropdownOpen(false);
+                            setSidebarOpen(false);
                             router.push('/staking');
                           }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -1144,420 +1348,543 @@ export default function ChatPage() {
                         </button>
                         <button
                           onClick={() => {
-                            setExploreDropdownOpen(false);
-                            router.push('/account');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                          Account
-                        </button>
-                        <button
-                          onClick={() => {
                             setIsNavigating(true);
                             setNavigationType('dca');
-                            setExploreDropdownOpen(false);
+                            setSidebarOpen(false);
                             router.push('/dca');
                           }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
+                          className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                           DCA
                         </button>
-                        </div>
-                      </div>
-                      
-                    </>
-                  )}
-                </div>
-
-                {/* Docs Link */}
-                <a
-                  href="https://docs.panoramablock.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  Docs
-                </a>
-              </nav>
-            )}
-            {/* Notifications Icon */}
-            <button className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-            </button>
-
-            {/* Wallet Address Display */}
-            {(account?.address || getWalletAddress()) && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-700 bg-gray-800/30">
-                <div className="w-2 h-2 rounded-full bg-[#00FFC3]"></div>
-                <span className="text-white text-xs font-mono">
-                  {account?.address
-                    ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
-                    : getWalletAddress()
-                      ? `${getWalletAddress()!.slice(0, 6)}...${getWalletAddress()!.slice(-4)}`
-                      : ''}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* Main content area with sidebar and messages */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar - Below navbar */}
-        {(isLargeScreen || sidebarOpen) && (
-          <>
-            {/* Mobile backdrop */}
-            {!isLargeScreen && sidebarOpen && (
-              <div
-                className="fixed inset-0 bg-black/60 z-40 lg:hidden"
-                onClick={() => setSidebarOpen(false)}
-              />
-            )}
-
-            {/* Sidebar content */}
-            <aside className={`
-              ${isLargeScreen ? 'relative' : 'fixed inset-y-0 left-0 z-50'}
-              w-80 bg-black border-r-2 border-white/15 flex flex-col
-              ${!isLargeScreen && !sidebarOpen ? 'hidden' : ''}
-            `}>
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
-                {/* New Chat Button */}
-                <div className="px-4">
-                  <button
-                    onClick={createNewChat}
-                    disabled={isCreatingConversation}
-                    className="w-full px-4 py-2 rounded-full border border-white bg-transparent hover:bg-gray-900 text-white text-sm font-normal transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {isCreatingConversation ? (
-                      <>
-                        <div className="loader-inline-sm" />
-                        <span>Creating...</span>
-                      </>
-                    ) : (
-                      <span>New Chat</span>
-                    )}
-                  </button>
-                </div>
-
-                {/* Past Conversations */}
-                {conversations.length > 0 && (
-                  <div className="max-h-[180px] overflow-y-auto custom-scrollbar pr-2 px-4">
-                    <div className="space-y-3">
-                      {conversations.map((conversation) => (
                         <button
-                          key={conversation.id}
-                          onClick={() => handleSelectConversation(conversation.id)}
-                          className={`w-full text-left px-3 py-2 transition-colors text-sm flex items-center gap-3 rounded-md ${
-                            activeConversationId === conversation.id
-                              ? 'text-white bg-[#202020]'
-                              : 'text-gray-400 hover:text-white hover:bg-[#202020]'
-                          }`}
+                          onClick={() => {
+                            setIsNavigating(true);
+                            setNavigationType('bridge');
+                            setSidebarOpen(false);
+                            router.push('/bridge');
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
                         >
-                          <Image src={ChatIcon} alt="Chat" width={20} height={20} className="shrink-0" />
-                          <div className="truncate">{conversation.title}</div>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                          </svg>
+                          Bridge
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSidebarOpen(false);
+                            router.push('/account');
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          Account
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Trending Prompts */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Image src={LightningIcon} alt="Lightning" width={18} height={18} />
+                      <h3 className="text-sm font-semibold text-white">
+                        Trending Prompts
+                      </h3>
+                    </div>
+                    <div className="space-y-3 px-4">
+                      {TRENDING_PROMPTS.map((prompt, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => sendMessage(prompt)}
+                          disabled={isSending || !activeConversationId}
+                          className="w-full text-left text-sm text-gray-400 leading-relaxed hover:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-[#202020] px-4 py-4 rounded-md"
+                        >
+                          {prompt}
                         </button>
                       ))}
                     </div>
                   </div>
-                )}
 
-                {/* Separator Line */}
-                <div className="border-t border-white/20 my-6"></div>
 
-                {/* Mobile Explore Navigation */}
-                {!isLargeScreen && (
-                  <div className="space-y-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <Image src={LightningIcon} alt="Explore" width={18} height={18} />
-                      <h3 className="text-sm font-semibold text-white">
-                        Explore
-                      </h3>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
+                  <div className="border-t border-white/10 mt-auto px-4 py-4 space-y-3">
+                    <button
+                      onClick={() => router.push('/account')}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white transition-all hover:border-white/40 hover:bg-black/80"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9 9 0 0112 15a9 9 0 016.879 2.804M15 11a3 3 0 10-6 0 3 3 0 006 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804l-.002.002A6.978 6.978 0 003 22h18a6.978 6.978 0 00-2.119-4.194l-.002-.002" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-4 border-t border-white/15">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleWalletDisconnect}
+                    className="w-full justify-center text-gray-300 hover:text-white hover:bg-white/5 border border-white/10 text-sm font-normal"
+                  >
+                    Disconnect
+                  </Button>
+                </div>
+              </aside>
+            </>
+          )}
+
+          {/* Messages Area */}
+          <main className="flex-1 flex flex-col overflow-hidden">
+            {/* Messages or Empty State */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {initializing ? (
+                <div className="h-full flex items-center justify-center px-4 py-12 text-center">
+                  {initializationError ? (
+                    <div className="space-y-4">
+                      <p className="text-gray-300">{initializationError}</p>
                       <button
-                        onClick={() => {
-                          setSidebarOpen(false);
-                          router.push('/chat');
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
+                        onClick={retryBootstrap}
+                        className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition-all font-medium"
                       >
-                        <Image src={ChatIcon} alt="Chat" width={16} height={16} />
-                        Chat
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsNavigating(true);
-                          setNavigationType('swap');
-                          setSidebarOpen(false);
-                          router.push('/swap');
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
-                      >
-                        <Image src={SwapIcon} alt="Swap" width={16} height={16} />
-                        Swap
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsNavigating(true);
-                          setNavigationType('lending');
-                          setSidebarOpen(false);
-                          router.push('/lending');
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Lending
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsNavigating(true);
-                          setNavigationType('staking');
-                          setSidebarOpen(false);
-                          router.push('/staking');
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        Staking
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsNavigating(true);
-                          setNavigationType('dca');
-                          setSidebarOpen(false);
-                          router.push('/dca');
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        DCA
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSidebarOpen(false);
-                          router.push('/account');
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 rounded-md bg-[#202020] text-sm text-gray-200 hover:bg-[#2A2A2A] transition-colors"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-cyan-400">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                        Account
+                        Try again
                       </button>
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-gray-400">Loading your conversations...</p>
+                  )}
+                </div>
+              ) : !activeConversationId ? (
+                <div className="h-full flex items-center justify-center px-4 py-12">
+                  <p className="text-gray-400">Create a new chat to get started.</p>
+                </div>
+              ) : initializationError && activeMessages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center px-4 py-12 text-center space-y-4">
+                  <p className="text-gray-300">{initializationError}</p>
+                  <button
+                    onClick={retryBootstrap}
+                    className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition-all font-medium"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : isHistoryLoading && activeMessages.length === 0 ? (
+                <div className="h-full flex items-center justify-center px-4 py-12">
+                  <p className="text-gray-400">Loading conversation...</p>
+                </div>
+              ) : activeMessages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center px-6 sm:px-8 md:px-12 lg:px-16 py-1 sm:py-2 md:py-3 lg:py-4">
+                  <h2 className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl font-normal text-white mb-2 sm:mb-3 md:mb-4 lg:mb-5 xl:mb-6 flex-shrink-0">
+                    How can I help you today?
+                  </h2>
 
-                {/* Trending Prompts */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Image src={LightningIcon} alt="Lightning" width={18} height={18} />
-                    <h3 className="text-sm font-semibold text-white">
-                      Trending Prompts
-                    </h3>
-                  </div>
-                  <div className="space-y-3 px-4">
-                    {TRENDING_PROMPTS.map((prompt, idx) => (
+                  {/* Feature Cards Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-2 md:gap-2.5 lg:gap-3 xl:gap-4 2xl:gap-5 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
+                    {FEATURE_CARDS.map((feature, idx) => (
                       <button
                         key={idx}
-                        onClick={() => sendMessage(prompt)}
-                        disabled={isSending || !activeConversationId}
-                        className="w-full text-left text-sm text-gray-400 leading-relaxed hover:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-[#202020] px-4 py-4 rounded-md"
+                        onClick={() => {
+                          if (feature.prompt) {
+                            sendMessage(feature.prompt);
+                          } else if (feature.path) {
+                            setIsNavigating(true);
+                            if (feature.path === '/lending') {
+                              setNavigationType('lending');
+                            } else if (feature.path === '/staking') {
+                              setNavigationType('staking');
+                            } else if (feature.path === '/swap') {
+                              setNavigationType('swap');
+                            } else if (feature.path === '/dca') {
+                              setNavigationType('dca');
+                            }
+                            router.push(feature.path);
+                          }
+                        }}
+                        disabled={!feature.path && !feature.prompt}
+                        className={`flex flex-col p-3 sm:p-2 md:p-2.5 lg:p-3 xl:p-4 2xl:p-5 rounded-lg md:rounded-xl bg-black/80 backdrop-blur-md border border-white/15 transition-all shadow-lg text-left ${!feature.path && !feature.prompt ? 'opacity-50 cursor-not-allowed' : 'hover:border-white/30 cursor-pointer'
+                          }`}
                       >
-                        {prompt}
+                        {/* Icon */}
+                        <div className="mb-1.5 sm:mb-1 md:mb-1.5 lg:mb-2 xl:mb-2.5">
+                          <Image
+                            src={feature.icon}
+                            alt={feature.name}
+                            width={48}
+                            height={48}
+                            className="w-7 h-7 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 xl:w-10 xl:h-10 2xl:w-12 2xl:h-12"
+                          />
+                        </div>
+
+                        {/* Title */}
+                        <h3 className="text-[11px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base text-white font-semibold mb-1 sm:mb-0.5 md:mb-1 lg:mb-1.5">
+                          {feature.name}
+                        </h3>
+
+                        {/* Description */}
+                        <p className="text-[9px] sm:text-[8px] md:text-[9px] lg:text-[10px] xl:text-xs 2xl:text-sm text-gray-400 leading-snug mb-2 sm:mb-1.5 md:mb-2 lg:mb-2.5 xl:mb-3 flex-1">
+                          {feature.description}
+                        </p>
+
+                        {/* Continue Button - Only on larger screens */}
+                        <div className="hidden sm:block w-full px-1.5 py-0.5 sm:px-2 sm:py-0.5 md:px-2.5 md:py-1 lg:px-3 lg:py-1.5 xl:px-4 xl:py-2 rounded-md bg-white text-black text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base font-medium text-center">
+                          Continue
+                        </div>
                       </button>
                     ))}
                   </div>
                 </div>
+              ) : (
+                <div className="py-6">
+                  {activeMessages.map((message, index) => {
+                    const timestampValue = message.timestamp.getTime();
+                    const hasValidTime = !Number.isNaN(timestampValue);
+                    const timeLabel = hasValidTime
+                      ? message.timestamp.toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                      : '';
+                    const messageKey = hasValidTime
+                      ? `${message.role}-${timestampValue}-${index}`
+                      : `${message.role}-${index}`;
 
-
-                <div className="border-t border-white/10 mt-auto px-4 py-4 space-y-3">
-                  <button
-                    onClick={() => router.push('/account')}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white transition-all hover:border-white/40 hover:bg-black/80"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A9 9 0 0112 15a9 9 0 016.879 2.804M15 11a3 3 0 10-6 0 3 3 0 006 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804l-.002.002A6.978 6.978 0 003 22h18a6.978 6.978 0 00-2.119-4.194l-.002-.002" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 border-t border-white/15">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleWalletDisconnect}
-                  className="w-full justify-center text-gray-300 hover:text-white hover:bg-white/5 border border-white/10 text-sm font-normal"
-                >
-                  Disconnect
-                </Button>
-              </div>
-            </aside>
-          </>
-        )}
-
-        {/* Messages Area */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Messages or Empty State */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
-            {initializing ? (
-              <div className="h-full flex items-center justify-center px-4 py-12 text-center">
-                {initializationError ? (
-                  <div className="space-y-4">
-                    <p className="text-gray-300">{initializationError}</p>
-                    <button
-                      onClick={retryBootstrap}
-                      className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition-all font-medium"
-                    >
-                      Try again
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-gray-400">Loading your conversations...</p>
-                )}
-              </div>
-            ) : !activeConversationId ? (
-              <div className="h-full flex items-center justify-center px-4 py-12">
-                <p className="text-gray-400">Create a new chat to get started.</p>
-              </div>
-            ) : initializationError && activeMessages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center px-4 py-12 text-center space-y-4">
-                <p className="text-gray-300">{initializationError}</p>
-                <button
-                  onClick={retryBootstrap}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition-all font-medium"
-                >
-                  Try again
-                </button>
-              </div>
-            ) : isHistoryLoading && activeMessages.length === 0 ? (
-              <div className="h-full flex items-center justify-center px-4 py-12">
-                <p className="text-gray-400">Loading conversation...</p>
-              </div>
-            ) : activeMessages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center px-6 sm:px-8 md:px-12 lg:px-16 py-1 sm:py-2 md:py-3 lg:py-4">
-                <h2 className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl font-normal text-white mb-2 sm:mb-3 md:mb-4 lg:mb-5 xl:mb-6 flex-shrink-0">
-                  How can I help you today?
-                </h2>
-
-                {/* Feature Cards Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-2 md:gap-2.5 lg:gap-3 xl:gap-4 2xl:gap-5 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
-                  {FEATURE_CARDS.map((feature, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        if (feature.prompt) {
-                          sendMessage(feature.prompt);
-                        } else if (feature.path) {
-                          setIsNavigating(true);
-                          if (feature.path === '/lending') {
-                            setNavigationType('lending');
-                          } else if (feature.path === '/staking') {
-                            setNavigationType('staking');
-                          } else if (feature.path === '/swap') {
-                            setNavigationType('swap');
-                          } else if (feature.path === '/dca') {
-                            setNavigationType('dca');
-                          }
-                          router.push(feature.path);
-                        }
-                      }}
-                      disabled={!feature.path && !feature.prompt}
-                      className={`flex flex-col p-3 sm:p-2 md:p-2.5 lg:p-3 xl:p-4 2xl:p-5 rounded-lg md:rounded-xl bg-black/80 backdrop-blur-md border border-white/15 transition-all shadow-lg text-left ${
-                        !feature.path && !feature.prompt ? 'opacity-50 cursor-not-allowed' : 'hover:border-white/30 cursor-pointer'
-                      }`}
-                    >
-                      {/* Icon */}
-                      <div className="mb-1.5 sm:mb-1 md:mb-1.5 lg:mb-2 xl:mb-2.5">
-                        <Image
-                          src={feature.icon}
-                          alt={feature.name}
-                          width={48}
-                          height={48}
-                          className="w-7 h-7 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 xl:w-10 xl:h-10 2xl:w-12 2xl:h-12"
-                        />
-                      </div>
-
-                      {/* Title */}
-                      <h3 className="text-[11px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base text-white font-semibold mb-1 sm:mb-0.5 md:mb-1 lg:mb-1.5">
-                        {feature.name}
-                      </h3>
-
-                      {/* Description */}
-                      <p className="text-[9px] sm:text-[8px] md:text-[9px] lg:text-[10px] xl:text-xs 2xl:text-sm text-gray-400 leading-snug mb-2 sm:mb-1.5 md:mb-2 lg:mb-2.5 xl:mb-3 flex-1">
-                        {feature.description}
-                      </p>
-
-                      {/* Continue Button - Only on larger screens */}
-                      <div className="hidden sm:block w-full px-1.5 py-0.5 sm:px-2 sm:py-0.5 md:px-2.5 md:py-1 lg:px-3 lg:py-1.5 xl:px-4 xl:py-2 rounded-md bg-white text-black text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs xl:text-sm 2xl:text-base font-medium text-center">
-                        Continue
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="py-6">
-                {activeMessages.map((message, index) => {
-                const timestampValue = message.timestamp.getTime();
-                const hasValidTime = !Number.isNaN(timestampValue);
-                const timeLabel = hasValidTime
-                  ? message.timestamp.toLocaleTimeString('en-US', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  : '';
-                const messageKey = hasValidTime
-                  ? `${message.role}-${timestampValue}-${index}`
-                  : `${message.role}-${index}`;
-
-                return (
-                  <div
-                    key={messageKey}
-                    className="w-full"
-                  >
-                    <div className="max-w-3xl mx-auto px-4 py-4">
-                      {message.role === 'user' ? (
-                        // User message - aligned to the right with background
-                        <div className="flex items-start gap-3 justify-end">
-                          <div className="flex flex-col items-end max-w-[80%]">
-                            <div className="flex items-center gap-2 mb-2">
-                              {timeLabel ? (
-                                <span className="text-xs text-gray-500">{timeLabel}</span>
-                              ) : null}
-                              <span className="text-sm font-semibold text-gray-300">You</span>
+                    return (
+                      <div
+                        key={messageKey}
+                        className="w-full"
+                      >
+                        <div className="max-w-3xl mx-auto px-4 py-4">
+                          {message.role === 'user' ? (
+                            // User message - aligned to the right with background
+                            <div className="flex items-start gap-3 justify-end">
+                              <div className="flex flex-col items-end max-w-[80%]">
+                                <div className="flex items-center gap-2 mb-2">
+                                  {timeLabel ? (
+                                    <span className="text-xs text-gray-500">{timeLabel}</span>
+                                  ) : null}
+                                  <span className="text-sm font-semibold text-gray-300">You</span>
+                                </div>
+                                <div className="rounded-2xl bg-[#202020] text-gray-200 px-4 py-3 text-[15px] break-words leading-relaxed">
+                                  {message.content}
+                                </div>
+                              </div>
+                              <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
+                                <div className="w-full h-full rounded-full bg-gray-700 text-white flex items-center justify-center">
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                  </svg>
+                                </div>
+                              </div>
                             </div>
-                            <div className="rounded-2xl bg-[#202020] text-gray-200 px-4 py-3 text-[15px] break-words leading-relaxed">
-                              {message.content}
+                          ) : (
+                            // Assistant message - aligned to the left without background
+                            <div className="flex items-start gap-3">
+                              <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
+                                <Image
+                                  src={zicoBlue}
+                                  alt="Zico"
+                                  width={32}
+                                  height={32}
+                                  className="w-8 h-8"
+                                />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-sm font-semibold text-gray-300">Zico</span>
+                                  {timeLabel ? (
+                                    <span className="text-xs text-gray-500">{timeLabel}</span>
+                                  ) : null}
+                                </div>
+                                <div className="text-[15px] break-words leading-relaxed text-gray-200">
+                                  <MarkdownMessage text={message.content} />
+                                </div>
+
+                                {/* Swap Interface */}
+                                {message.role === 'assistant' &&
+                                  message.metadata?.event === 'swap_intent_ready' && (
+                                    <div className="mt-4">
+                                      {/* Loading State */}
+                                      {swapLoading && !swapQuote?.quote && (
+                                        <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
+                                          <div className="flex items-center gap-2 text-gray-300">
+                                            <div className="loader-inline-sm" />
+                                            <span className="text-sm">Getting quote...</span>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {swapStatusMessage && (
+                                        <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5 mt-3">
+                                          <div className="flex items-center gap-2 text-gray-300">
+                                            {executingSwap && <div className="loader-inline-sm" />}
+                                            <span className="text-sm">{swapStatusMessage}</span>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Error State */}
+                                      {swapError && !swapLoading && (
+                                        <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4">
+                                          <p className="text-sm text-red-400">❌ {swapError}</p>
+                                        </div>
+                                      )}
+
+                                      {/* Resume Swap Button - Shows when swap quote exists but no modal is open */}
+                                      {swapQuote?.quote && !swapFlowStep && !swapSuccess && !swapLoading && (
+                                        <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
+                                          <div className="flex items-center justify-between gap-3">
+                                            <div className="flex-1">
+                                              <p className="text-sm text-white font-medium mb-1">
+                                                Swap {String(message.metadata?.from_token)} → {String(message.metadata?.to_token)}
+                                              </p>
+                                              <p className="text-xs text-gray-400">
+                                                Quote ready. Click to continue with your swap.
+                                              </p>
+                                            </div>
+                                            <button
+                                              onClick={() => {
+                                                setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
+                                                setSwapFlowStep('routing');
+                                              }}
+                                              disabled={executingSwap}
+                                              className="px-4 py-2 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                            >
+                                              Resume Swap
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Swap Preview Card - Hidden, modal flow is used instead */}
+                                      {false && swapQuote?.quote && !swapSuccess && (
+                                        <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden max-w-sm">
+                                          {/* Header */}
+                                          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                                            <h3 className="text-sm font-semibold text-white">Preview Swap Position</h3>
+                                            <button
+                                              onClick={() => {
+                                                setSwapQuote(null);
+                                                setSwapError(null);
+                                              }}
+                                              className="text-gray-400 hover:text-white transition-colors"
+                                            >
+                                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                              </svg>
+                                            </button>
+                                          </div>
+
+                                          {/* Token Pair Indicator */}
+                                          <div className="px-4 py-3 bg-[#2A2A2A]/50">
+                                            <div className="flex items-center gap-2.5">
+                                              {/* Overlapping circles */}
+                                              <div className="relative flex items-center">
+                                                <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center text-xs font-bold text-black">
+                                                  {String(message.metadata?.from_token).slice(0, 1)}
+                                                </div>
+                                                <div className="w-7 h-7 rounded-full bg-gray-500 flex items-center justify-center text-xs font-bold text-white -ml-2">
+                                                  {String(message.metadata?.to_token).slice(0, 1)}
+                                                </div>
+                                              </div>
+
+                                              <div className="flex-1">
+                                                <div className="text-sm text-white font-medium">
+                                                  {String(message.metadata?.from_token)}/{String(message.metadata?.to_token)}
+                                                </div>
+                                                <div className="text-xs text-gray-400 mt-0.5">
+                                                  {String(message.metadata?.from_network)} → {String(message.metadata?.to_network)}
+                                                </div>
+                                              </div>
+
+                                              {swapQuote?.quote?.fees?.totalFeeUsd && (
+                                                <div className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs font-medium rounded">
+                                                  ${swapQuote?.quote?.fees?.totalFeeUsd}
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+
+                                          {/* Content */}
+                                          <div className="px-4 py-3 space-y-3">
+                                            {/* Token Deposited */}
+                                            <div>
+                                              <div className="text-xs text-gray-400 mb-2">Token Deposited</div>
+                                              <div className="text-xl font-light text-white mb-2">
+                                                ${(parseFloat(String(message.metadata?.amount)) * 1800).toFixed(3)}
+                                              </div>
+                                              <div className="space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                  <div className="flex items-center gap-2">
+                                                    <div className="w-4 h-4 rounded-full bg-white"></div>
+                                                    <span className="text-xs text-white">{String(message.metadata?.from_token)}</span>
+                                                  </div>
+                                                  <span className="text-xs text-white">{String(message.metadata?.amount)}</span>
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                  <div className="flex items-center gap-2">
+                                                    <div className="w-4 h-4 rounded-full bg-gray-500"></div>
+                                                    <span className="text-xs text-white">{String(message.metadata?.to_token)}</span>
+                                                  </div>
+                                                  <span className="text-xs text-white">{formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Divider Line */}
+                                            <div className="border-t border-white/5"></div>
+
+                                            {/* Min. Amounts */}
+                                            <div>
+                                              <div className="text-xs text-gray-400 mb-2">Min. Amounts to Receive</div>
+                                              <div className="space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                  <div className="flex items-center gap-2">
+                                                    <div className="w-4 h-4 rounded-full bg-white"></div>
+                                                    <span className="text-xs text-white">{String(message.metadata?.from_token)}</span>
+                                                  </div>
+                                                  <span className="text-xs text-white">0</span>
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                  <div className="flex items-center gap-2">
+                                                    <div className="w-4 h-4 rounded-full bg-gray-500"></div>
+                                                    <span className="text-xs text-white">{String(message.metadata?.to_token)}</span>
+                                                  </div>
+                                                  <span className="text-xs text-white">{(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Price Range */}
+                                            <div>
+                                              <div className="text-xs text-gray-400 mb-2">Price Range</div>
+                                              <div className="grid grid-cols-2 gap-2">
+                                                <div className="bg-black/40 border border-white/10 rounded-lg p-3">
+                                                  <div className="text-xs text-gray-400 mb-0.5">Min</div>
+                                                  <div className="text-base font-medium text-white">
+                                                    {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) / parseFloat(String(message.metadata?.amount)) * 0.95).toFixed(2)}
+                                                  </div>
+                                                  <div className="text-[10px] text-gray-400 mt-0.5">
+                                                    {String(message.metadata?.to_token)} per {String(message.metadata?.from_token)}
+                                                  </div>
+                                                </div>
+                                                <div className="bg-black/40 border border-white/10 rounded-lg p-3">
+                                                  <div className="text-xs text-gray-400 mb-0.5">Max</div>
+                                                  <div className="text-base font-medium text-white">
+                                                    {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) / parseFloat(String(message.metadata?.amount)) * 1.05).toFixed(2)}
+                                                  </div>
+                                                  <div className="text-[10px] text-gray-400 mt-0.5">
+                                                    {String(message.metadata?.to_token)} per {String(message.metadata?.from_token)}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Fee Tier */}
+                                            <div className="flex items-center justify-between py-1.5">
+                                              <span className="text-xs text-gray-400">Fee Tier</span>
+                                              <div className="flex items-center gap-1.5">
+                                                <span className="text-xs text-cyan-400 font-medium">Best for Stable Pairs</span>
+                                                <span className="text-xs text-white">0.01%</span>
+                                              </div>
+                                            </div>
+
+                                            {/* Details */}
+                                            <div className="space-y-1.5 pt-1.5 border-t border-white/5">
+                                              {swapQuote?.quote?.fees?.totalFeeUsd && (
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-xs text-gray-400">Est. Total Gas Fee</span>
+                                                  <span className="text-xs text-white">${swapQuote?.quote?.fees?.totalFeeUsd}</span>
+                                                </div>
+                                              )}
+                                              <div className="flex items-center justify-between">
+                                                <span className="text-xs text-gray-400">Slippage Setting</span>
+                                                <span className="text-xs text-white">10%</span>
+                                              </div>
+                                              <div className="flex items-center justify-between">
+                                                <span className="text-xs text-gray-400">Order Routing</span>
+                                                <div className="flex items-center gap-1">
+                                                  {isAvalancheSwap(message.metadata as Record<string, unknown>) ? (
+                                                    <>
+                                                      <Image src={AvalancheIcon} alt="Avalanche" width={12} height={12} className="w-3 h-3" />
+                                                      <span className="text-xs text-white">Avalanche C-chain</span>
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <div className="w-3 h-3 rounded-full bg-white"></div>
+                                                      <span className="text-xs text-white">UNI V3</span>
+                                                    </>
+                                                  )}
+                                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400">
+                                                    <circle cx="12" cy="12" r="10" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
+                                                  </svg>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Error Message */}
+                                            {swapError && (
+                                              <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
+                                                <p className="text-sm text-red-400">{swapError}</p>
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          {/* Action Buttons */}
+                                          <div className="px-4 py-3 border-t border-white/10 flex gap-2">
+                                            <button
+                                              onClick={() => {
+                                                setSwapQuote(null);
+                                                setSwapError(null);
+                                              }}
+                                              className="flex-1 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#333333] text-white text-sm font-medium transition-colors"
+                                            >
+                                              Cancel
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
+                                                setSwapFlowStep('routing');
+                                              }}
+                                              disabled={executingSwap}
+                                              className="flex-1 py-2.5 rounded-xl bg-cyan-400 hover:bg-cyan-500 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                              Confirm Open Position
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Success State */}
+                                      {swapSuccess && (
+                                        <SwapSuccessCard
+                                          txHashes={swapTxHashes}
+                                          variant="compact"
+                                          onClose={() => {
+                                            setSwapSuccess(false);
+                                            setSwapTxHashes([]);
+                                          }}
+                                        />
+                                      )}
+                                    </div>
+                                  )}
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-                            <div className="w-full h-full rounded-full bg-gray-700 text-white flex items-center justify-center">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                              </svg>
-                            </div>
-                          </div>
+                          )}
                         </div>
-                      ) : (
-                        // Assistant message - aligned to the left without background
+                      </div>
+                    );
+                  })}
+
+                  {isSending && (
+                    <div className="w-full">
+                      <div className="max-w-3xl mx-auto px-4 py-4">
                         <div className="flex items-start gap-3">
                           <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
                             <Image
@@ -1568,321 +1895,20 @@ export default function ChatPage() {
                               className="w-8 h-8"
                             />
                           </div>
-                          <div className="flex-1 min-w-0">
+                          <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
                               <span className="text-sm font-semibold text-gray-300">Zico</span>
-                              {timeLabel ? (
-                                <span className="text-xs text-gray-500">{timeLabel}</span>
-                              ) : null}
                             </div>
-                            <div className="text-[15px] break-words leading-relaxed text-gray-200">
-                              <MarkdownMessage text={message.content} />
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
+                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-75" />
+                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150" />
                             </div>
-                          
-                            {/* Swap Interface */}
-                            {message.role === 'assistant' &&
-                              message.metadata?.event === 'swap_intent_ready' && (
-                              <div className="mt-4">
-                                {/* Loading State */}
-                                {swapLoading && !swapQuote?.quote && (
-                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
-                                    <div className="flex items-center gap-2 text-gray-300">
-                                      <div className="loader-inline-sm" />
-                                      <span className="text-sm">Getting quote...</span>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {swapStatusMessage && (
-                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-5 mt-3">
-                                    <div className="flex items-center gap-2 text-gray-300">
-                                      {executingSwap && <div className="loader-inline-sm" />}
-                                      <span className="text-sm">{swapStatusMessage}</span>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Error State */}
-                                {swapError && !swapLoading && (
-                                  <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4">
-                                    <p className="text-sm text-red-400">❌ {swapError}</p>
-                                  </div>
-                                )}
-
-                                {/* Resume Swap Button - Shows when swap quote exists but no modal is open */}
-                                {swapQuote?.quote && !swapFlowStep && !swapSuccess && !swapLoading && (
-                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div className="flex-1">
-                                        <p className="text-sm text-white font-medium mb-1">
-                                          Swap {String(message.metadata?.from_token)} → {String(message.metadata?.to_token)}
-                                        </p>
-                                        <p className="text-xs text-gray-400">
-                                          Quote ready. Click to continue with your swap.
-                                        </p>
-                                      </div>
-                                      <button
-                                        onClick={() => {
-                                          setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
-                                          setSwapFlowStep('routing');
-                                        }}
-                                        disabled={executingSwap}
-                                        className="px-4 py-2 rounded-lg bg-white hover:bg-gray-100 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                                      >
-                                        Resume Swap
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Swap Preview Card - Hidden, modal flow is used instead */}
-                                {false && swapQuote?.quote && !swapSuccess && (
-                                  <div className="bg-[#1C1C1C]/95 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden max-w-sm">
-                                    {/* Header */}
-                                    <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-                                      <h3 className="text-sm font-semibold text-white">Preview Swap Position</h3>
-                                      <button
-                                        onClick={() => {
-                                          setSwapQuote(null);
-                                          setSwapError(null);
-                                        }}
-                                        className="text-gray-400 hover:text-white transition-colors"
-                                      >
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                        </svg>
-                                      </button>
-                                    </div>
-
-                                    {/* Token Pair Indicator */}
-                                    <div className="px-4 py-3 bg-[#2A2A2A]/50">
-                                      <div className="flex items-center gap-2.5">
-                                        {/* Overlapping circles */}
-                                        <div className="relative flex items-center">
-                                          <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center text-xs font-bold text-black">
-                                            {String(message.metadata?.from_token).slice(0, 1)}
-                                          </div>
-                                          <div className="w-7 h-7 rounded-full bg-gray-500 flex items-center justify-center text-xs font-bold text-white -ml-2">
-                                            {String(message.metadata?.to_token).slice(0, 1)}
-                                          </div>
-                                        </div>
-
-                                        <div className="flex-1">
-                                          <div className="text-sm text-white font-medium">
-                                            {String(message.metadata?.from_token)}/{String(message.metadata?.to_token)}
-                                          </div>
-                                          <div className="text-xs text-gray-400 mt-0.5">
-                                            {String(message.metadata?.from_network)} → {String(message.metadata?.to_network)}
-                                          </div>
-                                        </div>
-
-                                        {swapQuote?.quote?.fees?.totalFeeUsd && (
-                                          <div className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs font-medium rounded">
-                                            ${swapQuote?.quote?.fees?.totalFeeUsd}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {/* Content */}
-                                    <div className="px-4 py-3 space-y-3">
-                                      {/* Token Deposited */}
-                                      <div>
-                                        <div className="text-xs text-gray-400 mb-2">Token Deposited</div>
-                                        <div className="text-xl font-light text-white mb-2">
-                                          ${(parseFloat(String(message.metadata?.amount)) * 1800).toFixed(3)}
-                                        </div>
-                                        <div className="space-y-1.5">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <div className="w-4 h-4 rounded-full bg-white"></div>
-                                              <span className="text-xs text-white">{String(message.metadata?.from_token)}</span>
-                                            </div>
-                                            <span className="text-xs text-white">{String(message.metadata?.amount)}</span>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <div className="w-4 h-4 rounded-full bg-gray-500"></div>
-                                              <span className="text-xs text-white">{String(message.metadata?.to_token)}</span>
-                                            </div>
-                                            <span className="text-xs text-white">{formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)}</span>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      {/* Divider Line */}
-                                      <div className="border-t border-white/5"></div>
-
-                                      {/* Min. Amounts */}
-                                      <div>
-                                        <div className="text-xs text-gray-400 mb-2">Min. Amounts to Receive</div>
-                                        <div className="space-y-1.5">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <div className="w-4 h-4 rounded-full bg-white"></div>
-                                              <span className="text-xs text-white">{String(message.metadata?.from_token)}</span>
-                                            </div>
-                                            <span className="text-xs text-white">0</span>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <div className="w-4 h-4 rounded-full bg-gray-500"></div>
-                                              <span className="text-xs text-white">{String(message.metadata?.to_token)}</span>
-                                            </div>
-                                            <span className="text-xs text-white">{(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) * 0.99).toFixed(6)}</span>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      {/* Price Range */}
-                                      <div>
-                                        <div className="text-xs text-gray-400 mb-2">Price Range</div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                          <div className="bg-black/40 border border-white/10 rounded-lg p-3">
-                                            <div className="text-xs text-gray-400 mb-0.5">Min</div>
-                                            <div className="text-base font-medium text-white">
-                                              {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) / parseFloat(String(message.metadata?.amount)) * 0.95).toFixed(2)}
-                                            </div>
-                                            <div className="text-[10px] text-gray-400 mt-0.5">
-                                              {String(message.metadata?.to_token)} per {String(message.metadata?.from_token)}
-                                            </div>
-                                          </div>
-                                          <div className="bg-black/40 border border-white/10 rounded-lg p-3">
-                                            <div className="text-xs text-gray-400 mb-0.5">Max</div>
-                                            <div className="text-base font-medium text-white">
-                                              {(parseFloat(formatAmountHuman(BigInt(swapQuote?.quote?.estimatedReceiveAmount || 0), 18)) / parseFloat(String(message.metadata?.amount)) * 1.05).toFixed(2)}
-                                            </div>
-                                            <div className="text-[10px] text-gray-400 mt-0.5">
-                                              {String(message.metadata?.to_token)} per {String(message.metadata?.from_token)}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      {/* Fee Tier */}
-                                      <div className="flex items-center justify-between py-1.5">
-                                        <span className="text-xs text-gray-400">Fee Tier</span>
-                                        <div className="flex items-center gap-1.5">
-                                          <span className="text-xs text-cyan-400 font-medium">Best for Stable Pairs</span>
-                                          <span className="text-xs text-white">0.01%</span>
-                                        </div>
-                                      </div>
-
-                                      {/* Details */}
-                                      <div className="space-y-1.5 pt-1.5 border-t border-white/5">
-                                        {swapQuote?.quote?.fees?.totalFeeUsd && (
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-xs text-gray-400">Est. Total Gas Fee</span>
-                                            <span className="text-xs text-white">${swapQuote?.quote?.fees?.totalFeeUsd}</span>
-                                          </div>
-                                        )}
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xs text-gray-400">Slippage Setting</span>
-                                          <span className="text-xs text-white">10%</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xs text-gray-400">Order Routing</span>
-                                          <div className="flex items-center gap-1">
-                                            {isAvalancheSwap(message.metadata as Record<string, unknown>) ? (
-                                              <>
-                                                <Image src={AvalancheIcon} alt="Avalanche" width={12} height={12} className="w-3 h-3" />
-                                                <span className="text-xs text-white">Avalanche C-chain</span>
-                                              </>
-                                            ) : (
-                                              <>
-                                                <div className="w-3 h-3 rounded-full bg-white"></div>
-                                                <span className="text-xs text-white">UNI V3</span>
-                                              </>
-                                            )}
-                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400">
-                                              <circle cx="12" cy="12" r="10" />
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0-4h.01" />
-                                            </svg>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      {/* Error Message */}
-                                      {swapError && (
-                                        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
-                                          <p className="text-sm text-red-400">{swapError}</p>
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {/* Action Buttons */}
-                                    <div className="px-4 py-3 border-t border-white/10 flex gap-2">
-                                      <button
-                                        onClick={() => {
-                                          setSwapQuote(null);
-                                          setSwapError(null);
-                                        }}
-                                        className="flex-1 py-2.5 rounded-xl bg-[#2A2A2A] hover:bg-[#333333] text-white text-sm font-medium transition-colors"
-                                      >
-                                        Cancel
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          setCurrentSwapMetadata(message.metadata as Record<string, unknown>);
-                                          setSwapFlowStep('routing');
-                                        }}
-                                        disabled={executingSwap}
-                                        className="flex-1 py-2.5 rounded-xl bg-cyan-400 hover:bg-cyan-500 text-black text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                      >
-                                        Confirm Open Position
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Success State */}
-                                {swapSuccess && (
-                                  <SwapSuccessCard
-                                    txHashes={swapTxHashes}
-                                    variant="compact"
-                                    onClose={() => {
-                                      setSwapSuccess(false);
-                                      setSwapTxHashes([]);
-                                    }}
-                                  />
-                                )}
-                              </div>
-                            )}
                           </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {isSending && (
-                <div className="w-full">
-                  <div className="max-w-3xl mx-auto px-4 py-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-                        <Image
-                          src={zicoBlue}
-                          alt="Zico"
-                          width={32}
-                          height={32}
-                          className="w-8 h-8"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-sm font-semibold text-gray-300">Zico</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
-                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-75" />
-                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150" />
-                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                  )}
 
                   <div ref={messagesEndRef} />
                 </div>
@@ -1975,7 +2001,7 @@ export default function ChatPage() {
                         </div>
                         <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1 flex-shrink-0">
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
                           </svg>
                           Suggested
                         </div>
@@ -2099,7 +2125,7 @@ export default function ChatPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <div className="px-2 py-1 bg-cyan-400/20 text-cyan-400 text-[10px] sm:text-xs font-semibold rounded flex items-center gap-1">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
                     </svg>
                     Suggested
                   </div>

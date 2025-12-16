@@ -138,6 +138,21 @@ export const defaultNavigationItems: NavigationItem[] = [
     )
   },
   {
+    key: 'bridge',
+    label: 'Bridge',
+    href: '/bridge',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+      </svg>
+    ),
+    activeIcon: (
+      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+        <path fillRule="evenodd" d="M4 17a1 1 0 011-1h12a1 1 0 110 2H5a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 9.586V4a1 1 0 112 0v5.586l.293-.293a1 1 0 011.414 1.414l-2 2a1 1 0 01-1.414 0l-2-2a1 1 0 010-1.414z" clipRule="evenodd" />
+      </svg>
+    )
+  },
+  {
     key: 'lending',
     label: 'Lending',
     href: '/lending',
