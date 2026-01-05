@@ -41,15 +41,15 @@ export function getAuthHeaders(userId?: string): HeadersInit {
     'Content-Type': 'application/json',
   };
 
+  // Primary auth: JWT from wallet login
+  const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  // Optional context: Telegram initData (telemetry/extra checks)
   if (initData) {
-    // Running in Telegram WebApp
     headers['x-telegram-init-data'] = initData;
-  } else if (userId) {
-    // Use provided userId for dev mode
-    headers['x-dev-user-id'] = userId;
-    console.log('[Telegram Auth] Using dev mode with user ID:', userId.slice(0, 10) + '...');
-  } else {
-    console.warn('[Telegram Auth] No authentication available - requests may fail');
   }
 
   return headers;
@@ -121,4 +121,3 @@ export function isTelegramWebApp(): boolean {
 
   return !!(window as any).Telegram?.WebApp;
 }
-

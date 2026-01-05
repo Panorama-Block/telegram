@@ -24,7 +24,7 @@ const images = [
 const Partners = () => {
   return (
     <div className="mt-16 md:mt-32 lg:mt-40">
-      <h2 className="text-landing-title text-center text-2xl lg:text-3xl lg:text-4xl px-14 mb-4 md:mb-8">Proudly Colaborating with:</h2>
+      <h2 className="text-landing-title text-center text-2xl lg:text-3xl lg:text-4xl px-14 mb-4 md:mb-8 font-sans">Proudly Colaborating with:</h2>
       <div className="relative flex overflow-x-hidden">
         <div className="animate-marquee whitespace-nowrap flex my-8 gap-16 pr-16">
           {images.map((image, index) => (

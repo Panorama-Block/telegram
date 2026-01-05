@@ -57,8 +57,10 @@ export class AgentsClient {
   private debugEnabled: boolean;
 
   constructor() {
-    // Read environment variables provided by Next.js
-    this.baseUrl = process.env.AGENTS_API_BASE;
+    const gatewayBase =
+      (process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.VITE_GATEWAY_BASE || '').replace(/\/+$/, '');
+    // Prefer gateway; fallback to explicit AGENTS_API_BASE
+    this.baseUrl = gatewayBase ? `${gatewayBase}/api/agents` : process.env.AGENTS_API_BASE;
     this.messagePath = process.env.AGENTS_RESPONSE_MESSAGE_PATH;
     const debugFlag = process.env.AGENTS_DEBUG_SHAPE;
     this.debugShape = typeof debugFlag === 'string' ? ['1', 'true', 'on', 'yes'].includes(debugFlag.toLowerCase()) : Boolean(debugFlag);

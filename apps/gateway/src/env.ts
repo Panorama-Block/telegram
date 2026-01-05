@@ -17,6 +17,15 @@ const EnvSchema = z.object({
   DEFAULT_WALLET_ADDRESS: z.string().optional(),
   AGENTS_RESPONSE_MESSAGE_PATH: z.string().optional(),
   AGENTS_DEBUG_SHAPE: z.coerce.boolean().optional().default(false),
+  NEXTJS_PORT: z.coerce.number().int().positive().default(3003),
+
+  // Service URLs (gateway proxies)
+  AUTH_SERVICE_URL: z.string().url().optional(),
+  SWAP_SERVICE_URL: z.string().url().optional(),
+  LENDING_SERVICE_URL: z.string().url().optional(),
+  LIDO_SERVICE_URL: z.string().url().optional(),
+  DCA_SERVICE_URL: z.string().url().optional(),
+  AGENTS_SERVICE_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
