@@ -83,14 +83,9 @@ class StakingApiClient {
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
   constructor(account: any) {
-    // Priority: Use environment variable or fallback to localhost
-    const direct = process.env.NEXT_PUBLIC_STAKING_API_URL || process.env.VITE_STAKING_API_URL;
-
-    if (direct && direct.length > 0) {
-      this.baseUrl = direct.replace(/\/+$/, '');
-    } else {
-      this.baseUrl = 'http://localhost:3004';
-    }
+    const gatewayBase =
+      (process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.VITE_GATEWAY_BASE || '').replace(/\/+$/, '');
+    this.baseUrl = gatewayBase ? `${gatewayBase}/api/staking` : 'http://localhost:8443/api/staking';
 
     this.account = account;
   }
@@ -349,7 +344,7 @@ class StakingApiClient {
       // Use centralized auth headers
       const headers = this.getAuthHeaders();
 
-      const response = await fetch(`${this.baseUrl}/api/lido/position/${userAddress}`, {
+      const response = await fetch(`${this.baseUrl}/position/${userAddress}`, {
         method: 'GET',
         headers,
         signal: controller.signal
@@ -390,7 +385,7 @@ class StakingApiClient {
       const headers = this.getAuthHeaders();
 
       console.log('[STAKING] Sending stake request:', {
-        url: `${this.baseUrl}/api/lido/stake`,
+        url: `${this.baseUrl}/stake`,
         userAddress,
         amount
       });
@@ -398,7 +393,7 @@ class StakingApiClient {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-      const response = await fetch(`${this.baseUrl}/api/lido/stake`, {
+      const response = await fetch(`${this.baseUrl}/stake`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -467,7 +462,7 @@ class StakingApiClient {
       const headers = this.getAuthHeaders();
 
       console.log('[STAKING] Sending unstake request:', {
-        url: `${this.baseUrl}/api/lido/unstake`,
+        url: `${this.baseUrl}/unstake`,
         userAddress,
         amount
       });
@@ -475,7 +470,7 @@ class StakingApiClient {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-      const response = await fetch(`${this.baseUrl}/api/lido/unstake`, {
+      const response = await fetch(`${this.baseUrl}/unstake`, {
         method: 'POST',
         headers,
         body: JSON.stringify({

@@ -1,11 +1,18 @@
 /**
  * DCA Service API Client
  * Integrates with panorama-block-backend DCA service
+ * Uses Next.js API route as proxy to avoid CORS issues
  */
 
 import { authenticatedFetch } from '@/shared/lib/telegram-auth';
 
-export const DCA_API_URL = process.env.DCA_API_BASE || process.env.NEXT_PUBLIC_DCA_API_BASE || 'http://localhost:3004';
+const gatewayBase =
+  (process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.VITE_GATEWAY_BASE || '').replace(/\/+$/, '');
+
+// Use gateway as única porta pública
+export const DCA_API_URL = gatewayBase
+  ? `${gatewayBase}/api/dca`
+  : 'http://localhost:8443/api/dca';
 
 export interface SmartAccountPermissions {
   approvedTargets: string[];
@@ -87,7 +94,7 @@ export class DCAApiError extends Error {
  */
 export async function createSmartAccount(request: CreateAccountRequest): Promise<CreateAccountResponse> {
   try {
-    const response = await authenticatedFetch(`${DCA_API_URL}/dca/create-account`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/create-account`, {
       method: 'POST',
       body: JSON.stringify(request),
     }, request.userId);
@@ -116,7 +123,7 @@ export async function createSmartAccount(request: CreateAccountRequest): Promise
  */
 export async function getUserAccounts(userId: string): Promise<SmartAccount[]> {
   try {
-    const response = await authenticatedFetch(`${DCA_API_URL}/dca/accounts/${userId}`, {}, userId);
+    const response = await authenticatedFetch(`${DCA_API_URL}/accounts/${userId}`, {}, userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -139,7 +146,7 @@ export async function getUserAccounts(userId: string): Promise<SmartAccount[]> {
  */
 export async function getSmartAccount(address: string, userId?: string): Promise<SmartAccount> {
   try {
-    const response = await authenticatedFetch(`${DCA_API_URL}/dca/account/${address}`, {}, userId);
+    const response = await authenticatedFetch(`${DCA_API_URL}/account/${address}`, {}, userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -161,7 +168,7 @@ export async function getSmartAccount(address: string, userId?: string): Promise
  */
 export async function deleteSmartAccount(address: string, userId: string): Promise<void> {
   try {
-    const response = await authenticatedFetch(`${DCA_API_URL}/dca/account/${address}`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/account/${address}`, {
       method: 'DELETE',
       body: JSON.stringify({ userId }),
     }, userId);
@@ -184,7 +191,7 @@ export async function deleteSmartAccount(address: string, userId: string): Promi
  */
 export async function createStrategy(request: CreateStrategyRequest, userId?: string): Promise<{ strategyId: string; nextExecution: Date }> {
   try {
-    const response = await authenticatedFetch(`${DCA_API_URL}/dca/create-strategy`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/create-strategy`, {
       method: 'POST',
       body: JSON.stringify(request),
     }, userId);
@@ -213,7 +220,7 @@ export async function createStrategy(request: CreateStrategyRequest, userId?: st
  */
 export async function getAccountStrategies(smartAccountId: string, userId?: string): Promise<DCAStrategy[]> {
   try {
-    const response = await authenticatedFetch(`${DCA_API_URL}/dca/strategies/${smartAccountId}`, {}, userId);
+    const response = await authenticatedFetch(`${DCA_API_URL}/strategies/${smartAccountId}`, {}, userId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -236,7 +243,7 @@ export async function getAccountStrategies(smartAccountId: string, userId?: stri
  */
 export async function toggleStrategy(strategyId: string, isActive: boolean, userId?: string): Promise<void> {
   try {
-    const response = await authenticatedFetch(`${DCA_API_URL}/dca/strategy/${strategyId}/toggle`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/strategy/${strategyId}/toggle`, {
       method: 'PATCH',
       body: JSON.stringify({ isActive }),
     }, userId);
@@ -259,7 +266,7 @@ export async function toggleStrategy(strategyId: string, isActive: boolean, user
  */
 export async function deleteStrategy(strategyId: string, userId?: string): Promise<void> {
   try {
-    const response = await authenticatedFetch(`${DCA_API_URL}/dca/strategy/${strategyId}`, {
+    const response = await authenticatedFetch(`${DCA_API_URL}/strategy/${strategyId}`, {
       method: 'DELETE',
     }, userId);
 
@@ -281,7 +288,7 @@ export async function deleteStrategy(strategyId: string, userId?: string): Promi
  */
 export async function getExecutionHistory(smartAccountId: string, limit = 100, userId?: string): Promise<ExecutionHistory[]> {
   try {
-    const response = await authenticatedFetch(`${DCA_API_URL}/dca/history/${smartAccountId}?limit=${limit}`, {}, userId);
+    const response = await authenticatedFetch(`${DCA_API_URL}/history/${smartAccountId}?limit=${limit}`, {}, userId);
 
     if (!response.ok) {
       const error = await response.json();
