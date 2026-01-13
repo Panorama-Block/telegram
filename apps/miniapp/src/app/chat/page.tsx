@@ -1262,40 +1262,6 @@ export default function ChatPage() {
                         </p>
                       </div>
 
-<<<<<<< HEAD
-                    {/* Main Input Area */}
-                    <div className="relative group max-w-2xl mx-auto w-full my-8">
-                      <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                      <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 md:p-2 flex items-center gap-2 md:gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 group-focus-within:shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all duration-300">
-                        <div className="pl-2 md:pl-4 text-zinc-400">
-                          <Search className="w-5 h-5 md:w-6 md:h-6" />
-                        </div>
-                        <input
-                          type="text"
-                          value={inputMessage}
-                          onChange={(e) => setInputMessage(e.target.value)}
-                          onKeyPress={handleKeyPress}
-                          placeholder="Ask Zico anything..."
-                          disabled={isSending || !activeConversationId || initializing}
-                          className="flex-1 bg-transparent border-none outline-none text-base md:text-lg text-white placeholder:text-zinc-600 placeholder:text-sm md:placeholder:text-lg h-12 md:h-14"
-                        />
-                        <div className="flex items-center gap-2 pr-1 md:pr-2">
-                          <button className="hidden md:block p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
-                            <Paperclip className="w-5 h-5" />
-                          </button>
-                          <AudioButton
-                            onAudioReady={handleAudioReady}
-                            disabled={isSending || !activeConversationId || initializing}
-                          />
-                          <button
-                            onClick={() => sendMessage()}
-                            disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                            className="p-2 md:p-3 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
-                            aria-label="Send message"
-                          >
-                            <ArrowUp className="w-5 h-5" />
-                          </button>
-=======
                       {/* Main Input Area */}
                       <div className="relative group max-w-2xl mx-auto w-full my-8">
                         <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
@@ -1316,6 +1282,10 @@ export default function ChatPage() {
                             <button className="hidden md:block p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
                               <Paperclip className="w-5 h-5" />
                             </button>
+                            <AudioButton
+                              onAudioReady={handleAudioReady}
+                              disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
+                            />
                             <button
                               onClick={() => sendMessage()}
                               disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing || !inputMessage.trim()}
@@ -1325,7 +1295,6 @@ export default function ChatPage() {
                               <ArrowUp className="w-5 h-5" />
                             </button>
                           </div>
->>>>>>> ff4b25bf7840e0799c76dbb06cdd9d3d2f1de287
                         </div>
                       </div>
 
