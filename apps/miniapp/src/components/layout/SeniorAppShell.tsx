@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { NotificationCenter } from '@/shared/ui/NotificationCenter';
 import { cn } from '@/shared/lib/utils';
 import { useActiveAccount } from 'thirdweb/react';
 import { useLogout } from '@/shared/hooks/useLogout';
+import { useChat } from '@/shared/contexts/ChatContext';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 
 // Widget Modals
@@ -36,6 +37,17 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   const { logout, isLoggingOut } = useLogout();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [showChatHistory, setShowChatHistory] = useState(true);
+
+  // Chat context for conversation history
+  const { 
+    conversations, 
+    activeConversationId, 
+    isLoading: isLoadingConversations,
+    createConversation,
+    setActiveConversationId,
+    isCreatingConversation 
+  } = useChat();
 
   // Modal states
   const [showSwap, setShowSwap] = useState(false);
@@ -52,7 +64,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   const navItems: NavItem[] = [
     {
       id: 'chat',
-      label: 'Chat',
+      label: 'New Chat',
       href: '/chat',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -66,8 +78,8 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       href: '/portfolio',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <path strokeLinecap="round" d="M12 6v6l4 2" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h18M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M7 11h1m4 0h5M7 15h1m4 0h5M7 19h1m4 0h5" />
+          <rect x="4" y="7" width="16" height="14" rx="2" ry="2" />
         </svg>
       ),
     },
@@ -107,8 +119,8 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       isModal: true,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <path strokeLinecap="round" d="M12 6v6l4 2" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 17.5 9.5 12l3 3 7.5-7.5" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.5 7.5H20v4.5" />
         </svg>
       ),
     },
@@ -126,6 +138,31 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     return item.href ? pathname.startsWith(item.href) : false;
   };
 
+  const handleNewChat = useCallback(() => {
+    setIsSidebarOpen(false);
+    
+    if (pathname === '/chat') {
+      // Already on chat page, signal to show new chat welcome screen
+      // Don't create conversation in backend - will be created on first message
+      window.dispatchEvent(new CustomEvent('panorama:newchat', { detail: { pending: true } }));
+    } else {
+      // Navigate to chat with new=true to show welcome screen
+      router.push('/chat?new=true');
+    }
+  }, [pathname, router]);
+
+  const handleSelectConversation = useCallback((conversationId: string) => {
+    setIsSidebarOpen(false);
+    setActiveConversationId(conversationId);
+    
+    if (pathname !== '/chat') {
+      router.push(`/chat?id=${conversationId}`);
+    } else {
+      // Dispatch event for chat page to switch conversation
+      window.dispatchEvent(new CustomEvent('panorama:selectchat', { detail: { conversationId } }));
+    }
+  }, [pathname, router, setActiveConversationId]);
+
   const handleNavClick = (item: NavItem) => {
     setIsSidebarOpen(false);
 
@@ -142,14 +179,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       if (item.id === 'staking') setShowStaking(true);
       if (item.id === 'dca') setShowDCA(true);
     } else if (item.id === 'chat') {
-      // Always create new chat when clicking Chat
-      if (pathname === '/chat') {
-        // Already on chat page, dispatch event to create new chat
-        window.dispatchEvent(new CustomEvent('panorama:newchat'));
-      } else {
-        // Navigate to chat with new=true to create fresh chat
-        router.push('/chat?new=true');
-      }
+      handleNewChat();
     } else if (item.href) {
       router.push(item.href);
     }
@@ -170,7 +200,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       {/* Sidebar */}
       <aside
         className={cn(
-          'w-64 h-full border-r border-white/10 bg-[#0b0d0f]/95 backdrop-blur-2xl flex flex-col fixed lg:static left-0 top-0 z-50 transition-transform duration-300 shadow-[12px_0_40px_rgba(0,0,0,0.55)]',
+          'w-64 h-full border-r border-white/10 bg-[#0b0d0f]/95 backdrop-blur-2xl flex flex-col fixed lg:static left-0 top-0 z-50 transition-transform duration-300 shadow-[12px_0_40px_rgba(0,0,0,0.55)] font-sans',
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
@@ -190,38 +220,138 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
           </button>
         </div>
 
-        <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto custom-scrollbar">
-          {navItems.map((item) => {
+        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto custom-scrollbar">
+          {navItems.map((item, idx) => {
             const active = isActive(item);
+            const isNewChatItem = item.id === 'chat';
+            const needsDivider = idx > 0 && navItems[idx - 1].id === 'chat';
+            
             return (
-              <div key={item.id} className="relative flex items-center">
-                <button
-                  onClick={() => handleNavClick(item)}
-                  className={cn(
-                    'flex-1 flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden',
-                    active
-                      ? 'text-white'
-                      : 'text-pano-text-muted hover:text-white/80 hover:bg-white/5'
-                  )}
-                >
-                  {active && (
-                    <div className="absolute inset-0 bg-cyan-500/10 border border-cyan-500/20 rounded-xl shadow-[0_0_0_1px_rgba(34,211,238,0.22)]" />
-                  )}
-                  <span className={cn('relative z-10', active && 'text-cyan-400')}>{item.icon}</span>
-                  <span className={cn('relative z-10 text-sm font-semibold tracking-wide', active && 'text-glow')}>{item.label}</span>
-                  {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-cyan-500 rounded-r-full blur-[2px]" />}
-                </button>
-
-                {/* New Chat button - only for Chat item */}
-                {item.id === 'chat' && (
+              <div key={item.id} className="relative flex flex-col">
+                {needsDivider && <div className="my-2 h-px bg-white/10" />}
+                
+                {/* New Chat button with special styling */}
+                {isNewChatItem ? (
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => handleNavClick(item)}
+                      disabled={isCreatingConversation}
+                      className={cn(
+                        'w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden',
+                        active
+                          ? 'text-white'
+                          : 'text-pano-text-muted hover:text-white/80 hover:bg-white/5',
+                        isCreatingConversation && 'opacity-60 cursor-not-allowed'
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        {active && (
+                          <div className="absolute inset-0 bg-cyan-500/10 border border-cyan-500/20 rounded-xl shadow-[0_0_0_1px_rgba(34,211,238,0.22)]" />
+                        )}
+                        <span className={cn('relative z-10', active && 'text-cyan-400')}>
+                          {isCreatingConversation ? (
+                            <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                          ) : item.icon}
+                        </span>
+                        <span className={cn('relative z-10 text-sm font-semibold tracking-wide', active && 'text-glow')}>
+                          {item.label}
+                        </span>
+                        {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-cyan-500 rounded-r-full blur-[2px]" />}
+                      </div>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cyan-400">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
+                      </svg>
+                    </button>
+                    
+                    {/* Chat History Section */}
+                    <div className="mt-2">
+                      <button
+                        onClick={() => setShowChatHistory(!showChatHistory)}
+                        className="w-full flex items-center justify-between px-4 py-2 text-xs text-zinc-500 hover:text-zinc-400 transition-colors"
+                      >
+                        <span className="font-medium uppercase tracking-wider">Recent Chats</span>
+                        <svg 
+                          className={cn('w-4 h-4 transition-transform', showChatHistory && 'rotate-180')} 
+                          viewBox="0 0 24 24" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          strokeWidth="2"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      
+                      <AnimatePresence>
+                        {showChatHistory && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                              {isLoadingConversations ? (
+                                <div className="px-4 py-3 text-xs text-zinc-500 flex items-center gap-2">
+                                  <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                  </svg>
+                                  Loading...
+                                </div>
+                              ) : conversations.length === 0 ? (
+                                <div className="px-4 py-3 text-xs text-zinc-500">
+                                  No conversations yet
+                                </div>
+                              ) : (
+                                conversations.slice(0, 8).map((conversation) => {
+                                  const isActiveConv = activeConversationId === conversation.id;
+                                  return (
+                                    <button
+                                      key={conversation.id}
+                                      onClick={() => handleSelectConversation(conversation.id)}
+                                      className={cn(
+                                        'w-full text-left px-4 py-2 rounded-lg text-xs transition-all truncate',
+                                        isActiveConv
+                                          ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                                          : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
+                                      )}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 opacity-60">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                        </svg>
+                                        <span className="truncate">{conversation.title}</span>
+                                      </div>
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                ) : (
                   <button
                     onClick={() => handleNavClick(item)}
-                    className="relative z-10 p-2 ml-1 text-pano-text-muted hover:text-cyan-400 hover:bg-white/5 rounded-lg transition-colors"
-                    title="New Chat"
+                    className={cn(
+                      'flex-1 flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden',
+                      active
+                        ? 'text-white'
+                        : 'text-pano-text-muted hover:text-white/80 hover:bg-white/5'
+                    )}
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
-                    </svg>
+                    {active && (
+                      <div className="absolute inset-0 bg-cyan-500/10 border border-cyan-500/20 rounded-xl shadow-[0_0_0_1px_rgba(34,211,238,0.22)]" />
+                    )}
+                    <span className={cn('relative z-10', active && 'text-cyan-400')}>{item.icon}</span>
+                    <span className={cn('relative z-10 text-sm font-semibold tracking-wide', active && 'text-glow')}>{item.label}</span>
+                    {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-cyan-500 rounded-r-full blur-[2px]" />}
                   </button>
                 )}
               </div>

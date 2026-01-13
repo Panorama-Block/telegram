@@ -15,7 +15,7 @@ const About = () => {
       </div>
 
       <div className="relative flex flex-col items-center text-center justify-center gap-6 xl:gap-10 pt-0 lg:pt-8 pb-0 px-6 justify-self-center z-10">
-        <h2 className="text-landing-title leading-tight max-w-3xl mx-auto text-2xl md:text-3xl lg:text-4xl">
+        <h2 className="text-landing-title leading-tight max-w-3xl mx-auto text-2xl md:text-3xl lg:text-4xl font-sans">
           <span className="text-landing-highlight">Agentic Economy</span> Engineered through Academic Alliances.
         </h2>
 

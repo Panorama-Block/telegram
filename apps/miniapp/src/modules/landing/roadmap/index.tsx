@@ -2,27 +2,31 @@ import React from 'react'
 
 const data = [
   {
-    title: 'Phase 1',
+    title: 'Phase 1 — Launch',
     items: [
-      'Deploy first DeFi-focused AI agents on Telegram, enabling swaps, staking, lending, and multi-chain operations through simple prompts, establishing a modular multi-agent infrastructure supporting composable money legos strategies.',
+      'Deploy DeFi agents in Telegram with swaps, staking, lending and cross-chain intents.',
+      'Ship Mini App + gateway with secure auth and in-app wallet.',
     ],
   },
   {
-    title: 'Phase 2',
+    title: 'Phase 2 — Expansion',
     items: [
-      'Expand agents to additional networks and integrate a broader set of DeFi yield protocols. Implement flexible composability layers that adjust strategy parameters according to varying user risk profiles and optimization objectives.',
+      'Add chains (Solana, Sonic, Bera) and new yield primitives.',
+      'Composable strategies with risk profiles and guardrails.',
     ],
   },
   {
-    title: 'Phase 3',
+    title: 'Phase 3 — Orchestration',
     items: [
-      'Enhance multi-agent orchestration with advanced reasoning modules coordinating complex multi-step workflows across protocols and chains while dynamically adjusting allocations, leverage, and portfolio distribution based on predefined strategy templates, evolving from simple prompt-driven commands to fully adaptive, multi-chain strategy execution.',
+      'Multi-agent coordination for multi-step flows and portfolio balancing.',
+      'Adaptive routing with live pricing, gas, and slippage controls.',
     ],
   },
   {
-    title: 'Phase 4',
+    title: 'Phase 4 — Enterprise',
     items: [
-      'Activate enterprise-grade multi-agent framework for institutional applications, including corporate liquidity management, institutional staking, micropayments, insurance and lending. Expand accessibility through familiar messaging and mobile interfaces and launch a fully featured mobile super app for high-utility DeFi management.',
+      'Institutional features: treasury automations, staking ops, compliance hooks.',
+      'Mobile super-app experience with offline-safe sessions.',
     ],
   },
 ]
@@ -43,21 +47,23 @@ const Step = ({ index, title, items, side }: { index: number; title: string; ite
       </span>
 
       {/* Card */}
-      <div className="group relative overflow-hidden rounded-2xl bg-landing-tertiary/60 border border-landing-border/70 backdrop-blur-sm transition-transform hover:-translate-y-0.5">
-        {/* Accent */}
-        <div className="h-0.5 w-full bg-gradient-to-r from-landing-highlight/60 via-landing-highlight/20 to-transparent" />
-        <div className="p-5 md:p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-landing-highlight/15 ring-1 ring-landing-highlight/40 text-landing-highlight text-xs font-medium">
-              {index}
+      <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-landing-tertiary via-[#0c0c0c] to-landing-background border border-landing-border/70 shadow-[0_10px_40px_rgba(0,0,0,0.45)] transition-transform hover:-translate-y-1">
+        <div className="h-[3px] w-full bg-gradient-to-r from-landing-highlight/70 via-landing-highlight/20 to-transparent" />
+        <div className="p-5 md:p-6 space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-landing-highlight/15 ring-1 ring-landing-highlight/40 text-landing-highlight text-xs font-semibold">
+              {index.toString().padStart(2, '0')}
             </span>
-            <h3 className="text-landing-title text-xl md:text-2xl">
+            <h3 className="text-landing-title text-xl md:text-2xl font-sans tracking-tight">
               <span className="text-landing-highlight">{title}</span>
             </h3>
           </div>
-          <ul className="list-disc pl-5 space-y-2 text-landing-text text-base leading-relaxed max-w-[68ch] animate-slideUp">
+          <ul className="space-y-2 text-landing-text text-base leading-relaxed max-w-[68ch] animate-slideUp">
             {items.map((item, i) => (
-              <li key={i}>{item}</li>
+              <li key={i} className="flex gap-2">
+                <span className="mt-2 h-1.5 w-1.5 rounded-full bg-landing-highlight/70 flex-shrink-0" />
+                <span>{item}</span>
+              </li>
             ))}
           </ul>
         </div>
@@ -73,7 +79,7 @@ const Step = ({ index, title, items, side }: { index: number; title: string; ite
 const Roadmap = () => {
   return (
     <section id="roadmap" className="relative mt-14 md:mt-24">
-      <h2 className="text-landing-title text-3xl lg:text-5xl text-center">Roadmap</h2>
+      <h2 className="text-landing-title text-3xl lg:text-5xl text-center font-sans tracking-tight">Roadmap</h2>
 
       {/* Timeline container */}
       <div className="relative mx-auto mt-8 md:mt-12 max-w-5xl md:max-w-6xl px-4">
