@@ -12,7 +12,7 @@ declare global {
     };
   }
 }
-import { GlobalLoader, TransactionSettingsProvider } from '@/shared/ui';
+import { GlobalLoader, TransactionSettingsProvider, AudioButton } from '@/shared/ui';
 import MarkdownMessage from '@/shared/ui/MarkdownMessage';
 import Image from 'next/image';
 import '../../shared/ui/loader.css';
@@ -851,6 +851,112 @@ export default function ChatPage() {
     }
   }, [account?.address, getWalletAddress]);
 
+  const handleAudioReady = useCallback(async (audioBlob: Blob) => {
+    if (!activeConversationId || !userId) return;
+
+    const conversationId = activeConversationId;
+    setIsSending(true);
+
+    try {
+      debug('audio:send', { conversationId, audioSize: audioBlob.size });
+
+      const response = await agentsClient.chatAudio(
+        audioBlob,
+        userId,
+        conversationId,
+        getWalletAddress(),
+        getAuthOptions()
+      );
+
+      if (!isMountedRef.current) return;
+
+      console.log('[AUDIO] Response received:', response);
+
+      // Add the transcribed user message to the conversation
+      if (response.transcription) {
+        const userMessage: Message = {
+          role: 'user',
+          content: response.transcription,
+          timestamp: new Date(),
+        };
+
+        setMessagesByConversation((prev) => {
+          const prevMessages = prev[conversationId] ?? [];
+          return {
+            ...prev,
+            [conversationId]: [...prevMessages, userMessage],
+          };
+        });
+
+        // Update conversation title based on transcription
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  title: deriveConversationTitle(
+                    conversation.title,
+                    [...(messagesByConversation[conversationId] ?? []), userMessage]
+                  ),
+                }
+              : conversation
+          )
+        );
+      }
+
+      // Add the assistant response
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: autoFormatAssistantMarkdown(response.message || 'I was unable to process that request.'),
+        timestamp: new Date(),
+        agentName: response.agent_name ?? null,
+        metadata: response.metadata ?? undefined,
+      };
+
+      // Handle swap/lending/staking intents (same as text chat)
+      if (response.metadata?.event === 'swap_intent_ready') {
+        console.log('[AUDIO] Swap intent detected, fetching quote...');
+        getSwapQuote(response.metadata as Record<string, unknown>);
+      }
+
+      setMessagesByConversation((prev) => {
+        const prevMessages = prev[conversationId] ?? [];
+        return {
+          ...prev,
+          [conversationId]: [...prevMessages, assistantMessage],
+        };
+      });
+
+    } catch (error) {
+      console.error('Error sending audio:', error);
+      debug('audio:error', {
+        conversationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      const fallbackMessage: Message = {
+        role: 'assistant',
+        content: 'Sorry, I could not process the audio. Please try again or type your message.',
+        timestamp: new Date(),
+      };
+
+      if (isMountedRef.current) {
+        setMessagesByConversation((prev) => {
+          const prevMessages = prev[conversationId] ?? [];
+          return {
+            ...prev,
+            [conversationId]: [...prevMessages, fallbackMessage],
+          };
+        });
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsSending(false);
+      }
+      debug('audio:complete', { conversationId });
+    }
+  }, [activeConversationId, userId, agentsClient, debug, getAuthOptions, getWalletAddress, getSwapQuote, messagesByConversation]);
+
   return (
     <ProtectedRoute>
       <TransactionSettingsProvider>
@@ -932,6 +1038,10 @@ export default function ChatPage() {
                           <button className="hidden md:block p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
                             <Paperclip className="w-5 h-5" />
                           </button>
+                          <AudioButton
+                            onAudioReady={handleAudioReady}
+                            disabled={isSending || !activeConversationId || initializing}
+                          />
                           <button
                             onClick={() => sendMessage()}
                             disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
@@ -1328,6 +1438,10 @@ export default function ChatPage() {
                         disabled={isSending || !activeConversationId || initializing}
                         className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder:text-zinc-600 h-12"
                         autoFocus
+                      />
+                      <AudioButton
+                        onAudioReady={handleAudioReady}
+                        disabled={isSending || !activeConversationId || initializing}
                       />
                       <button
                         onClick={() => sendMessage()}

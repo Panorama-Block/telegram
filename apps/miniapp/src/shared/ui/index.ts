@@ -14,3 +14,4 @@ export * from './NeonButton';
 export * from './TransactionSettingsContext';
 export * from './TokenSelectionModal';
 export * from './NotificationCenter';
+export * from './AudioButton';
