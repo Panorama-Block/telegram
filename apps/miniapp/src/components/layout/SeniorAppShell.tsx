@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import { AnimatePresence } from 'framer-motion';
@@ -36,6 +36,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   const { logout, isLoggingOut } = useLogout();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [hasMobileSession, setHasMobileSession] = useState(false);
 
   // Modal states
   const [showSwap, setShowSwap] = useState(false);
@@ -47,6 +48,14 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   const shortAddress = useMemo(() => {
     if (!address) return null;
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  }, [address]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedAddress = localStorage.getItem('userAddress');
+    const authToken = localStorage.getItem('authToken');
+    const telegramUser = localStorage.getItem('telegram_user');
+    setHasMobileSession(Boolean(address || storedAddress || authToken || telegramUser));
   }, [address]);
 
   const navItems: NavItem[] = [
@@ -230,6 +239,26 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
             );
           })}
         </nav>
+
+        {hasMobileSession && (
+          <div className="lg:hidden px-4 pb-5 pt-3 border-t border-white/5">
+            <button
+              onClick={() => {
+                setIsSidebarOpen(false);
+                logout();
+              }}
+              disabled={isLoggingOut}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 17l5-5-5-5" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 12H9" />
+              </svg>
+              {isLoggingOut ? 'Disconnecting...' : 'Disconnect'}
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Main area */}

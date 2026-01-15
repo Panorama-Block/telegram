@@ -9,6 +9,8 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../../public/icons/zico_blue.svg';
 import '../../../shared/ui/loader.css';
+import { TonConnectButton } from '@tonconnect/ui-react';
+import { isTelegramWebApp } from '@/lib/isTelegram';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
 interface AuthModalProps {
@@ -25,6 +27,40 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const account = useActiveAccount();
   const activeWallet = useActiveWallet();
   const { disconnect } = useDisconnect();
+  const [isTelegram, setIsTelegram] = useState(false);
+
+  useEffect(() => {
+    // Initial check
+    const checkTelegram = () => {
+      const isTg = isTelegramWebApp();
+      console.log('[AuthModal] Checking Telegram:', isTg, typeof window !== 'undefined' ? (window as any).Telegram : 'window undefined');
+      if (isTg) {
+        setIsTelegram(true);
+        return true;
+      }
+      return false;
+    };
+
+    if (checkTelegram()) return;
+
+    // Poll for 2 seconds
+    const interval = setInterval(() => {
+      if (checkTelegram()) {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    const timeout = setTimeout(() => {
+      clearInterval(interval);
+      console.log('[AuthModal] Stopped polling for Telegram');
+    }, 2000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, []);
+
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -82,6 +118,8 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     }
   }, []);
 
+  const [statusMessage, setStatusMessage] = useState<string>('');
+
   const authenticateWithBackend = useCallback(async () => {
     if (!account || !client) {
       return;
@@ -95,51 +133,34 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     try {
       setIsAuthenticating(true);
       setError(null);
+      setStatusMessage('Initializing authentication...');
 
       // 0. Extract and save wallet auth token for persistence
+      setStatusMessage('Checking wallet session...');
       try {
         const clientId = THIRDWEB_CLIENT_ID;
         if (clientId && activeWallet) {
-          console.log('[AUTH MODAL] Attempting to extract wallet auth token for persistence...');
-          console.log('[AUTH MODAL] Wallet type:', activeWallet.id);
-          console.log('[AUTH MODAL] Wallet object keys:', Object.keys(activeWallet));
-
-          // Log all properties and methods available
+          // ... (existing token extraction logic) ...
           const walletAny = activeWallet as any;
-          console.log('[AUTH MODAL] Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(walletAny)).filter(name => typeof walletAny[name] === 'function'));
-
           // Check if wallet has getAuthToken method
           if (typeof walletAny.getAuthToken === 'function') {
-            console.log('[AUTH MODAL] Found getAuthToken method, calling it...');
             const authToken = await walletAny.getAuthToken();
-            console.log('[AUTH MODAL] getAuthToken result:', authToken ? `token (${authToken.length} chars)` : 'null/undefined');
             if (authToken) {
               localStorage.setItem(`walletToken-${clientId}`, authToken);
-              console.log('[AUTH MODAL] ✅ Wallet auth token extracted and saved successfully');
-            } else {
-              console.warn('[AUTH MODAL] ⚠️ getAuthToken() returned null/undefined');
             }
           } else {
-            console.warn('[AUTH MODAL] ⚠️ Wallet does not have getAuthToken method');
-            console.log('[AUTH MODAL] Searching for token in wallet properties...');
-
             // Check various possible token locations
             const possibleTokenKeys = ['_authToken', 'authToken', 'token', 'sessionToken', 'accessToken', 'authDetails', 'storedToken'];
             let foundToken = null;
 
             for (const key of possibleTokenKeys) {
               if (walletAny[key]) {
-                console.log(`[AUTH MODAL] Found property: ${key}`, typeof walletAny[key]);
                 if (typeof walletAny[key] === 'string' && walletAny[key].length > 20) {
                   foundToken = walletAny[key];
-                  console.log(`[AUTH MODAL] ✅ Using ${key} as wallet token`);
                   break;
                 } else if (typeof walletAny[key] === 'object') {
-                  console.log(`[AUTH MODAL] ${key} is an object:`, Object.keys(walletAny[key]));
-                  // Check if this object has a cookieString
                   if (walletAny[key].cookieString) {
                     foundToken = walletAny[key].cookieString;
-                    console.log('[AUTH MODAL] ✅ Found cookieString in', key);
                     break;
                   }
                 }
@@ -148,10 +169,6 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
             if (foundToken) {
               localStorage.setItem(`walletToken-${clientId}`, foundToken);
-              console.log('[AUTH MODAL] ✅ Wallet auth token found and saved');
-            } else {
-              console.warn('[AUTH MODAL] ❌ Could not find wallet token in any known location');
-              console.warn('[AUTH MODAL] User will need to reconnect on page reload');
             }
           }
         }
@@ -160,6 +177,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       }
 
       // 1. Get payload from backend
+      setStatusMessage('Requesting login payload...');
       const normalizedAddress = account.address;
       const loginPayload = { address: normalizedAddress };
 
@@ -190,6 +208,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       }
 
       // 2. Sign the payload using Thirdweb
+      setStatusMessage('Please sign the message in your wallet...');
       let signature;
 
       try {
@@ -215,6 +234,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
       } catch (error) {
         console.error('❌ [AUTH MODAL] Thirdweb signature error:', error);
+        setStatusMessage('Standard signing failed, trying fallback...');
 
         // Fallback to direct signing if signLoginPayload fails
         try {
@@ -231,6 +251,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       }
 
       // 3. Verify the signature with the backend
+      setStatusMessage('Verifying signature...');
       const verifyPayload = { payload, signature };
 
       const verifyResponse = await fetch(`${authApiBase}/auth/verify`, {
@@ -254,6 +275,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       const { token: authToken } = verifyResult;
 
       // 4. Persist auth data locally
+      setStatusMessage('Saving session...');
       localStorage.setItem('authPayload', JSON.stringify(payload));
       localStorage.setItem('authSignature', signature);
       localStorage.setItem('authToken', authToken);
@@ -266,10 +288,10 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         console.log('[AUTH MODAL] ✅ Wallet session token is persisted - auto-connect will work on reload');
       } else {
         console.warn('[AUTH MODAL] ⚠️ Wallet session token NOT persisted - user may need to reconnect on reload');
-        console.warn('[AUTH MODAL] This can happen if the SDK uses a different storage mechanism');
       }
 
       setIsAuthenticated(true);
+      setStatusMessage('Success! Redirecting...');
 
       console.log('✅ [AUTH MODAL] Authentication succeeded!');
 
@@ -282,11 +304,29 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
     } catch (err: any) {
       console.error('❌ [AUTH MODAL] Authentication failed:', err);
+      setStatusMessage('');
 
       let errorMessage = err?.message || 'Authentication failed';
 
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
         errorMessage = `Connection error with ${authApiBase}. Make sure the server is running and reachable.`;
+      }
+
+      // Handle stale session / no auth token error
+      if (
+        errorMessage.includes('No auth token found') ||
+        errorMessage.includes('Signature method not available') ||
+        errorMessage.includes('User rejected')
+      ) {
+        console.warn('[AUTH MODAL] Stale session or user rejection detected. Disconnecting wallet to reset state.');
+        if (activeWallet) {
+          try {
+            await disconnect(activeWallet);
+          } catch (disconnectErr) {
+            console.error('[AUTH MODAL] Failed to disconnect stale wallet:', disconnectErr);
+          }
+        }
+        errorMessage = 'Session expired or invalid. Please connect your wallet again.';
       }
 
       setError(errorMessage);
@@ -309,6 +349,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
   async function handleDisconnect() {
     setError(null);
+    setStatusMessage('');
     try {
       console.log('[AUTH MODAL] Disconnecting and clearing all session data...');
       if (activeWallet) {
@@ -388,7 +429,11 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             </div>
           )}
           {!connected ? (
-            client ? (
+            isTelegram ? (
+              <div className="flex justify-center w-full">
+                <TonConnectButton className="w-full" />
+              </div>
+            ) : client ? (
               <ConnectButton
                 client={client}
                 wallets={wallets}
@@ -423,9 +468,14 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 </p>
                 <div className="text-sm mt-2">
                   {isAuthenticating ? (
-                    <div className="flex items-center gap-2 text-white">
-                      <div className="loader-inline-sm" />
-                      <span>Authenticating...</span>
+                    <div className="flex flex-col gap-2 text-white">
+                      <div className="flex items-center gap-2">
+                        <div className="loader-inline-sm" />
+                        <span>Authenticating...</span>
+                      </div>
+                      {statusMessage && (
+                        <p className="text-xs text-cyan-400 animate-pulse">{statusMessage}</p>
+                      )}
                     </div>
                   ) : isAuthenticated ? (
                     <div className="flex items-center gap-2 text-white">
@@ -454,6 +504,15 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
               {error}
             </div>
           )}
+
+          {/* Debug Info */}
+          <div className="mt-4 p-2 bg-black/50 rounded text-[10px] font-mono text-gray-400 break-all">
+            <p>Debug Info:</p>
+            <p>isTelegram state: {String(isTelegram)}</p>
+            <p>window.Telegram: {typeof window !== 'undefined' ? typeof (window as any).Telegram : 'undefined'}</p>
+            <p>WebApp: {typeof window !== 'undefined' && (window as any).Telegram?.WebApp ? 'Present' : 'Missing'}</p>
+            <p>UserAgent: {typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A'}</p>
+          </div>
         </div>
       </div>
     </div>

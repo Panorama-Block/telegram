@@ -21,9 +21,10 @@ import { AgentsClient } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { swapApi } from '@/features/swap/api';
+import { bridgeApi } from '@/features/swap/bridgeApi';
 import { Lending } from '@/components/Lending';
 import { normalizeToApi, formatAmountHuman } from '@/features/swap/utils';
-import { networks, Token } from '@/features/swap/tokens';
+import { networks, Token, TON_CHAIN_ID } from '@/features/swap/tokens';
 import { useActiveAccount, useActiveWallet } from 'thirdweb/react';
 import { useLogout } from '@/shared/hooks/useLogout';
 import { createThirdwebClient } from 'thirdweb';
@@ -409,7 +410,7 @@ export default function ChatPage() {
       setInitializationError(null);
       try {
         clearCachedUserData(bootstrapKeyRef.current);
-      } catch {}
+      } catch { }
       // Bootstrap will be triggered by the useEffect below
     }
   }, [account?.address, getWalletAddress, clearCachedUserData]);
@@ -671,7 +672,7 @@ export default function ChatPage() {
     if (conversationId) {
       try {
         localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, conversationId);
-      } catch {}
+      } catch { }
     }
   }, []);
 
@@ -985,24 +986,47 @@ export default function ChatPage() {
 
       console.log('📍 Using address:', effectiveAddress);
 
-      const quoteResponse = await swapApi.quote({
-        fromChainId: fromNetwork.chainId,
-        toChainId: toNetwork.chainId,
-        fromToken: normalizeToApi(fromToken.address),
-        toToken: normalizeToApi(toToken.address),
-        amount: String(amount),
-        smartAccountAddress: effectiveAddress || undefined,
-      });
+      // Determine networks for bridge
+      const sourceNetwork = fromNetwork.chainId === TON_CHAIN_ID ? 'TON_MAINNET' : 'ETHEREUM_MAINNET';
+      const destinationNetwork = toNetwork.chainId === TON_CHAIN_ID ? 'TON_MAINNET' : 'ETHEREUM_MAINNET';
 
-      console.log('📈 Quote response:', quoteResponse);
+      if (fromNetwork.chainId === TON_CHAIN_ID || toNetwork.chainId === TON_CHAIN_ID) {
+        console.log('🌉 Using Bridge API for TON swap');
+        const bridgeRes = await bridgeApi.quote(Number(amount), sourceNetwork, destinationNetwork);
 
-      if (quoteResponse.success && quoteResponse.quote) {
-        setSwapQuote(quoteResponse);
-        console.log('✅ Quote received successfully');
+        if (bridgeRes.success && bridgeRes.quote) {
+          setSwapQuote({
+            quote: bridgeRes.quote,
+            approval: undefined
+          });
+          console.log('✅ Quote received successfully');
+        } else {
+          const errorMsg = bridgeRes.message || 'Failed to get bridge quote';
+          console.error('❌ Quote failed:', errorMsg);
+          setSwapError(errorMsg);
+        }
       } else {
-        const errorMsg = quoteResponse.message || 'Failed to get quote';
-        console.error('❌ Quote failed:', errorMsg);
-        setSwapError(errorMsg);
+        console.log('🔄 Using Swap API for EVM swap');
+        const quoteResponse = await swapApi.quote({
+          fromChainId: fromNetwork.chainId,
+          toChainId: toNetwork.chainId,
+          fromToken: normalizeToApi(fromToken.address),
+          toToken: normalizeToApi(toToken.address),
+          amount: String(amount),
+          smartAccountAddress: effectiveAddress || undefined,
+        });
+
+        if (quoteResponse.success && quoteResponse.quote) {
+          setSwapQuote({
+            quote: quoteResponse.quote,
+            approval: quoteResponse.approval
+          });
+          console.log('✅ Quote received successfully');
+        } else {
+          const errorMsg = quoteResponse.message || 'Failed to get quote';
+          console.error('❌ Quote failed:', errorMsg);
+          setSwapError(errorMsg);
+        }
       }
     } catch (error) {
       console.error('❌ Error getting swap quote:', error);
@@ -1016,599 +1040,603 @@ export default function ChatPage() {
     <ProtectedRoute>
       <TransactionSettingsProvider>
         <React.Fragment>
-        <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
-        <GlobalLoader
-          isLoading={isNavigating}
-          message={
-            navigationType === 'lending' ? 'Loading Lending...' :
-              navigationType === 'staking' ? 'Loading Staking...' :
-                navigationType === 'swap' ? 'Loading Swap...' :
-                  navigationType === 'dca' ? 'Loading DCA...' :
-                    'Loading...'
-          }
-        />
+          <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
+          <GlobalLoader
+            isLoading={isNavigating}
+            message={
+              navigationType === 'lending' ? 'Loading Lending...' :
+                navigationType === 'staking' ? 'Loading Staking...' :
+                  navigationType === 'swap' ? 'Loading Swap...' :
+                    navigationType === 'dca' ? 'Loading DCA...' :
+                      'Loading...'
+            }
+          />
 
-        <SeniorAppShell pageTitle="Zico AI Agent">
-          <div className="flex flex-col lg:flex-row gap-6 h-full relative bg-black">
-            {/* Ambient God Ray */}
-            <div className="absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-500/20 via-slate-900/5 to-black blur-3xl pointer-events-none z-0" />
+          <SeniorAppShell pageTitle="Zico AI Agent">
+            <div className="flex flex-col lg:flex-row gap-6 h-full relative bg-black">
+              {/* Ambient God Ray */}
+              <div className="absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-500/20 via-slate-900/5 to-black blur-3xl pointer-events-none z-0" />
 
-            {/* Conversations Panel */}
-            <aside className="w-full lg:w-80 shrink-0 z-10">
-              <div className="bg-[#0b0d10]/90 border border-white/10 rounded-2xl p-4 shadow-[0_12px_40px_rgba(0,0,0,0.45)] space-y-4 backdrop-blur-xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                    <MessageSquare className="w-4 h-4 text-cyan-400" />
-                    Conversations
-                  </div>
-                  <button
-                    onClick={() => createNewChat()}
-                    disabled={isCreatingConversation}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black hover:bg-zinc-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {isCreatingConversation ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-                    New
-                  </button>
-                </div>
-
-                <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
-                  {initializing && (
-                    <div className="text-xs text-zinc-500 flex items-center gap-2 px-2">
-                      <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+              {/* Conversations Panel */}
+              <aside className="w-full lg:w-80 shrink-0 z-10">
+                <div className="bg-[#0b0d10]/90 border border-white/10 rounded-2xl p-4 shadow-[0_12px_40px_rgba(0,0,0,0.45)] space-y-4 backdrop-blur-xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                      <MessageSquare className="w-4 h-4 text-cyan-400" />
+                      Conversations
                     </div>
-                  )}
-                  {!initializing && conversations.length === 0 && (
-                    <div className="text-sm text-zinc-500 px-2">No chats yet. Start a new one.</div>
-                  )}
-                  {conversations.map((conversation) => {
-                    const isActive = activeConversationId === conversation.id;
-                    const preview = getConversationPreview(conversation.id);
-                    const isLoadingConv = loadingConversationId === conversation.id;
-                    return (
-                      <button
-                        key={conversation.id}
-                        onClick={() => handleSelectConversation(conversation.id)}
-                        className={cn(
-                          'w-full text-left rounded-xl border px-3 py-2 transition-all hover:border-cyan-500/40 hover:bg-white/5 flex flex-col gap-1',
-                          isActive ? 'border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_0_1px_rgba(34,211,238,0.15)]' : 'border-white/10 bg-white/5'
-                        )}
-                      >
-                        <div className="flex items-center justify-between text-xs text-zinc-400">
-                          <span className="font-semibold text-white">{conversation.title}</span>
-                          {isLoadingConv && <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />}
-                        </div>
-                        <p className="text-[11px] text-zinc-500 line-clamp-2">{preview}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </aside>
-
-            <div className="flex-1 min-w-0 flex flex-col overflow-hidden z-10">
-              <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col">
-                {initializing ? (
-                  <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                    Loading your conversations...
-                  </div>
-                ) : !activeConversationId ? (
-                  <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                    Crie um novo chat para começar.
-                  </div>
-                ) : initializationError && !hasMessages ? (
-                  <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-center min-h-[50vh]">
-                    <p className="text-zinc-400">{initializationError}</p>
                     <button
-                      onClick={retryBootstrap}
-                      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
+                      onClick={() => createNewChat()}
+                      disabled={isCreatingConversation}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black hover:bg-zinc-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      Try again
+                      {isCreatingConversation ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                      New
                     </button>
                   </div>
-                ) : isHistoryLoading && !hasMessages ? (
-                  <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                    Loading conversation...
-                  </div>
-                ) : !hasMessages ? (
-                  <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
-                    <motion.div
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ duration: 0.8, ease: "easeOut" }}
-                      className="w-full max-w-3xl text-center flex flex-col items-center"
-                    >
-                      {/* Title & Subtitle */}
-                      <div className="space-y-2 md:space-y-4 relative mb-8">
-                        <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
-                          Hello, {displayName}.
-                        </h1>
-                        <p className="text-xl text-zinc-400 font-light">
-                          Zico is ready to navigate the chain.
-                        </p>
-                      </div>
 
-                      {/* Main Input Area */}
-                      <div className="relative group max-w-2xl mx-auto w-full my-8">
-                        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                        <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 md:p-2 flex items-center gap-2 md:gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 group-focus-within:shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all duration-300">
-                          <div className="pl-2 md:pl-4 text-zinc-400">
-                            <Search className="w-5 h-5 md:w-6 md:h-6" />
+                  <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
+                    {initializing && (
+                      <div className="text-xs text-zinc-500 flex items-center gap-2 px-2">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+                      </div>
+                    )}
+                    {!initializing && conversations.length === 0 && (
+                      <div className="text-sm text-zinc-500 px-2">No chats yet. Start a new one.</div>
+                    )}
+                    {conversations.map((conversation) => {
+                      const isActive = activeConversationId === conversation.id;
+                      const preview = getConversationPreview(conversation.id);
+                      const isLoadingConv = loadingConversationId === conversation.id;
+                      return (
+                        <button
+                          key={conversation.id}
+                          onClick={() => handleSelectConversation(conversation.id)}
+                          className={cn(
+                            'w-full text-left rounded-xl border px-3 py-2 transition-all hover:border-cyan-500/40 hover:bg-white/5 flex flex-col gap-1',
+                            isActive ? 'border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_0_1px_rgba(34,211,238,0.15)]' : 'border-white/10 bg-white/5'
+                          )}
+                        >
+                          <div className="flex items-center justify-between text-xs text-zinc-400">
+                            <span className="font-semibold text-white">{conversation.title}</span>
+                            {isLoadingConv && <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />}
                           </div>
+                          <p className="text-[11px] text-zinc-500 line-clamp-2">{preview}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </aside>
+
+              <div className="flex-1 min-w-0 flex flex-col overflow-hidden z-10">
+                <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col">
+                  {initializing ? (
+                    <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                      Loading your conversations...
+                    </div>
+                  ) : !activeConversationId ? (
+                    <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                      Crie um novo chat para começar.
+                    </div>
+                  ) : initializationError && !hasMessages ? (
+                    <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-center min-h-[50vh]">
+                      <p className="text-zinc-400">{initializationError}</p>
+                      <button
+                        onClick={retryBootstrap}
+                        className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : isHistoryLoading && !hasMessages ? (
+                    <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                      Loading conversation...
+                    </div>
+                  ) : !hasMessages ? (
+                    <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
+                      <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ duration: 0.8, ease: "easeOut" }}
+                        className="w-full max-w-3xl text-center flex flex-col items-center"
+                      >
+                        {/* Title & Subtitle */}
+                        <div className="space-y-2 md:space-y-4 relative mb-8">
+                          <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
+                            Hello, {displayName}.
+                          </h1>
+                          <p className="text-xl text-zinc-400 font-light">
+                            Zico is ready to navigate the chain.
+                          </p>
+                        </div>
+
+                        {/* Main Input Area */}
+                        <div className="relative group max-w-2xl mx-auto w-full my-8">
+                          <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
+                          <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 md:p-2 flex items-center gap-2 md:gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 group-focus-within:shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all duration-300">
+                            <div className="pl-2 md:pl-4 text-zinc-400">
+                              <Search className="w-5 h-5 md:w-6 md:h-6" />
+                            </div>
+                            <input
+                              type="text"
+                              value={inputMessage}
+                              onChange={(e) => setInputMessage(e.target.value)}
+                              onKeyPress={handleKeyPress}
+                              placeholder="Ask Zico anything..."
+                              disabled={isSending || !activeConversationId || initializing}
+                              className="flex-1 bg-transparent border-none outline-none text-base md:text-lg text-white placeholder:text-zinc-600 placeholder:text-sm md:placeholder:text-lg h-12 md:h-14"
+                            />
+                            <div className="flex items-center gap-2 pr-1 md:pr-2">
+                              <button className="hidden md:block p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+                                <Paperclip className="w-5 h-5" />
+                              </button>
+                              <button
+                                onClick={() => sendMessage()}
+                                disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
+                                className="p-2 md:p-3 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
+                                aria-label="Send message"
+                              >
+                                <ArrowUp className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Suggestions Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
+                          {[
+                            { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
+                            { label: 'Supply 100 USDC on Avalanche', prompt: 'Supply 100 USDC on Avalanche' },
+                            { label: 'Stake 0.5 ETH with Lido', prompt: 'Stake 0.5 ETH with Lido' },
+                            { label: 'What is my portfolio worth?', prompt: 'What is my portfolio worth?' },
+                          ].map((item, i) => (
+                            <motion.button
+                              key={item.label}
+                              onClick={() => sendMessage(item.prompt)}
+                              disabled={isSending || !activeConversationId}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.2 + (i * 0.1) }}
+                              className="flex items-center gap-3 p-3 md:p-4 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md hover:bg-white/10 hover:border-cyan-400/50 transition-all duration-300 group text-left shadow-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.1)] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Sparkles className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400 transition-colors shrink-0" />
+                              <span className="text-sm text-zinc-400 group-hover:text-zinc-200">{item.label}</span>
+                            </motion.button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    </div>
+                  ) : (
+                    <div className="max-w-3xl mx-auto w-full pt-8 pb-4 px-4 space-y-8">
+                      {activeMessages.map((message, index) => {
+                        const timestampValue = message.timestamp.getTime();
+                        const hasValidTime = !Number.isNaN(timestampValue);
+                        const timeLabel = hasValidTime
+                          ? message.timestamp.toLocaleTimeString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                          : '';
+                        const messageKey = hasValidTime
+                          ? `${message.role}-${timestampValue}-${index}`
+                          : `${message.role}-${index}`;
+
+                        return (
+                          <motion.div
+                            key={messageKey}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                          >
+                            {message.role === 'user' ? (
+                              <div className="max-w-[80%] bg-zinc-800/80 backdrop-blur-sm text-white px-6 py-4 rounded-2xl rounded-tr-sm border border-white/5 shadow-lg">
+                                <p className="text-base leading-relaxed">{message.content}</p>
+                              </div>
+                            ) : (
+                              <div className="flex gap-4 max-w-[90%]">
+                                <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,211,238,0.3)] overflow-hidden p-1">
+                                  <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
+                                </div>
+                                <div className="space-y-4">
+                                  <div className="text-zinc-100 text-base leading-relaxed">
+                                    <MarkdownMessage text={message.content} />
+                                  </div>
+
+                                  {message.metadata?.event === 'swap_intent_ready' && (
+                                    <div className="mt-4 w-full max-w-sm">
+                                      {/* Swap Card - SwapWidget Style */}
+                                      <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                        {/* Gradient Glow */}
+                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+
+                                        {/* Header */}
+                                        <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
+                                          <ArrowLeftRight className="w-5 h-5 text-cyan-400" />
+                                          <span className="text-sm font-semibold text-white">Swap</span>
+                                          {swapLoading && <div className="loader-inline-sm ml-auto" />}
+                                        </div>
+
+                                        {/* Content */}
+                                        <div className="relative z-10 p-4 space-y-3">
+                                          {/* From Token */}
+                                          <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                            <div className="flex items-center justify-between mb-1">
+                                              <span className="text-[10px] uppercase tracking-wider text-zinc-500">Sell</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xl font-medium text-white">{String(message.metadata?.amount)}</span>
+                                              <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                                <div className="w-5 h-5 rounded-full bg-zinc-600 flex items-center justify-center text-[9px] text-white font-bold">
+                                                  {String(message.metadata?.from_token)?.[0]}
+                                                </div>
+                                                <span className="text-sm font-medium text-white">{String(message.metadata?.from_token)}</span>
+                                              </div>
+                                            </div>
+                                            <div className="text-[10px] text-zinc-500 mt-1">{String(message.metadata?.from_network)}</div>
+                                          </div>
+
+                                          {/* Arrow */}
+                                          <div className="flex justify-center -my-1">
+                                            <div className="bg-[#0A0A0A] border border-white/10 p-1.5 rounded-lg">
+                                              <ArrowDown className="w-4 h-4 text-cyan-400" />
+                                            </div>
+                                          </div>
+
+                                          {/* To Token */}
+                                          <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                            <div className="flex items-center justify-between mb-1">
+                                              <span className="text-[10px] uppercase tracking-wider text-zinc-500">Buy</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xl font-medium text-white">
+                                                {swapLoading ? '...' : swapQuote?.quote ? (
+                                                  swapQuote.quote.sourceNetwork ?
+                                                    Number(swapQuote.quote.estimatedReceiveAmount).toFixed(4) :
+                                                    formatAmountHuman(BigInt(swapQuote.quote.toAmount || swapQuote.quote.estimatedReceiveAmount || 0), 18)
+                                                ) : '~'}
+                                              </span>
+                                              <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                                <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-[9px] text-white font-bold">
+                                                  {String(message.metadata?.to_token)?.[0]}
+                                                </div>
+                                                <span className="text-sm font-medium text-white">{String(message.metadata?.to_token)}</span>
+                                              </div>
+                                            </div>
+                                            <div className="text-[10px] text-zinc-500 mt-1">{String(message.metadata?.to_network)}</div>
+                                          </div>
+
+                                          {/* Error Message */}
+                                          {swapError && !swapLoading && (
+                                            <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
+                                              <p className="text-xs text-red-300">{swapError}</p>
+                                            </div>
+                                          )}
+
+                                          {/* Action Button */}
+                                          <button
+                                            onClick={() => {
+                                              const tokens = metadataToSwapTokens(message.metadata as Record<string, unknown>);
+                                              if (tokens) {
+                                                setSwapWidgetTokens(tokens);
+                                                setShowSwapWidget(true);
+                                              }
+                                            }}
+                                            disabled={swapLoading || !swapQuote?.quote}
+                                            className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                          >
+                                            {swapLoading ? 'Getting best price...' : 'Review Swap'}
+                                          </button>
+                                        </div>
+
+                                        {/* Footer */}
+                                        <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                          <div className="w-5 h-5 rounded-full bg-[#ff007a]/20 flex items-center justify-center">
+                                            <span className="text-[10px]">🦄</span>
+                                          </div>
+                                          <span className="text-[10px] text-zinc-500">Powered by Uniswap</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {message.metadata?.event === 'lending_intent_ready' && (
+                                    <div className="mt-4 w-full max-w-sm">
+                                      {/* Lending Card - SwapWidget Style */}
+                                      <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                        {/* Gradient Glow */}
+                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+
+                                        {/* Header */}
+                                        <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
+                                          <Landmark className="w-5 h-5 text-cyan-400" />
+                                          <span className="text-sm font-semibold text-white">Lending</span>
+                                          <span className="ml-auto px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[10px] font-medium rounded-full border border-cyan-500/30">
+                                            {String(message.metadata?.action || 'Supply').toUpperCase()}
+                                          </span>
+                                        </div>
+
+                                        {/* Content */}
+                                        <div className="relative z-10 p-4 space-y-3">
+                                          {/* Amount Card */}
+                                          <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                            <div className="flex items-center justify-between mb-1">
+                                              <span className="text-[10px] uppercase tracking-wider text-zinc-500">
+                                                {String(message.metadata?.action || 'Supply')}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xl font-medium text-white">
+                                                {String(message.metadata?.amount || '0')}
+                                              </span>
+                                              <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                                <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-[9px] text-white font-bold">
+                                                  {String(message.metadata?.asset || message.metadata?.token || 'T')?.[0]}
+                                                </div>
+                                                <span className="text-sm font-medium text-white">
+                                                  {String(message.metadata?.asset || message.metadata?.token || 'Token')}
+                                                </span>
+                                              </div>
+                                            </div>
+                                            <div className="text-[10px] text-zinc-500 mt-1">
+                                              {String(message.metadata?.network || 'Avalanche')}
+                                            </div>
+                                          </div>
+
+                                          {/* Action Button */}
+                                          <button
+                                            onClick={() => {
+                                              setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
+                                              setLendingModalOpen(true);
+                                            }}
+                                            className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                          >
+                                            Review {String(message.metadata?.action || 'Supply')}
+                                          </button>
+                                        </div>
+
+                                        {/* Footer */}
+                                        <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                          <div className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center">
+                                            <Landmark className="w-3 h-3 text-cyan-400" />
+                                          </div>
+                                          <span className="text-[10px] text-zinc-500">Powered by Benqi</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {message.metadata?.event === 'staking_intent_ready' && (
+                                    <div className="mt-4 w-full max-w-sm">
+                                      {/* Staking Card - SwapWidget Style */}
+                                      <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                        {/* Gradient Glow */}
+                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-blue-500/10 blur-[40px] pointer-events-none" />
+
+                                        {/* Header */}
+                                        <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
+                                          <Droplets className="w-5 h-5 text-blue-400" />
+                                          <span className="text-sm font-semibold text-white">Liquid Staking</span>
+                                        </div>
+
+                                        {/* Content */}
+                                        <div className="relative z-10 p-4 space-y-3">
+                                          {/* Stake Input */}
+                                          <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                            <div className="flex items-center justify-between mb-1">
+                                              <span className="text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xl font-medium text-white">
+                                                {String(message.metadata?.amount || '0')}
+                                              </span>
+                                              <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                                <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[9px] text-white font-bold">
+                                                  {String(message.metadata?.token || 'ETH')?.[0]}
+                                                </div>
+                                                <span className="text-sm font-medium text-white">
+                                                  {String(message.metadata?.token || 'ETH')}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          {/* Arrow */}
+                                          <div className="flex justify-center -my-1">
+                                            <div className="bg-[#0A0A0A] border border-white/10 p-1.5 rounded-lg">
+                                              <ArrowDown className="w-4 h-4 text-blue-400" />
+                                            </div>
+                                          </div>
+
+                                          {/* Receive Output */}
+                                          <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                            <div className="flex items-center justify-between mb-1">
+                                              <span className="text-[10px] uppercase tracking-wider text-zinc-500">You Receive</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xl font-medium text-white">
+                                                ~{(Number(message.metadata?.amount || 0) * 0.998).toFixed(4)}
+                                              </span>
+                                              <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                                <div className="w-5 h-5 rounded-full bg-sky-500 flex items-center justify-center text-[9px] text-white font-bold">
+                                                  st
+                                                </div>
+                                                <span className="text-sm font-medium text-white">
+                                                  st{String(message.metadata?.token || 'ETH')}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          {/* Action Button */}
+                                          <button
+                                            onClick={() => {
+                                              setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
+                                              setShowStakingWidget(true);
+                                            }}
+                                            className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                          >
+                                            Review Staking
+                                          </button>
+                                        </div>
+
+                                        {/* Footer */}
+                                        <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                          <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center">
+                                            <Droplets className="w-3 h-3 text-blue-400" />
+                                          </div>
+                                          <span className="text-[10px] text-zinc-500">Powered by Lido</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </motion.div>
+                        );
+                      })}
+
+                      {isSending && (
+                        <div className="flex gap-4 max-w-[90%]">
+                          <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 animate-pulse overflow-hidden p-1">
+                            <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
+                          </div>
+                          <div className="flex items-center gap-1 pt-3">
+                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.3s]" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.15s]" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce" />
+                          </div>
+                        </div>
+                      )}
+                      <div ref={messagesEndRef} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Sticky Bottom Input (Chat State) */}
+                <AnimatePresence>
+                  {hasMessages && (
+                    <motion.div
+                      initial={{ y: 100, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      className="p-2 pt-3 bg-gradient-to-t from-black via-black/90 to-transparent z-20"
+                    >
+                      <div className="max-w-3xl mx-auto relative group">
+                        {/* Trending Prompts Dropdown */}
+                        <AnimatePresence>
+                          {showTrendingPrompts && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 10 }}
+                              className="absolute bottom-full left-0 right-0 mb-2 bg-[#0A0A0A] border border-white/10 rounded-xl p-2 shadow-2xl z-30"
+                            >
+                              <div className="text-xs text-zinc-500 px-3 py-2 uppercase tracking-wider">Trending Prompts</div>
+                              <div className="space-y-1">
+                                {trendingPrompts.map((prompt, index) => (
+                                  <button
+                                    key={index}
+                                    onClick={() => {
+                                      setInputMessage(prompt.text);
+                                      setShowTrendingPrompts(false);
+                                    }}
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors group"
+                                  >
+                                    <span className="text-zinc-500 group-hover:text-cyan-400 transition-colors">{prompt.icon}</span>
+                                    <span>{prompt.text}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
+                        <div className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex items-center gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30">
+                          <button
+                            onClick={() => setShowTrendingPrompts(!showTrendingPrompts)}
+                            className="pl-2 text-zinc-400 hover:text-cyan-400 transition-colors"
+                            title="Trending prompts"
+                          >
+                            <Sparkles className="w-5 h-5" />
+                          </button>
                           <input
                             type="text"
                             value={inputMessage}
                             onChange={(e) => setInputMessage(e.target.value)}
                             onKeyPress={handleKeyPress}
-                            placeholder="Ask Zico anything..."
+                            onFocus={() => setShowTrendingPrompts(false)}
+                            placeholder="Send a message..."
                             disabled={isSending || !activeConversationId || initializing}
-                            className="flex-1 bg-transparent border-none outline-none text-base md:text-lg text-white placeholder:text-zinc-600 placeholder:text-sm md:placeholder:text-lg h-12 md:h-14"
+                            className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder:text-zinc-600 h-12"
+                            autoFocus
                           />
-                          <div className="flex items-center gap-2 pr-1 md:pr-2">
-                            <button className="hidden md:block p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
-                              <Paperclip className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => sendMessage()}
-                              disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                              className="p-2 md:p-3 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
-                              aria-label="Send message"
-                            >
-                              <ArrowUp className="w-5 h-5" />
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => sendMessage()}
+                            disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
+                            className="p-2.5 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label="Send message"
+                          >
+                            <ArrowUp className="w-5 h-5" />
+                          </button>
+                        </div>
+                        <div className="text-center mt-2">
+                          <p className="text-[10px] text-zinc-600 uppercase tracking-widest">AI-Native Web3 Interface</p>
                         </div>
                       </div>
-
-                      {/* Suggestions Grid */}
-                      <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
-                        {[
-                          { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
-                          { label: 'Supply 100 USDC on Avalanche', prompt: 'Supply 100 USDC on Avalanche' },
-                          { label: 'Stake 0.5 ETH with Lido', prompt: 'Stake 0.5 ETH with Lido' },
-                          { label: 'What is my portfolio worth?', prompt: 'What is my portfolio worth?' },
-                        ].map((item, i) => (
-                          <motion.button
-                            key={item.label}
-                            onClick={() => sendMessage(item.prompt)}
-                            disabled={isSending || !activeConversationId}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.2 + (i * 0.1) }}
-                            className="flex items-center gap-3 p-3 md:p-4 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md hover:bg-white/10 hover:border-cyan-400/50 transition-all duration-300 group text-left shadow-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.1)] disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <Sparkles className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400 transition-colors shrink-0" />
-                            <span className="text-sm text-zinc-400 group-hover:text-zinc-200">{item.label}</span>
-                          </motion.button>
-                        ))}
-                      </div>
                     </motion.div>
-                  </div>
-                ) : (
-                  <div className="max-w-3xl mx-auto w-full pt-8 pb-4 px-4 space-y-8">
-                    {activeMessages.map((message, index) => {
-                    const timestampValue = message.timestamp.getTime();
-                    const hasValidTime = !Number.isNaN(timestampValue);
-                    const timeLabel = hasValidTime
-                      ? message.timestamp.toLocaleTimeString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                      : '';
-                    const messageKey = hasValidTime
-                      ? `${message.role}-${timestampValue}-${index}`
-                      : `${message.role}-${index}`;
-
-                    return (
-                      <motion.div
-                        key={messageKey}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                      >
-                        {message.role === 'user' ? (
-                          <div className="max-w-[80%] bg-zinc-800/80 backdrop-blur-sm text-white px-6 py-4 rounded-2xl rounded-tr-sm border border-white/5 shadow-lg">
-                            <p className="text-base leading-relaxed">{message.content}</p>
-                          </div>
-                        ) : (
-                          <div className="flex gap-4 max-w-[90%]">
-                            <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,211,238,0.3)] overflow-hidden p-1">
-                              <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
-                            </div>
-                            <div className="space-y-4">
-                              <div className="text-zinc-100 text-base leading-relaxed">
-                                <MarkdownMessage text={message.content} />
-                              </div>
-
-                                {message.metadata?.event === 'swap_intent_ready' && (
-                                  <div className="mt-4 w-full max-w-sm">
-                                    {/* Swap Card - SwapWidget Style */}
-                                    <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                      {/* Gradient Glow */}
-                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
-
-                                      {/* Header */}
-                                      <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                                        <ArrowLeftRight className="w-5 h-5 text-cyan-400" />
-                                        <span className="text-sm font-semibold text-white">Swap</span>
-                                        {swapLoading && <div className="loader-inline-sm ml-auto" />}
-                                      </div>
-
-                                      {/* Content */}
-                                      <div className="relative z-10 p-4 space-y-3">
-                                        {/* From Token */}
-                                        <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-[10px] uppercase tracking-wider text-zinc-500">Sell</span>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-xl font-medium text-white">{String(message.metadata?.amount)}</span>
-                                            <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                              <div className="w-5 h-5 rounded-full bg-zinc-600 flex items-center justify-center text-[9px] text-white font-bold">
-                                                {String(message.metadata?.from_token)?.[0]}
-                                              </div>
-                                              <span className="text-sm font-medium text-white">{String(message.metadata?.from_token)}</span>
-                                            </div>
-                                          </div>
-                                          <div className="text-[10px] text-zinc-500 mt-1">{String(message.metadata?.from_network)}</div>
-                                        </div>
-
-                                        {/* Arrow */}
-                                        <div className="flex justify-center -my-1">
-                                          <div className="bg-[#0A0A0A] border border-white/10 p-1.5 rounded-lg">
-                                            <ArrowDown className="w-4 h-4 text-cyan-400" />
-                                          </div>
-                                        </div>
-
-                                        {/* To Token */}
-                                        <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-[10px] uppercase tracking-wider text-zinc-500">Buy</span>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-xl font-medium text-white">
-                                              {swapLoading ? '...' : swapQuote?.quote ? formatAmountHuman(BigInt(swapQuote.quote.estimatedReceiveAmount || 0), 18) : '~'}
-                                            </span>
-                                            <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                              <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-[9px] text-white font-bold">
-                                                {String(message.metadata?.to_token)?.[0]}
-                                              </div>
-                                              <span className="text-sm font-medium text-white">{String(message.metadata?.to_token)}</span>
-                                            </div>
-                                          </div>
-                                          <div className="text-[10px] text-zinc-500 mt-1">{String(message.metadata?.to_network)}</div>
-                                        </div>
-
-                                        {/* Error Message */}
-                                        {swapError && !swapLoading && (
-                                          <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
-                                            <p className="text-xs text-red-300">{swapError}</p>
-                                          </div>
-                                        )}
-
-                                        {/* Action Button */}
-                                        <button
-                                          onClick={() => {
-                                            const tokens = metadataToSwapTokens(message.metadata as Record<string, unknown>);
-                                            if (tokens) {
-                                              setSwapWidgetTokens(tokens);
-                                              setShowSwapWidget(true);
-                                            }
-                                          }}
-                                          disabled={swapLoading || !swapQuote?.quote}
-                                          className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                        >
-                                          {swapLoading ? 'Getting best price...' : 'Review Swap'}
-                                        </button>
-                                      </div>
-
-                                      {/* Footer */}
-                                      <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                        <div className="w-5 h-5 rounded-full bg-[#ff007a]/20 flex items-center justify-center">
-                                          <span className="text-[10px]">🦄</span>
-                                        </div>
-                                        <span className="text-[10px] text-zinc-500">Powered by Uniswap</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {message.metadata?.event === 'lending_intent_ready' && (
-                                  <div className="mt-4 w-full max-w-sm">
-                                    {/* Lending Card - SwapWidget Style */}
-                                    <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                      {/* Gradient Glow */}
-                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
-
-                                      {/* Header */}
-                                      <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                                        <Landmark className="w-5 h-5 text-cyan-400" />
-                                        <span className="text-sm font-semibold text-white">Lending</span>
-                                        <span className="ml-auto px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[10px] font-medium rounded-full border border-cyan-500/30">
-                                          {String(message.metadata?.action || 'Supply').toUpperCase()}
-                                        </span>
-                                      </div>
-
-                                      {/* Content */}
-                                      <div className="relative z-10 p-4 space-y-3">
-                                        {/* Amount Card */}
-                                        <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-[10px] uppercase tracking-wider text-zinc-500">
-                                              {String(message.metadata?.action || 'Supply')}
-                                            </span>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-xl font-medium text-white">
-                                              {String(message.metadata?.amount || '0')}
-                                            </span>
-                                            <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                              <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-[9px] text-white font-bold">
-                                                {String(message.metadata?.asset || message.metadata?.token || 'T')?.[0]}
-                                              </div>
-                                              <span className="text-sm font-medium text-white">
-                                                {String(message.metadata?.asset || message.metadata?.token || 'Token')}
-                                              </span>
-                                            </div>
-                                          </div>
-                                          <div className="text-[10px] text-zinc-500 mt-1">
-                                            {String(message.metadata?.network || 'Avalanche')}
-                                          </div>
-                                        </div>
-
-                                        {/* Action Button */}
-                                        <button
-                                          onClick={() => {
-                                            setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
-                                            setLendingModalOpen(true);
-                                          }}
-                                          className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                        >
-                                          Review {String(message.metadata?.action || 'Supply')}
-                                        </button>
-                                      </div>
-
-                                      {/* Footer */}
-                                      <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                        <div className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center">
-                                          <Landmark className="w-3 h-3 text-cyan-400" />
-                                        </div>
-                                        <span className="text-[10px] text-zinc-500">Powered by Benqi</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {message.metadata?.event === 'staking_intent_ready' && (
-                                  <div className="mt-4 w-full max-w-sm">
-                                    {/* Staking Card - SwapWidget Style */}
-                                    <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                      {/* Gradient Glow */}
-                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-blue-500/10 blur-[40px] pointer-events-none" />
-
-                                      {/* Header */}
-                                      <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                                        <Droplets className="w-5 h-5 text-blue-400" />
-                                        <span className="text-sm font-semibold text-white">Liquid Staking</span>
-                                      </div>
-
-                                      {/* Content */}
-                                      <div className="relative z-10 p-4 space-y-3">
-                                        {/* Stake Input */}
-                                        <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-xl font-medium text-white">
-                                              {String(message.metadata?.amount || '0')}
-                                            </span>
-                                            <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                              <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[9px] text-white font-bold">
-                                                {String(message.metadata?.token || 'ETH')?.[0]}
-                                              </div>
-                                              <span className="text-sm font-medium text-white">
-                                                {String(message.metadata?.token || 'ETH')}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* Arrow */}
-                                        <div className="flex justify-center -my-1">
-                                          <div className="bg-[#0A0A0A] border border-white/10 p-1.5 rounded-lg">
-                                            <ArrowDown className="w-4 h-4 text-blue-400" />
-                                          </div>
-                                        </div>
-
-                                        {/* Receive Output */}
-                                        <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-[10px] uppercase tracking-wider text-zinc-500">You Receive</span>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-xl font-medium text-white">
-                                              ~{(Number(message.metadata?.amount || 0) * 0.998).toFixed(4)}
-                                            </span>
-                                            <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                              <div className="w-5 h-5 rounded-full bg-sky-500 flex items-center justify-center text-[9px] text-white font-bold">
-                                                st
-                                              </div>
-                                              <span className="text-sm font-medium text-white">
-                                                st{String(message.metadata?.token || 'ETH')}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* Action Button */}
-                                        <button
-                                          onClick={() => {
-                                            setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
-                                            setShowStakingWidget(true);
-                                          }}
-                                          className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                        >
-                                          Review Staking
-                                        </button>
-                                      </div>
-
-                                      {/* Footer */}
-                                      <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                        <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center">
-                                          <Droplets className="w-3 h-3 text-blue-400" />
-                                        </div>
-                                        <span className="text-[10px] text-zinc-500">Powered by Lido</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </motion.div>
-                    );
-                  })}
-
-                  {isSending && (
-                    <div className="flex gap-4 max-w-[90%]">
-                      <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 animate-pulse overflow-hidden p-1">
-                        <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
-                      </div>
-                      <div className="flex items-center gap-1 pt-3">
-                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.3s]" />
-                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.15s]" />
-                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce" />
-                      </div>
-                    </div>
                   )}
-                  <div ref={messagesEndRef} />
-                </div>
-              )}
+                </AnimatePresence>
+              </div>
             </div>
+          </SeniorAppShell>
 
-            {/* Sticky Bottom Input (Chat State) */}
-            <AnimatePresence>
-              {hasMessages && (
-                <motion.div
-                  initial={{ y: 100, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  className="p-2 pt-3 bg-gradient-to-t from-black via-black/90 to-transparent z-20"
-                >
-                  <div className="max-w-3xl mx-auto relative group">
-                    {/* Trending Prompts Dropdown */}
-                    <AnimatePresence>
-                      {showTrendingPrompts && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 10 }}
-                          className="absolute bottom-full left-0 right-0 mb-2 bg-[#0A0A0A] border border-white/10 rounded-xl p-2 shadow-2xl z-30"
-                        >
-                          <div className="text-xs text-zinc-500 px-3 py-2 uppercase tracking-wider">Trending Prompts</div>
-                          <div className="space-y-1">
-                            {trendingPrompts.map((prompt, index) => (
-                              <button
-                                key={index}
-                                onClick={() => {
-                                  setInputMessage(prompt.text);
-                                  setShowTrendingPrompts(false);
-                                }}
-                                className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors group"
-                              >
-                                <span className="text-zinc-500 group-hover:text-cyan-400 transition-colors">{prompt.icon}</span>
-                                <span>{prompt.text}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+          {/* Lending Modal */}
+          <AnimatePresence>
+            {lendingModalOpen && (
+              <Lending
+                onClose={() => {
+                  setLendingModalOpen(false);
+                  setCurrentLendingMetadata(null);
+                }}
+                initialAmount={currentLendingMetadata?.amount as string | undefined}
+                initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
+                initialAction={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
+              />
+            )}
+          </AnimatePresence>
 
-                    <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                    <div className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex items-center gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30">
-                      <button
-                        onClick={() => setShowTrendingPrompts(!showTrendingPrompts)}
-                        className="pl-2 text-zinc-400 hover:text-cyan-400 transition-colors"
-                        title="Trending prompts"
-                      >
-                        <Sparkles className="w-5 h-5" />
-                      </button>
-                      <input
-                        type="text"
-                        value={inputMessage}
-                        onChange={(e) => setInputMessage(e.target.value)}
-                        onKeyPress={handleKeyPress}
-                        onFocus={() => setShowTrendingPrompts(false)}
-                        placeholder="Send a message..."
-                        disabled={isSending || !activeConversationId || initializing}
-                        className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder:text-zinc-600 h-12"
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => sendMessage()}
-                        disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                        className="p-2.5 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="Send message"
-                      >
-                        <ArrowUp className="w-5 h-5" />
-                      </button>
-                    </div>
-                    <div className="text-center mt-2">
-                      <p className="text-[10px] text-zinc-600 uppercase tracking-widest">AI-Native Web3 Interface</p>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-        </SeniorAppShell>
+          {/* SwapWidget Modal */}
+          <AnimatePresence>
+            {showSwapWidget && swapWidgetTokens && (
+              <SwapWidget
+                onClose={() => {
+                  setShowSwapWidget(false);
+                  setSwapWidgetTokens(null);
+                }}
+                initialFromToken={swapWidgetTokens.from}
+                initialToToken={swapWidgetTokens.to}
+                initialAmount={swapWidgetTokens.amount}
+              />
+            )}
+          </AnimatePresence>
 
-        {/* Lending Modal */}
-        <AnimatePresence>
-          {lendingModalOpen && (
-            <Lending
-              onClose={() => {
-                setLendingModalOpen(false);
-                setCurrentLendingMetadata(null);
-              }}
-              initialAmount={currentLendingMetadata?.amount as string | undefined}
-              initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
-              initialAction={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
-            />
-          )}
-        </AnimatePresence>
-
-        {/* SwapWidget Modal */}
-        <AnimatePresence>
-          {showSwapWidget && swapWidgetTokens && (
-            <SwapWidget
-              onClose={() => {
-                setShowSwapWidget(false);
-                setSwapWidgetTokens(null);
-              }}
-              initialFromToken={swapWidgetTokens.from}
-              initialToToken={swapWidgetTokens.to}
-              initialAmount={swapWidgetTokens.amount}
-            />
-          )}
-        </AnimatePresence>
-
-        {/* Staking Modal */}
-        <AnimatePresence>
-          {showStakingWidget && (
-            <Staking
-              onClose={() => {
-                setShowStakingWidget(false);
-                setCurrentStakingMetadata(null);
-              }}
-              initialAmount={currentStakingMetadata?.amount as string | undefined}
-              initialToken={currentStakingMetadata?.token as string | undefined}
-            />
-          )}
-        </AnimatePresence>
-      </React.Fragment>
-    </TransactionSettingsProvider>
-  </ProtectedRoute>
+          {/* Staking Modal */}
+          <AnimatePresence>
+            {showStakingWidget && (
+              <Staking
+                onClose={() => {
+                  setShowStakingWidget(false);
+                  setCurrentStakingMetadata(null);
+                }}
+                initialAmount={currentStakingMetadata?.amount as string | undefined}
+                initialToken={currentStakingMetadata?.token as string | undefined}
+              />
+            )}
+          </AnimatePresence>
+        </React.Fragment>
+      </TransactionSettingsProvider>
+    </ProtectedRoute>
   );
 }

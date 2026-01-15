@@ -86,7 +86,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
                     if (!current.endsWith('/newchat') && !current.endsWith('/chat')) {
                       window.location.href = `${basePath}/newchat`;
                     }
-                  } catch {}
+                  } catch { }
                 }
               }
             }
@@ -105,6 +105,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
           const [OfflineIndicator, setOfflineIndicator] = useState<any>(null);
           const [AutoConnectHandler, setAutoConnectHandler] = useState<any>(null);
           const [WalletSessionGuard, setWalletSessionGuard] = useState<any>(null);
+          const [WalletIdentityProvider, setWalletIdentityProvider] = useState<any>(null);
 
           useEffect(() => {
             // Dynamic import PWA and wallet components to avoid SSR issues
@@ -113,13 +114,15 @@ export function ClientProviders({ children }: ClientProvidersProps) {
               import('@/components/pwa/PWAUpdateNotification'),
               import('@/components/pwa/OfflineIndicator'),
               import('@/components/wallet/AutoConnectHandler'),
-              import('@/components/wallet/WalletSessionGuard')
-            ]).then(([installPrompt, updateNotification, offlineIndicator, autoConnect, sessionGuard]) => {
+              import('@/components/wallet/WalletSessionGuard'),
+              import('@/shared/contexts/WalletIdentityContext')
+            ]).then(([installPrompt, updateNotification, offlineIndicator, autoConnect, sessionGuard, walletIdentity]) => {
               setPWAInstallPrompt(() => installPrompt.PWAInstallPrompt);
               setPWAUpdateNotification(() => updateNotification.PWAUpdateNotification);
               setOfflineIndicator(() => offlineIndicator.OfflineIndicator);
               setAutoConnectHandler(() => autoConnect.AutoConnectHandler);
               setWalletSessionGuard(() => sessionGuard.WalletSessionGuard);
+              setWalletIdentityProvider(() => walletIdentity.WalletIdentityProvider);
             }).catch(console.error);
           }, []);
 
@@ -130,34 +133,38 @@ export function ClientProviders({ children }: ClientProvidersProps) {
                   <thirdwebReact.ThirdwebProvider>
                     {AutoConnectHandler && <AutoConnectHandler />}
                     {WalletSessionGuard && <WalletSessionGuard />}
-                    <AuthGuard>
-                      {children}
-                      {/* PWA Components */}
-                      {PWAInstallPrompt && (
-                        <PWAInstallPrompt
-                          variant="toast"
-                          position="bottom"
-                          showOnMobile={true}
-                          showOnDesktop={true}
-                          autoShow={true}
-                          delay={5000}
-                        />
-                      )}
-                      {PWAUpdateNotification && (
-                        <PWAUpdateNotification
-                          variant="toast"
-                          position="bottom"
-                          autoUpdate={false}
-                        />
-                      )}
-                      {OfflineIndicator && (
-                        <OfflineIndicator
-                          variant="banner"
-                          position="top"
-                          showOnlineStatus={true}
-                        />
-                      )}
-                    </AuthGuard>
+                    {WalletIdentityProvider && (
+                      <WalletIdentityProvider>
+                        <AuthGuard>
+                          {children}
+                          {/* PWA Components */}
+                          {PWAInstallPrompt && (
+                            <PWAInstallPrompt
+                              variant="toast"
+                              position="bottom"
+                              showOnMobile={true}
+                              showOnDesktop={true}
+                              autoShow={true}
+                              delay={5000}
+                            />
+                          )}
+                          {PWAUpdateNotification && (
+                            <PWAUpdateNotification
+                              variant="toast"
+                              position="bottom"
+                              autoUpdate={false}
+                            />
+                          )}
+                          {OfflineIndicator && (
+                            <OfflineIndicator
+                              variant="banner"
+                              position="top"
+                              showOnlineStatus={true}
+                            />
+                          )}
+                        </AuthGuard>
+                      </WalletIdentityProvider>
+                    )}
                   </thirdwebReact.ThirdwebProvider>
                 </tonConnect.TonConnectUIProvider>
               </TransactionSettingsProvider>
