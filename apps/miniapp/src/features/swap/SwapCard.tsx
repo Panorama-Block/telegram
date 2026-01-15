@@ -8,8 +8,14 @@ import {
   type Address,
   type Hex,
 } from 'thirdweb';
+import { useLogout } from '../../shared/hooks/useLogout';
 import { ConnectButton } from 'thirdweb/react';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
+import { beginCell, toNano, Address as TonAddress } from '@ton/core';
+import { useTonConnectUI, TonConnectButton } from '@tonconnect/ui-react';
+import { getUserJettonWallet, toUSDT } from '../../lib/ton-helpers';
+import { bridgeApi } from './bridgeApi';
+import { TON_CHAIN_ID } from './tokens';
 
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
@@ -134,6 +140,27 @@ function resolveGenericErrorMessage(err: unknown, setShowFundWallet?: (show: boo
   return message;
 }
 
+function resolveBridgeNetwork(networkName?: string): string {
+  const mapping: Record<string, string> = {
+    'TON': 'TON_MAINNET',
+    'Ethereum': 'ETHEREUM_MAINNET',
+    'Base': 'BASE_MAINNET',
+    'Arbitrum': 'ARBITRUM_MAINNET',
+    'Optimism': 'OPTIMISM_MAINNET',
+    'Polygon': 'POLYGON_MAINNET',
+    'Avalanche': 'AVALANCHE_MAINNET',
+    'Binance Smart Chain': 'BSC_MAINNET',
+    'World Chain': 'WORLDCHAIN_MAINNET',
+  };
+  return (networkName && mapping[networkName]) || 'ETHEREUM_MAINNET';
+}
+
+function resolveTokenSymbol(net: Network | undefined, tokenAddress: string): string | undefined {
+  if (!net) return undefined;
+  if (isNative(tokenAddress)) return net.nativeCurrency?.symbol;
+  return net.tokens?.find((t) => t.address === tokenAddress)?.symbol;
+}
+
 const panelStyle: React.CSSProperties = {
   borderRadius: 16,
   padding: 16,
@@ -152,12 +179,12 @@ function getAddressFromToken(): string | null {
   try {
     const token = localStorage.getItem('authToken');
     if (!token) return null;
-    
+
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    
+
     const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-    
+
     return payload.sub || payload.address || null;
   } catch (error) {
     console.error('🔍 [JWT DEBUG] Error parsing JWT:', error);
@@ -178,6 +205,7 @@ type UiErrorState = {
     type: 'support' | 'docs';
     label: string;
     href?: string;
+    onClick?: () => void;
   };
 };
 
@@ -217,11 +245,13 @@ export function SwapCard() {
     ];
   }, []);
   const supportedChains = useMemo(() => networks.map((n) => n.chainId), []);
-  
+
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const userAddress = localStorage.getItem('userAddress');
   const effectiveAddress = account?.address || addressFromToken || userAddress;
-  
+
+  const [tonConnectUI] = useTonConnectUI();
+  const { logout } = useLogout();
 
   const defaultFromChain = 8453; // Base
   const defaultToChain = 8453;
@@ -240,14 +270,14 @@ export function SwapCard() {
   const [amount, setAmount] = useState<string>('');
 
   const [quoting, setQuoting] = useState(false);
-const [quote, setQuote] = useState<any | null>(null);
-const [preparing, setPreparing] = useState(false);
-const [executing, setExecuting] = useState(false);
-const [txHashes, setTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
-const [errorState, setErrorState] = useState<UiErrorState | null>(null);
-const retryHandlerRef = useRef<(() => void) | null>(null);
-const [, setRetryRefreshTick] = useState(0);
-const [showFundWallet, setShowFundWallet] = useState(false);
+  const [quote, setQuote] = useState<any | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [txHashes, setTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
+  const [errorState, setErrorState] = useState<UiErrorState | null>(null);
+  const retryHandlerRef = useRef<(() => void) | null>(null);
+  const [, setRetryRefreshTick] = useState(0);
+  const [showFundWallet, setShowFundWallet] = useState(false);
   const [debugInfo, setDebugInfo] = useState<{
     context: 'quote' | 'prepare';
     url?: string;
@@ -256,19 +286,19 @@ const [showFundWallet, setShowFundWallet] = useState(false);
     response?: unknown;
     causeMessage?: string;
   } | null>(null);
-const quoteRequestRef = useRef(0);
-const [toTokenDecimals, setToTokenDecimals] = useState<number>(18);
+  const quoteRequestRef = useRef(0);
+  const [toTokenDecimals, setToTokenDecimals] = useState<number>(18);
 
-useEffect(() => {
-  if (typeof window === 'undefined') return;
-  if (!errorState?.retryAvailableAt) return;
-  const diff = errorState.retryAvailableAt - Date.now();
-  if (diff <= 0) return;
-  const timer = window.setTimeout(() => {
-    setRetryRefreshTick((tick) => tick + 1);
-  }, diff + 25);
-  return () => window.clearTimeout(timer);
-}, [errorState?.retryAvailableAt]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!errorState?.retryAvailableAt) return;
+    const diff = errorState.retryAvailableAt - Date.now();
+    if (diff <= 0) return;
+    const timer = window.setTimeout(() => {
+      setRetryRefreshTick((tick) => tick + 1);
+    }, diff + 25);
+    return () => window.clearTimeout(timer);
+  }, [errorState?.retryAvailableAt]);
 
   useEffect(() => {
     const next = networks.find((n) => n.chainId === fromChainId);
@@ -323,8 +353,8 @@ useEffect(() => {
     return Boolean(fromChainId && toChainId && fromToken && toToken && amount && Number(amount) > 0);
   }, [fromChainId, toChainId, fromToken, toToken, amount]);
 
-useEffect(() => {
-  const requestId = ++quoteRequestRef.current;
+  useEffect(() => {
+    const requestId = ++quoteRequestRef.current;
 
     if (!canSubmit) {
       setQuote(null);
@@ -387,6 +417,8 @@ useEffect(() => {
     }
 
     const message = resolveGenericErrorMessage(throwable, setShowFundWallet);
+    const isTokenExpired = message.toLowerCase().includes('token expired') || message.toLowerCase().includes('jwt');
+
     pushErrorState(
       {
         title: contextTitle,
@@ -395,6 +427,14 @@ useEffect(() => {
         primaryLabel: 'Try again',
         canRetry: true,
         traceId: throwable instanceof SwapApiError ? throwable.traceId : undefined,
+        secondaryAction: isTokenExpired ? {
+          type: 'support',
+          label: 'Disconnect Wallet',
+          onClick: () => {
+            logout();
+            clearErrorState();
+          }
+        } : undefined
       },
       onRetry
     );
@@ -406,25 +446,45 @@ useEffect(() => {
     setDebugInfo(null);
     try {
       setQuoting(true);
-      
+
       const userAddress = localStorage.getItem('userAddress');
       const smartAccountAddress = effectiveAddress || userAddress || '';
-      
-      const body = {
-        fromChainId,
-        toChainId,
-        fromToken: normalizeToApi(fromToken),
-        toToken: normalizeToApi(toToken),
-        amount: amount.trim(),
-        smartAccountAddress,
-      };
-      const res = await swapApi.quote(body);
-      if (quoteRequestRef.current !== requestId) {
-        return;
+
+      if (fromChainId === TON_CHAIN_ID || toChainId === TON_CHAIN_ID) {
+        const sourceNetwork = resolveBridgeNetwork(fromNet?.name);
+        const destinationNetwork = resolveBridgeNetwork(toNet?.name);
+        const sourceTokenSymbol = resolveTokenSymbol(fromNet, fromToken);
+        const destinationTokenSymbol = resolveTokenSymbol(toNet, toToken);
+        const res = await bridgeApi.quote(
+          Number(amount),
+          sourceNetwork,
+          destinationNetwork,
+          undefined,
+          sourceTokenSymbol,
+          destinationTokenSymbol
+        );
+        if (quoteRequestRef.current !== requestId) {
+          return;
+        }
+        if (!res.success || !res.quote) throw new Error('Failed to get bridge quote');
+        setQuote(res.quote);
+      } else {
+        const body = {
+          fromChainId,
+          toChainId,
+          fromToken: normalizeToApi(fromToken),
+          toToken: normalizeToApi(toToken),
+          amount: amount.trim(),
+          smartAccountAddress,
+        };
+        const res = await swapApi.quote(body);
+        if (quoteRequestRef.current !== requestId) {
+          return;
+        }
+        if (!res.success || !res.quote) throw new Error(res.message || 'Failed to get quote');
+        // Use backend quote as-is. No client-side adjustment.
+        setQuote(res.quote);
       }
-      if (!res.success || !res.quote) throw new Error(res.message || 'Failed to get quote');
-      // Use backend quote as-is. No client-side adjustment.
-      setQuote(res.quote);
     } catch (e: any) {
       if (quoteRequestRef.current !== requestId) {
         return;
@@ -466,6 +526,105 @@ useEffect(() => {
     return out;
   }
 
+  async function handleTonSwap() {
+    clearErrorState();
+    setTxHashes([]);
+    const userTonAddress = tonConnectUI.account?.address;
+
+    if (!userTonAddress) {
+      pushErrorState({
+        title: 'Carteira TON não conectada',
+        description: 'Por favor, conecte sua carteira TON para continuar.',
+        category: 'blocked',
+        primaryLabel: 'Conectar Wallet',
+        canRetry: true
+      }, handleTonSwap);
+      return;
+    }
+
+    setDebugInfo(null);
+    try {
+      setPreparing(true);
+
+      // 1. Create Swap on Backend
+      // We pass the EVM address (effectiveAddress) as destination
+      // And TON address as source
+      const sourceNetwork = resolveBridgeNetwork(fromNet?.name);
+      const destinationNetwork = resolveBridgeNetwork(toNet?.name);
+      const sourceTokenSymbol = resolveTokenSymbol(fromNet, fromToken);
+      const destinationTokenSymbol = resolveTokenSymbol(toNet, toToken);
+      const bridgeTx = await bridgeApi.createTransaction(
+        Number(amount),
+        effectiveAddress || '', // EVM Address
+        userTonAddress,
+        sourceNetwork,
+        destinationNetwork,
+        undefined,
+        sourceTokenSymbol,
+        destinationTokenSymbol
+      );
+
+      const swapId = bridgeTx.id;
+      const layerswapVault = bridgeTx.destination; // The vault address to send USDT to
+
+      // 2. Get User's USDT Wallet
+      const myUsdtWallet = await getUserJettonWallet(userTonAddress);
+
+      console.log('DEBUG TON SWAP:', {
+        userTonAddress,
+        layerswapVault,
+        myUsdtWallet: myUsdtWallet.toString(),
+        swapId,
+        amountUSDT: toUSDT(amount).toString()
+      });
+
+      // 3. Construct Payload
+      const forwardPayload = beginCell()
+        .storeUint(0, 32) // 0 = Text Comment
+        .storeStringTail(swapId)
+        .endCell();
+
+      const body = beginCell()
+        .storeUint(0xf8a7ea5, 32) // OpCode: Transfer
+        .storeUint(0, 64)         // QueryID
+        .storeCoins(toUSDT(amount)) // USDT Amount (6 decimals)
+        .storeAddress(TonAddress.parse(layerswapVault))
+        .storeAddress(TonAddress.parse(userTonAddress))
+        .storeBit(0)
+        .storeCoins(toNano('0.01')) // Forward Amount
+        .storeBit(1)
+        .storeRef(forwardPayload)
+        .endCell();
+
+      setPreparing(false);
+      setExecuting(true);
+
+      // 4. Send Transaction
+      const transaction = {
+        validUntil: Math.floor(Date.now() / 1000) + 600,
+        messages: [
+          {
+            address: myUsdtWallet.toString(),
+            amount: toNano('0.1').toString(), // Gas (Increased to 0.1 for safety)
+            payload: body.toBoc().toString('base64')
+          }
+        ]
+      };
+
+      const result = await tonConnectUI.sendTransaction(transaction);
+      console.log('TON Transaction sent:', result);
+
+      // We use a placeholder hash since TON Connect doesn't always return it easily
+      setTxHashes([{ hash: 'pending', chainId: TON_CHAIN_ID }]);
+
+    } catch (e: any) {
+      applyThrowableAsError(e, 'Falha no Swap TON', handleTonSwap);
+    } finally {
+      setPreparing(false);
+      setExecuting(false);
+    }
+  }
+
   async function onSwap() {
     clearErrorState();
     setTxHashes([]);
@@ -498,6 +657,87 @@ useEffect(() => {
     setDebugInfo(null);
     try {
       setPreparing(true);
+      if (toChainId === TON_CHAIN_ID) {
+        const userTonAddress = tonConnectUI.account?.address;
+        if (!userTonAddress) {
+          pushErrorState({
+            title: 'Carteira TON não conectada',
+            description: 'Por favor, conecte sua carteira TON para continuar.',
+            category: 'blocked',
+            primaryLabel: 'Conectar Wallet',
+            canRetry: true
+          }, onSwap);
+          return;
+        }
+
+        const sourceNetwork = resolveBridgeNetwork(fromNet?.name);
+        const destinationNetwork = resolveBridgeNetwork(toNet?.name);
+        const sourceTokenSymbol = resolveTokenSymbol(fromNet, fromToken);
+        const destinationTokenSymbol = resolveTokenSymbol(toNet, toToken);
+
+        const bridgeTx = await bridgeApi.createTransaction(
+          Number(amount),
+          userTonAddress,
+          effectiveAddress || undefined,
+          sourceNetwork,
+          destinationNetwork,
+          undefined,
+          sourceTokenSymbol,
+          destinationTokenSymbol
+        );
+
+        const txData = bridgeTx.transaction || bridgeTx;
+        const depositAddress = txData.depositAddress || txData.destination || txData.vaultAddress;
+
+        if (!depositAddress) {
+          throw new Error('Bridge API did not return a Deposit Address');
+        }
+
+        const decimals = await getTokenDecimals({ client, chainId: fromChainId, token: fromToken });
+        const wei = parseAmountToWei(amount, decimals);
+        if (wei <= 0n) throw new Error('Invalid amount');
+
+        let transaction;
+        if (isNative(fromToken)) {
+          transaction = prepareTransaction({
+            to: depositAddress,
+            chain: defineChain(fromChainId),
+            client,
+            value: wei,
+          });
+        } else {
+          const { prepareContractCall, getContract } = await import('thirdweb');
+          const contract = getContract({
+            client,
+            chain: defineChain(fromChainId),
+            address: fromToken,
+          });
+          transaction = prepareContractCall({
+            contract,
+            method: 'function transfer(address to, uint256 value)',
+            params: [depositAddress, BigInt(wei)],
+          });
+        }
+
+        setPreparing(false);
+        setExecuting(true);
+
+        const result = await safeExecuteTransactionV2(async () => {
+          return await sendTransaction({ account, transaction });
+        });
+
+        if (!result.success) {
+          throw new Error(`Transaction failed: ${result.error}`);
+        }
+
+        if (!result.transactionHash) {
+          throw new Error('Transaction failed: no transaction hash returned.');
+        }
+
+        setTxHashes([{ hash: result.transactionHash, chainId: fromChainId }]);
+        return;
+      }
+
       const decimals = await getTokenDecimals({ client, chainId: fromChainId, token: fromToken });
       const wei = parseAmountToWei(amount, decimals);
       if (wei <= 0n) throw new Error('Invalid amount');
@@ -520,7 +760,7 @@ useEffect(() => {
         if (t.chainId !== fromChainId) {
           throw new Error(`Wallet chain mismatch. Switch to chain ${t.chainId} and retry.`);
         }
-        console.log("olah t.value",t.value)
+        console.log("olah t.value", t.value)
         const tx = prepareTransaction({
           to: t.to as Address,
           chain: defineChain(t.chainId),
@@ -608,16 +848,20 @@ useEffect(() => {
 
   async function handlePrimaryAction() {
     if (!quote) return;
-    
+
     if (needsWalletConnection) {
       return;
     }
-    
-    await onSwap();
+
+    if (fromChainId === TON_CHAIN_ID) {
+      await handleTonSwap();
+    } else {
+      await onSwap();
+    }
   }
 
   const needsWalletConnection = quote && !account;
-  
+
   const primaryLabel = quote
     ? executing
       ? 'Executing swap…'
@@ -639,8 +883,8 @@ useEffect(() => {
     !errorState?.canRetry || isRetryCoolingDown;
   const retrySecondsHint = errorState
     ? (errorState.retryAvailableAt
-        ? Math.max(0, Math.ceil((errorState.retryAvailableAt - Date.now()) / 1000))
-        : errorState.retryAfterSeconds)
+      ? Math.max(0, Math.ceil((errorState.retryAvailableAt - Date.now()) / 1000))
+      : errorState.retryAfterSeconds)
     : undefined;
 
   const handleErrorRetry = () => {
@@ -845,7 +1089,7 @@ useEffect(() => {
             {JSON.stringify(quote, null, 2)}
           </pre>
         </details>
-        )}
+      )}
 
       <div style={{ marginTop: 20 }}>
         {needsWalletConnection ? (

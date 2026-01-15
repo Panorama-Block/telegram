@@ -13,7 +13,18 @@ export type Network = {
   tokens: Token[]
 };
 
+export const TON_CHAIN_ID = -239;
+
 export const networks: Network[] = [
+  {
+    chainId: TON_CHAIN_ID,
+    name: 'TON',
+    nativeCurrency: { symbol: 'TON', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png', decimals: 9, name: 'Toncoin' },
+    tokens: [
+      { symbol: 'TON', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png', decimals: 9, name: 'Toncoin' },
+      { symbol: 'USDT', address: 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
+    ],
+  },
   {
     chainId: 43114,
     name: 'Avalanche',
@@ -96,6 +107,7 @@ export const networks: Network[] = [
       { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
       { symbol: 'cbBTC', address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', icon: 'https://assets.coingecko.com/coins/images/40489/small/cbBTC.png', decimals: 8, name: 'Coinbase Wrapped BTC' },
       { symbol: 'AERO', address: '0x940181a94a35a4569e4529a3cdfb74e38fd98631', icon: 'https://assets.coingecko.com/coins/images/31745/small/token.png', decimals: 18, name: 'Aerodrome' },
+      { symbol: 'USDT', address: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
     ],
   },
   {
