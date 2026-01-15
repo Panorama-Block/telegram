@@ -18,15 +18,9 @@ class LendingApiClient {
   private readonly CACHE_DURATION = LENDING_CONFIG.CACHE_DURATION;
 
   constructor(account: any) {
-    // Priority 1: Use direct lending API base URL (deployed service)
-    const direct = process.env.VITE_LENDING_API_BASE || process.env.NEXT_PUBLIC_LENDING_API_URL;
-
-    if (direct && direct.length > 0) {
-      this.baseUrl = direct.replace(/\/+$/, '');
-    } else {
-      // Fallback: use Next.js proxy (which will forward to deployed service)
-      this.baseUrl = '/api/lending';
-    }
+    const gatewayBase =
+      (process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.VITE_GATEWAY_BASE || '').replace(/\/+$/, '');
+    this.baseUrl = gatewayBase ? `${gatewayBase}/api/lending` : 'http://localhost:8443/api/lending';
 
     this.account = account;
   }

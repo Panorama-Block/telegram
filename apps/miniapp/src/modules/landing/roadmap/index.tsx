@@ -54,7 +54,7 @@ const Step = ({ index, title, items, side }: { index: number; title: string; ite
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-landing-highlight/15 ring-1 ring-landing-highlight/40 text-landing-highlight text-xs font-semibold">
               {index.toString().padStart(2, '0')}
             </span>
-            <h3 className="text-landing-title text-xl md:text-2xl font-display tracking-tight">
+            <h3 className="text-landing-title text-xl md:text-2xl font-sans tracking-tight">
               <span className="text-landing-highlight">{title}</span>
             </h3>
           </div>
@@ -79,7 +79,7 @@ const Step = ({ index, title, items, side }: { index: number; title: string; ite
 const Roadmap = () => {
   return (
     <section id="roadmap" className="relative mt-14 md:mt-24">
-      <h2 className="text-landing-title text-3xl lg:text-5xl text-center font-display tracking-tight">Roadmap</h2>
+      <h2 className="text-landing-title text-3xl lg:text-5xl text-center font-sans tracking-tight">Roadmap</h2>
 
       {/* Timeline container */}
       <div className="relative mx-auto mt-8 md:mt-12 max-w-5xl md:max-w-6xl px-4">

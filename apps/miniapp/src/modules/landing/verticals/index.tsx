@@ -13,7 +13,7 @@ const Verticals = () => {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-landing-primary/20 rounded-full blur-3xl" />
       </div>
 
-      <h2 className="relative text-landing-title text-3xl lg:text-5xl text-center z-10">Our Verticals</h2>
+      <h2 className="relative text-landing-title text-3xl lg:text-5xl text-center z-10 font-sans">Our Verticals</h2>
       <div className="relative py-4 md:py-8 mt-4 md:mt-8 z-10">
         <div className="flex flex-col md:flex-row gap-4 md:gap-6 px-4 md:px-12 lg:px-16 xl:px-20 justify-center items-center max-w-[1400px] mx-auto">
           <Image src={vertical1} alt="" className="rounded-[20px] object-cover w-full md:w-auto md:max-w-[400px] lg:max-w-[450px]" width={550} height={550} />

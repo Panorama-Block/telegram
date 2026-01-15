@@ -33,28 +33,8 @@ const nextConfig: NextConfig = {
   },
 
   async rewrites() {
-    // Sempre use a variável de ambiente VITE_LENDING_API_BASE
-    // Se não estiver definida, tenta usar o gateway
-    const lendingBase = process.env.VITE_LENDING_API_BASE ||
-                       (process.env.PUBLIC_GATEWAY_URL ? `${process.env.PUBLIC_GATEWAY_URL.replace(/\/+$/, '')}/lending` : '');
-
-    if (!lendingBase) {
-      console.warn('[Next.js] Lending API base URL not configured, proxy will not work');
-      console.warn('[Next.js] Please set VITE_LENDING_API_BASE or PUBLIC_GATEWAY_URL in .env');
-      return [];
-    }
-
-    console.log('[Next.js] Lending API proxy configured:', lendingBase);
-
-    return [
-      // Proxy lending API to avoid CORS issues
-      // Note: source is relative to basePath, so /api/lending maps to /miniapp/api/lending
-      {
-        source: "/api/lending/:path*",
-        destination: `${lendingBase}/:path*`,
-        basePath: false, // Important: bypass basePath for API routes
-      },
-    ];
+    // API calls passam a usar o gateway dedicado; sem rewrites locais.
+    return [];
   },
 
   images: {
@@ -66,9 +46,13 @@ const nextConfig: NextConfig = {
   },
 
   env: {
-    VITE_GATEWAY_BASE: process.env.PUBLIC_GATEWAY_URL || "",
+    NEXT_PUBLIC_GATEWAY_BASE: process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.PUBLIC_GATEWAY_URL || "",
+    VITE_GATEWAY_BASE: process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.PUBLIC_GATEWAY_URL || "",
     VITE_SWAP_API_BASE: process.env.SWAP_API_BASE || "",
-    VITE_AUTH_API_BASE: process.env.AUTH_API_BASE || "",
+    // Base do gateway; endpoints de auth são chamados como `${VITE_AUTH_API_BASE}/auth/login`
+    VITE_AUTH_API_BASE: (process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.PUBLIC_GATEWAY_URL)
+      ? `${(process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.PUBLIC_GATEWAY_URL)!.replace(/\/+$/, '')}/api`
+      : (process.env.AUTH_API_BASE || ""),
     VITE_LENDING_API_BASE: process.env.VITE_LENDING_API_BASE || "",
     VITE_THIRDWEB_CLIENT_ID: process.env.THIRDWEB_CLIENT_ID || "",
     VITE_WALLETCONNECT_PROJECT_ID: process.env.WALLETCONNECT_PROJECT_ID || "",

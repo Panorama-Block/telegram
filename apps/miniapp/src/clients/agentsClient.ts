@@ -19,6 +19,7 @@ export interface ChatResponse {
   agent_name?: string | null;
   agent_type?: string | null;
   metadata?: Record<string, unknown> | null;
+  transcription?: string | null;
 }
 
 export interface ChatOptions {
@@ -57,8 +58,10 @@ export class AgentsClient {
   private debugEnabled: boolean;
 
   constructor() {
-    // Read environment variables provided by Next.js
-    this.baseUrl = process.env.AGENTS_API_BASE;
+    const gatewayBase =
+      (process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.VITE_GATEWAY_BASE || '').replace(/\/+$/, '');
+    // Prefer gateway; fallback to explicit AGENTS_API_BASE
+    this.baseUrl = gatewayBase ? `${gatewayBase}/api/agents` : process.env.AGENTS_API_BASE;
     this.messagePath = process.env.AGENTS_RESPONSE_MESSAGE_PATH;
     const debugFlag = process.env.AGENTS_DEBUG_SHAPE;
     this.debugShape = typeof debugFlag === 'string' ? ['1', 'true', 'on', 'yes'].includes(debugFlag.toLowerCase()) : Boolean(debugFlag);
@@ -352,5 +355,57 @@ export class AgentsClient {
     });
     if (!data?.messages || !Array.isArray(data.messages)) return [];
     return data.messages;
+  }
+
+  async chatAudio(
+    audioBlob: Blob,
+    userId: string,
+    conversationId: string,
+    walletAddress?: string,
+    opts: ChatOptions = {}
+  ): Promise<ChatResponse> {
+    this.ensureConfigured();
+
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'recording.webm');
+    formData.append('user_id', userId);
+    formData.append('conversation_id', conversationId);
+    if (walletAddress) {
+      formData.append('wallet_address', walletAddress);
+    }
+
+    // Build headers without content-type (browser sets it with boundary for FormData)
+    const headers: Record<string, string> = { ...(opts.headers ?? {}) };
+    if (opts.jwt) headers['authorization'] = `Bearer ${opts.jwt}`;
+
+    const requestUrl = `${this.baseUrl}/chat/audio`;
+    this.logDebug('chatAudio:start', { userId, conversationId, audioSize: audioBlob.size });
+
+    const res = await this.fetchWithTimeout(requestUrl, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      this.logDebug('chatAudio:error', { status: res.status, userId, conversationId, response: text });
+      throw new Error(`Agents chat audio failed: ${res.status} ${text}`);
+    }
+
+    const data = await res.json();
+    this.logDebug('chatAudio:success', { userId, conversationId, transcription: data?.transcription?.substring(0, 50) });
+
+    const final: ChatResponse = {
+      message: data?.response ?? '',
+      requires_action: Boolean(data?.requires_action),
+      actions: Array.isArray(data?.actions) ? data.actions : undefined,
+      agent_name: data?.agentName ?? data?.agent_name ?? null,
+      agent_type: data?.agentType ?? data?.agent_type ?? null,
+      metadata: typeof data?.metadata === 'object' && data?.metadata !== null ? data.metadata as Record<string, unknown> : null,
+      transcription: data?.transcription ?? null,
+    };
+
+    return final;
   }
 }

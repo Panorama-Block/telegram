@@ -12,7 +12,7 @@ declare global {
     };
   }
 }
-import { GlobalLoader, TransactionSettingsProvider } from '@/shared/ui';
+import { GlobalLoader, TransactionSettingsProvider, AudioButton } from '@/shared/ui';
 import MarkdownMessage from '@/shared/ui/MarkdownMessage';
 import Image from 'next/image';
 import '../../shared/ui/loader.css';
@@ -205,6 +205,8 @@ export default function ChatPage() {
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [navigationType, setNavigationType] = useState<'swap' | 'lending' | 'staking' | 'dca' | null>(null);
+  // Pending new chat state - when true, we show welcome screen without creating backend conversation
+  const [pendingNewChat, setPendingNewChat] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
   const { user, isLoading: authLoading } = useAuth();
@@ -300,9 +302,16 @@ export default function ChatPage() {
   // CRITICAL: Use the currently connected wallet address as the primary userId
   // This ensures each user sees only their own chats, even on shared devices
   const userId = account?.address?.toLowerCase() || getWalletAddress() || (user?.id ? String(user.id) : undefined);
-  const activeMessages = activeConversationId ? (messagesByConversation[activeConversationId] ?? []) : [];
+  
+  // Filter out disclaimer messages from the backend
+  const DISCLAIMER_TEXT = 'This highly experimental chatbot is not intended for making important decisions';
+  const rawMessages = activeConversationId ? (messagesByConversation[activeConversationId] ?? []) : [];
+  const activeMessages = rawMessages.filter((msg) => !msg.content.includes(DISCLAIMER_TEXT));
+  
   const isHistoryLoading = loadingConversationId === activeConversationId;
-  const hasMessages = activeMessages.length > 0;
+  // When pendingNewChat is true, we're in "new chat" mode without a backend conversation
+  // In this case, always show the welcome screen (hasMessages = false)
+  const hasMessages = pendingNewChat ? false : activeMessages.length > 0;
   const displayName = useMemo(() => {
     const address = account?.address || getWalletAddress();
     if (address) {
@@ -678,9 +687,41 @@ export default function ChatPage() {
 
   const sendMessage = async (content?: string) => {
     const messageContent = content ?? inputMessage.trim();
-    if (!messageContent || isSending || !activeConversationId) return;
+    if (!messageContent || isSending) return;
 
-    const conversationId = activeConversationId;
+    // Handle pending new chat - create conversation on first message
+    let conversationId = activeConversationId;
+    if (pendingNewChat || !conversationId) {
+      console.log('[CHAT] Creating conversation on first message...');
+      setIsSending(true);
+      try {
+        const newConversationId = await agentsClient.createConversation(userId, getAuthOptions());
+        if (!newConversationId || !isMountedRef.current) {
+          setIsSending(false);
+          return;
+        }
+        
+        conversationId = newConversationId;
+        const newConversation: Conversation = {
+          id: newConversationId,
+          title: 'New Chat',
+        };
+
+        setConversations((prev) => [newConversation, ...prev.filter((c) => c.id !== newConversationId)]);
+        setMessagesByConversation((prev) => ({
+          ...prev,
+          [newConversationId]: [],
+        }));
+        setActiveConversation(newConversationId);
+        setPendingNewChat(false);
+        console.log('[CHAT] Created conversation:', newConversationId);
+      } catch (error) {
+        console.error('[CHAT] Error creating conversation:', error);
+        setIsSending(false);
+        return;
+      }
+    }
+
     const userMessage: Message = {
       role: 'user',
       content: messageContent,
@@ -903,35 +944,75 @@ export default function ChatPage() {
     debug('conversation:select', { conversationId });
   };
 
-  // Handle ?new=true query parameter to create new chat
+  // Handle ?new=true query parameter to show new chat welcome screen
   const newChatRequested = searchParams.get('new') === 'true';
   const newChatTriggeredRef = useRef(false);
 
   useEffect(() => {
-    if (newChatRequested && !initializing && !isCreatingConversation && userId && !newChatTriggeredRef.current) {
-      console.log('[CHAT] Creating new chat from URL param...');
+    if (newChatRequested && !initializing && userId && !newChatTriggeredRef.current) {
+      console.log('[CHAT] Setting pending new chat from URL param...');
       newChatTriggeredRef.current = true;
       router.replace('/chat', { scroll: false });
-      createNewChat();
+      // Don't create conversation - just show welcome screen
+      setPendingNewChat(true);
+      setActiveConversationId(null);
     }
 
     if (!newChatRequested) {
       newChatTriggeredRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newChatRequested, initializing, isCreatingConversation, userId]);
+  }, [newChatRequested, initializing, userId]);
 
   // Listen for custom event from sidebar "+" button
   useEffect(() => {
-    const handleNewChatEvent = () => {
+    const handleNewChatEvent = (event: Event) => {
       console.log('[CHAT] New chat event received');
-      if (!initializing && !isCreatingConversation && userId) {
-        createNewChat();
+      const customEvent = event as CustomEvent<{ pending?: boolean; conversationId?: string }>;
+      
+      if (customEvent.detail?.pending) {
+        // Show welcome screen without creating backend conversation
+        // Conversation will be created when user sends first message
+        console.log('[CHAT] Setting pending new chat mode');
+        setPendingNewChat(true);
+        setActiveConversationId(null); // Clear active conversation to show welcome
+        setInitializationError(null);
+      } else if (customEvent.detail?.conversationId) {
+        // Legacy: Conversation was already created, set it up
+        const newConversationId = customEvent.detail.conversationId;
+        console.log('[CHAT] Setting up new conversation:', newConversationId);
+        
+        const newConversation: Conversation = {
+          id: newConversationId,
+          title: 'New Chat',
+        };
+
+        setConversations((prev) => [newConversation, ...prev.filter((c) => c.id !== newConversationId)]);
+        setMessagesByConversation((prev) => ({
+          ...prev,
+          [newConversationId]: [],
+        }));
+        setInitializationError(null);
+        setPendingNewChat(false);
+        setActiveConversation(newConversationId);
+      }
+    };
+
+    const handleSelectChatEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<{ conversationId: string }>;
+      console.log('[CHAT] Select chat event received:', customEvent.detail?.conversationId);
+      if (customEvent.detail?.conversationId) {
+        setPendingNewChat(false); // Exit pending mode when selecting existing chat
+        handleSelectConversation(customEvent.detail.conversationId);
       }
     };
 
     window.addEventListener('panorama:newchat', handleNewChatEvent);
-    return () => window.removeEventListener('panorama:newchat', handleNewChatEvent);
+    window.addEventListener('panorama:selectchat', handleSelectChatEvent);
+    return () => {
+      window.removeEventListener('panorama:newchat', handleNewChatEvent);
+      window.removeEventListener('panorama:selectchat', handleSelectChatEvent);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initializing, isCreatingConversation, userId]);
 
@@ -1036,6 +1117,112 @@ export default function ChatPage() {
     }
   }, [account?.address, getWalletAddress]);
 
+  const handleAudioReady = useCallback(async (audioBlob: Blob) => {
+    if (!activeConversationId || !userId) return;
+
+    const conversationId = activeConversationId;
+    setIsSending(true);
+
+    try {
+      debug('audio:send', { conversationId, audioSize: audioBlob.size });
+
+      const response = await agentsClient.chatAudio(
+        audioBlob,
+        userId,
+        conversationId,
+        getWalletAddress(),
+        getAuthOptions()
+      );
+
+      if (!isMountedRef.current) return;
+
+      console.log('[AUDIO] Response received:', response);
+
+      // Add the transcribed user message to the conversation
+      if (response.transcription) {
+        const userMessage: Message = {
+          role: 'user',
+          content: response.transcription,
+          timestamp: new Date(),
+        };
+
+        setMessagesByConversation((prev) => {
+          const prevMessages = prev[conversationId] ?? [];
+          return {
+            ...prev,
+            [conversationId]: [...prevMessages, userMessage],
+          };
+        });
+
+        // Update conversation title based on transcription
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  title: deriveConversationTitle(
+                    conversation.title,
+                    [...(messagesByConversation[conversationId] ?? []), userMessage]
+                  ),
+                }
+              : conversation
+          )
+        );
+      }
+
+      // Add the assistant response
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: autoFormatAssistantMarkdown(response.message || 'I was unable to process that request.'),
+        timestamp: new Date(),
+        agentName: response.agent_name ?? null,
+        metadata: response.metadata ?? undefined,
+      };
+
+      // Handle swap/lending/staking intents (same as text chat)
+      if (response.metadata?.event === 'swap_intent_ready') {
+        console.log('[AUDIO] Swap intent detected, fetching quote...');
+        getSwapQuote(response.metadata as Record<string, unknown>);
+      }
+
+      setMessagesByConversation((prev) => {
+        const prevMessages = prev[conversationId] ?? [];
+        return {
+          ...prev,
+          [conversationId]: [...prevMessages, assistantMessage],
+        };
+      });
+
+    } catch (error) {
+      console.error('Error sending audio:', error);
+      debug('audio:error', {
+        conversationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      const fallbackMessage: Message = {
+        role: 'assistant',
+        content: 'Sorry, I could not process the audio. Please try again or type your message.',
+        timestamp: new Date(),
+      };
+
+      if (isMountedRef.current) {
+        setMessagesByConversation((prev) => {
+          const prevMessages = prev[conversationId] ?? [];
+          return {
+            ...prev,
+            [conversationId]: [...prevMessages, fallbackMessage],
+          };
+        });
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsSending(false);
+      }
+      debug('audio:complete', { conversationId });
+    }
+  }, [activeConversationId, userId, agentsClient, debug, getAuthOptions, getWalletAddress, getSwapQuote, messagesByConversation]);
+
   return (
     <ProtectedRoute>
       <TransactionSettingsProvider>
@@ -1115,11 +1302,11 @@ export default function ChatPage() {
                     <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
                       Loading your conversations...
                     </div>
-                  ) : !activeConversationId ? (
+                  ) : !activeConversationId && !pendingNewChat ? (
                     <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
                       Crie um novo chat para começar.
                     </div>
-                  ) : initializationError && !hasMessages ? (
+                  ) : initializationError && !hasMessages && !pendingNewChat ? (
                     <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-center min-h-[50vh]">
                       <p className="text-zinc-400">{initializationError}</p>
                       <button
@@ -1129,11 +1316,11 @@ export default function ChatPage() {
                         Try again
                       </button>
                     </div>
-                  ) : isHistoryLoading && !hasMessages ? (
+                  ) : isHistoryLoading && !hasMessages && !pendingNewChat ? (
                     <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
                       Loading conversation...
                     </div>
-                  ) : !hasMessages ? (
+                  ) : !hasMessages || pendingNewChat ? (
                     <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
                       <motion.div
                         initial={{ y: 20, opacity: 0 }}
@@ -1194,7 +1381,7 @@ export default function ChatPage() {
                             <motion.button
                               key={item.label}
                               onClick={() => sendMessage(item.prompt)}
-                              disabled={isSending || !activeConversationId}
+                              disabled={isSending || (!activeConversationId && !pendingNewChat)}
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ delay: 0.2 + (i * 0.1) }}
