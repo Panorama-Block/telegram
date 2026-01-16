@@ -1227,112 +1227,191 @@ export default function ChatPage() {
     <ProtectedRoute>
       <TransactionSettingsProvider>
         <React.Fragment>
-        <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
-        <GlobalLoader
-          isLoading={isNavigating}
-          message={
-            navigationType === 'lending' ? 'Loading Lending...' :
-              navigationType === 'staking' ? 'Loading Staking...' :
-                navigationType === 'swap' ? 'Loading Swap...' :
-                  navigationType === 'dca' ? 'Loading DCA...' :
-                    'Loading...'
-          }
-        />
+          <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
+          <GlobalLoader
+            isLoading={isNavigating}
+            message={
+              navigationType === 'lending' ? 'Loading Lending...' :
+                navigationType === 'staking' ? 'Loading Staking...' :
+                  navigationType === 'swap' ? 'Loading Swap...' :
+                    navigationType === 'dca' ? 'Loading DCA...' :
+                      'Loading...'
+            }
+          />
 
-        <SeniorAppShell pageTitle="Zico AI Agent">
-          <div className="flex flex-col h-full relative bg-black">
-            {/* Ambient God Ray */}
-            <div className="absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-500/20 via-slate-900/5 to-black blur-3xl pointer-events-none z-0" />
+          <SeniorAppShell pageTitle="Zico AI Agent">
+            <div className="flex flex-col lg:flex-row gap-6 h-full relative bg-black">
+              {/* Ambient God Ray */}
+              <div className="absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-500/20 via-slate-900/5 to-black blur-3xl pointer-events-none z-0" />
 
-            <div className="flex-1 min-w-0 flex flex-col overflow-hidden z-10">
-              <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col">
-                {initializing ? (
-                  <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                    Loading your conversations...
-                  </div>
-                ) : !activeConversationId && !pendingNewChat ? (
-                  <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                    Crie um novo chat para começar.
-                  </div>
-                ) : initializationError && !hasMessages && !pendingNewChat ? (
-                  <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-center min-h-[50vh]">
-                    <p className="text-zinc-400">{initializationError}</p>
+              {/* Conversations Panel */}
+              <aside className="w-full lg:w-80 shrink-0 z-10">
+                <div className="bg-[#0b0d10]/90 border border-white/10 rounded-2xl p-4 shadow-[0_12px_40px_rgba(0,0,0,0.45)] space-y-4 backdrop-blur-xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                      <MessageSquare className="w-4 h-4 text-cyan-400" />
+                      Conversations
+                    </div>
                     <button
-                      onClick={retryBootstrap}
-                      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
+                      onClick={() => createNewChat()}
+                      disabled={isCreatingConversation}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black hover:bg-zinc-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      Try again
+                      {isCreatingConversation ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                      New
                     </button>
                   </div>
-                ) : isHistoryLoading && !hasMessages && !pendingNewChat ? (
-                  <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                    Loading conversation...
-                  </div>
-                ) : !hasMessages || pendingNewChat ? (
-                  <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
-                    <motion.div
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ duration: 0.8, ease: "easeOut" }}
-                      className="w-full max-w-3xl text-center flex flex-col items-center"
-                    >
-                      {/* Title & Subtitle */}
-                      <div className="space-y-2 md:space-y-4 relative mb-8">
-                        <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
-                          Hello, {displayName}.
-                        </h1>
-                        <p className="text-xl text-zinc-400 font-light">
-                          Zico is ready to navigate the chain.
-                        </p>
-                      </div>
 
-                      {/* Main Input Area */}
-                      <div className="relative group max-w-2xl mx-auto w-full my-8">
-                        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                        <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 md:p-2 flex items-center gap-2 md:gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 group-focus-within:shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all duration-300">
-                          <div className="pl-2 md:pl-4 text-zinc-400">
-                            <Search className="w-5 h-5 md:w-6 md:h-6" />
+                  <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
+                    {initializing && (
+                      <div className="text-xs text-zinc-500 flex items-center gap-2 px-2">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+                      </div>
+                    )}
+                    {!initializing && conversations.length === 0 && (
+                      <div className="text-sm text-zinc-500 px-2">No chats yet. Start a new one.</div>
+                    )}
+                    {conversations.map((conversation) => {
+                      const isActive = activeConversationId === conversation.id;
+                      const preview = getConversationPreview(conversation.id);
+                      const isLoadingConv = loadingConversationId === conversation.id;
+                      return (
+                        <button
+                          key={conversation.id}
+                          onClick={() => handleSelectConversation(conversation.id)}
+                          className={cn(
+                            'w-full text-left rounded-xl border px-3 py-2 transition-all hover:border-cyan-500/40 hover:bg-white/5 flex flex-col gap-1',
+                            isActive ? 'border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_0_1px_rgba(34,211,238,0.15)]' : 'border-white/10 bg-white/5'
+                          )}
+                        >
+                          <div className="flex items-center justify-between text-xs text-zinc-400">
+                            <span className="font-semibold text-white">{conversation.title}</span>
+                            {isLoadingConv && <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />}
                           </div>
-                          <input
-                            type="text"
-                            value={inputMessage}
-                            onChange={(e) => setInputMessage(e.target.value)}
-                            onKeyPress={handleKeyPress}
-                            placeholder="Ask Zico anything..."
-                            disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
-                            className="flex-1 bg-transparent border-none outline-none text-base md:text-lg text-white placeholder:text-zinc-600 placeholder:text-sm md:placeholder:text-lg h-12 md:h-14"
-                          />
-                          <div className="flex items-center gap-2 pr-1 md:pr-2">
-                            <button className="hidden md:block p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
-                              <Paperclip className="w-5 h-5" />
-                            </button>
-                            <AudioButton
-                              onAudioReady={handleAudioReady}
-                              disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
+                          <p className="text-[11px] text-zinc-500 line-clamp-2">{preview}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </aside>
+
+              <div className="flex-1 min-w-0 flex flex-col overflow-hidden z-10">
+                <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col">
+                  {initializing ? (
+                    <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                      Loading your conversations...
+                    </div>
+                  ) : !activeConversationId && !pendingNewChat ? (
+                    <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                      Crie um novo chat para começar.
+                    </div>
+                  ) : initializationError && !hasMessages && !pendingNewChat ? (
+                    <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-center min-h-[50vh]">
+                      <p className="text-zinc-400">{initializationError}</p>
+                      <button
+                        onClick={retryBootstrap}
+                        className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : isHistoryLoading && !hasMessages && !pendingNewChat ? (
+                    <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                      Loading conversation...
+                    </div>
+                  ) : !hasMessages || pendingNewChat ? (
+                    <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
+                      <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ duration: 0.8, ease: "easeOut" }}
+                        className="w-full max-w-3xl text-center flex flex-col items-center"
+                      >
+                        {/* Title & Subtitle */}
+                        <div className="space-y-2 md:space-y-4 relative mb-8">
+                          <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
+                            Hello, {displayName}.
+                          </h1>
+                          <p className="text-xl text-zinc-400 font-light">
+                            Zico is ready to navigate the chain.
+                          </p>
+                        </div>
+
+                        {/* Main Input Area */}
+                        <div className="relative group max-w-2xl mx-auto w-full my-8">
+                          <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
+                          <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 md:p-2 flex items-center gap-2 md:gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 group-focus-within:shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all duration-300">
+                            <div className="pl-2 md:pl-4 text-zinc-400">
+                              <Search className="w-5 h-5 md:w-6 md:h-6" />
+                            </div>
+                            <input
+                              type="text"
+                              value={inputMessage}
+                              onChange={(e) => setInputMessage(e.target.value)}
+                              onKeyPress={handleKeyPress}
+                              placeholder="Ask Zico anything..."
+                              disabled={isSending || !activeConversationId || initializing}
+                              className="flex-1 bg-transparent border-none outline-none text-base md:text-lg text-white placeholder:text-zinc-600 placeholder:text-sm md:placeholder:text-lg h-12 md:h-14"
                             />
-                            <button
-                              onClick={() => sendMessage()}
-                              disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing || !inputMessage.trim()}
-                              className="p-2 md:p-3 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
-                              aria-label="Send message"
-                            >
-                              <ArrowUp className="w-5 h-5" />
-                            </button>
+                            <div className="flex items-center gap-2 pr-1 md:pr-2">
+                              <button className="hidden md:block p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+                                <Paperclip className="w-5 h-5" />
+                              </button>
+                              <button
+                                onClick={() => sendMessage()}
+                                disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
+                                className="p-2 md:p-3 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
+                                aria-label="Send message"
+                              >
+                                <ArrowUp className="w-5 h-5" />
+                              </button>
+                            </div>
                           </div>
                         </div>
 
-                      {/* Suggestions Grid */}
-                      <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
-                        {[
-                          { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
-                          { label: 'Supply 100 USDC on Avalanche', prompt: 'Supply 100 USDC on Avalanche' },
-                          { label: 'Stake 0.5 ETH with Lido', prompt: 'Stake 0.5 ETH with Lido' },
-                          { label: 'What is my portfolio worth?', prompt: 'What is my portfolio worth?' },
-                        ].map((item, i) => (
-                          <motion.button
-                            key={item.label}
-                            onClick={() => sendMessage(item.prompt)}
-                            disabled={isSending || (!activeConversationId && !pendingNewChat)}
+                        {/* Suggestions Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
+                          {[
+                            { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
+                            { label: 'Supply 100 USDC on Avalanche', prompt: 'Supply 100 USDC on Avalanche' },
+                            { label: 'Stake 0.5 ETH with Lido', prompt: 'Stake 0.5 ETH with Lido' },
+                            { label: 'What is my portfolio worth?', prompt: 'What is my portfolio worth?' },
+                          ].map((item, i) => (
+                            <motion.button
+                              key={item.label}
+                              onClick={() => sendMessage(item.prompt)}
+                              disabled={isSending || (!activeConversationId && !pendingNewChat)}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.2 + (i * 0.1) }}
+                              className="flex items-center gap-3 p-3 md:p-4 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md hover:bg-white/10 hover:border-cyan-400/50 transition-all duration-300 group text-left shadow-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.1)] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Sparkles className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400 transition-colors shrink-0" />
+                              <span className="text-sm text-zinc-400 group-hover:text-zinc-200">{item.label}</span>
+                            </motion.button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    </div>
+                  ) : (
+                    <div className="max-w-3xl mx-auto w-full pt-8 pb-4 px-4 space-y-8">
+                      {activeMessages.map((message, index) => {
+                        const timestampValue = message.timestamp.getTime();
+                        const hasValidTime = !Number.isNaN(timestampValue);
+                        const timeLabel = hasValidTime
+                          ? message.timestamp.toLocaleTimeString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                          : '';
+                        const messageKey = hasValidTime
+                          ? `${message.role}-${timestampValue}-${index}`
+                          : `${message.role}-${index}`;
+
+                        return (
+                          <motion.div
+                            key={messageKey}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -1660,95 +1739,129 @@ export default function ChatPage() {
                       )}
                     </AnimatePresence>
 
-                    <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                    <div className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex items-center gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30">
-                      <button
-                        onClick={() => setShowTrendingPrompts(!showTrendingPrompts)}
-                        className="pl-2 text-zinc-400 hover:text-cyan-400 transition-colors"
-                        title="Trending prompts"
-                      >
-                        <Sparkles className="w-5 h-5" />
-                      </button>
-                      <input
-                        type="text"
-                        value={inputMessage}
-                        onChange={(e) => setInputMessage(e.target.value)}
-                        onKeyPress={handleKeyPress}
-                        onFocus={() => setShowTrendingPrompts(false)}
-                        placeholder="Send a message..."
-                        disabled={isSending || !activeConversationId || initializing}
-                        className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder:text-zinc-600 h-12"
-                        autoFocus
-                      />
-                      <AudioButton
-                        onAudioReady={handleAudioReady}
-                        disabled={isSending || !activeConversationId || initializing}
-                      />
-                      <button
-                        onClick={() => sendMessage()}
-                        disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                        className="p-2.5 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="Send message"
-                      >
-                        <ArrowUp className="w-5 h-5" />
-                      </button>
-                    </div>
-                    <div className="text-center mt-2">
-                      <p className="text-[10px] text-zinc-600 uppercase tracking-widest">AI-Native Web3 Interface</p>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-        </SeniorAppShell>
+                {/* Sticky Bottom Input (Chat State) */}
+                <AnimatePresence>
+                  {hasMessages && (
+                    <motion.div
+                      initial={{ y: 100, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      className="p-2 pt-3 bg-gradient-to-t from-black via-black/90 to-transparent z-20"
+                    >
+                      <div className="max-w-3xl mx-auto relative group">
+                        {/* Trending Prompts Dropdown */}
+                        <AnimatePresence>
+                          {showTrendingPrompts && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 10 }}
+                              className="absolute bottom-full left-0 right-0 mb-2 bg-[#0A0A0A] border border-white/10 rounded-xl p-2 shadow-2xl z-30"
+                            >
+                              <div className="text-xs text-zinc-500 px-3 py-2 uppercase tracking-wider">Trending Prompts</div>
+                              <div className="space-y-1">
+                                {trendingPrompts.map((prompt, index) => (
+                                  <button
+                                    key={index}
+                                    onClick={() => {
+                                      setInputMessage(prompt.text);
+                                      setShowTrendingPrompts(false);
+                                    }}
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors group"
+                                  >
+                                    <span className="text-zinc-500 group-hover:text-cyan-400 transition-colors">{prompt.icon}</span>
+                                    <span>{prompt.text}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
 
-        {/* Lending Modal */}
-        <AnimatePresence>
-          {lendingModalOpen && (
-            <Lending
-              onClose={() => {
-                setLendingModalOpen(false);
-                setCurrentLendingMetadata(null);
-              }}
-              initialAmount={currentLendingMetadata?.amount as string | undefined}
-              initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
-              initialAction={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
-            />
-          )}
-        </AnimatePresence>
+                        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
+                        <div className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex items-center gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30">
+                          <button
+                            onClick={() => setShowTrendingPrompts(!showTrendingPrompts)}
+                            className="pl-2 text-zinc-400 hover:text-cyan-400 transition-colors"
+                            title="Trending prompts"
+                          >
+                            <Sparkles className="w-5 h-5" />
+                          </button>
+                          <input
+                            type="text"
+                            value={inputMessage}
+                            onChange={(e) => setInputMessage(e.target.value)}
+                            onKeyPress={handleKeyPress}
+                            onFocus={() => setShowTrendingPrompts(false)}
+                            placeholder="Send a message..."
+                            disabled={isSending || !activeConversationId || initializing}
+                            className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder:text-zinc-600 h-12"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => sendMessage()}
+                            disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
+                            className="p-2.5 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label="Send message"
+                          >
+                            <ArrowUp className="w-5 h-5" />
+                          </button>
+                        </div>
+                        <div className="text-center mt-2">
+                          <p className="text-[10px] text-zinc-600 uppercase tracking-widest">AI-Native Web3 Interface</p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </SeniorAppShell>
 
-        {/* SwapWidget Modal */}
-        <AnimatePresence>
-          {showSwapWidget && swapWidgetTokens && (
-            <SwapWidget
-              onClose={() => {
-                setShowSwapWidget(false);
-                setSwapWidgetTokens(null);
-              }}
-              initialFromToken={swapWidgetTokens.from}
-              initialToToken={swapWidgetTokens.to}
-              initialAmount={swapWidgetTokens.amount}
-            />
-          )}
-        </AnimatePresence>
+          {/* Lending Modal */}
+          <AnimatePresence>
+            {lendingModalOpen && (
+              <Lending
+                onClose={() => {
+                  setLendingModalOpen(false);
+                  setCurrentLendingMetadata(null);
+                }}
+                initialAmount={currentLendingMetadata?.amount as string | undefined}
+                initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
+                initialAction={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
+              />
+            )}
+          </AnimatePresence>
 
-        {/* Staking Modal */}
-        <AnimatePresence>
-          {showStakingWidget && (
-            <Staking
-              onClose={() => {
-                setShowStakingWidget(false);
-                setCurrentStakingMetadata(null);
-              }}
-              initialAmount={currentStakingMetadata?.amount as string | undefined}
-              initialToken={currentStakingMetadata?.token as string | undefined}
-            />
-          )}
-        </AnimatePresence>
-      </React.Fragment>
-    </TransactionSettingsProvider>
-  </ProtectedRoute>
+          {/* SwapWidget Modal */}
+          <AnimatePresence>
+            {showSwapWidget && swapWidgetTokens && (
+              <SwapWidget
+                onClose={() => {
+                  setShowSwapWidget(false);
+                  setSwapWidgetTokens(null);
+                }}
+                initialFromToken={swapWidgetTokens.from}
+                initialToToken={swapWidgetTokens.to}
+                initialAmount={swapWidgetTokens.amount}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Staking Modal */}
+          <AnimatePresence>
+            {showStakingWidget && (
+              <Staking
+                onClose={() => {
+                  setShowStakingWidget(false);
+                  setCurrentStakingMetadata(null);
+                }}
+                initialAmount={currentStakingMetadata?.amount as string | undefined}
+                initialToken={currentStakingMetadata?.token as string | undefined}
+              />
+            )}
+          </AnimatePresence>
+        </React.Fragment>
+      </TransactionSettingsProvider>
+    </ProtectedRoute>
   );
 }
