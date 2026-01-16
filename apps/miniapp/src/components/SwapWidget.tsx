@@ -17,17 +17,23 @@ import { TokenSelectionModal } from "@/components/TokenSelectionModal";
 
 // API Integration
 import { swapApi, SwapApiError } from "@/features/swap/api";
-import { 
-  normalizeToApi, 
-  formatAmountHuman, 
+import { bridgeApi } from "@/features/swap/bridgeApi";
+import { TON_CHAIN_ID } from "@/features/swap/tokens";
+import {
+  normalizeToApi,
+  formatAmountHuman,
   parseAmountToWei,
   getTokenDecimals,
   isNative
 } from "@/features/swap/utils";
 import { safeExecuteTransactionV2 } from "@/shared/utils/transactionUtilsV2";
-import { useActiveAccount } from "thirdweb/react";
+import { useActiveAccount, ConnectButton } from "thirdweb/react";
 import { prepareTransaction, sendTransaction, createThirdwebClient, defineChain } from "thirdweb";
 import { THIRDWEB_CLIENT_ID } from "@/shared/config/thirdweb";
+import { useTonConnectUI } from '@tonconnect/ui-react';
+import { getUserJettonWallet, toUSDT } from '@/lib/ton-helpers';
+import { beginCell, toNano, Address as TonAddress } from '@ton/core';
+import { inAppWallet } from "thirdweb/wallets";
 
 interface SwapWidgetProps {
   onClose: () => void;
@@ -41,6 +47,7 @@ type ViewState = 'input' | 'routing' | 'details' | 'confirm';
 // Helper to get color based on network/token
 const getTokenColor = (token: any) => {
   if (!token?.network) return 'bg-zinc-500';
+  if (token.network === 'TON') return 'bg-blue-400';
   if (token.network === 'Avalanche') return 'bg-red-500';
   if (token.network === 'Base') return 'bg-blue-500';
   if (token.network === 'Binance Smart Chain' || token.network === 'BSC') return 'bg-yellow-500';
@@ -67,26 +74,73 @@ const getBaseChainId = (networkName: string): number => {
     case 'Arbitrum': return 42161;
     case 'Ethereum': return 1;
     case 'World Chain': return 480;
+    case 'TON': return TON_CHAIN_ID;
     default: return 8453; // Default Base
   }
+};
+
+const getLayerswapNetwork = (networkName: string): string => {
+  const mapping: Record<string, string> = {
+    'TON': 'TON_MAINNET',
+    'Ethereum': 'ETHEREUM_MAINNET',
+    'Base': 'BASE_MAINNET',
+    'Arbitrum': 'ARBITRUM_MAINNET',
+    'Optimism': 'OPTIMISM_MAINNET',
+    'Polygon': 'POLYGON_MAINNET',
+    'Avalanche': 'AVALANCHE_MAINNET',
+    'Binance Smart Chain': 'BSC_MAINNET',
+    'World Chain': 'WORLDCHAIN_MAINNET', // Verify if supported, fallback might be needed
+  };
+  return mapping[networkName] || 'ETHEREUM_MAINNET'; // Default or throw
+};
+
+const getBridgeTokenSymbol = (token: any) => token?.ticker || token?.symbol || token?.name || 'USDT';
+
+const isPendingHash = (hash?: string | null) => {
+  if (!hash) return true;
+  return hash.toLowerCase().includes('pending');
+};
+
+const getExplorerUrl = (hash: string, chainId: number) => {
+  if (isPendingHash(hash)) return null;
+  if (!hash) return null;
+  if (chainId === TON_CHAIN_ID) {
+    return `https://tonviewer.com/transaction/${hash}`;
+  }
+  if (chainId === 1) return `https://etherscan.io/tx/${hash}`;
+  if (chainId === 8453) return `https://basescan.org/tx/${hash}`;
+  if (chainId === 10) return `https://optimistic.etherscan.io/tx/${hash}`;
+  if (chainId === 137) return `https://polygonscan.com/tx/${hash}`;
+  if (chainId === 56) return `https://bscscan.com/tx/${hash}`;
+  if (chainId === 43114) return `https://snowscan.xyz/tx/${hash}`;
+  if (chainId === 42161) return `https://arbiscan.io/tx/${hash}`;
+  return null;
+};
+
+const formatAddress = (address?: string | null) => {
+  if (!address) return '-';
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 };
 
 export function SwapWidget({ onClose, initialFromToken, initialToToken, initialAmount }: SwapWidgetProps) {
   const account = useActiveAccount();
   const clientId = THIRDWEB_CLIENT_ID;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
+  const [tonConnectUI] = useTonConnectUI();
+  const wallets = useMemo(() => (clientId ? [inAppWallet({ auth: { options: ['telegram'], mode: 'popup' } })] : []), [client])
 
   const [viewState, setViewState] = useState<ViewState>('input');
   const [showTokenList, setShowTokenList] = useState(false);
   const [tosAccepted, setTosAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
-  
+  const [refuelEnabled, setRefuelEnabled] = useState(true);
+
   // Token State
   const [activeSlot, setActiveSlot] = useState<'sell' | 'buy'>('sell');
   const [sellToken, setSellToken] = useState(initialFromToken || DEFAULT_SELL_TOKEN);
   const [buyToken, setBuyToken] = useState(initialToToken || DEFAULT_BUY_TOKEN);
   const [amount, setAmount] = useState<string>(initialAmount || "10"); // Default small amount
-  
+
   // Quote State
   const [quote, setQuote] = useState<any>(null);
   const [quoting, setQuoting] = useState(false);
@@ -98,6 +152,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   const [executing, setExecuting] = useState(false);
   const [txHashes, setTxHashes] = useState<Array<{ hash: string; chainId: number }>>([]);
   const [executionError, setExecutionError] = useState<string | null>(null);
+  const [currentSwapId, setCurrentSwapId] = useState<string | null>(null);
+  const [swapStatus, setSwapStatus] = useState<string | null>(null);
+  const [swapStatusError, setSwapStatusError] = useState<string | null>(null);
 
   const isCrossChain = sellToken.network !== buyToken.network;
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
@@ -108,6 +165,49 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     if (initialToToken) setBuyToken(initialToToken);
   }, [initialFromToken, initialToToken]);
 
+  // Poll bridge status when we have a swapId
+  useEffect(() => {
+    if (!currentSwapId) return;
+
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const pollStatus = async () => {
+      try {
+        const statusRes = await bridgeApi.getStatus(currentSwapId);
+        if (cancelled) return;
+
+        const data = (statusRes as any)?.data || statusRes;
+        const status = data?.status || data?.state;
+        const txHash = data?.transactionHash || data?.txHash;
+        const chainId = data?.chainId || TON_CHAIN_ID;
+
+        if (status) setSwapStatus(status);
+        if (txHash) {
+          setTxHashes((prev) => {
+            if (prev.some((p) => p.hash === txHash)) return prev;
+            const withoutPending = prev.filter((p) => !isPendingHash(p.hash));
+            return [...withoutPending, { hash: txHash, chainId }];
+          });
+        }
+
+        if (status && ['completed', 'finished', 'failed', 'canceled', 'refunded'].includes(status.toLowerCase())) {
+          if (interval) clearInterval(interval);
+        }
+      } catch (e: any) {
+        if (!cancelled) setSwapStatusError(e.message || 'Failed to fetch swap status');
+      }
+    };
+
+    void pollStatus();
+    interval = setInterval(() => void pollStatus(), 15000);
+
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
+  }, [currentSwapId]);
+
   const canQuote = useMemo(() => {
     return Boolean(sellToken && buyToken && amount && Number(amount) > 0);
   }, [sellToken, buyToken, amount]);
@@ -115,7 +215,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   // Quote Logic
   useEffect(() => {
     const requestId = ++quoteRequestRef.current;
-    
+
     if (!canQuote) {
       setQuote(null);
       setQuoting(false);
@@ -126,82 +226,319 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     setQuoteError(null);
 
     const timer = setTimeout(() => {
-       void performQuote(requestId);
+      void performQuote(requestId);
     }, 500); // 500ms debounce
 
     return () => clearTimeout(timer);
-  }, [canQuote, sellToken, buyToken, amount, account]);
+  }, [canQuote, sellToken, buyToken, amount, account, refuelEnabled]);
 
   async function performQuote(requestId: number) {
-     if (!canQuote) return;
-     
-     try {
-       setQuoting(true);
-       const fromChainId = getBaseChainId(sellToken.network);
-       const toChainId = getBaseChainId(buyToken.network);
-       const userAddress = account?.address || localStorage.getItem('userAddress') || '';
+    if (!canQuote) return;
 
-       const body = {
-         fromChainId,
-         toChainId,
-         fromToken: normalizeToApi(sellToken.address || 'native'),
-         toToken: normalizeToApi(buyToken.address || 'native'),
-         amount: amount.trim(),
-         smartAccountAddress: userAddress,
-       };
+    try {
+      setQuoting(true);
+      const fromChainId = getBaseChainId(sellToken.network);
+      const toChainId = getBaseChainId(buyToken.network);
+      const userAddress = account?.address || localStorage.getItem('userAddress') || '';
+      const sourceTokenSymbol = getBridgeTokenSymbol(sellToken);
+      const destinationTokenSymbol = getBridgeTokenSymbol(buyToken);
 
-       console.log("Fetching quote...", body);
-       const res = await swapApi.quote(body);
-       
-       if (quoteRequestRef.current !== requestId) return;
+      const body = {
+        fromChainId,
+        toChainId,
+        fromToken: normalizeToApi(sellToken.address || 'native'),
+        toToken: normalizeToApi(buyToken.address || 'native'),
+        amount: amount.trim(),
+        smartAccountAddress: userAddress,
+      };
 
-       if (!res.success || !res.quote) {
-         throw new Error(res.message || 'Failed to get quote');
-       }
+      console.log("Fetching quote...", body);
 
-       setQuote(res.quote);
-       // Navigate to routing if not already there, but usually we just show price
-       // Maybe we just show preview in input state first
-     } catch (e: any) {
-        if (quoteRequestRef.current !== requestId) return;
-        console.error("Quote error:", e);
-        setQuoteError(e.message || "Unable to fetch quote");
-     } finally {
-        if (quoteRequestRef.current === requestId) {
-          setQuoting(false);
-        }
-     }
+      let res;
+      // Determine networks for bridge
+      const sourceNetwork = getLayerswapNetwork(sellToken.network);
+      const destinationNetwork = getLayerswapNetwork(buyToken.network);
+
+      if (fromChainId === TON_CHAIN_ID || buyToken.network === 'TON') {
+        const bridgeRes = await bridgeApi.quote(
+          Number(amount),
+          sourceNetwork,
+          destinationNetwork,
+          refuelEnabled,
+          sourceTokenSymbol,
+          destinationTokenSymbol
+        );
+        res = {
+          success: bridgeRes.success,
+          quote: bridgeRes.quote,
+          message: bridgeRes.success ? undefined : 'Failed to get bridge quote'
+        };
+      } else {
+        res = await swapApi.quote(body);
+      }
+
+      if (quoteRequestRef.current !== requestId) return;
+
+      if (!res.success || !res.quote) {
+        throw new Error(res.message || 'Failed to get quote');
+      }
+
+      setQuote(res.quote);
+      // Navigate to routing if not already there, but usually we just show price
+      // Maybe we just show preview in input state first
+    } catch (e: any) {
+      if (quoteRequestRef.current !== requestId) return;
+      console.error("Quote error:", e);
+      setQuoteError(e.message || "Unable to fetch quote");
+    } finally {
+      if (quoteRequestRef.current === requestId) {
+        setQuoting(false);
+      }
+    }
   }
 
   // Execution Logic
   async function handleSwap() {
-    if (!quote || !client || !account) return;
-    
+    if (!quote) return;
+
+    const fromChainId = getBaseChainId(sellToken.network);
+
+    // --- TON SWAP FLOW ---
+    if (fromChainId === TON_CHAIN_ID) {
+      const userTonAddress = tonConnectUI.account?.address;
+      if (!userTonAddress) {
+        setExecutionError("Please connect your TON wallet");
+        return;
+      }
+
+      // We need an EVM destination address. 
+      // If the user is connected via Thirdweb, use that.
+      // Otherwise check localStorage or ask user (not implemented here yet, assuming connected)
+      const evmAddress = account?.address || localStorage.getItem('userAddress');
+      if (!evmAddress) {
+        setExecutionError("Destination EVM address not found. Please connect your EVM wallet.");
+        return;
+      }
+
+      setPreparing(true);
+      setExecutionError(null);
+      setTxHashes([]);
+
+      try {
+        // 1. Create Swap on Backend
+        const sourceNetwork = getLayerswapNetwork(sellToken.network);
+        const destinationNetwork = getLayerswapNetwork(buyToken.network);
+        const sourceTokenSymbol = getBridgeTokenSymbol(sellToken);
+        const destinationTokenSymbol = getBridgeTokenSymbol(buyToken);
+
+        const bridgeTx = await bridgeApi.createTransaction(
+          Number(amount),
+          evmAddress,
+          userTonAddress,
+          sourceNetwork,
+          destinationNetwork,
+          refuelEnabled,
+          sourceTokenSymbol,
+          destinationTokenSymbol
+        );
+
+        console.log('🌉 Bridge Transaction Response:', bridgeTx);
+
+        // The response structure is { transaction: { swapId, depositAddress, ... }, quote: ... }
+        const txData = bridgeTx.transaction || bridgeTx;
+        const swapId = txData.swapId || txData.id;
+        const layerswapVault = txData.depositAddress || txData.destination || txData.vaultAddress;
+
+        if (!swapId) throw new Error("Bridge API did not return a Swap ID");
+        if (!layerswapVault) throw new Error("Bridge API did not return a Vault Address");
+        setCurrentSwapId(swapId);
+        setSwapStatus(null);
+        setSwapStatusError(null);
+
+        // 2. Get User's USDT Wallet
+        const myUsdtWallet = await getUserJettonWallet(userTonAddress);
+
+        // 3. Construct Payload
+        const txPayload = txData.transactionPayload || txData.transaction_payload || {};
+        const comment =
+          txPayload.depositActions?.[0]?.comment ||
+          txPayload.deposit_actions?.[0]?.comment ||
+          txPayload.comment;
+
+        if (!comment) {
+          throw new Error("Bridge API did not return a deposit memo/comment");
+        }
+
+        console.log("Bridge transaction payload:", txPayload, "Using comment:", comment);
+
+        const forwardPayload = beginCell()
+          .storeUint(0, 32) // 0 = Text Comment
+          .storeStringTail(comment)
+          .endCell();
+
+        const body = beginCell()
+          .storeUint(0xf8a7ea5, 32) // OpCode: Transfer
+          .storeUint(0, 64)         // QueryID
+          .storeCoins(toUSDT(amount)) // USDT Amount (6 decimals)
+          .storeAddress(TonAddress.parse(layerswapVault))
+          .storeAddress(TonAddress.parse(userTonAddress))
+          .storeBit(0)
+          .storeCoins(toNano('0.01')) // Forward Amount
+          .storeBit(1)
+          .storeRef(forwardPayload)
+          .endCell();
+
+        setPreparing(false);
+        setExecuting(true);
+
+        // 4. Send Transaction
+        const transaction = {
+          validUntil: Math.floor(Date.now() / 1000) + 600,
+          messages: [
+            {
+              address: myUsdtWallet.toString(),
+              amount: toNano('0.1').toString(), // Gas
+              payload: body.toBoc().toString('base64')
+            }
+          ]
+        };
+
+        const result = await tonConnectUI.sendTransaction(transaction);
+        console.log('TON Transaction sent:', result);
+
+        // TON Connect doesn't always return hash easily in all wallets, 
+        // but if successful we show pending.
+        setTxHashes([{ hash: 'pending', chainId: TON_CHAIN_ID }]);
+
+      } catch (e: any) {
+        console.error("TON Swap error:", e);
+        setExecutionError(e.message || "TON Swap failed");
+      } finally {
+        setPreparing(false);
+        setExecuting(false);
+      }
+      return;
+    }
+
+    // --- EVM SWAP FLOW (Including EVM -> TON Bridge) ---
+    if (!client || !account) return;
+
     setPreparing(true);
     setExecutionError(null);
     setTxHashes([]);
 
     try {
-      const fromChainId = getBaseChainId(sellToken.network);
       const toChainId = getBaseChainId(buyToken.network);
-      
+
+      // Check if this is EVM -> TON Bridge
+      if (buyToken.network === 'TON') {
+        const userTonAddress = tonConnectUI.account?.address;
+        if (!userTonAddress) {
+          setExecutionError("Please connect your TON wallet");
+          setPreparing(false);
+          return;
+        }
+
+        // 1. Create Bridge Transaction
+        const sourceNetwork = getLayerswapNetwork(sellToken.network);
+        const destinationNetwork = getLayerswapNetwork(buyToken.network);
+        const sourceTokenSymbol = getBridgeTokenSymbol(sellToken);
+        const destinationTokenSymbol = getBridgeTokenSymbol(buyToken);
+
+        const bridgeTx = await bridgeApi.createTransaction(
+          Number(amount),
+          userTonAddress, // Destination is TON
+          account.address, // Source Address (EVM)
+          sourceNetwork, // Source Network
+          destinationNetwork, // Destination Network
+          refuelEnabled,
+          sourceTokenSymbol,
+          destinationTokenSymbol
+        );
+
+        console.log('🌉 Bridge Transaction Response:', bridgeTx);
+
+        const txData = bridgeTx.transaction || bridgeTx;
+        const swapId = txData.swapId || txData.id;
+        const depositAddress = txData.depositAddress || txData.destination || txData.vaultAddress;
+
+        if (!depositAddress) throw new Error("Bridge API did not return a Deposit Address");
+        if (swapId) {
+          setCurrentSwapId(swapId);
+          setSwapStatus(null);
+          setSwapStatusError(null);
+        }
+
+        // 2. Send EVM Transaction to Deposit Address
+        const decimals = await getTokenDecimals({
+          client,
+          chainId: fromChainId,
+          token: sellToken.address
+        }).catch(() => 18);
+
+        const wei = parseAmountToWei(amount, decimals);
+
+        // Prepare Transaction
+        let transaction;
+
+        if (isNative(sellToken.address)) {
+          transaction = prepareTransaction({
+            to: depositAddress,
+            chain: defineChain(fromChainId),
+            client,
+            value: wei,
+          });
+        } else {
+          // Manual ERC20 Transfer construction to handle non-standard tokens (like USDT on Mainnet)
+          // Function selector for transfer(address,uint256) is 0xa9059cbb
+          const { encode } = await import("thirdweb/utils");
+          const { prepareContractCall } = await import("thirdweb");
+
+          const contract = (await import("thirdweb")).getContract({
+            client,
+            chain: defineChain(fromChainId),
+            address: sellToken.address
+          });
+
+          transaction = prepareContractCall({
+            contract,
+            method: "function transfer(address to, uint256 value)",
+            params: [depositAddress, BigInt(wei)]
+          });
+        }
+
+        setExecuting(true);
+
+        const result = await safeExecuteTransactionV2(async () => {
+          return await sendTransaction({ account, transaction });
+        });
+
+        if (!result.success || !result.transactionHash) {
+          throw new Error(result.error || "Transaction failed");
+        }
+
+        setTxHashes([{ hash: result.transactionHash, chainId: fromChainId }]);
+        return;
+      }
+
+      // Standard EVM Swap
       // Get decimals to convert amount to wei
-      const decimals = await getTokenDecimals({ 
-        client, 
-        chainId: fromChainId, 
-        token: sellToken.address 
+      const decimals = await getTokenDecimals({
+        client,
+        chainId: fromChainId,
+        token: sellToken.address
       }).catch(() => 18);
 
       const wei = parseAmountToWei(amount, decimals);
 
       // Prepare tx
       const prep = await swapApi.prepare({
-         fromChainId,
-         toChainId,
-         fromToken: normalizeToApi(sellToken.address),
-         toToken: normalizeToApi(buyToken.address),
-         amount: wei.toString(),
-         sender: account.address
+        fromChainId,
+        toChainId,
+        fromToken: normalizeToApi(sellToken.address),
+        toToken: normalizeToApi(buyToken.address),
+        amount: wei.toString(),
+        sender: account.address
       });
 
       if (!prep.prepared || (!prep.prepared.transactions && !prep.prepared.steps)) {
@@ -224,10 +561,10 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
       for (const t of txs) {
         if (t.chainId !== fromChainId) {
-             // If multi-chain execution needed (not supported by simple flow yet)
-             console.warn("Cross-chain execution step mismatch", t);
+          // If multi-chain execution needed (not supported by simple flow yet)
+          console.warn("Cross-chain execution step mismatch", t);
         }
-        
+
         const transaction = prepareTransaction({
           to: t.to,
           chain: defineChain(t.chainId),
@@ -271,13 +608,18 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   // Formatting View Data
   const estimatedOutput = useMemo(() => {
     if (!quote) return "0.00";
+    // Handle Bridge Quote (Float)
+    if (quote.sourceNetwork && quote.estimatedReceiveAmount) {
+      return Number(quote.estimatedReceiveAmount).toFixed(6);
+    }
+
     try {
-       // We don't know output decimals yet easily, usually 18 or 6. 
-       // Ideally we fetch it or use the one from quote if provided (backend often parses it)
-       // The backend quote returns estimatedReceiveAmount in wei.
-       return formatAmountHuman(BigInt(quote.estimatedReceiveAmount), 18, 5); // Assuming 18 for now or backend adjusted
+      // We don't know output decimals yet easily, usually 18 or 6. 
+      // Ideally we fetch it or use the one from quote if provided (backend often parses it)
+      // The backend quote returns estimatedReceiveAmount in wei.
+      return formatAmountHuman(BigInt(quote.estimatedReceiveAmount || quote.toAmount || 0), 18, 5); // Assuming 18 for now or backend adjusted
     } catch {
-       return "0.00";
+      return "0.00";
     }
   }, [quote]);
 
@@ -304,6 +646,12 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   const needsApproval = false; // TODO: Check allowence if ERC20
 
   const primaryLabel = executing ? "Swapping..." : preparing ? "Preparing..." : "Confirm Swap";
+  const fromIsTon = sellToken.network === 'TON';
+  const toIsTon = buyToken.network === 'TON';
+  const fromAddress = fromIsTon ? tonConnectUI.account?.address : account?.address;
+  const toAddress = toIsTon ? tonConnectUI.account?.address : account?.address;
+  const fromLabel = fromIsTon ? 'TON' : 'EVM';
+  const toLabel = toIsTon ? 'TON' : 'EVM';
 
   return (
     <motion.div
@@ -313,13 +661,13 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
       onClick={onClose}
     >
-      <motion.div 
+      <motion.div
         variants={modalVariants}
         initial="initial"
         animate="animate"
         exit="exit"
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="relative w-full md:max-w-[480px]" 
+        className="relative w-full md:max-w-[480px]"
         onClick={(e) => e.stopPropagation()}
       >
         <GlassCard className="w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 max-h-[90vh] md:h-auto md:min-h-[540px] flex flex-col rounded-t-3xl rounded-b-none md:rounded-2xl border-b-0 md:border-b pb-safe">
@@ -334,7 +682,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           {/* --- 1. INPUT STATE --- */}
           <AnimatePresence mode="wait">
             {viewState === 'input' && (
-              <motion.div 
+              <motion.div
                 key="input"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -360,7 +708,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     rightElement={
-                      <button 
+                      <button
                         onClick={() => openTokenList('sell')}
                         className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-1.5 hover:bg-zinc-900 transition-colors group"
                       >
@@ -374,7 +722,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                   />
 
                   <div className="flex justify-center -my-3 relative z-20">
-                    <button 
+                    <button
                       onClick={() => {
                         const temp = sellToken;
                         setSellToken(buyToken);
@@ -393,12 +741,12 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                     value={quoting ? "..." : estimatedOutput}
                     readOnly
                     rightElement={
-                      <button 
+                      <button
                         onClick={() => openTokenList('buy')}
                         className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-1.5 hover:bg-zinc-900 transition-colors group"
                       >
                         <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold", getTokenColor(buyToken))}>
-                           {buyToken.ticker?.[0]}
+                          {buyToken.ticker?.[0]}
                         </div>
                         <span className="text-white font-medium">{buyToken.ticker}</span>
                         <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-white transition-colors" />
@@ -409,13 +757,40 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                   {/* Quote Error */}
                   {quoteError && (
                     <div className="text-red-400 text-xs px-2 mt-2">
-                       {quoteError}
+                      {quoteError}
+                    </div>
+                  )}
+
+                  {/* Refuel Toggle for Bridge */}
+                  {(getBaseChainId(sellToken.network) === TON_CHAIN_ID || buyToken.network === 'TON') && (
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center justify-between mt-2">
+                      <div className="flex flex-col">
+                        <span className="text-sm text-white font-medium flex items-center gap-2">
+                          Refuel (Gas on Destination)
+                          <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded">Recommended</span>
+                        </span>
+                        <span className="text-[10px] text-zinc-500">
+                          Receive some {buyToken.network === 'TON' ? 'TON' : 'ETH'} for gas
+                          {quote?.refuelAmount && (
+                            <span className="text-green-400 ml-1">
+                              (+{Number(quote.refuelAmount).toFixed(4)} {buyToken.network === 'TON' ? 'TON' : 'ETH'} ≈ ${quote.refuelAmountInUsd})
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      <Switch.Root
+                        checked={refuelEnabled}
+                        onCheckedChange={setRefuelEnabled}
+                        className={cn("w-10 h-6 rounded-full relative transition-colors", refuelEnabled ? 'bg-primary' : 'bg-zinc-700')}
+                      >
+                        <Switch.Thumb className={cn("block w-4 h-4 bg-white rounded-full transition-transform translate-x-1 will-change-transform", refuelEnabled ? 'translate-x-5' : 'translate-x-1')} />
+                      </Switch.Root>
                     </div>
                   )}
 
                   <div className="mt-auto pt-6 space-y-4">
-                    <NeonButton 
-                      onClick={() => setViewState('routing')} 
+                    <NeonButton
+                      onClick={() => setViewState('routing')}
                       disabled={!quote || quoting}
                     >
                       {quoting ? "Fetching best price..." : "Review Swap"}
@@ -431,160 +806,250 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
             {/* --- 2. ROUTING / DETAILS STATE --- */}
             {viewState === 'routing' && (
-              <motion.div 
+              <motion.div
                 key="routing"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 className="flex flex-col h-full"
               >
-                 <div className="p-4 md:p-6 flex items-center justify-between relative z-10">
-                   <h2 className="text-lg font-display font-bold text-white">Order Routing</h2>
-                   <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
-                      <X className="w-5 h-5" />
+                <div className="p-4 md:p-6 flex items-center justify-between relative z-10">
+                  <h2 className="text-lg font-display font-bold text-white">Order Routing</h2>
+                  <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="px-4 md:px-6 pb-4 md:pb-6 flex-1 flex flex-col relative z-10">
+                  <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden mb-4 md:mb-6">
+                    <div className="bg-primary/10 px-4 py-3 border-b border-white/5 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-primary font-medium text-sm">
+                        <Check className="w-4 h-4" />
+                        Best price route
+                      </div>
+                    </div>
+                    <div className="p-4 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-white">Swap {sellToken.ticker} to {buyToken.ticker}</span>
+                        <span className="bg-cyan-500/20 text-cyan-400 text-[10px] font-bold px-2 py-0.5 rounded border border-cyan-500/30">+ FAST</span>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Amount in</span>
+                          <span className="text-zinc-300 font-mono">{amount} {sellToken.ticker}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Expected Amount Out</span>
+                          <span className="text-white font-mono font-medium">{estimatedOutput} {buyToken.ticker}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Network Fee</span>
+                          <span className="text-zinc-300 font-mono">
+                            {quote?.fees?.totalFee ? formatAmountHuman(BigInt(quote.fees.totalFee), 18, 6) : '~ $0.05'}
+                          </span>
+                        </div>
+                        {quote?.refuelAmount && (
+                          <div className="flex justify-between">
+                            <span className="text-zinc-500">Refuel (Gas)</span>
+                            <span className="text-green-400 font-mono">
+                              +{Number(quote.refuelAmount).toFixed(4)} {buyToken.network === 'TON' ? 'TON' : 'ETH'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-auto flex gap-3">
+                    <button
+                      onClick={() => setViewState('input')}
+                      className="flex-1 py-3 rounded-xl border border-white/10 text-white hover:bg-white/5 transition-colors"
+                    >
+                      Back
                     </button>
-                 </div>
-
-                 <div className="px-4 md:px-6 pb-4 md:pb-6 flex-1 flex flex-col relative z-10">
-                    <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden mb-4 md:mb-6">
-                      <div className="bg-primary/10 px-4 py-3 border-b border-white/5 flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-primary font-medium text-sm">
-                           <Check className="w-4 h-4" />
-                           Best price route
-                        </div>
-                      </div>
-                      <div className="p-4 space-y-4">
-                        <div className="flex items-center justify-between">
-                           <span className="font-medium text-white">Swap {sellToken.ticker} to {buyToken.ticker}</span>
-                           <span className="bg-cyan-500/20 text-cyan-400 text-[10px] font-bold px-2 py-0.5 rounded border border-cyan-500/30">+ FAST</span>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                           <div className="flex justify-between">
-                              <span className="text-zinc-500">Amount in</span>
-                              <span className="text-zinc-300 font-mono">{amount} {sellToken.ticker}</span>
-                           </div>
-                           <div className="flex justify-between">
-                              <span className="text-zinc-500">Expected Amount Out</span>
-                              <span className="text-white font-mono font-medium">{estimatedOutput} {buyToken.ticker}</span>
-                           </div>
-                           <div className="flex justify-between">
-                              <span className="text-zinc-500">Network Fee</span>
-                              <span className="text-zinc-300 font-mono">
-                                 {quote?.fees?.totalFee ? formatAmountHuman(BigInt(quote.fees.totalFee), 18, 6) : '~ $0.05'}
-                              </span>
-                           </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-auto flex gap-3">
-                       <button 
-                         onClick={() => setViewState('input')}
-                         className="flex-1 py-3 rounded-xl border border-white/10 text-white hover:bg-white/5 transition-colors"
-                       >
-                         Back
-                       </button>
-                       <NeonButton onClick={() => setViewState('confirm')} className="flex-1 bg-white text-black hover:bg-zinc-200 shadow-none">
-                         Continue
-                       </NeonButton>
-                    </div>
-                 </div>
+                    <NeonButton onClick={() => setViewState('confirm')} className="flex-1 bg-white text-black hover:bg-zinc-200 shadow-none">
+                      Continue
+                    </NeonButton>
+                  </div>
+                </div>
               </motion.div>
             )}
 
             {viewState === 'confirm' && (
-               <motion.div 
+              <motion.div
                 key="confirm"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 className="flex flex-col h-full"
               >
-                 <div className="p-4 md:p-6 flex items-center justify-between relative z-10">
-                   <h2 className="text-lg font-display font-bold text-white">Confirm Swap</h2>
-                   <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
-                      <X className="w-5 h-5" />
-                    </button>
-                 </div>
+                <div className="p-4 md:p-6 flex items-center justify-between relative z-10">
+                  <h2 className="text-lg font-display font-bold text-white">Confirm Swap</h2>
+                  <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
 
-                 <div className="px-4 md:px-6 pb-4 md:pb-6 flex-1 flex flex-col relative z-10">
+                <div className="px-4 md:px-6 pb-4 md:pb-6 flex-1 flex flex-col relative z-10">
 
-                    {txHashes.length > 0 ? (
-                       <div className="flex flex-col items-center justify-center flex-1 space-y-4">
-                          <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
-                             <Check className="w-8 h-8 text-green-500" />
+                  {txHashes.length > 0 ? (
+                    <div className="flex flex-col items-center justify-center flex-1 space-y-4">
+                      <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
+                        <Check className="w-8 h-8 text-green-500" />
+                      </div>
+                      <h3 className="text-xl font-bold text-white">Swap Submitted!</h3>
+                      <div className="text-zinc-400 text-center text-sm max-w-xs">
+                        Your transaction has been submitted to the blockchain.
+                      </div>
+                      <div className="space-y-2 w-full pt-4">
+                        {txHashes.map((h, i) => {
+                          const explorerUrl = getExplorerUrl(h.hash, h.chainId);
+                          if (!explorerUrl) {
+                            return (
+                              <div
+                                key={i}
+                                className="block w-full text-center py-2 bg-white/5 rounded-lg text-zinc-300 text-xs px-4"
+                              >
+                                Transaction pending — check your wallet activity
+                              </div>
+                            );
+                          }
+                          return (
+                            <a
+                              key={i}
+                              href={explorerUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block w-full text-center py-2 bg-white/5 rounded-lg text-primary text-xs hover:bg-white/10 truncate px-4"
+                            >
+                              View TX: {h.hash.slice(0, 10)}...
+                            </a>
+                          );
+                        })}
+                        {swapStatus && (
+                          <div className="text-center text-xs text-zinc-400">
+                            Swap status: {swapStatus}
                           </div>
-                          <h3 className="text-xl font-bold text-white">Swap Submitted!</h3>
-                          <div className="text-zinc-400 text-center text-sm max-w-xs">
-                             Your transaction has been submitted to the blockchain.
+                        )}
+                        {swapStatusError && (
+                          <div className="text-center text-xs text-red-400">
+                            Status check failed: {swapStatusError}
                           </div>
-                          <div className="space-y-2 w-full pt-4">
-                             {txHashes.map((h, i) => (
-                               <a 
-                                 key={i}
-                                 href={`https://basescan.org/tx/${h.hash}`} 
-                                 target="_blank" 
-                                 rel="noreferrer"
-                                 className="block w-full text-center py-2 bg-white/5 rounded-lg text-primary text-xs hover:bg-white/10 truncate px-4"
-                               >
-                                 View TX: {h.hash.slice(0, 10)}...
-                               </a>
-                             ))}
-                          </div>
-                          <button onClick={onClose} className="mt-8 text-zinc-400 hover:text-white">
-                             Close
-                          </button>
-                       </div>
-                    ) : (
-                      <>
-                        <p className="text-sm text-zinc-400 mb-4">
-                            Please review the final details before executing.
-                        </p>
+                        )}
+                      </div>
+                      <button onClick={onClose} className="mt-8 text-zinc-400 hover:text-white">
+                        Close
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm text-zinc-400 mb-4">
+                        Please review the final details before executing.
+                      </p>
 
-                        <div className="space-y-3 md:space-y-4 mb-4 md:mb-6">
-                             <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between">
-                                <span className="text-sm text-zinc-300">I agree to <span className="text-white underline decoration-zinc-500">Terms of Service</span></span>
-                                <Switch.Root 
-                                    checked={tosAccepted}
-                                    onCheckedChange={setTosAccepted}
-                                    className={cn("w-10 h-6 rounded-full relative transition-colors", tosAccepted ? 'bg-primary' : 'bg-zinc-700')}
-                                >
-                                    <Switch.Thumb className={cn("block w-4 h-4 bg-white rounded-full transition-transform translate-x-1 will-change-transform", tosAccepted ? 'translate-x-5' : 'translate-x-1')} />
-                                </Switch.Root>
-                            </div>
+                      <div className="space-y-3 md:space-y-4 mb-4 md:mb-6">
+                        {/* Address Details */}
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-zinc-500">From ({fromLabel})</span>
+                            <span className="text-zinc-300 font-mono">
+                              {formatAddress(fromAddress)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-zinc-500">To ({toLabel})</span>
+                            <span className="text-zinc-300 font-mono">
+                              {formatAddress(toAddress)}
+                            </span>
+                          </div>
                         </div>
 
-                        {executionError && (
-                            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-200 text-xs mb-4">
-                                {executionError}
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between">
+                          <span className="text-sm text-zinc-300">I agree to <span className="text-white underline decoration-zinc-500">Terms of Service</span></span>
+                          <Switch.Root
+                            checked={tosAccepted}
+                            onCheckedChange={setTosAccepted}
+                            className={cn("w-10 h-6 rounded-full relative transition-colors", tosAccepted ? 'bg-primary' : 'bg-zinc-700')}
+                          >
+                            <Switch.Thumb className={cn("block w-4 h-4 bg-white rounded-full transition-transform translate-x-1 will-change-transform", tosAccepted ? 'translate-x-5' : 'translate-x-1')} />
+                          </Switch.Root>
+                        </div>
+                      </div>
+
+                      {executionError && (
+                        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-200 text-xs mb-4">
+                          {executionError}
+                        </div>
+                      )}
+
+                      <div className="mt-auto">
+                        {/* TON Bridge Logic: Require BOTH wallets */}
+                        {sellToken.network === 'TON' || buyToken.network === 'TON' ? (
+                          <>
+                            {!tonConnectUI.connected ? (
+                              <NeonButton
+                                onClick={() => tonConnectUI.openModal()}
+                                className="bg-blue-500 text-white hover:bg-blue-600 shadow-none mb-2"
+                              >
+                                Connect TON Wallet
+                              </NeonButton>
+                            ) : !account ? (
+                              <div className="w-full">
+                                <ConnectButton
+                                  client={client!}
+                                  wallets={wallets}
+                                  theme={"dark"}
+                                  connectButton={{
+                                    label: "Connect EVM Wallet",
+                                    className: "!w-full !h-12 !rounded-xl !font-bold"
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              <NeonButton
+                                onClick={handleSwap}
+                                className={cn("bg-white text-black hover:bg-zinc-200 shadow-none", (!tosAccepted) && "opacity-50 cursor-not-allowed")}
+                                disabled={!tosAccepted || executing || preparing}
+                              >
+                                {primaryLabel}
+                              </NeonButton>
+                            )}
+                          </>
+                        ) : (
+                          /* EVM Logic: Require EVM wallet */
+                          !account ? (
+                            <div className="w-full">
+                              <ConnectButton
+                                client={client!}
+                                theme={"dark"}
+                                connectButton={{
+                                  label: "Connect Wallet",
+                                  className: "!w-full !h-12 !rounded-xl !font-bold"
+                                }}
+                              />
                             </div>
+                          ) : (
+                            <NeonButton
+                              onClick={handleSwap}
+                              className={cn("bg-white text-black hover:bg-zinc-200 shadow-none", (!tosAccepted) && "opacity-50 cursor-not-allowed")}
+                              disabled={!tosAccepted || executing || preparing}
+                            >
+                              {primaryLabel}
+                            </NeonButton>
+                          )
                         )}
 
-                        <div className="mt-auto">
-                            {!account ? (
-                                <div className="text-center p-4 bg-orange-500/10 rounded-xl border border-orange-500/20 text-orange-200 mb-2">
-                                    Wallet not connected
-                                </div>
-                            ) : (
-                                <NeonButton 
-                                    onClick={handleSwap}
-                                    className={cn("bg-white text-black hover:bg-zinc-200 shadow-none", (!tosAccepted) && "opacity-50 cursor-not-allowed")}
-                                    disabled={!tosAccepted || executing || preparing}
-                                >
-                                    {primaryLabel}
-                                </NeonButton>
-                            )}
-                            <button 
-                                onClick={() => setViewState('routing')}
-                                className="w-full mt-3 text-sm text-zinc-500 hover:text-white"
-                                disabled={executing}
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                      </>
-                    )}
-                 </div>
+                        <button
+                          onClick={() => setViewState('routing')}
+                          className="w-full mt-3 text-sm text-zinc-500 hover:text-white"
+                          disabled={executing}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </motion.div>
             )}
 
@@ -593,25 +1058,25 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           {/* FOOTER POWERED BY */}
           <div className="py-4 md:py-6 relative z-10 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
             {isCrossChain ? (
-               <>
-                  <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center shadow-lg shadow-black/50 border border-white/5">
-                    <Triangle className="w-4 h-4 text-white fill-white rotate-180" />
-                  </div>
-                  <span className="text-sm font-medium text-zinc-400">Powered by Thirdweb</span>
-               </>
+              <>
+                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center shadow-lg shadow-black/50 border border-white/5">
+                  <Triangle className="w-4 h-4 text-white fill-white rotate-180" />
+                </div>
+                <span className="text-sm font-medium text-zinc-400">Powered by Thirdweb</span>
+              </>
             ) : (
-               <>
-                  <div className="w-8 h-8 rounded-full bg-[#ff007a]/10 flex items-center justify-center shadow-lg shadow-[#ff007a]/20 border border-[#ff007a]/20">
-                    <div className="text-[#ff007a] font-bold text-sm">🦄</div>
-                  </div>
-                  <span className="text-sm font-medium text-zinc-400">Powered by Uniswap</span>
-               </>
+              <>
+                <div className="w-8 h-8 rounded-full bg-[#ff007a]/10 flex items-center justify-center shadow-lg shadow-[#ff007a]/20 border border-[#ff007a]/20">
+                  <div className="text-[#ff007a] font-bold text-sm">🦄</div>
+                </div>
+                <span className="text-sm font-medium text-zinc-400">Powered by Uniswap</span>
+              </>
             )}
           </div>
 
           {/* TOKEN SELECTION MODAL */}
-          <TokenSelectionModal 
-            isOpen={showTokenList} 
+          <TokenSelectionModal
+            isOpen={showTokenList}
             onClose={() => setShowTokenList(false)}
             onSelect={handleTokenSelect}
           />

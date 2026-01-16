@@ -10,11 +10,18 @@ import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import '@/shared/ui/loader.css';
+import { TonConnectButton, useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
+import { isTelegramWebApp } from '@/lib/isTelegram';
+import { useLogout } from '@/shared/hooks/useLogout';
 
 export default function NewChatPage() {
   const router = useRouter();
   const account = useActiveAccount();
   const activeWallet = useActiveWallet();
+  const tonWallet = useTonWallet();
+  const [tonConnectUI] = useTonConnectUI();
+  const { logout, isLoggingOut } = useLogout();
+
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -23,6 +30,39 @@ export default function NewChatPage() {
   const hasTriedManualConnectRef = useRef(false);
   const connectButtonRef = useRef<HTMLDivElement>(null);
   const lastTriedAddressRef = useRef<string | null>(null);
+  const [isTelegram, setIsTelegram] = useState(false);
+
+  useEffect(() => {
+    // Initial check
+    const checkTelegram = () => {
+      const isTg = isTelegramWebApp();
+      console.log('[NewChat] Checking Telegram:', isTg, typeof window !== 'undefined' ? (window as any).Telegram : 'window undefined');
+      if (isTg) {
+        setIsTelegram(true);
+        return true;
+      }
+      return false;
+    };
+
+    if (checkTelegram()) return;
+
+    // Poll for 2 seconds
+    const interval = setInterval(() => {
+      if (checkTelegram()) {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    const timeout = setTimeout(() => {
+      clearInterval(interval);
+      console.log('[NewChat] Stopped polling for Telegram');
+    }, 2000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, []);
 
   // Client setup
   const client = useMemo(() => {
@@ -68,7 +108,7 @@ export default function NewChatPage() {
   // Auto-connect wallet on mount if not connected
   useEffect(() => {
     const autoConnectWallet = async () => {
-      if (account || hasTriedAutoConnectRef.current || !client) return;
+      if (account || tonWallet || hasTriedAutoConnectRef.current || !client) return;
 
       hasTriedAutoConnectRef.current = true;
       setIsConnecting(true);
@@ -90,11 +130,11 @@ export default function NewChatPage() {
     };
 
     autoConnectWallet();
-  }, [account, client]);
+  }, [account, tonWallet, client]);
 
   // Auto-click connect button if autoConnect fails
   useEffect(() => {
-    if (!account && !isConnecting && hasTriedAutoConnectRef.current && !hasTriedManualConnectRef.current && connectButtonRef.current) {
+    if (!account && !tonWallet && !isConnecting && hasTriedAutoConnectRef.current && !hasTriedManualConnectRef.current && connectButtonRef.current) {
       const timer = setTimeout(() => {
         const button = connectButtonRef.current?.querySelector('button');
         if (button) {
@@ -104,11 +144,16 @@ export default function NewChatPage() {
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [account, isConnecting, hasTriedAutoConnectRef.current]);
+  }, [account, tonWallet, isConnecting, hasTriedAutoConnectRef.current]);
+
+  const [statusMessage, setStatusMessage] = useState<string>('');
 
   // Authenticate with backend
   const authenticateWithBackend = useCallback(async () => {
-    if (!account || !client) {
+    const currentAddress = account?.address || tonWallet?.account.address;
+    const isTon = !!tonWallet?.account.address && !account?.address;
+
+    if (!currentAddress || !client) {
       return;
     }
 
@@ -120,12 +165,112 @@ export default function NewChatPage() {
     try {
       setIsAuthenticating(true);
       setError(null);
+      setStatusMessage('Initializing authentication...');
 
+      if (isTon) {
+        // --- TON Authentication Flow ---
+        setStatusMessage('Requesting TON login payload...');
+        console.log('🔍 [NEWCHAT] Requesting TON payload from:', `${authApiBase}/auth/ton/payload`);
+
+        const payloadResponse = await fetch(`${authApiBase}/auth/ton/payload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address: currentAddress })
+        });
+
+        if (!payloadResponse.ok) {
+          const errorText = await payloadResponse.text();
+          throw new Error(`Failed to get TON payload: ${errorText}`);
+        }
+
+        const { payload: proofPayload } = await payloadResponse.json();
+
+        setStatusMessage('Please sign the message in your TON wallet...');
+
+        // Construct the data to sign
+        // The backend expects a specific format for verifyTonSignature
+        // We need to use the wallet to sign this payload.
+        // Since we are in a browser environment, we use the timestamp and domain.
+        const timestamp = Math.floor(Date.now() / 1000);
+        const domain = window.location.host;
+
+        // Note: tonConnectUI.connector.signData is the standard way if supported.
+        // If the wallet doesn't support signData, we might be stuck.
+        // We'll try to cast and use it.
+        const connector = (tonConnectUI as any).connector;
+        if (!connector || typeof connector.signData !== 'function') {
+          throw new Error('Wallet does not support signData');
+        }
+
+        // IMPORTANT: The backend `verifyTonSignature` expects `publicKey`.
+        const publicKey = tonWallet?.account.publicKey;
+        if (!publicKey) throw new Error('TON Wallet public key not found');
+
+        let signature = '';
+        let signedTimestamp = String(Math.floor(Date.now() / 1000));
+
+        try {
+          const response = await (tonConnectUI as any).connector.signData({
+            type: 'text',
+            text: proofPayload
+          });
+
+          console.log('✅ [NEWCHAT] TON signData response:', response);
+
+          signature = response.signature;
+          if (response.timestamp) {
+            signedTimestamp = String(response.timestamp);
+          }
+        } catch (e) {
+          console.error('❌ [NEWCHAT] TON SignData failed or not supported:', e);
+          throw new Error(`TON Signing failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+
+        setStatusMessage('Verifying TON signature...');
+
+        const verifyResponse = await fetch(`${authApiBase}/auth/ton/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            address: currentAddress,
+            payload: proofPayload,
+            signature,
+            publicKey,
+            timestamp: signedTimestamp,
+            domain,
+            payloadMeta: { type: 'text', text: proofPayload }
+          })
+        });
+
+        if (!verifyResponse.ok) {
+          const errText = await verifyResponse.text();
+          throw new Error(`TON Verification failed: ${errText}`);
+        }
+
+        const verifyResult = await verifyResponse.json();
+        const { token: authToken } = verifyResult;
+
+        setStatusMessage('Saving session...');
+        localStorage.setItem('authPayload', JSON.stringify({ address: currentAddress, chain: 'ton' }));
+        localStorage.setItem('authSignature', signature);
+        localStorage.setItem('authToken', authToken);
+
+        setIsAuthenticated(true);
+        setStatusMessage('Success! Redirecting to chat...');
+
+        setTimeout(() => {
+          router.push('/chat');
+        }, 500);
+
+        return; // End of TON flow
+      }
+
+      // --- EVM Authentication Flow (Thirdweb) ---
       // 1. Get payload from backend
-      const normalizedAddress = account.address;
-      const loginPayload = { address: normalizedAddress };
+      setStatusMessage('Requesting login payload...');
+      const loginPayload = { address: currentAddress };
 
-      console.log('🔍 [NEWCHAT] Authenticating with:', authApiBase);
+      console.log('🔍 [NEWCHAT] Authenticating with:', authApiBase, loginPayload);
 
       const loginResponse = await fetch(`${authApiBase}/auth/login`, {
         method: 'POST',
@@ -147,16 +292,18 @@ export default function NewChatPage() {
       const { payload } = await loginResponse.json();
 
       // Ensure the addresses match
-      if (account.address.toLowerCase() !== payload.address.toLowerCase()) {
-        throw new Error(`Wallet address (${account.address}) does not match payload (${payload.address})`);
+      if (currentAddress.toLowerCase() !== payload.address.toLowerCase()) {
+        throw new Error(`Wallet address (${currentAddress}) does not match payload (${payload.address})`);
       }
 
-      // 2. Sign the payload using Thirdweb
+      // 2. Sign the payload
+      setStatusMessage('Please sign the message in your wallet...');
       let signature;
 
       try {
+        // Thirdweb Signing Logic
         const signResult = await signLoginPayload({
-          account: account,
+          account: account!,
           payload: payload
         });
 
@@ -176,9 +323,9 @@ export default function NewChatPage() {
         }
 
       } catch (error) {
-        console.error('❌ [NEWCHAT] Thirdweb signature error:', error);
-
-        // Fallback to direct signing if signLoginPayload fails
+        console.error('❌ [NEWCHAT] Signature error:', error);
+        setStatusMessage('Standard signing failed, trying fallback...');
+        // Fallback to direct signing if signLoginPayload fails (EVM only)
         try {
           if (activeWallet && typeof (activeWallet as any).signMessage === 'function') {
             const messageToSign = JSON.stringify(payload);
@@ -193,6 +340,7 @@ export default function NewChatPage() {
       }
 
       // 3. Verify the signature with the backend
+      setStatusMessage('Verifying signature...');
       const verifyPayload = { payload, signature };
 
       const verifyResponse = await fetch(`${authApiBase}/auth/verify`, {
@@ -216,11 +364,13 @@ export default function NewChatPage() {
       const { token: authToken } = verifyResult;
 
       // 4. Persist auth data locally
+      setStatusMessage('Saving session...');
       localStorage.setItem('authPayload', JSON.stringify(payload));
       localStorage.setItem('authSignature', signature);
       localStorage.setItem('authToken', authToken);
 
       setIsAuthenticated(true);
+      setStatusMessage('Success! Redirecting to chat...');
 
       console.log('✅ [NEWCHAT] Authentication succeeded! Redirecting to /chat...');
 
@@ -231,6 +381,7 @@ export default function NewChatPage() {
 
     } catch (err: any) {
       console.error('❌ [NEWCHAT] Authentication failed:', err);
+      setStatusMessage('');
 
       let errorMessage = err?.message || 'Authentication failed';
 
@@ -243,12 +394,14 @@ export default function NewChatPage() {
     } finally {
       setIsAuthenticating(false);
     }
-  }, [account, client, activeWallet, router]);
+  }, [account, client, activeWallet, router, tonWallet, tonConnectUI]);
 
   // Auto-authenticate when account is connected
   useEffect(() => {
-    if (!account || !client || isAuthenticated || isAuthenticating) return;
-    if (lastTriedAddressRef.current === account.address) return;
+    const currentAddress = account?.address || tonWallet?.account.address;
+    if (!currentAddress || !client || isAuthenticated || isAuthenticating) return;
+
+    if (lastTriedAddressRef.current === currentAddress) return;
 
     // Check if already authenticated
     const existingToken = localStorage.getItem('authToken');
@@ -257,9 +410,9 @@ export default function NewChatPage() {
       return;
     }
 
-    lastTriedAddressRef.current = account.address;
+    lastTriedAddressRef.current = currentAddress;
     authenticateWithBackend();
-  }, [account, client, isAuthenticated, isAuthenticating, authenticateWithBackend, router]);
+  }, [account, tonWallet, client, isAuthenticated, isAuthenticating, authenticateWithBackend, router]);
 
   // Determine label text
   const getLabelText = () => {
@@ -267,7 +420,7 @@ export default function NewChatPage() {
     if (isAuthenticating) return 'Authenticating...';
     if (isAuthenticated) return 'Success! Redirecting...';
     if (isConnecting) return 'Setting up your workspace...';
-    if (!account) return 'Setting up your workspace...';
+    if (!account && !tonWallet) return 'Setting up your workspace...';
     return 'Setting up your workspace...';
   };
 
@@ -290,6 +443,9 @@ export default function NewChatPage() {
       </div>
     );
   }
+
+  const connected = Boolean(account?.address || tonWallet?.account.address);
+  const showFreshConnect = isTelegram && (isConnecting || (isAuthenticating && statusMessage.toLowerCase().includes('ton')));
 
   return (
     <div className="fixed inset-0 bg-pano-bg-primary flex items-center justify-center overflow-hidden">
@@ -315,6 +471,30 @@ export default function NewChatPage() {
           <p className="text-white text-lg font-medium">
             {getLabelText()}
           </p>
+          {statusMessage && isAuthenticating && (
+            <p className="text-cyan-400 text-sm mt-2 animate-pulse font-mono">
+              {statusMessage}
+            </p>
+          )}
+          {showFreshConnect && (
+            <button
+              onClick={async () => {
+                try {
+                  await tonConnectUI?.disconnect?.();
+                } catch (err) {
+                  console.warn('[NewChat] TON disconnect failed:', err);
+                }
+                await logout({ redirect: false });
+                if (typeof window !== 'undefined') {
+                  window.location.href = '/miniapp';
+                }
+              }}
+              disabled={isLoggingOut}
+              className="mt-2 px-4 py-2 rounded-lg bg-white/10 text-white/80 text-xs font-semibold hover:bg-white/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoggingOut ? 'Resetting...' : "didn't get the code? Tap here"}
+            </button>
+          )}
         </div>
 
         {/* Loading indicator or Connect Button */}
@@ -322,31 +502,46 @@ export default function NewChatPage() {
           <div className="flex items-center gap-2">
             <div className="loader-inline-sm" />
           </div>
-        ) : !account && client && !hasTriedAutoConnectRef.current ? (
+        ) : !connected && client && !hasTriedAutoConnectRef.current ? (
           <div className="flex items-center gap-2">
             <div className="loader-inline-sm" />
           </div>
-        ) : !account && client ? (
-          <div ref={connectButtonRef} className="mt-4">
-            <ConnectButton
-              client={client}
-              wallets={wallets}
-              connectModal={{ size: 'compact' }}
-              connectButton={{
-                label: 'Connect Wallet',
-                style: {
-                  padding: '12px 24px',
-                  borderRadius: '8px',
-                  fontWeight: 600,
-                  fontSize: '16px',
-                  background: '#ffffff',
-                  color: '#000000',
-                  border: 'none',
-                  cursor: 'pointer',
-                },
-              }}
-              theme="dark"
-            />
+        ) : !connected && client ? (
+          <div ref={connectButtonRef} className="mt-4 w-full flex flex-col items-center">
+            {isTelegram ? (
+              <div className="w-full max-w-[280px]">
+                <TonConnectButton className="w-full" />
+              </div>
+            ) : (
+              <ConnectButton
+                client={client}
+                wallets={wallets}
+                connectModal={{ size: 'compact' }}
+                connectButton={{
+                  label: 'Connect Wallet',
+                  style: {
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    fontSize: '16px',
+                    background: '#ffffff',
+                    color: '#000000',
+                    border: 'none',
+                    cursor: 'pointer',
+                  },
+                }}
+                theme="dark"
+              />
+            )}
+
+            {/* Debug Info */}
+            <div className="mt-8 p-3 bg-black/50 rounded-lg text-[10px] font-mono text-gray-400 break-all max-w-xs text-left">
+              <p className="font-bold mb-1 text-gray-300">Debug Info:</p>
+              <p>isTelegram state: <span className={isTelegram ? "text-green-400" : "text-yellow-400"}>{String(isTelegram)}</span></p>
+              <p>window.Telegram: {typeof window !== 'undefined' ? typeof (window as any).Telegram : 'undefined'}</p>
+              <p>WebApp: {typeof window !== 'undefined' && (window as any).Telegram?.WebApp ? 'Present' : 'Missing'}</p>
+              <p>UserAgent: {typeof navigator !== 'undefined' ? navigator.userAgent.substring(0, 50) + '...' : 'N/A'}</p>
+            </div>
           </div>
         ) : null}
       </div>

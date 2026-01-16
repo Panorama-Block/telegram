@@ -102,12 +102,24 @@ export function useLogout() {
           }
         });
 
+        // Clear any residual TON Connect keys (defensive cleanup)
+        Object.keys(localStorage).forEach(key => {
+          const lower = key.toLowerCase();
+          if (lower.startsWith('tonconnect') || lower.startsWith('ton-connect') || lower.includes('tonconnect')) {
+            localStorage.removeItem(key);
+          }
+        });
+
         // 3. Also clear sessionStorage for complete cleanup
         Object.keys(sessionStorage).forEach(key => {
+          const lower = key.toLowerCase();
           if (
             key.startsWith('thirdweb') ||
             key.startsWith('walletToken') ||
-            key.startsWith('auth')
+            key.startsWith('auth') ||
+            lower.startsWith('tonconnect') ||
+            lower.startsWith('ton-connect') ||
+            lower.includes('tonconnect')
           ) {
             sessionStorage.removeItem(key);
           }

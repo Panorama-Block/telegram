@@ -5,10 +5,11 @@ type ErrorCategory = 'user-action' | 'temporary' | 'blocked' | 'unknown';
 
 type SecondaryAction =
   | {
-      type: 'support' | 'docs';
-      label: string;
-      href?: string;
-    }
+    type: 'support' | 'docs';
+    label: string;
+    href?: string;
+    onClick?: () => void;
+  }
   | undefined;
 
 const categoryTheme: Record<
@@ -135,21 +136,40 @@ export function ErrorStateCard({
               {primaryLabel}
             </Button>
             {secondaryAction && secondaryAction.label && (
-              <a
-                href={secondaryAction.href || '#'}
-                target={secondaryAction.href ? '_blank' : undefined}
-                rel={secondaryAction.href ? 'noreferrer' : undefined}
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: theme.accent,
-                  textAlign: 'center',
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                {secondaryAction.label}
-              </a>
+              secondaryAction.onClick ? (
+                <button
+                  onClick={secondaryAction.onClick}
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: theme.accent,
+                    textAlign: 'center',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 0,
+                    textDecoration: 'underline',
+                  }}
+                >
+                  {secondaryAction.label}
+                </button>
+              ) : (
+                <a
+                  href={secondaryAction.href || '#'}
+                  target={secondaryAction.href ? '_blank' : undefined}
+                  rel={secondaryAction.href ? 'noreferrer' : undefined}
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: theme.accent,
+                    textAlign: 'center',
+                    textDecoration: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {secondaryAction.label}
+                </a>
+              )
             )}
             {hint && (
               <span
