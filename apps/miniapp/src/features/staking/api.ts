@@ -83,9 +83,23 @@ class StakingApiClient {
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
   constructor(account: any) {
-    const gatewayBase =
-      (process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.VITE_GATEWAY_BASE || '').replace(/\/+$/, '');
-    this.baseUrl = gatewayBase ? `${gatewayBase}/api/staking` : 'http://localhost:8443/api/staking';
+    const stakingApiBase = (
+      process.env.NEXT_PUBLIC_STAKING_API_URL ||
+      process.env.LIDO_SERVICE_URL ||
+      ''
+    ).replace(/\/+$/, '');
+
+    if (stakingApiBase) {
+      this.baseUrl = `${stakingApiBase}/api/staking`;
+    } else {
+      // Fallback to gateway if configured
+      const gatewayBase = (
+        process.env.NEXT_PUBLIC_GATEWAY_BASE ||
+        process.env.VITE_GATEWAY_BASE ||
+        ''
+      ).replace(/\/+$/, '');
+      this.baseUrl = gatewayBase ? `${gatewayBase}/api/staking` : 'http://localhost:8443/api/staking';
+    }
 
     this.account = account;
   }
