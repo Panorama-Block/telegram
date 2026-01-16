@@ -85,11 +85,23 @@ export async function createServer(): Promise<FastifyInstance> {
   const app = Fastify(serverOptions) as FastifyInstance & { httpsConfig?: HttpsConfig | null };
   app.httpsConfig = httpsConfig;
 
+  const urlToOrigin = (value?: string | null) => {
+    if (!value) return null;
+    try {
+      return new URL(value).origin;
+    } catch {
+      return null;
+    }
+  };
+
   const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:3003',
     'https://panoramablock.com',
     'https://www.panoramablock.com',
+    urlToOrigin(env.PUBLIC_WEBAPP_URL),
+    urlToOrigin(env.PUBLIC_GATEWAY_URL),
+    urlToOrigin(env.WEBSITE_URL),
   ].filter(Boolean);
 
   await app.register(cors, {

@@ -8,7 +8,13 @@ interface SwapSuccessCardProps {
   variant?: 'default' | 'compact';
 }
 
+function isPendingHash(hash?: string | null) {
+  if (!hash) return true;
+  return hash.toLowerCase().includes('pending');
+}
+
 function explorerTxUrl(chainId: number, hash: string): string | null {
+  if (isPendingHash(hash)) return null;
   const explorers: Record<number, string> = {
     1: 'https://etherscan.io/tx/',
     8453: 'https://basescan.org/tx/',
@@ -133,7 +139,7 @@ export function SwapSuccessCard({
                       isCompact ? 'text-xs' : 'text-sm'
                     )}
                   >
-                    {tx.hash}
+                    {isPendingHash(tx.hash) ? 'Pending confirmation' : tx.hash}
                   </code>
 
                   {explorerUrl && (

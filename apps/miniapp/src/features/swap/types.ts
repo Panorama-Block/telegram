@@ -89,6 +89,15 @@ export type QuoteResponse = {
       totalFeeUsd?: string;
     };
     provider?: string; // Provider used for quote (e.g., 'uniswap-trading-api')
+    // Bridge specific properties
+    sourceNetwork?: string;
+    destinationNetwork?: string;
+    sourceToken?: string;
+    destinationToken?: string;
+    fee?: number;
+    toAmount?: string; // Alias for estimatedReceiveAmount in some contexts
+    refuelAmount?: number;
+    refuelAmountInUsd?: number;
   };
   message?: string;
 };

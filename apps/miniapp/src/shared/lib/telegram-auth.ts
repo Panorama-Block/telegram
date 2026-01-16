@@ -119,5 +119,9 @@ export function isTelegramWebApp(): boolean {
     return false;
   }
 
-  return !!(window as any).Telegram?.WebApp;
+  const webApp = (window as any).Telegram?.WebApp;
+  if (!webApp) return false;
+  if (typeof webApp.initData === 'string' && webApp.initData.length > 0) return true;
+  if (webApp.initDataUnsafe?.user) return true;
+  return false;
 }
