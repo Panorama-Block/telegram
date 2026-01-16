@@ -81,8 +81,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
   const wallets = useMemo(() => {
     if (typeof window === 'undefined') return [inAppWallet()];
-    const WebApp = (window as any).Telegram?.WebApp;
-    const isTelegram = !!WebApp;
+    const isTelegram = isTelegramWebApp();
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const mode = isTelegram ? 'redirect' : 'popup';
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
@@ -416,7 +415,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
         {/* Content */}
         <div className="space-y-4">
-          {typeof window !== 'undefined' && (window as any).Telegram?.WebApp && /iPhone|iPad|iPod/i.test(navigator.userAgent) && (
+          {isTelegram && /iPhone|iPad|iPod/i.test(navigator.userAgent) && (
             <div className="text-yellow-300/90 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-sm">
               On iOS (Telegram), Google blocks sign-in inside webviews. Use Email/Passkey or
               <button

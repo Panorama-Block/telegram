@@ -82,8 +82,7 @@ export default function NewChatPage() {
   // Wallet configuration
   const wallets = useMemo(() => {
     if (typeof window === 'undefined') return [inAppWallet()];
-    const WebApp = (window as any).Telegram?.WebApp;
-    const isTelegram = !!WebApp;
+    const isTelegram = isTelegramWebApp();
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const mode = isTelegram ? 'redirect' : 'popup';
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
