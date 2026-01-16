@@ -18,9 +18,24 @@ class LendingApiClient {
   private readonly CACHE_DURATION = LENDING_CONFIG.CACHE_DURATION;
 
   constructor(account: any) {
-    const gatewayBase =
-      (process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.VITE_GATEWAY_BASE || '').replace(/\/+$/, '');
-    this.baseUrl = gatewayBase ? `${gatewayBase}/api/lending` : 'http://localhost:8443/api/lending';
+    const lendingApiBase = (
+      process.env.NEXT_PUBLIC_LENDING_API_URL ||
+      process.env.LENDING_SERVICE_URL ||
+      process.env.VITE_LENDING_API_BASE ||
+      ''
+    ).replace(/\/+$/, '');
+
+    if (lendingApiBase) {
+      this.baseUrl = `${lendingApiBase}/api/lending`;
+    } else {
+      // Fallback to gateway if configured
+      const gatewayBase = (
+        process.env.NEXT_PUBLIC_GATEWAY_BASE ||
+        process.env.VITE_GATEWAY_BASE ||
+        ''
+      ).replace(/\/+$/, '');
+      this.baseUrl = gatewayBase ? `${gatewayBase}/api/lending` : 'http://localhost:8443/api/lending';
+    }
 
     this.account = account;
   }

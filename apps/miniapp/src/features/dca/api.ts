@@ -6,13 +6,24 @@
 
 import { authenticatedFetch } from '@/shared/lib/telegram-auth';
 
-const gatewayBase =
-  (process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.VITE_GATEWAY_BASE || '').replace(/\/+$/, '');
+const dcaApiBase = (
+  process.env.NEXT_PUBLIC_DCA_API_BASE ||
+  process.env.DCA_API_BASE ||
+  ''
+).replace(/\/+$/, '');
 
-// Use gateway as única porta pública
-export const DCA_API_URL = gatewayBase
-  ? `${gatewayBase}/api/dca`
-  : 'http://localhost:8443/api/dca';
+const gatewayBase = (
+  process.env.NEXT_PUBLIC_GATEWAY_BASE ||
+  process.env.VITE_GATEWAY_BASE ||
+  ''
+).replace(/\/+$/, '');
+
+// Use DCA-specific URL if configured, otherwise fallback to gateway
+export const DCA_API_URL = dcaApiBase
+  ? `${dcaApiBase}/api/dca`
+  : gatewayBase
+    ? `${gatewayBase}/api/dca`
+    : 'http://localhost:8443/api/dca';
 
 export interface SmartAccountPermissions {
   approvedTargets: string[];

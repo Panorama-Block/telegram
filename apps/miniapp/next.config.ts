@@ -48,12 +48,22 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_GATEWAY_BASE: process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.PUBLIC_GATEWAY_URL || "",
     VITE_GATEWAY_BASE: process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.PUBLIC_GATEWAY_URL || "",
+    // Service-specific URLs
+    NEXT_PUBLIC_SWAP_API_BASE: process.env.NEXT_PUBLIC_SWAP_API_BASE || process.env.SWAP_API_BASE || "",
+    SWAP_API_BASE: process.env.SWAP_API_BASE || "",
     VITE_SWAP_API_BASE: process.env.SWAP_API_BASE || "",
+    NEXT_PUBLIC_LENDING_API_URL: process.env.NEXT_PUBLIC_LENDING_API_URL || process.env.LENDING_SERVICE_URL || "",
+    LENDING_SERVICE_URL: process.env.LENDING_SERVICE_URL || "",
+    VITE_LENDING_API_BASE: process.env.VITE_LENDING_API_BASE || process.env.LENDING_SERVICE_URL || "",
+    NEXT_PUBLIC_STAKING_API_URL: process.env.NEXT_PUBLIC_STAKING_API_URL || process.env.LIDO_SERVICE_URL || "",
+    LIDO_SERVICE_URL: process.env.LIDO_SERVICE_URL || "",
+    NEXT_PUBLIC_DCA_API_BASE: process.env.NEXT_PUBLIC_DCA_API_BASE || process.env.DCA_API_BASE || "",
+    DCA_API_BASE: process.env.DCA_API_BASE || "",
     // Base do gateway; endpoints de auth são chamados como `${VITE_AUTH_API_BASE}/auth/login`
     VITE_AUTH_API_BASE: (process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.PUBLIC_GATEWAY_URL)
       ? `${(process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.PUBLIC_GATEWAY_URL)!.replace(/\/+$/, '')}/api`
       : (process.env.AUTH_API_BASE || ""),
-    VITE_LENDING_API_BASE: process.env.VITE_LENDING_API_BASE || "",
+    AUTH_API_BASE: process.env.AUTH_API_BASE || "",
     VITE_THIRDWEB_CLIENT_ID: process.env.THIRDWEB_CLIENT_ID || "",
     VITE_WALLETCONNECT_PROJECT_ID: process.env.WALLETCONNECT_PROJECT_ID || "",
     VITE_EVM_CHAIN_ID: process.env.DEFAULT_CHAIN_ID || "8453",

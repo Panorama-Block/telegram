@@ -39,8 +39,24 @@ export class SwapApiError extends Error {
 const UNKNOWN_ERROR = 'Swap API error';
 
 function baseUrl(): string {
-  const gatewayBase =
-    (process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.VITE_GATEWAY_BASE || '').replace(/\/+$/, '');
+  const swapApiBase = (
+    process.env.NEXT_PUBLIC_SWAP_API_BASE ||
+    process.env.SWAP_API_BASE ||
+    process.env.VITE_SWAP_API_BASE ||
+    ''
+  ).replace(/\/+$/, '');
+
+  if (swapApiBase) {
+    return `${swapApiBase}/api/swap`;
+  }
+
+  // Fallback to gateway if configured
+  const gatewayBase = (
+    process.env.NEXT_PUBLIC_GATEWAY_BASE ||
+    process.env.VITE_GATEWAY_BASE ||
+    ''
+  ).replace(/\/+$/, '');
+
   return gatewayBase ? `${gatewayBase}/api/swap` : 'http://localhost:8443/api/swap';
 }
 
