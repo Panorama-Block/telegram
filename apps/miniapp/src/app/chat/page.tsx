@@ -1701,6 +1701,44 @@ export default function ChatPage() {
                   )}
                 </div>
 
+            {/* Sticky Bottom Input (Chat State) */}
+            <AnimatePresence>
+              {hasMessages && (
+                <motion.div
+                  initial={{ y: 100, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className="p-2 pt-3 bg-gradient-to-t from-black via-black/90 to-transparent z-20"
+                >
+                  <div className="max-w-3xl mx-auto relative group">
+                    {/* Trending Prompts Dropdown */}
+                    <AnimatePresence>
+                      {showTrendingPrompts && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          className="absolute bottom-full left-0 right-0 mb-2 bg-[#0A0A0A] border border-white/10 rounded-xl p-2 shadow-2xl z-30"
+                        >
+                          <div className="text-xs text-zinc-500 px-3 py-2 uppercase tracking-wider">Trending Prompts</div>
+                          <div className="space-y-1">
+                            {trendingPrompts.map((prompt, index) => (
+                              <button
+                                key={index}
+                                onClick={() => {
+                                  setInputMessage(prompt.text);
+                                  setShowTrendingPrompts(false);
+                                }}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors group"
+                              >
+                                <span className="text-zinc-500 group-hover:text-cyan-400 transition-colors">{prompt.icon}</span>
+                                <span>{prompt.text}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
                 {/* Sticky Bottom Input (Chat State) */}
                 <AnimatePresence>
                   {hasMessages && (
