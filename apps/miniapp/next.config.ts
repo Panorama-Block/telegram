@@ -33,28 +33,8 @@ const nextConfig: NextConfig = {
   },
 
   async rewrites() {
-    // Sempre use a variável de ambiente VITE_LENDING_API_BASE
-    // Se não estiver definida, tenta usar o gateway
-    const lendingBase = process.env.VITE_LENDING_API_BASE ||
-                       (process.env.PUBLIC_GATEWAY_URL ? `${process.env.PUBLIC_GATEWAY_URL.replace(/\/+$/, '')}/lending` : '');
-
-    if (!lendingBase) {
-      console.warn('[Next.js] Lending API base URL not configured, proxy will not work');
-      console.warn('[Next.js] Please set VITE_LENDING_API_BASE or PUBLIC_GATEWAY_URL in .env');
-      return [];
-    }
-
-    console.log('[Next.js] Lending API proxy configured:', lendingBase);
-
-    return [
-      // Proxy lending API to avoid CORS issues
-      // Note: source is relative to basePath, so /api/lending maps to /miniapp/api/lending
-      {
-        source: "/api/lending/:path*",
-        destination: `${lendingBase}/:path*`,
-        basePath: false, // Important: bypass basePath for API routes
-      },
-    ];
+    // API calls passam a usar o gateway dedicado; sem rewrites locais.
+    return [];
   },
 
   images: {
@@ -66,10 +46,24 @@ const nextConfig: NextConfig = {
   },
 
   env: {
-    VITE_GATEWAY_BASE: process.env.PUBLIC_GATEWAY_URL || "",
+    NEXT_PUBLIC_GATEWAY_BASE: process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.PUBLIC_GATEWAY_URL || "",
+    VITE_GATEWAY_BASE: process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.PUBLIC_GATEWAY_URL || "",
+    // Service-specific URLs
+    NEXT_PUBLIC_SWAP_API_BASE: process.env.NEXT_PUBLIC_SWAP_API_BASE || process.env.SWAP_API_BASE || "",
+    SWAP_API_BASE: process.env.SWAP_API_BASE || "",
     VITE_SWAP_API_BASE: process.env.SWAP_API_BASE || "",
-    VITE_AUTH_API_BASE: process.env.AUTH_API_BASE || "",
-    VITE_LENDING_API_BASE: process.env.VITE_LENDING_API_BASE || "",
+    NEXT_PUBLIC_LENDING_API_URL: process.env.NEXT_PUBLIC_LENDING_API_URL || process.env.LENDING_SERVICE_URL || "",
+    LENDING_SERVICE_URL: process.env.LENDING_SERVICE_URL || "",
+    VITE_LENDING_API_BASE: process.env.VITE_LENDING_API_BASE || process.env.LENDING_SERVICE_URL || "",
+    NEXT_PUBLIC_STAKING_API_URL: process.env.NEXT_PUBLIC_STAKING_API_URL || process.env.LIDO_SERVICE_URL || "",
+    LIDO_SERVICE_URL: process.env.LIDO_SERVICE_URL || "",
+    NEXT_PUBLIC_DCA_API_BASE: process.env.NEXT_PUBLIC_DCA_API_BASE || process.env.DCA_API_BASE || "",
+    DCA_API_BASE: process.env.DCA_API_BASE || "",
+    // Base do gateway; endpoints de auth são chamados como `${VITE_AUTH_API_BASE}/auth/login`
+    VITE_AUTH_API_BASE: (process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.PUBLIC_GATEWAY_URL)
+      ? `${(process.env.NEXT_PUBLIC_GATEWAY_BASE || process.env.PUBLIC_GATEWAY_URL)!.replace(/\/+$/, '')}/api`
+      : (process.env.AUTH_API_BASE || ""),
+    AUTH_API_BASE: process.env.AUTH_API_BASE || "",
     VITE_THIRDWEB_CLIENT_ID: process.env.THIRDWEB_CLIENT_ID || "",
     VITE_WALLETCONNECT_PROJECT_ID: process.env.WALLETCONNECT_PROJECT_ID || "",
     VITE_EVM_CHAIN_ID: process.env.DEFAULT_CHAIN_ID || "8453",

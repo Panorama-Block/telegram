@@ -18,7 +18,7 @@ const Footer = () => {
           {/* Contact Section */}
           <div className="relative flex flex-col gap-4 px-6 md:px-8 lg:px-12 mt-8 md:mt-0 md:w-1/5 mx-auto md:mx-0">
             <div className="absolute left-0 top-0 bottom-0 w-[1px] bg-landing-border hidden md:block" />
-            <h3 className="text-landing-title text-xl font-medium text-center md:text-left">Contact Us</h3>
+            <h3 className="text-landing-title text-xl font-medium text-center md:text-left font-sans">Contact Us</h3>
             <ul className="flex flex-col gap-3 text-center md:text-left">
               <li>
                 <a
@@ -34,7 +34,7 @@ const Footer = () => {
           {/* Resources Section */}
           <div className="relative flex flex-col gap-4 px-6 md:px-8 lg:px-12 mt-8 md:mt-0 md:w-1/5 lg:w-1/4 mx-auto md:mx-0">
             <div className="absolute left-0 top-0 bottom-0 w-[1px] bg-landing-border hidden md:block" />
-            <h3 className="text-landing-title text-xl font-medium text-center md:text-left">Resources</h3>
+            <h3 className="text-landing-title text-xl font-medium text-center md:text-left font-sans">Resources</h3>
             <ul className="flex flex-col gap-3 text-center md:text-left">
               <li>
                 <a

@@ -6,6 +6,7 @@ import rateLimit from '@fastify/rate-limit';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 
 import { parseEnv, type Env } from './env.js';
 import { registerAuthRoutes } from './routes/auth.js';
@@ -84,8 +85,20 @@ export async function createServer(): Promise<FastifyInstance> {
   const app = Fastify(serverOptions) as FastifyInstance & { httpsConfig?: HttpsConfig | null };
   app.httpsConfig = httpsConfig;
 
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3003',
+    'https://panoramablock.com',
+    'https://www.panoramablock.com',
+  ].filter(Boolean);
+
   await app.register(cors, {
-    origin: true,
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true); // allow server-to-server / curl
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      cb(new Error('Origin not allowed'), false);
+    },
+    credentials: true,
   });
 
   // Rate limiting
@@ -129,8 +142,7 @@ export async function createServer(): Promise<FastifyInstance> {
   });
 
   // Proxy to Next.js miniapp server
-  const NEXTJS_PORT = process.env.NEXTJS_PORT || '3003';
-  const NEXTJS_URL = `http://localhost:${NEXTJS_PORT}`;
+  const NEXTJS_URL = `http://localhost:${env.NEXTJS_PORT}`;
 
   app.all('/miniapp', async (req, reply) => {
     return reply.redirect(302, '/miniapp/');
@@ -161,7 +173,7 @@ export async function createServer(): Promise<FastifyInstance> {
   app.log.info({ NEXTJS_URL }, 'Miniapp proxying to Next.js server');
 
   // ===== SWAP SERVICE PROXY =====
-  const SWAP_SERVICE_URL = process.env.SWAP_SERVICE_URL || 'http://localhost:3302';
+  const SWAP_SERVICE_URL = env.SWAP_SERVICE_URL || 'http://localhost:3302';
 
   app.all('/swap/*', async (req, reply) => {
     try {
@@ -183,6 +195,69 @@ export async function createServer(): Promise<FastifyInstance> {
   });
 
   app.log.info({ SWAP_SERVICE_URL }, 'Swap proxy configured');
+
+  // ======= API GATEWAY (single entrypoint) =======
+  const authBase = env.AUTH_SERVICE_URL || process.env.AUTH_API_BASE || 'http://localhost:3301';
+  const swapBase = env.SWAP_SERVICE_URL || 'http://localhost:3302';
+  const lendingBase = env.LENDING_SERVICE_URL || 'http://localhost:3304';
+  const stakingBase = env.LIDO_SERVICE_URL || 'http://localhost:3305';
+  const dcaBase = env.DCA_SERVICE_URL || 'http://localhost:3307';
+  const agentsBase = env.AGENTS_SERVICE_URL || env.AGENTS_API_BASE || 'http://localhost:8000';
+
+  type ProxyConfig = {
+    prefix: string;
+    targetBase: string;
+    rewrite: (originalUrl: string) => string;
+    name: string;
+  };
+
+  const proxyConfigs: ProxyConfig[] = [
+    { name: 'auth', prefix: '/api/auth', targetBase: authBase, rewrite: (url) => url.replace(/^\/api\/auth/, '/auth') },
+    { name: 'swap', prefix: '/api/swap', targetBase: swapBase, rewrite: (url) => url.replace(/^\/api\/swap/, '/swap') },
+    { name: 'lending', prefix: '/api/lending', targetBase: lendingBase, rewrite: (url) => url.replace(/^\/api\/lending/, '') || '/' },
+    { name: 'staking', prefix: '/api/staking', targetBase: stakingBase, rewrite: (url) => url.replace(/^\/api\/staking/, '/api/lido') },
+    { name: 'dca', prefix: '/api/dca', targetBase: dcaBase, rewrite: (url) => url.replace(/^\/api\/dca/, '/dca') },
+    { name: 'agents', prefix: '/api/agents', targetBase: agentsBase, rewrite: (url) => url.replace(/^\/api\/agents/, '') || '/' },
+  ];
+
+  for (const cfg of proxyConfigs) {
+    app.all(`${cfg.prefix}/*`, async (req, reply) => {
+      const traceId = (req.headers['x-trace-id'] as string | undefined) || randomUUID();
+      const targetPath = cfg.rewrite(req.url);
+      const targetUrl = `${cfg.targetBase}${targetPath}`;
+      req.log.info({ targetUrl, traceId, name: cfg.name }, 'proxying request');
+
+      try {
+        const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
+        const headers: Record<string, string> = {};
+        for (const [key, value] of Object.entries(req.headers)) {
+          if (value === undefined) continue;
+          headers[key] = Array.isArray(value) ? value.join(',') : String(value);
+        }
+        headers['x-trace-id'] = traceId;
+
+        const response = await fetch(targetUrl, {
+          method: req.method,
+          headers,
+          body: hasBody ? (typeof req.body === 'string' || req.body instanceof Buffer ? req.body : JSON.stringify(req.body)) : undefined,
+        });
+
+        const contentType = response.headers.get('content-type');
+        if (contentType) reply.header('content-type', contentType);
+        reply.header('x-trace-id', response.headers.get('x-trace-id') ?? traceId);
+
+        const textBody = await response.text();
+        const isJson = contentType?.includes('application/json');
+        reply.code(response.status);
+        return reply.send(isJson ? JSON.parse(textBody || '{}') : textBody);
+      } catch (err) {
+        app.log.error({ err, url: req.url, name: cfg.name }, 'proxy failed');
+        return reply.code(502).send({ error: `${cfg.name}_unavailable`, message: `Upstream ${cfg.name} service down` });
+      }
+    });
+
+    app.log.info({ targetBase: cfg.targetBase, prefix: cfg.prefix, name: cfg.name }, 'proxy configured');
+  }
 
   // Debug: log miniapp requests and expose a probe
   app.addHook('onRequest', async (req) => {

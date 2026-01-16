@@ -4,6 +4,7 @@ export type Token = {
   icon?: string;
   decimals?: number;
   name?: string;
+  chainId?: number;
 };
 export type Network = {
   nativeCurrency: Token;
