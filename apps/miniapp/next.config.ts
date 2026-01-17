@@ -36,25 +36,40 @@ const nextConfig: NextConfig = {
     // Sempre use a variável de ambiente VITE_LENDING_API_BASE
     // Se não estiver definida, tenta usar o gateway
     const lendingBase = process.env.VITE_LENDING_API_BASE ||
-                       (process.env.PUBLIC_GATEWAY_URL ? `${process.env.PUBLIC_GATEWAY_URL.replace(/\/+$/, '')}/lending` : '');
+                       process.env.NEXT_PUBLIC_LENDING_API_URL ||
+                       (process.env.PUBLIC_GATEWAY_URL ? process.env.PUBLIC_GATEWAY_URL.replace(/\/+$/, '') : '');
+
+    const stakingBase = process.env.VITE_STAKING_API_URL ||
+                       process.env.NEXT_PUBLIC_STAKING_API_URL ||
+                       '';
+
+    const rewrites = [];
 
     if (!lendingBase) {
       console.warn('[Next.js] Lending API base URL not configured, proxy will not work');
-      console.warn('[Next.js] Please set VITE_LENDING_API_BASE or PUBLIC_GATEWAY_URL in .env');
-      return [];
-    }
-
-    console.log('[Next.js] Lending API proxy configured:', lendingBase);
-
-    return [
-      // Proxy lending API to avoid CORS issues
-      // Note: source is relative to basePath, so /api/lending maps to /miniapp/api/lending
-      {
+      console.warn('[Next.js] Please set VITE_LENDING_API_BASE or NEXT_PUBLIC_LENDING_API_URL in .env');
+    } else {
+      console.log('[Next.js] Lending API proxy configured:', lendingBase);
+      rewrites.push({
         source: "/api/lending/:path*",
         destination: `${lendingBase}/:path*`,
-        basePath: false, // Important: bypass basePath for API routes
-      },
-    ];
+        basePath: false,
+      });
+    }
+
+    if (!stakingBase) {
+      console.warn('[Next.js] Staking API base URL not configured, proxy will not work');
+      console.warn('[Next.js] Please set VITE_STAKING_API_URL or NEXT_PUBLIC_STAKING_API_URL in .env');
+    } else {
+      console.log('[Next.js] Staking API proxy configured:', stakingBase);
+      rewrites.push({
+        source: "/api/staking/:path*",
+        destination: `${stakingBase}/:path*`,
+        basePath: false,
+      });
+    }
+
+    return rewrites;
   },
 
   images: {

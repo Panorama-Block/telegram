@@ -89,7 +89,7 @@ class StakingApiClient {
     if (direct && direct.length > 0) {
       this.baseUrl = direct.replace(/\/+$/, '');
     } else {
-      this.baseUrl = 'http://localhost:3004';
+      this.baseUrl = '/api/staking';
     }
 
     this.account = account;
