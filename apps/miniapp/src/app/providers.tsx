@@ -131,41 +131,43 @@ export function ClientProviders({ children }: ClientProvidersProps) {
             <AuthProvider>
               <TransactionSettingsProvider>
                 <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
-                <thirdwebReact.ThirdwebProvider>
-                    {AutoConnectHandler && <AutoConnectHandler />}
-                    {WalletSessionGuard && <WalletSessionGuard />}
-                    {WalletIdentityProvider && (
-                      <WalletIdentityProvider>
-                        <AuthGuard>
-                          {children}
-                          {/* PWA Components */}
-                          {PWAInstallPrompt && (
-                            <PWAInstallPrompt
-                              variant="toast"
-                              position="bottom"
-                              showOnMobile={true}
-                              showOnDesktop={true}
-                              autoShow={true}
-                              delay={5000}
-                            />
-                          )}
-                          {PWAUpdateNotification && (
-                            <PWAUpdateNotification
-                              variant="toast"
-                              position="bottom"
-                              autoUpdate={false}
-                            />
-                          )}
-                          {OfflineIndicator && (
-                            <OfflineIndicator
-                              variant="banner"
-                              position="top"
-                              showOnlineStatus={true}
-                            />
-                          )}
-                        </AuthGuard>
-                      </WalletIdentityProvider>
-                    )}
+                  <thirdwebReact.ThirdwebProvider>
+                    <ChatProvider>
+                      {AutoConnectHandler && <AutoConnectHandler />}
+                      {WalletSessionGuard && <WalletSessionGuard />}
+                      {WalletIdentityProvider && (
+                        <WalletIdentityProvider>
+                          <AuthGuard>
+                            {children}
+                            {/* PWA Components */}
+                            {PWAInstallPrompt && (
+                              <PWAInstallPrompt
+                                variant="toast"
+                                position="bottom"
+                                showOnMobile={true}
+                                showOnDesktop={true}
+                                autoShow={true}
+                                delay={5000}
+                              />
+                            )}
+                            {PWAUpdateNotification && (
+                              <PWAUpdateNotification
+                                variant="toast"
+                                position="bottom"
+                                autoUpdate={false}
+                              />
+                            )}
+                            {OfflineIndicator && (
+                              <OfflineIndicator
+                                variant="banner"
+                                position="top"
+                                showOnlineStatus={true}
+                              />
+                            )}
+                          </AuthGuard>
+                        </WalletIdentityProvider>
+                      )}
+                    </ChatProvider>
                   </thirdwebReact.ThirdwebProvider>
                 </tonConnect.TonConnectUIProvider>
               </TransactionSettingsProvider>

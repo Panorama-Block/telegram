@@ -1120,18 +1120,18 @@ export default function ChatPage() {
   return (
     <ProtectedRoute>
       <TransactionSettingsProvider>
-        <React.Fragment>
-        <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
-        <GlobalLoader
-          isLoading={isNavigating}
-          message={
-            navigationType === 'lending' ? 'Loading Lending...' :
-              navigationType === 'staking' ? 'Loading Staking...' :
-                navigationType === 'swap' ? 'Loading Swap...' :
-                  navigationType === 'dca' ? 'Loading DCA...' :
-                    'Loading...'
-          }
-        />
+        <>
+          <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
+          <GlobalLoader
+            isLoading={isNavigating}
+            message={
+              navigationType === 'lending' ? 'Loading Lending...' :
+                navigationType === 'staking' ? 'Loading Staking...' :
+                  navigationType === 'swap' ? 'Loading Swap...' :
+                    navigationType === 'dca' ? 'Loading DCA...' :
+                      'Loading...'
+            }
+          />
 
         <SeniorAppShell pageTitle="Zico AI Agent">
           <div className="flex flex-col h-full relative bg-black">
@@ -1211,6 +1211,8 @@ export default function ChatPage() {
                           </div>
                         </div>
 
+                      </div>
+
                       {/* Suggestions Grid */}
                       <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
                         {[
@@ -1218,299 +1220,312 @@ export default function ChatPage() {
                           { label: 'Supply 100 USDC on Avalanche', prompt: 'Supply 100 USDC on Avalanche' },
                           { label: 'Stake 0.5 ETH with Lido', prompt: 'Stake 0.5 ETH with Lido' },
                           { label: 'What is my portfolio worth?', prompt: 'What is my portfolio worth?' },
-                        ].map((item, i) => (
+                        ].map((item) => (
                           <motion.button
                             key={item.label}
                             onClick={() => sendMessage(item.prompt)}
                             disabled={isSending || (!activeConversationId && !pendingNewChat)}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                            className="w-full text-left"
                           >
-                            {message.role === 'user' ? (
-                              <div className="max-w-[80%] bg-zinc-800/80 backdrop-blur-sm text-white px-6 py-4 rounded-2xl rounded-tr-sm border border-white/5 shadow-lg">
-                                <p className="text-base leading-relaxed">{message.content}</p>
+                            <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors">
+                              {item.label}
+                            </div>
+                          </motion.button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col gap-6 px-4 md:px-8 py-6">
+                    {activeMessages.map((message, index) => (
+                      <motion.div
+                        key={`${message.role}-${index}`}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        {message.role === 'user' ? (
+                          <div className="max-w-[80%] bg-zinc-800/80 backdrop-blur-sm text-white px-6 py-4 rounded-2xl rounded-tr-sm border border-white/5 shadow-lg">
+                            <p className="text-base leading-relaxed">{message.content}</p>
+                          </div>
+                        ) : (
+                          <div className="flex gap-4 max-w-[90%]">
+                            <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,211,238,0.3)] overflow-hidden p-1">
+                              <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
+                            </div>
+                            <div className="space-y-4">
+                              <div className="text-zinc-100 text-base leading-relaxed">
+                                <MarkdownMessage text={message.content} />
                               </div>
-                            ) : (
-                              <div className="flex gap-4 max-w-[90%]">
-                                <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,211,238,0.3)] overflow-hidden p-1">
-                                  <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
-                                </div>
-                                <div className="space-y-4">
-                                  <div className="text-zinc-100 text-base leading-relaxed">
-                                    <MarkdownMessage text={message.content} />
-                                  </div>
 
-                                  {message.metadata?.event === 'swap_intent_ready' && (
-                                    <div className="mt-4 w-full max-w-sm">
-                                      {/* Swap Card - SwapWidget Style */}
-                                      <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                        {/* Gradient Glow */}
-                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+                              {message.metadata?.event === 'swap_intent_ready' && (
+                                <div className="mt-4 w-full max-w-sm">
+                                  {/* Swap Card - SwapWidget Style */}
+                                  <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                    {/* Gradient Glow */}
+                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
 
-                                        {/* Header */}
-                                        <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                                          <ArrowLeftRight className="w-5 h-5 text-cyan-400" />
-                                          <span className="text-sm font-semibold text-white">Swap</span>
-                                          {swapLoading && <div className="loader-inline-sm ml-auto" />}
+                                    {/* Header */}
+                                    <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
+                                      <ArrowLeftRight className="w-5 h-5 text-cyan-400" />
+                                      <span className="text-sm font-semibold text-white">Swap</span>
+                                      {swapLoading && <div className="loader-inline-sm ml-auto" />}
+                                    </div>
+
+                                    {/* Content */}
+                                    <div className="relative z-10 p-4 space-y-3">
+                                      {/* From Token */}
+                                      <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                        <div className="flex items-center justify-between mb-1">
+                                          <span className="text-[10px] uppercase tracking-wider text-zinc-500">Sell</span>
                                         </div>
-
-                                        {/* Content */}
-                                        <div className="relative z-10 p-4 space-y-3">
-                                          {/* From Token */}
-                                          <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                            <div className="flex items-center justify-between mb-1">
-                                              <span className="text-[10px] uppercase tracking-wider text-zinc-500">Sell</span>
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xl font-medium text-white">{String(message.metadata?.amount)}</span>
+                                          <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                            <div className="w-5 h-5 rounded-full bg-zinc-600 flex items-center justify-center text-[9px] text-white font-bold">
+                                              {String(message.metadata?.from_token)?.[0]}
                                             </div>
-                                            <div className="flex items-center justify-between">
-                                              <span className="text-xl font-medium text-white">{String(message.metadata?.amount)}</span>
-                                              <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                                <div className="w-5 h-5 rounded-full bg-zinc-600 flex items-center justify-center text-[9px] text-white font-bold">
-                                                  {String(message.metadata?.from_token)?.[0]}
-                                                </div>
-                                                <span className="text-sm font-medium text-white">{String(message.metadata?.from_token)}</span>
-                                              </div>
-                                            </div>
-                                            <div className="text-[10px] text-zinc-500 mt-1">{String(message.metadata?.from_network)}</div>
+                                            <span className="text-sm font-medium text-white">{String(message.metadata?.from_token)}</span>
                                           </div>
-
-                                          {/* Arrow */}
-                                          <div className="flex justify-center -my-1">
-                                            <div className="bg-[#0A0A0A] border border-white/10 p-1.5 rounded-lg">
-                                              <ArrowDown className="w-4 h-4 text-cyan-400" />
-                                            </div>
-                                          </div>
-
-                                          {/* To Token */}
-                                          <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                            <div className="flex items-center justify-between mb-1">
-                                              <span className="text-[10px] uppercase tracking-wider text-zinc-500">Buy</span>
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                              <span className="text-xl font-medium text-white">
-                                                {swapLoading ? '...' : swapQuote?.quote ? (
-                                                  swapQuote.quote.sourceNetwork ?
-                                                    Number(swapQuote.quote.estimatedReceiveAmount).toFixed(4) :
-                                                    formatAmountHuman(BigInt(swapQuote.quote.toAmount || swapQuote.quote.estimatedReceiveAmount || 0), 18)
-                                                ) : '~'}
-                                              </span>
-                                              <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                                <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-[9px] text-white font-bold">
-                                                  {String(message.metadata?.to_token)?.[0]}
-                                                </div>
-                                                <span className="text-sm font-medium text-white">{String(message.metadata?.to_token)}</span>
-                                              </div>
-                                            </div>
-                                            <div className="text-[10px] text-zinc-500 mt-1">{String(message.metadata?.to_network)}</div>
-                                          </div>
-
-                                          {/* Error Message */}
-                                          {swapError && !swapLoading && (
-                                            <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
-                                              <p className="text-xs text-red-300">{swapError}</p>
-                                            </div>
-                                          )}
-
-                                          {/* Action Button */}
-                                          <button
-                                            onClick={() => {
-                                              const tokens = metadataToSwapTokens(message.metadata as Record<string, unknown>);
-                                              if (tokens) {
-                                                setSwapWidgetTokens(tokens);
-                                                setShowSwapWidget(true);
-                                              }
-                                            }}
-                                            disabled={swapLoading || !swapQuote?.quote}
-                                            className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                          >
-                                            {swapLoading ? 'Getting best price...' : 'Review Swap'}
-                                          </button>
                                         </div>
+                                        <div className="text-[10px] text-zinc-500 mt-1">{String(message.metadata?.from_network)}</div>
+                                      </div>
 
-                                        {/* Footer */}
-                                        <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                          <div className="w-5 h-5 rounded-full bg-[#ff007a]/20 flex items-center justify-center">
-                                            <span className="text-[10px]">🦄</span>
-                                          </div>
-                                          <span className="text-[10px] text-zinc-500">Powered by Uniswap</span>
+                                      {/* Arrow */}
+                                      <div className="flex justify-center -my-1">
+                                        <div className="bg-[#0A0A0A] border border-white/10 p-1.5 rounded-lg">
+                                          <ArrowDown className="w-4 h-4 text-cyan-400" />
                                         </div>
                                       </div>
-                                    </div>
-                                  )}
 
-                                  {message.metadata?.event === 'lending_intent_ready' && (
-                                    <div className="mt-4 w-full max-w-sm">
-                                      {/* Lending Card - SwapWidget Style */}
-                                      <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                        {/* Gradient Glow */}
-                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
-
-                                        {/* Header */}
-                                        <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                                          <Landmark className="w-5 h-5 text-cyan-400" />
-                                          <span className="text-sm font-semibold text-white">Lending</span>
-                                          <span className="ml-auto px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[10px] font-medium rounded-full border border-cyan-500/30">
-                                            {String(message.metadata?.action || 'Supply').toUpperCase()}
+                                      {/* To Token */}
+                                      <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                        <div className="flex items-center justify-between mb-1">
+                                          <span className="text-[10px] uppercase tracking-wider text-zinc-500">Buy</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xl font-medium text-white">
+                                            {swapLoading ? '...' : swapQuote?.quote ? (
+                                              swapQuote.quote.sourceNetwork ?
+                                                Number(swapQuote.quote.estimatedReceiveAmount).toFixed(4) :
+                                                formatAmountHuman(BigInt(swapQuote.quote.toAmount || swapQuote.quote.estimatedReceiveAmount || 0), 18)
+                                            ) : '~'}
                                           </span>
-                                        </div>
-
-                                        {/* Content */}
-                                        <div className="relative z-10 p-4 space-y-3">
-                                          {/* Amount Card */}
-                                          <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                            <div className="flex items-center justify-between mb-1">
-                                              <span className="text-[10px] uppercase tracking-wider text-zinc-500">
-                                                {String(message.metadata?.action || 'Supply')}
-                                              </span>
+                                          <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                            <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-[9px] text-white font-bold">
+                                              {String(message.metadata?.to_token)?.[0]}
                                             </div>
-                                            <div className="flex items-center justify-between">
-                                              <span className="text-xl font-medium text-white">
-                                                {String(message.metadata?.amount || '0')}
-                                              </span>
-                                              <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                                <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-[9px] text-white font-bold">
-                                                  {String(message.metadata?.asset || message.metadata?.token || 'T')?.[0]}
-                                                </div>
-                                                <span className="text-sm font-medium text-white">
-                                                  {String(message.metadata?.asset || message.metadata?.token || 'Token')}
-                                                </span>
-                                              </div>
-                                            </div>
-                                            <div className="text-[10px] text-zinc-500 mt-1">
-                                              {String(message.metadata?.network || 'Avalanche')}
-                                            </div>
+                                            <span className="text-sm font-medium text-white">{String(message.metadata?.to_token)}</span>
                                           </div>
-
-                                          {/* Action Button */}
-                                          <button
-                                            onClick={() => {
-                                              setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
-                                              setLendingModalOpen(true);
-                                            }}
-                                            className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                          >
-                                            Review {String(message.metadata?.action || 'Supply')}
-                                          </button>
                                         </div>
-
-                                        {/* Footer */}
-                                        <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                          <div className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center">
-                                            <Landmark className="w-3 h-3 text-cyan-400" />
-                                          </div>
-                                          <span className="text-[10px] text-zinc-500">Powered by Benqi</span>
-                                        </div>
+                                        <div className="text-[10px] text-zinc-500 mt-1">{String(message.metadata?.to_network)}</div>
                                       </div>
+
+                                      {/* Error Message */}
+                                      {swapError && !swapLoading && (
+                                        <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
+                                          <p className="text-xs text-red-300">{swapError}</p>
+                                        </div>
+                                      )}
+
+                                      {/* Action Button */}
+                                      <button
+                                        onClick={() => {
+                                          const tokens = metadataToSwapTokens(message.metadata as Record<string, unknown>);
+                                          if (tokens) {
+                                            setSwapWidgetTokens(tokens);
+                                            setShowSwapWidget(true);
+                                          }
+                                        }}
+                                        disabled={swapLoading || !swapQuote?.quote}
+                                        className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                      >
+                                        {swapLoading ? 'Getting best price...' : 'Review Swap'}
+                                      </button>
                                     </div>
-                                  )}
 
-                                  {message.metadata?.event === 'staking_intent_ready' && (
-                                    <div className="mt-4 w-full max-w-sm">
-                                      {/* Staking Card - SwapWidget Style */}
-                                      <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                        {/* Gradient Glow */}
-                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-blue-500/10 blur-[40px] pointer-events-none" />
-
-                                        {/* Header */}
-                                        <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                                          <Droplets className="w-5 h-5 text-blue-400" />
-                                          <span className="text-sm font-semibold text-white">Liquid Staking</span>
-                                        </div>
-
-                                        {/* Content */}
-                                        <div className="relative z-10 p-4 space-y-3">
-                                          {/* Stake Input */}
-                                          <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                            <div className="flex items-center justify-between mb-1">
-                                              <span className="text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                              <span className="text-xl font-medium text-white">
-                                                {String(message.metadata?.amount || '0')}
-                                              </span>
-                                              <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                                <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[9px] text-white font-bold">
-                                                  {String(message.metadata?.token || 'ETH')?.[0]}
-                                                </div>
-                                                <span className="text-sm font-medium text-white">
-                                                  {String(message.metadata?.token || 'ETH')}
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </div>
-
-                                          {/* Arrow */}
-                                          <div className="flex justify-center -my-1">
-                                            <div className="bg-[#0A0A0A] border border-white/10 p-1.5 rounded-lg">
-                                              <ArrowDown className="w-4 h-4 text-blue-400" />
-                                            </div>
-                                          </div>
-
-                                          {/* Receive Output */}
-                                          <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                            <div className="flex items-center justify-between mb-1">
-                                              <span className="text-[10px] uppercase tracking-wider text-zinc-500">You Receive</span>
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                              <span className="text-xl font-medium text-white">
-                                                ~{(Number(message.metadata?.amount || 0) * 0.998).toFixed(4)}
-                                              </span>
-                                              <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                                <div className="w-5 h-5 rounded-full bg-sky-500 flex items-center justify-center text-[9px] text-white font-bold">
-                                                  st
-                                                </div>
-                                                <span className="text-sm font-medium text-white">
-                                                  st{String(message.metadata?.token || 'ETH')}
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </div>
-
-                                          {/* Action Button */}
-                                          <button
-                                            onClick={() => {
-                                              setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
-                                              setShowStakingWidget(true);
-                                            }}
-                                            className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                          >
-                                            Review Staking
-                                          </button>
-                                        </div>
-
-                                        {/* Footer */}
-                                        <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                          <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center">
-                                            <Droplets className="w-3 h-3 text-blue-400" />
-                                          </div>
-                                          <span className="text-[10px] text-zinc-500">Powered by Lido</span>
-                                        </div>
+                                    {/* Footer */}
+                                    <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                      <div className="w-5 h-5 rounded-full bg-[#ff007a]/20 flex items-center justify-center">
+                                        <span className="text-[10px]">🦄</span>
                                       </div>
+                                      <span className="text-[10px] text-zinc-500">Powered by Uniswap</span>
                                     </div>
-                                  )}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
-                          </motion.div>
-                        );
-                      })}
+                              )}
 
-                      {isSending && (
-                        <div className="flex gap-4 max-w-[90%]">
-                          <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 animate-pulse overflow-hidden p-1">
-                            <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
+                              {message.metadata?.event === 'lending_intent_ready' && (
+                                <div className="mt-4 w-full max-w-sm">
+                                  {/* Lending Card - SwapWidget Style */}
+                                  <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                    {/* Gradient Glow */}
+                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+
+                                    {/* Header */}
+                                    <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
+                                      <Landmark className="w-5 h-5 text-cyan-400" />
+                                      <span className="text-sm font-semibold text-white">Lending</span>
+                                      <span className="ml-auto px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[10px] font-medium rounded-full border border-cyan-500/30">
+                                        {String(message.metadata?.action || 'Supply').toUpperCase()}
+                                      </span>
+                                    </div>
+
+                                    {/* Content */}
+                                    <div className="relative z-10 p-4 space-y-3">
+                                      {/* Amount Card */}
+                                      <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                        <div className="flex items-center justify-between mb-1">
+                                          <span className="text-[10px] uppercase tracking-wider text-zinc-500">Amount</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xl font-medium text-white">
+                                            {String(message.metadata?.amount || '0')}
+                                          </span>
+                                          <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                            <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-[9px] text-white font-bold">
+                                              {String(message.metadata?.token || 'USDC')?.[0]}
+                                            </div>
+                                            <span className="text-sm font-medium text-white">
+                                              {String(message.metadata?.token || 'USDC')}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <div className="text-[10px] text-zinc-500 mt-1">
+                                          {String(message.metadata?.network || 'Avalanche')}
+                                        </div>
+                                      </div>
+
+                                      {/* Action Button */}
+                                      <button
+                                        onClick={() => {
+                                          setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
+                                          setShowLendingWidget(true);
+                                        }}
+                                        className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                      >
+                                        Review Lending
+                                      </button>
+                                    </div>
+
+                                    {/* Footer */}
+                                    <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                      <div className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center">
+                                        <Landmark className="w-3 h-3 text-cyan-400" />
+                                      </div>
+                                      <span className="text-[10px] text-zinc-500">Powered by Benqi</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {message.metadata?.event === 'staking_intent_ready' && (
+                                <div className="mt-4 w-full max-w-sm">
+                                  {/* Staking Card - SwapWidget Style */}
+                                  <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                    {/* Gradient Glow */}
+                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-blue-500/10 blur-[40px] pointer-events-none" />
+
+                                    {/* Header */}
+                                    <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
+                                      <Droplets className="w-5 h-5 text-blue-400" />
+                                      <span className="text-sm font-semibold text-white">Liquid Staking</span>
+                                    </div>
+
+                                    {/* Content */}
+                                    <div className="relative z-10 p-4 space-y-3">
+                                      {/* Stake Input */}
+                                      <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                        <div className="flex items-center justify-between mb-1">
+                                          <span className="text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xl font-medium text-white">
+                                            {String(message.metadata?.amount || '0')}
+                                          </span>
+                                          <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                            <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[9px] text-white font-bold">
+                                              {String(message.metadata?.token || 'ETH')?.[0]}
+                                            </div>
+                                            <span className="text-sm font-medium text-white">
+                                              {String(message.metadata?.token || 'ETH')}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Arrow */}
+                                      <div className="flex justify-center -my-1">
+                                        <div className="bg-[#0A0A0A] border border-white/10 p-1.5 rounded-lg">
+                                          <ArrowDown className="w-4 h-4 text-blue-400" />
+                                        </div>
+                                      </div>
+
+                                      {/* Receive Output */}
+                                      <div className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                        <div className="flex items-center justify-between mb-1">
+                                          <span className="text-[10px] uppercase tracking-wider text-zinc-500">You Receive</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xl font-medium text-white">
+                                            ~{(Number(message.metadata?.amount || 0) * 0.998).toFixed(4)}
+                                          </span>
+                                          <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
+                                            <div className="w-5 h-5 rounded-full bg-sky-500 flex items-center justify-center text-[9px] text-white font-bold">
+                                              st
+                                            </div>
+                                            <span className="text-sm font-medium text-white">
+                                              st{String(message.metadata?.token || 'ETH')}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Action Button */}
+                                      <button
+                                        onClick={() => {
+                                          setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
+                                          setShowStakingWidget(true);
+                                        }}
+                                        className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                      >
+                                        Review Staking
+                                      </button>
+                                    </div>
+
+                                    {/* Footer */}
+                                    <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                      <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center">
+                                        <Droplets className="w-3 h-3 text-blue-400" />
+                                      </div>
+                                      <span className="text-[10px] text-zinc-500">Powered by Lido</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 pt-3">
-                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.3s]" />
-                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.15s]" />
-                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce" />
-                          </div>
+                        )}
+                      </motion.div>
+                    ))}
+
+                    {isSending && (
+                      <div className="flex gap-4 max-w-[90%]">
+                        <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 animate-pulse overflow-hidden p-1">
+                          <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
                         </div>
-                      )}
-                      <div ref={messagesEndRef} />
-                    </div>
-                  )}
-                </div>
+                        <div className="flex items-center gap-1 pt-3">
+                          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.3s]" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.15s]" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce" />
+                        </div>
+                      </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
 
                 {/* Sticky Bottom Input (Chat State) */}
                 <AnimatePresence>
@@ -1588,7 +1603,8 @@ export default function ChatPage() {
                 </AnimatePresence>
               </div>
             </div>
-          </SeniorAppShell>
+          </div>
+        </SeniorAppShell>
 
           {/* Lending Modal */}
           <AnimatePresence>
@@ -1633,7 +1649,7 @@ export default function ChatPage() {
               />
             )}
           </AnimatePresence>
-        </React.Fragment>
+        </>
       </TransactionSettingsProvider>
     </ProtectedRoute>
   );
