@@ -9,6 +9,7 @@ import { signLoginPayload } from 'thirdweb/auth';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import { DEBUG } from '@/shared/config/debug';
 import '@/shared/ui/loader.css';
 import { TonConnectButton, useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 import { isTelegramWebApp } from '@/lib/isTelegram';
@@ -93,11 +94,12 @@ export default function NewChatPage() {
       return [
         inAppWallet({
           auth: {
-            options: ['email', 'passkey', 'guest'],
+            options: ['google', 'telegram', 'email', 'passkey'],
             mode,
             redirectUrl,
           },
         }),
+        createWallet('io.metamask', { preferDeepLink: true }),
       ];
     }
     return [
@@ -535,6 +537,7 @@ export default function NewChatPage() {
             )}
 
             {/* Debug Info */}
+            {DEBUG &&
             <div className="mt-8 p-3 bg-black/50 rounded-lg text-[10px] font-mono text-gray-400 break-all max-w-xs text-left">
               <p className="font-bold mb-1 text-gray-300">Debug Info:</p>
               <p>isTelegram state: <span className={isTelegram ? "text-green-400" : "text-yellow-400"}>{String(isTelegram)}</span></p>
@@ -542,6 +545,7 @@ export default function NewChatPage() {
               <p>WebApp: {typeof window !== 'undefined' && (window as any).Telegram?.WebApp ? 'Present' : 'Missing'}</p>
               <p>UserAgent: {typeof navigator !== 'undefined' ? navigator.userAgent.substring(0, 50) + '...' : 'N/A'}</p>
             </div>
+            }
           </div>
         ) : null}
       </div>
