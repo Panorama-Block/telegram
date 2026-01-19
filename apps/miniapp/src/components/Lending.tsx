@@ -124,7 +124,18 @@ export function Lending({ onClose, initialAmount, initialAsset, initialAction }:
   };
 
   const handleAction = async () => {
-    if (!activeToken || !account || !amount) return;
+    if (!activeToken) {
+      setExecutionError('Select a token to continue.');
+      return;
+    }
+    if (!amount || Number(amount) <= 0) {
+      setExecutionError('Enter a valid amount to continue.');
+      return;
+    }
+    if (!account) {
+      setExecutionError('Connect an EVM wallet to continue.');
+      return;
+    }
 
     setPreparing(true);
     setExecutionError(null);

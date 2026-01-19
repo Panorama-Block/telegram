@@ -90,6 +90,7 @@ const nextConfig: NextConfig = {
     VITE_EVM_CHAIN_ID: process.env.DEFAULT_CHAIN_ID || "8453",
     VITE_AI_API_URL: process.env.AI_API_URL || "",
     VITE_AGENTS_API_BASE: process.env.AGENTS_API_BASE || "",
+    NEXT_PUBLIC_AGENTS_API_BASE: process.env.AGENTS_API_BASE || "",
     VITE_TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || "",
     AGENTS_API_BASE: process.env.AGENTS_API_BASE || "",
     AGENTS_RESPONSE_MESSAGE_PATH: process.env.AGENTS_RESPONSE_MESSAGE_PATH || "",

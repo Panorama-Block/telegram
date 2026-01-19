@@ -1,6 +1,9 @@
+'use client';
+
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, X, Check, ArrowLeft } from "lucide-react";
 import { useState, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { networks } from "@/features/swap/tokens";
 
@@ -70,7 +73,9 @@ export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }:
     exit: isMobile ? { y: "100%" } : { scale: 0.95, opacity: 0, y: 20 },
   };
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -214,6 +219,7 @@ export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }:
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
