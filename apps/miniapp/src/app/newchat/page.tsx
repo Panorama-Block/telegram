@@ -31,6 +31,7 @@ export default function NewChatPage() {
   const connectButtonRef = useRef<HTMLDivElement>(null);
   const lastTriedAddressRef = useRef<string | null>(null);
   const [isTelegram, setIsTelegram] = useState(false);
+  const isTelegramEnv = isTelegram || isTelegramWebApp();
 
   useEffect(() => {
     // Initial check
@@ -108,7 +109,7 @@ export default function NewChatPage() {
   // Auto-connect wallet on mount if not connected
   useEffect(() => {
     const autoConnectWallet = async () => {
-      if (account || tonWallet || hasTriedAutoConnectRef.current || !client) return;
+      if (account || tonWallet || hasTriedAutoConnectRef.current || !client || isTelegramWebApp()) return;
 
       hasTriedAutoConnectRef.current = true;
       setIsConnecting(true);
@@ -125,6 +126,7 @@ export default function NewChatPage() {
         }
       } catch (err) {
         console.log('[NEWCHAT] AutoConnect not available, user needs to connect manually');
+      } finally {
         setIsConnecting(false);
       }
     };
@@ -445,7 +447,7 @@ export default function NewChatPage() {
   }
 
   const connected = Boolean(account?.address || tonWallet?.account.address);
-  const showFreshConnect = isTelegram && (isConnecting || (isAuthenticating && statusMessage.toLowerCase().includes('ton')));
+  const showFreshConnect = isTelegramEnv && (isConnecting || (isAuthenticating && statusMessage.toLowerCase().includes('ton')));
 
   return (
     <div className="fixed inset-0 bg-pano-bg-primary flex items-center justify-center overflow-hidden">
@@ -498,21 +500,17 @@ export default function NewChatPage() {
         </div>
 
         {/* Loading indicator or Connect Button */}
-        {isAuthenticating || isConnecting ? (
+        {isAuthenticating ? (
           <div className="flex items-center gap-2">
             <div className="loader-inline-sm" />
           </div>
-        ) : !connected && client && !hasTriedAutoConnectRef.current ? (
-          <div className="flex items-center gap-2">
-            <div className="loader-inline-sm" />
-          </div>
-        ) : !connected && client ? (
+        ) : !connected ? (
           <div ref={connectButtonRef} className="mt-4 w-full flex flex-col items-center">
-            {isTelegram ? (
+            {isTelegramEnv ? (
               <div className="w-full max-w-[280px]">
                 <TonConnectButton className="w-full" />
               </div>
-            ) : (
+            ) : client ? (
               <ConnectButton
                 client={client}
                 wallets={wallets}
@@ -532,6 +530,8 @@ export default function NewChatPage() {
                 }}
                 theme="dark"
               />
+            ) : (
+              <div className="text-xs text-red-400">Missing THIRDWEB_CLIENT_ID</div>
             )}
 
             {/* Debug Info */}

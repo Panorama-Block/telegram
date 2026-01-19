@@ -387,6 +387,7 @@ class LendingApiClient {
       const data = txData.data;
       const gas = txData.gasLimit || txData.gas;
       const gasPrice = txData.gasPrice;
+      const chainId = txData.chainId;
 
       if (!toAddress || !data) {
         throw new Error(`Invalid transaction data: missing to address or data`);
@@ -396,20 +397,37 @@ class LendingApiClient {
         throw new Error(`Invalid to address: ${toAddress}`);
       }
 
-      const formattedTxData = {
-        to: toAddress,
-        value: value ? `0x${parseInt(value).toString(16)}` : '0x0',
-        data: data,
-        gas: gas ? `0x${parseInt(gas).toString(16)}` : '0x5208',
-        gasPrice: gasPrice ? `0x${parseInt(gasPrice).toString(16)}` : undefined
+      const toHex = (input?: string | number | bigint) => {
+        if (input === undefined || input === null || input === '') return undefined;
+        if (typeof input === 'bigint') return `0x${input.toString(16)}`;
+        if (typeof input === 'number') return `0x${BigInt(Math.trunc(input)).toString(16)}`;
+        if (typeof input === 'string') {
+          const trimmed = input.trim();
+          if (!trimmed) return undefined;
+          if (trimmed.startsWith('0x')) return trimmed;
+          return `0x${BigInt(trimmed).toString(16)}`;
+        }
+        return undefined;
       };
 
-      if (formattedTxData.gasPrice === '0x0' || !formattedTxData.gasPrice) {
-        delete formattedTxData.gasPrice;
+      const formattedTxData: Record<string, any> = {
+        to: toAddress,
+        data: data,
+        value: toHex(value) ?? '0x0',
+      };
+
+      const gasHex = toHex(gas);
+      if (gasHex) {
+        formattedTxData.gas = gasHex;
       }
 
-      if (!formattedTxData.to || !formattedTxData.data) {
-        throw new Error('Invalid transaction data after formatting');
+      const gasPriceHex = toHex(gasPrice);
+      if (gasPriceHex && gasPriceHex !== '0x0') {
+        formattedTxData.gasPrice = gasPriceHex;
+      }
+
+      if (chainId) {
+        formattedTxData.chainId = chainId;
       }
 
       const tx = await this.account.sendTransaction(formattedTxData);

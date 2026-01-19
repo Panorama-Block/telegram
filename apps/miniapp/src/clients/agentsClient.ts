@@ -58,7 +58,10 @@ export class AgentsClient {
 
   constructor() {
     // Read environment variables provided by Next.js
-    this.baseUrl = process.env.AGENTS_API_BASE;
+    this.baseUrl =
+      process.env.NEXT_PUBLIC_AGENTS_API_BASE ||
+      process.env.VITE_AGENTS_API_BASE ||
+      process.env.AGENTS_API_BASE;
     this.messagePath = process.env.AGENTS_RESPONSE_MESSAGE_PATH;
     const debugFlag = process.env.AGENTS_DEBUG_SHAPE;
     this.debugShape = typeof debugFlag === 'string' ? ['1', 'true', 'on', 'yes'].includes(debugFlag.toLowerCase()) : Boolean(debugFlag);
