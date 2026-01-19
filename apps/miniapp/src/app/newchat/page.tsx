@@ -90,11 +90,11 @@ export default function NewChatPage() {
     const mode = isTelegram ? 'redirect' : 'popup';
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
 
-    if (isiOS && isTelegram) {
+    if (isiOS) {
       return [
         inAppWallet({
           auth: {
-            options: ['email', 'passkey', 'guest'],
+            options: ['google', 'telegram', 'email', 'passkey'],
             mode,
             redirectUrl,
           },
