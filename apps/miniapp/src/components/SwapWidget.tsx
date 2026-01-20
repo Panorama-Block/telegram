@@ -18,7 +18,7 @@ import { TokenSelectionModal } from "@/components/TokenSelectionModal";
 // API Integration
 import { swapApi, SwapApiError } from "@/features/swap/api";
 import { bridgeApi } from "@/features/swap/bridgeApi";
-import { TON_CHAIN_ID } from "@/features/swap/tokens";
+import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS } from "@/features/swap/tokens";
 import {
   normalizeToApi,
   formatAmountHuman,
@@ -60,8 +60,8 @@ const getTokenColor = (token: any) => {
   return 'bg-zinc-500';
 };
 
-const DEFAULT_SELL_TOKEN = { ticker: "CONF", name: "Confraria", network: "World Chain", address: "0xf1e7adc9c1743cd2c6cea47d0ca43fad57190616", balance: "0.00" };
-const DEFAULT_BUY_TOKEN = { ticker: "ETH", name: "Ethereum", network: "Base", address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", balance: "0.00" };
+const DEFAULT_SELL_TOKEN = { ticker: "ETH", name: "Ethereum", network: "Ethereum", address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", balance: "0.00" };
+const DEFAULT_BUY_TOKEN = { ticker: "AVAX", name: "Avalanche", network: "Avalanche", address: "0x0000000000000000000000000000000000000000", balance: "0.00" };
 
 const getBaseChainId = (networkName: string): number => {
   switch (networkName) {
@@ -159,6 +159,48 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   const isCrossChain = sellToken.network !== buyToken.network;
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
+  // Cross-chain support validation
+  const crossChainSupport = useMemo(() => {
+    if (!isCrossChain) {
+      return { supported: true, reason: undefined };
+    }
+
+    const fromChainId = getBaseChainId(sellToken.network);
+    const toChainId = getBaseChainId(buyToken.network);
+    const tokenSymbol = sellToken.ticker || sellToken.symbol;
+
+    // TON bridge is always supported (has its own flow)
+    if (fromChainId === TON_CHAIN_ID || toChainId === TON_CHAIN_ID) {
+      return { supported: true, reason: undefined };
+    }
+
+    // Check if source chain supports cross-chain
+    if (!CROSS_CHAIN_SUPPORTED_CHAIN_IDS.includes(fromChainId)) {
+      return {
+        supported: false,
+        reason: `Cross-chain swaps from ${sellToken.network} are not yet supported`
+      };
+    }
+
+    // Check if destination chain supports cross-chain
+    if (!CROSS_CHAIN_SUPPORTED_CHAIN_IDS.includes(toChainId)) {
+      return {
+        supported: false,
+        reason: `Cross-chain swaps to ${buyToken.network} are not yet supported`
+      };
+    }
+
+    // Check if the sell token is supported for cross-chain
+    if (!CROSS_CHAIN_SUPPORTED_SYMBOLS.includes(tokenSymbol)) {
+      return {
+        supported: false,
+        reason: `${tokenSymbol} is not supported for cross-chain swaps. Try using ETH, USDC, or USDT instead.`
+      };
+    }
+
+    return { supported: true, reason: undefined };
+  }, [isCrossChain, sellToken, buyToken]);
+
   // Effects
   useEffect(() => {
     if (initialFromToken) setSellToken(initialFromToken);
@@ -209,8 +251,8 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   }, [currentSwapId]);
 
   const canQuote = useMemo(() => {
-    return Boolean(sellToken && buyToken && amount && Number(amount) > 0);
-  }, [sellToken, buyToken, amount]);
+    return Boolean(sellToken && buyToken && amount && Number(amount) > 0 && crossChainSupport.supported);
+  }, [sellToken, buyToken, amount, crossChainSupport.supported]);
 
   // Quote Logic
   useEffect(() => {
@@ -724,9 +766,13 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                   <div className="flex justify-center -my-3 relative z-20">
                     <button
                       onClick={() => {
-                        const temp = sellToken;
+                        const tempToken = sellToken;
                         setSellToken(buyToken);
-                        setBuyToken(temp);
+                        setBuyToken(tempToken);
+                        // Swap the amounts: sell amount becomes estimated output
+                        if (estimatedOutput && estimatedOutput !== "0.00" && !quoting) {
+                          setAmount(estimatedOutput);
+                        }
                         setQuote(null);
                       }}
                       className="bg-[#0A0A0A] border border-white/10 p-2 rounded-xl text-zinc-400 hover:text-primary hover:border-primary/50 transition-all"
@@ -754,8 +800,23 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                     }
                   />
 
+                  {/* Cross-chain not supported warning */}
+                  {!crossChainSupport.supported && (
+                    <div className="bg-orange-500/10 border border-orange-500/40 rounded-xl p-3 mt-2">
+                      <div className="flex items-start gap-2">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-orange-400 flex-shrink-0 mt-0.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <div>
+                          <p className="text-xs font-semibold text-orange-400 mb-1">Pair Not Supported</p>
+                          <p className="text-[11px] text-zinc-400 leading-relaxed">{crossChainSupport.reason}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Quote Error */}
-                  {quoteError && (
+                  {quoteError && crossChainSupport.supported && (
                     <div className="text-red-400 text-xs px-2 mt-2">
                       {quoteError}
                     </div>
@@ -791,9 +852,10 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                   <div className="mt-auto pt-6 space-y-4">
                     <NeonButton
                       onClick={() => setViewState('routing')}
-                      disabled={!quote || quoting}
+                      disabled={!quote || quoting || !crossChainSupport.supported}
+                      className={!crossChainSupport.supported ? "opacity-50 cursor-not-allowed" : ""}
                     >
-                      {quoting ? "Fetching best price..." : "Review Swap"}
+                      {quoting ? "Fetching best price..." : !crossChainSupport.supported ? "Pair Not Supported" : "Review Swap"}
                     </NeonButton>
 
                     <div className="text-center text-[10px] text-zinc-500 leading-relaxed">

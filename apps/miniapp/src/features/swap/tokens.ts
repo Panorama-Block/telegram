@@ -4,13 +4,85 @@ export type Token = {
   icon?: string;
   decimals?: number;
   name?: string;
+  crossChainSupported?: boolean; // Whether this token supports cross-chain swaps
 };
 export type Network = {
   nativeCurrency: Token;
   chainId: number;
   name: string;
-  tokens: Token[]
+  tokens: Token[];
+  crossChainSupported?: boolean; // Whether this network supports cross-chain swaps
 };
+
+// Tokens that are commonly supported for cross-chain swaps
+export const CROSS_CHAIN_SUPPORTED_SYMBOLS = [
+  'ETH', 'WETH', 'USDC', 'USDT', 'WBTC', 'DAI', 'AAVE', 'UNI', 'LINK',
+  'AVAX', 'WAVAX', 'MATIC', 'ARB', 'OP', 'BNB', 'cbBTC', 'WLD',
+  'MCW', 'Confraria', 'CONF'  // Milhas da Confra on World Chain
+];
+
+// Networks that support cross-chain swaps via Thirdweb
+export const CROSS_CHAIN_SUPPORTED_CHAIN_IDS = [
+  1,      // Ethereum
+  137,    // Polygon
+  56,     // BSC
+  8453,   // Base
+  10,     // Optimism
+  42161,  // Arbitrum
+  43114,  // Avalanche
+  480,    // World Chain
+];
+
+// Check if a token is supported for cross-chain swaps
+export function isTokenCrossChainSupported(token: Token, chainId: number): boolean {
+  // Check if the chain supports cross-chain
+  if (!CROSS_CHAIN_SUPPORTED_CHAIN_IDS.includes(chainId)) {
+    return false;
+  }
+
+  // Check if the token symbol is in the supported list
+  return CROSS_CHAIN_SUPPORTED_SYMBOLS.includes(token.symbol);
+}
+
+// Check if a swap pair is supported
+export function isSwapPairSupported(
+  fromToken: Token,
+  fromChainId: number,
+  _toToken: Token,
+  toChainId: number
+): { supported: boolean; reason?: string } {
+  // Same chain swaps are always supported
+  if (fromChainId === toChainId) {
+    return { supported: true };
+  }
+
+  // Cross-chain: check if both chains support cross-chain
+  if (!CROSS_CHAIN_SUPPORTED_CHAIN_IDS.includes(fromChainId)) {
+    const network = networks.find(n => n.chainId === fromChainId);
+    return {
+      supported: false,
+      reason: `Cross-chain swaps from ${network?.name || 'this network'} are not yet supported`
+    };
+  }
+
+  if (!CROSS_CHAIN_SUPPORTED_CHAIN_IDS.includes(toChainId)) {
+    const network = networks.find(n => n.chainId === toChainId);
+    return {
+      supported: false,
+      reason: `Cross-chain swaps to ${network?.name || 'this network'} are not yet supported`
+    };
+  }
+
+  // Check if the from token is supported for cross-chain
+  if (!CROSS_CHAIN_SUPPORTED_SYMBOLS.includes(fromToken.symbol)) {
+    return {
+      supported: false,
+      reason: `${fromToken.symbol} is not supported for cross-chain swaps. Try using ETH, USDC, or USDT instead.`
+    };
+  }
+
+  return { supported: true };
+}
 
 export const TON_CHAIN_ID = -239;
 
