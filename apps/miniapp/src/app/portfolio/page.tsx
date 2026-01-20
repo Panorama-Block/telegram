@@ -6,12 +6,19 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import {
-  ArrowUpRight,
   Wallet,
   ArrowLeft,
   Scan,
   Loader2,
-  Zap
+  Zap,
+  Trash2,
+  Pause,
+  Play,
+  ChevronDown,
+  ChevronUp,
+  ArrowRightLeft,
+  Calendar,
+  Clock,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -22,7 +29,7 @@ import { SmartWalletCard, SmartWalletIndicator } from "@/features/portfolio/Smar
 import { CreateSmartWalletModal } from "@/features/portfolio/CreateSmartWalletModal";
 import DepositModal from "@/features/dca/DepositModal";
 import WithdrawModal from "@/features/dca/WithdrawModal";
-import { deleteSmartAccount } from "@/features/dca/api";
+import { deleteSmartAccount, deleteStrategy, toggleStrategy, DCAStrategy } from "@/features/dca/api";
 import { useActiveAccount } from "thirdweb/react";
 import { shortenAddress } from "thirdweb/utils";
 
@@ -50,6 +57,10 @@ export default function PortfolioPage() {
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // DCA Strategy management
+  const [expandedStrategy, setExpandedStrategy] = useState<string | null>(null);
+  const [strategyActionLoading, setStrategyActionLoading] = useState<string | null>(null);
 
   // Determine which data to show based on view mode
   const isSmartWalletView = viewMode === 'smart' && hasSmartWallet;
@@ -95,6 +106,59 @@ export default function PortfolioPage() {
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  // Handle toggling strategy active status
+  const handleToggleStrategy = async (strategy: DCAStrategy) => {
+    if (!strategy.strategyId || !account?.address) return;
+
+    setStrategyActionLoading(strategy.strategyId);
+    try {
+      await toggleStrategy(strategy.strategyId, !strategy.isActive, account.address);
+      await refreshSmartAccounts();
+    } catch (error) {
+      console.error('Error toggling strategy:', error);
+      alert('Failed to toggle strategy. Please try again.');
+    } finally {
+      setStrategyActionLoading(null);
+    }
+  };
+
+  // Handle deleting a strategy
+  const handleDeleteStrategy = async (strategy: DCAStrategy) => {
+    if (!strategy.strategyId || !account?.address) return;
+
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this DCA strategy? This action cannot be undone.'
+    );
+    if (!confirmed) return;
+
+    setStrategyActionLoading(strategy.strategyId);
+    try {
+      await deleteStrategy(strategy.strategyId, account.address);
+      await refreshSmartAccounts();
+      setExpandedStrategy(null);
+    } catch (error) {
+      console.error('Error deleting strategy:', error);
+      alert('Failed to delete strategy. Please try again.');
+    } finally {
+      setStrategyActionLoading(null);
+    }
+  };
+
+  // Get token symbol from address
+  const getTokenSymbol = (address: string) => {
+    const tokenMap: Record<string, string> = {
+      '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE': 'ETH',
+      '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2': 'WETH',
+      '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48': 'USDC',
+      '0xdAC17F958D2ee523a2206206994597C13D831ec7': 'USDT',
+      '0x6B175474E89094C44Da98b954EescdeCB5147d6dc': 'DAI',
+      '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599': 'WBTC',
+      '0x514910771AF9Ca656af840dff83E8264EcF986CA': 'LINK',
+      '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984': 'UNI',
+    };
+    return tokenMap[address] || address.slice(0, 6) + '...';
   };
 
   return (
@@ -262,35 +326,181 @@ export default function PortfolioPage() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-white flex items-center gap-2">
                 <Zap className="w-5 h-5 text-cyan-400" />
-                Active DCA Strategies
+                DCA Strategies
               </h3>
+              <span className="text-xs text-zinc-500">
+                {strategies.filter(s => s.isActive).length} active / {strategies.length} total
+              </span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {strategies.filter(s => s.isActive).slice(0, 3).map((strategy, i) => (
-                <GlassCard key={strategy.strategyId || i} className="p-4 bg-[#0A0A0A]/60">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center text-xs font-bold text-cyan-400">
-                        {strategy.fromToken.slice(0, 2)}
+            <div className="space-y-3">
+              {strategies.map((strategy, i) => {
+                const isExpanded = expandedStrategy === strategy.strategyId;
+                const isLoading = strategyActionLoading === strategy.strategyId;
+                const fromSymbol = getTokenSymbol(strategy.fromToken);
+                const toSymbol = getTokenSymbol(strategy.toToken);
+
+                return (
+                  <GlassCard
+                    key={strategy.strategyId || i}
+                    className={cn(
+                      "p-4 bg-[#0A0A0A]/60 transition-all",
+                      isExpanded && "ring-1 ring-cyan-500/30"
+                    )}
+                  >
+                    {/* Main Row */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {/* Token Icons */}
+                        <div className="relative">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center text-xs font-bold text-cyan-400 border border-cyan-500/20">
+                            {fromSymbol.slice(0, 2)}
+                          </div>
+                          <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#0A0A0A] flex items-center justify-center">
+                            <ArrowRightLeft className="w-3 h-3 text-zinc-500" />
+                          </div>
+                        </div>
+
+                        {/* Strategy Info */}
+                        <div>
+                          <div className="text-sm font-medium text-white flex items-center gap-2">
+                            {strategy.amount} {fromSymbol} → {toSymbol}
+                          </div>
+                          <div className="text-xs text-zinc-500 flex items-center gap-2">
+                            <Calendar className="w-3 h-3" />
+                            <span className="capitalize">{strategy.interval}</span>
+                            <span className="text-zinc-600">•</span>
+                            <Clock className="w-3 h-3" />
+                            <span>Next: {new Date(strategy.nextExecution * 1000).toLocaleDateString()}</span>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-sm font-medium text-white">
-                          {strategy.amount} ETH
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2">
+                        {/* Status Badge */}
+                        <div className={cn(
+                          "px-2 py-1 rounded-full text-[10px] font-medium border",
+                          strategy.isActive
+                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                            : "bg-zinc-500/10 border-zinc-500/20 text-zinc-400"
+                        )}>
+                          {strategy.isActive ? 'Active' : 'Paused'}
                         </div>
-                        <div className="text-xs text-zinc-500 capitalize">
-                          {strategy.interval}
-                        </div>
+
+                        {/* Expand Button */}
+                        <button
+                          onClick={() => setExpandedStrategy(isExpanded ? null : strategy.strategyId || null)}
+                          className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                        >
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
                       </div>
                     </div>
-                    <div className="px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[10px] font-medium text-emerald-400">
-                      Active
-                    </div>
-                  </div>
-                  <div className="text-xs text-zinc-500">
-                    Next: {new Date(strategy.nextExecution).toLocaleDateString()}
-                  </div>
-                </GlassCard>
-              ))}
+
+                    {/* Expanded Details */}
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-4 pt-4 border-t border-white/5"
+                      >
+                        {/* Details Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                          <div>
+                            <div className="text-[10px] text-zinc-500 uppercase mb-1">From Token</div>
+                            <div className="text-sm text-white font-mono">{fromSymbol}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-zinc-500 uppercase mb-1">To Token</div>
+                            <div className="text-sm text-white font-mono">{toSymbol}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-zinc-500 uppercase mb-1">Amount</div>
+                            <div className="text-sm text-white">{strategy.amount} {fromSymbol}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-zinc-500 uppercase mb-1">Frequency</div>
+                            <div className="text-sm text-white capitalize">{strategy.interval}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-zinc-500 uppercase mb-1">Last Executed</div>
+                            <div className="text-sm text-white">
+                              {strategy.lastExecuted > 0
+                                ? new Date(strategy.lastExecuted * 1000).toLocaleDateString()
+                                : 'Never'
+                              }
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-zinc-500 uppercase mb-1">Next Execution</div>
+                            <div className="text-sm text-white">
+                              {new Date(strategy.nextExecution * 1000).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-zinc-500 uppercase mb-1">Chain</div>
+                            <div className="text-sm text-white">
+                              {strategy.fromChainId === 1 ? 'Ethereum' : `Chain ${strategy.fromChainId}`}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-zinc-500 uppercase mb-1">Status</div>
+                            <div className={cn(
+                              "text-sm",
+                              strategy.isActive ? "text-emerald-400" : "text-zinc-400"
+                            )}>
+                              {strategy.isActive ? 'Active' : 'Paused'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 pt-2">
+                          {/* Pause/Resume Button */}
+                          <button
+                            onClick={() => handleToggleStrategy(strategy)}
+                            disabled={isLoading}
+                            className={cn(
+                              "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                              strategy.isActive
+                                ? "bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 border border-yellow-500/20"
+                                : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20",
+                              isLoading && "opacity-50 cursor-not-allowed"
+                            )}
+                          >
+                            {isLoading ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : strategy.isActive ? (
+                              <Pause className="w-4 h-4" />
+                            ) : (
+                              <Play className="w-4 h-4" />
+                            )}
+                            {strategy.isActive ? 'Pause' : 'Resume'}
+                          </button>
+
+                          {/* Delete Button */}
+                          <button
+                            onClick={() => handleDeleteStrategy(strategy)}
+                            disabled={isLoading}
+                            className={cn(
+                              "flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-sm font-medium transition-colors",
+                              isLoading && "opacity-50 cursor-not-allowed"
+                            )}
+                          >
+                            {isLoading ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                            Delete
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </GlassCard>
+                );
+              })}
             </div>
           </motion.div>
         )}
