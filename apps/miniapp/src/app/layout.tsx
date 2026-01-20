@@ -143,7 +143,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, shrink-to-fit=no" />
         <meta name="theme-color" content="#00d9ff" />
         <meta name="background-color" content="#050505" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -159,7 +159,7 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://api.coingecko.com" />
         <link rel="dns-prefetch" href="https://api.1inch.io" />
       </head>
-      <body className={`${jetbrainsMono.variable} ${plusJakarta.variable} h-full bg-pano-bg-primary text-pano-text-primary antialiased overflow-x-hidden`}>
+      <body className={`${jetbrainsMono.variable} ${plusJakarta.variable} min-h-[100dvh] bg-pano-bg-primary text-pano-text-primary antialiased overflow-x-hidden`}>
         <ClientProviders>
           {children}
         </ClientProviders>

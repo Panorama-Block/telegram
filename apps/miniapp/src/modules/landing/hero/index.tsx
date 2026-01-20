@@ -1,15 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
+import { useActiveWallet, useDisconnect } from 'thirdweb/react'
+import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb'
 import zicoBlue from '../../../../public/icons/zico_blue.svg'
 import Banner from '../banner'
 
 const Hero = () => {
-  const router = useRouter()
+  const activeWallet = useActiveWallet()
+  const { disconnect } = useDisconnect()
   const [currentWord, setCurrentWord] = useState(0)
+  const [isLaunching, setIsLaunching] = useState(false)
 
   const words = [
     'Composable DeFi Strategies',
@@ -24,6 +27,81 @@ const Hero = () => {
     }, 1800)
     return () => clearInterval(interval)
   }, [words.length])
+
+  const handleLaunchApp = async () => {
+    setIsLaunching(true)
+
+    try {
+      // 1. Disconnect wallet via Thirdweb (if connected)
+      if (activeWallet) {
+        try {
+          await disconnect(activeWallet)
+          console.log('[LaunchApp] Wallet disconnected')
+        } catch (error) {
+          console.warn('[LaunchApp] Wallet disconnect failed:', error)
+        }
+      }
+
+      // 2. Clear ALL localStorage
+      if (typeof window !== 'undefined') {
+        // Application auth tokens
+        const appKeys = [
+          'authToken',
+          'authPayload',
+          'authSignature',
+          'telegram_user',
+          'userAddress',
+        ]
+        appKeys.forEach(key => localStorage.removeItem(key))
+
+        // Thirdweb-specific keys
+        const clientId = THIRDWEB_CLIENT_ID
+        if (clientId) {
+          const thirdwebKeys = [
+            `walletToken-${clientId}`,
+            `thirdwebEwsWalletToken-${clientId}`,
+            `thirdweb_auth_token_${clientId}`,
+            `thirdwebEwsWalletUserId-${clientId}`,
+          ]
+          thirdwebKeys.forEach(key => localStorage.removeItem(key))
+        }
+        localStorage.removeItem('thirdwebAuthToken')
+
+        // Clear any residual thirdweb/wallet keys
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('thirdweb') || key.startsWith('walletToken')) {
+            localStorage.removeItem(key)
+          }
+        })
+
+        // Clear TON Connect keys
+        Object.keys(localStorage).forEach(key => {
+          const lower = key.toLowerCase()
+          if (lower.startsWith('tonconnect') || lower.startsWith('ton-connect') || lower.includes('tonconnect')) {
+            localStorage.removeItem(key)
+          }
+        })
+
+        // 3. Clear sessionStorage completely
+        Object.keys(sessionStorage).forEach(key => {
+          sessionStorage.removeItem(key)
+        })
+
+        console.log('[LaunchApp] All storage cleared')
+      }
+
+      // 4. Small delay to ensure everything is cleared
+      await new Promise(resolve => setTimeout(resolve, 150))
+
+      // 5. Full page reload to /newchat (clears React state completely)
+      window.location.href = '/miniapp/newchat'
+
+    } catch (error) {
+      console.error('[LaunchApp] Error:', error)
+      // Even if something fails, force navigate
+      window.location.href = '/miniapp/newchat'
+    }
+  }
 
   return (
     <div className="relative flex flex-col items-center justify-center h-full mt-6 md:mt-16">
@@ -44,10 +122,11 @@ const Hero = () => {
 
       <div className="flex flex-col items-center mx-auto w-fit mt-8 gap-8 z-50">
         <Button
-          onClick={() => router.push('/newchat')}
-          className="min-w-[180px] h-14 rounded-[30px] bg-white text-black hover:bg-gray-100 text-lg font-semibold"
+          onClick={handleLaunchApp}
+          disabled={isLaunching}
+          className="min-w-[180px] h-14 rounded-[30px] bg-white text-black hover:bg-gray-100 text-lg font-semibold disabled:opacity-70 disabled:cursor-wait"
         >
-          Launch App
+          {isLaunching ? 'Loading...' : 'Launch App'}
         </Button>
       </div>
 

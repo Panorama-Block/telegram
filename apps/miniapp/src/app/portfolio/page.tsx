@@ -163,7 +163,7 @@ export default function PortfolioPage() {
 
   return (
     <ProtectedRoute>
-    <div className="min-h-[100dvh] bg-[#050505] relative overflow-x-hidden flex flex-col text-foreground font-sans">
+    <div className="min-h-[100dvh] bg-[#050505] relative overflow-x-hidden flex flex-col text-foreground font-sans safe-area-pb">
       {/* Ambient God Ray */}
       <div className={cn(
         "absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] blur-3xl pointer-events-none z-0",
@@ -174,8 +174,8 @@ export default function PortfolioPage() {
 
       {/* Navigation Header */}
       <div className="relative z-20 p-6 flex justify-between items-center max-w-7xl mx-auto w-full">
-        <Link href="/chat?new=true" className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors group">
-            <div className="p-2 rounded-full bg-white/5 border border-white/10 group-hover:bg-white/10 transition-colors">
+        <Link href="/chat?new=true" className="flex items-center gap-2 text-zinc-400 hover:text-white active:text-white transition-colors group">
+            <div className="p-3 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full bg-white/5 border border-white/10 group-hover:bg-white/10 group-active:bg-white/15 transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </div>
             <span className="font-medium">Back to Chat</span>

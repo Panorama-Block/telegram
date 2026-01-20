@@ -3,15 +3,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Droplets,
   ArrowDown,
-  Info,
   X,
   ArrowLeft,
   ArrowRight,
   Receipt,
-  Percent,
-  TrendingUp,
   Check,
-  ChevronRight,
   ExternalLink,
   AlertCircle
 } from "lucide-react";
@@ -19,47 +15,35 @@ import { useState } from "react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NeonButton } from "@/components/ui/NeonButton";
 import { DataInput } from "@/components/ui/DataInput";
-import { cn } from "@/lib/utils";
-import { TokenSelectionModal } from "@/components/TokenSelectionModal";
 import { useStakingApi } from "@/features/staking/api";
+
+// Token icons from CoinGecko
+const ETH_ICON = 'https://assets.coingecko.com/coins/images/279/small/ethereum.png';
+const STETH_ICON = 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png';
 
 interface StakingProps {
   onClose: () => void;
   initialAmount?: string;
-  initialToken?: string;
 }
 
 type ViewState = 'input' | 'review' | 'success';
 
-// Helper to get color based on network/token
-const getTokenColor = (token: any) => {
-  if (token.network === 'Avalanche') return 'bg-red-500';
-  if (token.network === 'Base') return 'bg-blue-500';
-  if (token.network === 'BSC') return 'bg-yellow-500';
-  if (token.network === 'Optimism') return 'bg-red-500';
-  if (token.network === 'Polygon') return 'bg-purple-500';
-  if (token.network === 'Arbitrum') return 'bg-blue-600';
-  if (token.ticker === 'CONF') return 'bg-orange-500';
-  if (token.ticker === 'USDC') return 'bg-blue-400';
-  return 'bg-zinc-500';
-};
-
-export function Staking({ onClose, initialAmount, initialToken }: StakingProps) {
+export function Staking({ onClose, initialAmount }: StakingProps) {
   const stakingApi = useStakingApi();
 
   const [viewState, setViewState] = useState<ViewState>('input');
-  const [showTokenList, setShowTokenList] = useState(false);
   const [isStaking, setIsStaking] = useState(false);
   const [stakeAmount, setStakeAmount] = useState(initialAmount || "0.01");
   const [stakingError, setStakingError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  const [activeToken, setActiveToken] = useState({
-    ticker: initialToken || "ETH",
-    name: initialToken || "Ethereum",
+  // ETH is the only supported token for Lido staking
+  const activeToken = {
+    ticker: "ETH",
+    name: "Ethereum",
     network: "Ethereum",
     balance: "0.00"
-  });
+  };
 
   // Handle staking action - calls the real Lido staking API
   const handleStake = async () => {
@@ -166,16 +150,10 @@ export function Staking({ onClose, initialAmount, initialToken }: StakingProps) 
                   value={stakeAmount}
                   onChange={(e) => setStakeAmount(e.target.value)}
                   rightElement={
-                    <button
-                      onClick={() => setShowTokenList(true)}
-                      className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-1.5 hover:bg-zinc-900 transition-colors group"
-                    >
-                      <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold", getTokenColor(activeToken))}>
-                        {activeToken.ticker[0]}
-                      </div>
+                    <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-1.5">
+                      <img src={ETH_ICON} alt="ETH" className="w-6 h-6 rounded-full" />
                       <span className="text-white font-medium">{activeToken.ticker}</span>
-                      <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-white transition-colors" />
-                    </button>
+                    </div>
                   }
                 />
 
@@ -193,10 +171,10 @@ export function Staking({ onClose, initialAmount, initialToken }: StakingProps) 
                   readOnly
                   className="text-zinc-400"
                   rightElement={
-                    <button className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-1.5 hover:bg-zinc-900 transition-colors">
-                      <div className="w-6 h-6 rounded-full bg-sky-500" />
-                      <span className="text-white font-medium">st{activeToken.ticker}</span>
-                    </button>
+                    <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-1.5">
+                      <img src={STETH_ICON} alt="stETH" className="w-6 h-6 rounded-full" />
+                      <span className="text-white font-medium">stETH</span>
+                    </div>
                   }
                 />
 
@@ -368,26 +346,9 @@ export function Staking({ onClose, initialAmount, initialToken }: StakingProps) 
 
         {/* FOOTER POWERED BY */}
         <div className="py-8 relative z-10 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
-           <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center shadow-lg shadow-black/50 border border-white/5">
-             <Droplets className="w-4 h-4 text-blue-400" />
-           </div>
+           <img src="/miniapp/icons/lido_logo.png" alt="Lido" className="w-8 h-8 rounded-full" />
            <span className="text-sm font-medium text-zinc-400">Powered by Lido</span>
         </div>
-
-        {/* TOKEN SELECTION MODAL */}
-        <TokenSelectionModal 
-          isOpen={showTokenList} 
-          onClose={() => setShowTokenList(false)}
-          onSelect={(token) => {
-            setActiveToken({
-              ticker: token.symbol,
-              name: token.name,
-              network: token.network,
-              balance: "0.00" // Placeholder until we use usePortfolioData here
-            });
-            setShowTokenList(false);
-          }}
-        />
 
       </GlassCard>
       </motion.div>
