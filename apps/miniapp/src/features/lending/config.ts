@@ -71,10 +71,62 @@ export const API_ENDPOINTS = {
   BORROW_QUOTE: '/benqi-validation/getValidationAndBorrowQuote',
 } as const;
 
+// Token icons from CoinGecko
+export const TOKEN_ICONS: Record<string, string> = {
+  // Major tokens
+  'ETH': 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+  'WETH': 'https://assets.coingecko.com/coins/images/2518/small/weth.png',
+  'WBTC': 'https://assets.coingecko.com/coins/images/7598/small/wrapped_bitcoin_wbtc.png',
+  'BTC.b': 'https://assets.coingecko.com/coins/images/26115/small/btcb.png',
+  'cbBTC': 'https://assets.coingecko.com/coins/images/40489/small/cbBTC.png',
+
+  // Stablecoins
+  'USDC': 'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
+  'USDT': 'https://assets.coingecko.com/coins/images/325/small/Tether.png',
+  'DAI': 'https://assets.coingecko.com/coins/images/9956/small/Badge_Dai.png',
+  'TUSD': 'https://assets.coingecko.com/coins/images/3449/small/tusd.png',
+  'MIM': 'https://assets.coingecko.com/coins/images/16786/small/mimlogopng.png',
+  'USDe': 'https://assets.coingecko.com/coins/images/33613/small/USDE.png',
+
+  // Avalanche
+  'AVAX': 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png',
+  'WAVAX': 'https://assets.coingecko.com/coins/images/15075/small/wrapped-avax.png',
+  'JOE': 'https://assets.coingecko.com/coins/images/17569/small/traderjoe.png',
+
+  // DeFi protocols
+  'AAVE': 'https://assets.coingecko.com/coins/images/12645/small/aave-token-round.png',
+  'COMP': 'https://assets.coingecko.com/coins/images/10775/small/COMP.png',
+  'UNI': 'https://assets.coingecko.com/coins/images/12504/small/uni.jpg',
+  'LINK': 'https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png',
+  'LDO': 'https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png',
+  'GMX': 'https://assets.coingecko.com/coins/images/18323/small/arbit.png',
+  'QUICK': 'https://assets.coingecko.com/coins/images/13970/small/1_pOU6pBMEmiL-ZJVb0CYRjQ.png',
+  'CAKE': 'https://assets.coingecko.com/coins/images/12632/small/IMG_0440.PNG',
+  'AERO': 'https://assets.coingecko.com/coins/images/31745/small/token.png',
+
+  // Layer 1 / Layer 2
+  'MATIC': 'https://assets.coingecko.com/coins/images/4713/small/matic-token-icon.png',
+  'ARB': 'https://assets.coingecko.com/coins/images/16547/small/photo_2023-03-29_21.47.00.jpeg',
+  'OP': 'https://assets.coingecko.com/coins/images/25244/small/Optimism.png',
+  'BNB': 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png',
+  'TON': 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png',
+  'WLD': 'https://assets.coingecko.com/coins/images/31069/small/worldcoin.jpeg',
+
+  // Other tokens
+  'SAND': 'https://assets.coingecko.com/coins/images/12129/small/sandbox_logo.jpg',
+  'ADA': 'https://assets.coingecko.com/coins/images/975/small/cardano.png',
+  'DOGE': 'https://assets.coingecko.com/coins/images/5/small/dogecoin.png',
+  'XRP': 'https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-128.png',
+  'DOT': 'https://assets.coingecko.com/coins/images/12171/small/polkadot.png',
+  'PEPE': 'https://assets.coingecko.com/coins/images/29850/small/pepe-token.jpeg',
+  'CRV': 'https://assets.coingecko.com/coins/images/12124/small/Curve.png',
+};
+
 export const FALLBACK_TOKENS = [
   {
     symbol: 'AVAX',
     address: '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7',
+    icon: TOKEN_ICONS['AVAX'],
     decimals: 18,
     supplyAPY: 3.5,
     borrowAPY: 5.2,
@@ -87,6 +139,7 @@ export const FALLBACK_TOKENS = [
   {
     symbol: 'USDC',
     address: '0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664',
+    icon: TOKEN_ICONS['USDC'],
     decimals: 6,
     supplyAPY: 2.8,
     borrowAPY: 4.5,

@@ -46,7 +46,7 @@ export function BottomNavigation({
       variantClasses[variant],
       className
     )}>
-      <div className="grid grid-cols-5 max-w-md mx-auto">
+      <div className="grid grid-cols-5 gap-1 max-w-md mx-auto px-2">
         {items.map((item) => {
           const isActive = pathname === item.href ||
             (item.href !== '/' && pathname.startsWith(item.href))
@@ -58,10 +58,10 @@ export function BottomNavigation({
               disabled={item.disabled}
               className={cn(
                 'relative flex flex-col items-center justify-center p-3 transition-all duration-200 touch-target min-h-[60px]',
-                'focus:outline-none focus-ring',
+                'focus:outline-none focus-ring active:scale-95 active:opacity-80',
                 isActive
                   ? 'text-pano-primary'
-                  : 'text-pano-text-secondary hover:text-pano-text-primary',
+                  : 'text-pano-text-secondary hover:text-pano-text-primary active:text-pano-primary',
                 item.disabled && 'opacity-50 cursor-not-allowed'
               )}
               aria-label={item.label}
@@ -82,7 +82,7 @@ export function BottomNavigation({
 
               {/* Label */}
               <span className={cn(
-                'text-xs font-medium transition-colors',
+                'text-[11px] sm:text-xs font-medium transition-colors leading-tight',
                 isActive ? 'text-pano-primary' : 'text-pano-text-muted'
               )}>
                 {item.label}

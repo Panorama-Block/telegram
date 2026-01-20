@@ -64,13 +64,10 @@ export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }:
     });
   }, [activeNetwork, searchQuery, displayTokens]);
 
-  // Responsive variants
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-
   const modalVariants = {
-    initial: isMobile ? { y: "100%" } : { scale: 0.95, opacity: 0, y: 20 },
-    animate: isMobile ? { y: 0 } : { scale: 1, opacity: 1, y: 0 },
-    exit: isMobile ? { y: "100%" } : { scale: 0.95, opacity: 0, y: 20 },
+    initial: { scale: 0.95, opacity: 0 },
+    animate: { scale: 1, opacity: 1 },
+    exit: { scale: 0.95, opacity: 0 },
   };
 
   if (typeof document === 'undefined') return null;
@@ -82,7 +79,7 @@ export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }:
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[60] flex items-end md:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-xl"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl"
           onClick={onClose}
         >
           <motion.div
@@ -91,14 +88,9 @@ export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }:
             animate="animate"
             exit="exit"
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="w-full md:max-w-md bg-[#0A0A0A] border border-white/10 shadow-2xl overflow-hidden flex flex-col h-[85vh] md:h-auto md:max-h-[80vh] rounded-t-3xl rounded-b-none md:rounded-2xl border-b-0 md:border-b pb-safe"
+            className="w-full max-w-md bg-[#0A0A0A] border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[80vh] rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Mobile Drag Handle */}
-            <div className="md:hidden w-full flex justify-center pt-3 pb-1 shrink-0 bg-[#0A0A0A]">
-              <div className="w-12 h-1.5 bg-zinc-800 rounded-full" />
-            </div>
-
             {/* Header */}
             <div className="p-5 border-b border-white/5 flex items-center justify-between shrink-0">
               <div className="flex items-center">

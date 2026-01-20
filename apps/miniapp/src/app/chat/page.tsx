@@ -1194,7 +1194,7 @@ export default function ChatPage() {
                             onKeyPress={handleKeyPress}
                             placeholder="Ask Zico anything..."
                             disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
-                            className="flex-1 bg-transparent border-none outline-none text-base md:text-lg text-white placeholder:text-zinc-600 placeholder:text-sm md:placeholder:text-lg h-12 md:h-14"
+                            className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder:text-zinc-600 min-h-[48px]"
                           />
                           <div className="flex items-center gap-2 pr-1 md:pr-2">
                             <button className="hidden md:block p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
@@ -1203,7 +1203,7 @@ export default function ChatPage() {
                             <button
                               onClick={() => sendMessage()}
                               disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing || !inputMessage.trim()}
-                              className="p-2 md:p-3 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
+                              className="p-3 min-h-[44px] min-w-[44px] flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
                               aria-label="Send message"
                             >
                               <ArrowUp className="w-5 h-5" />
@@ -1229,7 +1229,7 @@ export default function ChatPage() {
                             animate={{ opacity: 1, y: 0 }}
                             className="w-full text-left"
                           >
-                            <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors">
+                            <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 min-h-[48px] flex items-center text-sm text-zinc-300 hover:text-white active:text-white hover:bg-white/10 active:bg-white/15 transition-colors">
                               {item.label}
                             </div>
                           </motion.button>
@@ -1582,13 +1582,13 @@ export default function ChatPage() {
                             onFocus={() => setShowTrendingPrompts(false)}
                             placeholder="Send a message..."
                             disabled={isSending || !activeConversationId || initializing}
-                            className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder:text-zinc-600 h-12"
+                            className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder:text-zinc-600 min-h-[48px]"
                             autoFocus
                           />
                           <button
                             onClick={() => sendMessage()}
                             disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                            className="p-2.5 bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 transition-all disabled:cursor-not-allowed disabled:opacity-60"
+                            className="p-3 min-h-[44px] min-w-[44px] flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-60"
                             aria-label="Send message"
                           >
                             <ArrowUp className="w-5 h-5" />
@@ -1645,7 +1645,6 @@ export default function ChatPage() {
                   setCurrentStakingMetadata(null);
                 }}
                 initialAmount={currentStakingMetadata?.amount as string | undefined}
-                initialToken={currentStakingMetadata?.token as string | undefined}
               />
             )}
           </AnimatePresence>

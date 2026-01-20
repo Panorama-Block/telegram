@@ -31,14 +31,14 @@ export default function PortfolioPage() {
 
   return (
     <ProtectedRoute>
-    <div className="min-h-[100dvh] bg-[#050505] relative overflow-x-hidden flex flex-col text-foreground font-sans">
+    <div className="min-h-[100dvh] bg-[#050505] relative overflow-x-hidden flex flex-col text-foreground font-sans safe-area-pb">
       {/* Ambient God Ray */}
       <div className="absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-green-500/10 via-black/5 to-transparent blur-3xl pointer-events-none z-0" />
       
       {/* Navigation Header */}
       <div className="relative z-20 p-6 flex justify-between items-center max-w-7xl mx-auto w-full">
-        <Link href="/chat?new=true" className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors group">
-            <div className="p-2 rounded-full bg-white/5 border border-white/10 group-hover:bg-white/10 transition-colors">
+        <Link href="/chat?new=true" className="flex items-center gap-2 text-zinc-400 hover:text-white active:text-white transition-colors group">
+            <div className="p-3 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full bg-white/5 border border-white/10 group-hover:bg-white/10 group-active:bg-white/15 transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </div>
             <span className="font-medium">Back to Chat</span>
@@ -69,7 +69,7 @@ export default function PortfolioPage() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             onClick={() => refresh()}
-            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white transition-colors"
+            className="flex items-center gap-2 px-4 py-3 min-h-[44px] bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 rounded-xl text-sm font-medium text-white transition-colors active:scale-[0.98]"
           >
              {loading ? <Loader2 className="w-4 h-4 text-primary animate-spin" /> : <Scan className="w-4 h-4 text-primary" />}
              {loading ? 'Scanning...' : 'Scan Wallet'}
@@ -80,7 +80,7 @@ export default function PortfolioPage() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.1 }}
-              className="flex items-center gap-2 px-4 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-xl text-sm font-medium text-cyan-400 transition-colors"
+              className="flex items-center gap-2 px-4 py-3 min-h-[44px] bg-cyan-500/10 hover:bg-cyan-500/20 active:bg-cyan-500/30 border border-cyan-500/20 rounded-xl text-sm font-medium text-cyan-400 transition-colors active:scale-[0.98]"
             >
                <Wallet className="w-4 h-4" />
                Smart Wallets
