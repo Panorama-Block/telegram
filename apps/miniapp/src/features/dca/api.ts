@@ -5,7 +5,7 @@
 
 import { authenticatedFetch } from '@/shared/lib/telegram-auth';
 
-export const DCA_API_URL = process.env.DCA_API_BASE || process.env.NEXT_PUBLIC_DCA_API_BASE || 'http://localhost:3004';
+export const DCA_API_URL = process.env.DCA_API_BASE || process.env.NEXT_PUBLIC_DCA_API_BASE || 'http://localhost:3007';
 
 export interface SmartAccountPermissions {
   approvedTargets: string[];
@@ -92,9 +92,25 @@ export async function createSmartAccount(request: CreateAccountRequest): Promise
       body: JSON.stringify(request),
     }, request.userId);
 
+    // Check content type to avoid JSON parse errors
+    const contentType = response.headers.get('content-type');
+    const isJson = contentType?.includes('application/json');
+
     if (!response.ok) {
-      const error = await response.json();
-      throw new DCAApiError(error.error || 'Failed to create smart account', response.status);
+      if (isJson) {
+        const error = await response.json();
+        throw new DCAApiError(error.error || 'Failed to create smart account', response.status);
+      } else {
+        const text = await response.text();
+        console.error('[createSmartAccount] Non-JSON error response:', text.slice(0, 200));
+        throw new DCAApiError(`Server error (${response.status}): ${response.statusText}`, response.status);
+      }
+    }
+
+    if (!isJson) {
+      const text = await response.text();
+      console.error('[createSmartAccount] Unexpected non-JSON response:', text.slice(0, 200));
+      throw new DCAApiError('DCA service returned invalid response. Is the service running?');
     }
 
     const data = await response.json();
@@ -105,6 +121,10 @@ export async function createSmartAccount(request: CreateAccountRequest): Promise
   } catch (error: any) {
     if (error instanceof DCAApiError) {
       throw error;
+    }
+    // Network errors (service not running, CORS, etc)
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      throw new DCAApiError('Cannot connect to DCA service. Please check if the service is running.');
     }
     throw new DCAApiError(error.message || 'Network error');
   }
@@ -118,18 +138,32 @@ export async function getUserAccounts(userId: string): Promise<SmartAccount[]> {
   try {
     const response = await authenticatedFetch(`${DCA_API_URL}/dca/accounts/${userId}`, {}, userId);
 
+    const contentType = response.headers.get('content-type');
+    const isJson = contentType?.includes('application/json');
+
     if (!response.ok) {
-      const error = await response.json();
-      throw new DCAApiError(error.error || 'Failed to fetch accounts', response.status);
+      if (isJson) {
+        const error = await response.json();
+        throw new DCAApiError(error.error || 'Failed to fetch accounts', response.status);
+      } else {
+        throw new DCAApiError(`Server error (${response.status})`, response.status);
+      }
+    }
+
+    if (!isJson) {
+      console.warn('[getUserAccounts] Non-JSON response, returning empty array');
+      return [];
     }
 
     const data = await response.json();
-    return data.accounts;
+    return data.accounts || [];
   } catch (error: any) {
     if (error instanceof DCAApiError) {
       throw error;
     }
-    throw new DCAApiError(error.message || 'Network error');
+    // Silently fail for network errors (service not running)
+    console.warn('[getUserAccounts] Error fetching accounts:', error.message);
+    return [];
   }
 }
 
