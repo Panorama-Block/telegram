@@ -17,6 +17,7 @@ import type { PreparedTx } from '@/features/swap/types';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
 import { SeniorAppShell } from '@/components/layout';
+import { useSwapNotifications } from '@/shared/hooks/useNotifications';
 
 
 interface TokenSelectorProps {
@@ -202,6 +203,14 @@ export default function SwapPage() {
   const switchChain = useSwitchActiveWalletChain();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
+
+  // Notification hooks for transaction events
+  const {
+    notifySwapPreparing,
+    notifySwapExecuting,
+    notifySwapSuccess,
+    notifySwapFailed,
+  } = useSwapNotifications();
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const userAddress = localStorage.getItem('userAddress');
@@ -407,6 +416,9 @@ export default function SwapPage() {
 
       setPreparing(true);
 
+      // Notify: preparing swap
+      notifySwapPreparing(sellToken.symbol, buyToken?.symbol || 'Token', sellAmount);
+
       const decimals = await getTokenDecimals({
         client,
         chainId: fromChainId,
@@ -450,6 +462,12 @@ export default function SwapPage() {
 
       setExecuting(true);
       setTxHashes([]); // Reset transaction hashes
+
+      // Notify: executing swap
+      notifySwapExecuting(sellToken.symbol, buyToken?.symbol || 'Token');
+
+      // Track executed transactions for notification
+      const executedTxHashes: Array<{ hash: string; chainId: number }> = [];
 
       // Check if we should skip simulation (for Uniswap Smart Router)
       const shouldSkipSimulation = prep.provider === 'uniswap-smart-router' ||
@@ -565,11 +583,27 @@ export default function SwapPage() {
         }
 
         // Store transaction hash
-        setTxHashes(prev => [...prev, { hash: result.transactionHash!, chainId: t.chainId }]);
+        const txEntry = { hash: result.transactionHash!, chainId: t.chainId };
+        executedTxHashes.push(txEntry);
+        setTxHashes(prev => [...prev, txEntry]);
         console.log(`Transaction ${result.transactionHash} submitted on chain ${t.chainId}`);
       }
 
       setSuccess(true);
+
+      // Notify: swap successful
+      const lastTx = executedTxHashes[executedTxHashes.length - 1] || { hash: '', chainId: fromChainId };
+      notifySwapSuccess({
+        fromToken: sellToken.symbol,
+        toToken: buyToken?.symbol || 'Token',
+        fromAmount: sellAmount,
+        toAmount: buyAmount,
+        hash: lastTx.hash,
+        chainId: lastTx.chainId,
+        explorerUrl: explorerTxUrl(lastTx.chainId, lastTx.hash) || undefined,
+        provider: prep.provider,
+      });
+
       setSellAmount('');
       setBuyAmount('');
       setQuote(null);
@@ -591,6 +625,14 @@ export default function SwapPage() {
       }
 
       setError(errorMessage);
+
+      // Notify: swap failed
+      notifySwapFailed({
+        message: errorMessage,
+        fromToken: sellToken.symbol,
+        toToken: buyToken?.symbol,
+        fromAmount: sellAmount,
+      });
     } finally {
       setPreparing(false);
       setExecuting(false);
