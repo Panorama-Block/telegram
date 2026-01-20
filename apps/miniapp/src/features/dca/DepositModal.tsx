@@ -237,26 +237,26 @@ export default function DepositModal({
 
           {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, y: "100%" }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: "100%" }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto"
+            className="fixed inset-x-0 bottom-0 sm:inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <GlassCard className="w-full max-w-lg bg-[#0A0A0A]/95 border-cyan-500/20 overflow-hidden my-auto">
+            <GlassCard className="w-full sm:max-w-lg bg-[#0A0A0A] border-cyan-500/20 overflow-hidden rounded-t-2xl sm:rounded-2xl max-h-[90vh] flex flex-col">
               {/* Header */}
-              <div className="relative p-6 border-b border-white/5">
+              <div className="relative p-4 sm:p-6 border-b border-white/5">
                 <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-cyan-500/10 to-transparent pointer-events-none" />
 
-                <div className="relative flex items-start justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
-                      <ArrowDownToLine className="w-6 h-6 text-cyan-400" />
+                <div className="relative flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                    <div className="p-2.5 sm:p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex-shrink-0">
+                      <ArrowDownToLine className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />
                     </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-white">Deposit Funds</h2>
-                      <p className="text-sm text-zinc-400 mt-1">
+                    <div className="min-w-0">
+                      <h2 className="text-lg sm:text-xl font-bold text-white truncate">Deposit Funds</h2>
+                      <p className="text-xs sm:text-sm text-zinc-400 mt-0.5 sm:mt-1">
                         Add balance to your Smart Wallet
                       </p>
                     </div>
@@ -264,7 +264,7 @@ export default function DepositModal({
 
                   <button
                     onClick={onClose}
-                    className="p-2 rounded-lg bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+                    className="p-2 rounded-lg bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -272,7 +272,7 @@ export default function DepositModal({
               </div>
 
               {/* Content */}
-              <div className="p-6 space-y-5">
+              <div className="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
                 {/* Success State */}
                 {txHash ? (
                   <motion.div
@@ -340,27 +340,27 @@ export default function DepositModal({
                     )}
 
                     {/* Smart Account Info */}
-                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
+                    <div className="p-3 sm:p-4 rounded-xl bg-white/5 border border-white/10 space-y-2 sm:space-y-3">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Wallet className="w-4 h-4 text-cyan-400" />
-                          <span className="text-sm font-medium text-white">Smart Account</span>
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" />
+                          <span className="text-xs sm:text-sm font-medium text-white">Smart Account</span>
                         </div>
                         <a
                           href={getAddressExplorerUrl(chainId, smartAccountAddress)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                          className="flex items-center gap-1 text-[10px] sm:text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
                         >
                           View
                           <ExternalLink className="w-3 h-3" />
                         </a>
                       </div>
 
-                      <div className="space-y-2 text-xs">
+                      <div className="space-y-1.5 sm:space-y-2 text-[10px] sm:text-xs">
                         <div className="flex justify-between">
                           <span className="text-zinc-500">Name</span>
-                          <span className="text-white font-medium">{smartAccountName}</span>
+                          <span className="text-white font-medium truncate ml-2">{smartAccountName}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-zinc-500">Address</span>
@@ -368,30 +368,18 @@ export default function DepositModal({
                             {smartAccountAddress.slice(0, 6)}...{smartAccountAddress.slice(-4)}
                           </span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-zinc-500">Session Key</span>
-                          <span className="text-white font-mono">
-                            {isLoadingSessionKey ? (
-                              <Loader2 className="w-3 h-3 animate-spin inline" />
-                            ) : sessionKeyAddress ? (
-                              `${sessionKeyAddress.slice(0, 6)}...${sessionKeyAddress.slice(-4)}`
-                            ) : (
-                              'Not available'
-                            )}
-                          </span>
-                        </div>
                       </div>
                     </div>
 
                     {/* Network Selection */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-300">Network</label>
+                    <div className="space-y-1.5">
+                      <label className="text-xs sm:text-sm font-medium text-zinc-300">Network</label>
                       <div className="relative">
                         <select
                           value={chainId}
                           onChange={(e) => setChainId(Number(e.target.value))}
                           disabled={isDepositing}
-                          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all disabled:opacity-50 appearance-none cursor-pointer"
+                          className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all disabled:opacity-50 appearance-none cursor-pointer"
                         >
                           {networks.map((network) => (
                             <option key={network.chainId} value={network.chainId}>
@@ -399,31 +387,31 @@ export default function DepositModal({
                             </option>
                           ))}
                         </select>
-                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+                        <ChevronDown className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
                       </div>
                     </div>
 
                     {/* Token Display */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-300">Token</label>
-                      <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/5 border border-white/10">
+                    <div className="space-y-1.5">
+                      <label className="text-xs sm:text-sm font-medium text-zinc-300">Token</label>
+                      <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-white/5 border border-white/10">
                         {nativeToken.icon && (
                           <img
                             src={nativeToken.icon}
                             alt={nativeToken.symbol}
-                            className="w-8 h-8 rounded-full"
+                            className="w-6 h-6 sm:w-8 sm:h-8 rounded-full"
                           />
                         )}
                         <div>
-                          <div className="text-sm font-medium text-white">{nativeToken.symbol}</div>
-                          <div className="text-xs text-zinc-500">{nativeToken.name}</div>
+                          <div className="text-xs sm:text-sm font-medium text-white">{nativeToken.symbol}</div>
+                          <div className="text-[10px] sm:text-xs text-zinc-500">{nativeToken.name}</div>
                         </div>
                       </div>
                     </div>
 
                     {/* Amount Input */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-300">Amount</label>
+                    <div className="space-y-1.5">
+                      <label className="text-xs sm:text-sm font-medium text-zinc-300">Amount</label>
                       <div className="flex gap-2">
                         <input
                           type="number"
@@ -433,19 +421,19 @@ export default function DepositModal({
                           onChange={(e) => setAmount(e.target.value)}
                           disabled={isDepositing}
                           placeholder="0.01"
-                          className="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all disabled:opacity-50"
+                          className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all disabled:opacity-50"
                         />
-                        <div className="flex items-center px-4 rounded-xl bg-white/5 border border-white/10 text-zinc-400 font-medium">
+                        <div className="flex items-center px-3 sm:px-4 rounded-xl bg-white/5 border border-white/10 text-zinc-400 text-sm font-medium">
                           {nativeToken.symbol}
                         </div>
                       </div>
-                      <p className="text-xs text-zinc-500">
+                      <p className="text-[10px] sm:text-xs text-zinc-500">
                         This will be transferred from your wallet to the Smart Wallet.
                       </p>
                     </div>
 
                     {/* Quick Amounts */}
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
                       {['0.001', '0.005', '0.01', '0.05'].map((preset) => (
                         <button
                           key={preset}
@@ -453,22 +441,22 @@ export default function DepositModal({
                           onClick={() => setAmount(preset)}
                           disabled={isDepositing}
                           className={cn(
-                            "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                            "px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-medium transition-colors",
                             amount === preset
                               ? "bg-cyan-500/20 border border-cyan-500/30 text-cyan-400"
                               : "bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:border-white/20"
                           )}
                         >
-                          {preset} {nativeToken.symbol}
+                          {preset}
                         </button>
                       ))}
                     </div>
 
                     {/* Info Note */}
-                    <div className="flex items-start gap-3 p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/10">
-                      <Info className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
-                      <p className="text-xs text-zinc-400">
-                        Leave some {nativeToken.symbol} in your main wallet to pay for gas fees when depositing.
+                    <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/10">
+                      <Info className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-[10px] sm:text-xs text-zinc-400">
+                        Leave some {nativeToken.symbol} in your main wallet for gas fees.
                       </p>
                     </div>
                   </>
@@ -477,11 +465,11 @@ export default function DepositModal({
 
               {/* Footer */}
               {!txHash && (
-                <div className="p-6 pt-0 flex gap-3">
+                <div className="p-4 sm:p-6 pt-0 flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
                   <button
                     onClick={onClose}
                     disabled={isDepositing}
-                    className="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:bg-white/10 hover:text-white transition-all disabled:opacity-50 font-medium"
+                    className="flex-1 px-4 py-2.5 sm:py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:bg-white/10 hover:text-white transition-all disabled:opacity-50 font-medium text-sm sm:text-base"
                   >
                     Cancel
                   </button>
@@ -489,7 +477,7 @@ export default function DepositModal({
                     onClick={handleDeposit}
                     disabled={isDepositing || !amount || parseFloat(amount) <= 0 || isWrongNetwork}
                     className={cn(
-                      "flex-1 px-4 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2",
+                      "flex-1 px-4 py-2.5 sm:py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 text-sm sm:text-base",
                       isDepositing || !amount || parseFloat(amount) <= 0 || isWrongNetwork
                         ? "bg-cyan-500/20 text-cyan-400/50 cursor-not-allowed"
                         : "bg-cyan-500 text-white hover:bg-cyan-400"
@@ -501,11 +489,11 @@ export default function DepositModal({
                         Depositing...
                       </>
                     ) : isWrongNetwork ? (
-                      `Switch to ${currentNetwork?.name}`
+                      <span className="truncate">Switch to {currentNetwork?.name}</span>
                     ) : (
                       <>
                         <ArrowDownToLine className="w-4 h-4" />
-                        Deposit {amount} {nativeToken.symbol}
+                        <span className="truncate">Deposit {amount} {nativeToken.symbol}</span>
                       </>
                     )}
                   </button>

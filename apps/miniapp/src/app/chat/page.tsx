@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp, Plus, MessageSquare, Loader2 } from 'lucide-react';
+import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp, Plus, MessageSquare, Loader2, Mic, Square, X } from 'lucide-react';
 
 // Window.ethereum type declaration
 declare global {
@@ -35,6 +35,8 @@ import { SwapWidget } from '@/components/SwapWidget';
 import { Staking } from '@/components/Staking';
 import { Droplets } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
+import { useAudioRecorder } from '@/shared/hooks/useAudioRecorder';
+import { useKeyboardHeight } from '@/shared/hooks/useKeyboardHeight';
 
 
 interface Message {
@@ -208,7 +210,11 @@ export default function ChatPage() {
   // Pending new chat state - when true, we show welcome screen without creating backend conversation
   const [pendingNewChat, setPendingNewChat] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
+
+  // Keyboard handling for mobile
+  const { keyboardHeight, isKeyboardOpen } = useKeyboardHeight();
   const { user, isLoading: authLoading } = useAuth();
   const isMountedRef = useRef(true);
   const bootstrapKeyRef = useRef<string | undefined>(undefined);
@@ -240,6 +246,17 @@ export default function ChatPage() {
 
   // Trending prompts state
   const [showTrendingPrompts, setShowTrendingPrompts] = useState(false);
+
+  // Audio recording
+  const {
+    isRecording,
+    recordingTime,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+    error: audioError,
+  } = useAudioRecorder();
+  const [isSendingAudio, setIsSendingAudio] = useState(false);
   const trendingPrompts = [
     { icon: <ArrowLeftRight className="w-4 h-4" />, text: 'Swap 0.1 ETH to USDC on Base' },
     { icon: <Landmark className="w-4 h-4" />, text: 'Supply 100 USDC on Avalanche' },
@@ -500,20 +517,37 @@ export default function ChatPage() {
     [agentsClient, debug, getAuthOptions, userId, loadMessagesFromCache, saveMessagesToCache]
   );
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const scrollToBottom = useCallback((immediate = false) => {
+    if (immediate) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [activeMessages, activeConversationId]);
+  }, [activeMessages, activeConversationId, scrollToBottom]);
 
   // Scroll to bottom when swap quote loads or swap state changes
   useEffect(() => {
     if (swapQuote || swapLoading || swapError) {
-      setTimeout(scrollToBottom, 100);
+      setTimeout(() => scrollToBottom(), 100);
     }
-  }, [swapQuote, swapLoading, swapError]);
+  }, [swapQuote, swapLoading, swapError, scrollToBottom]);
+
+  // Scroll to bottom when keyboard opens
+  useEffect(() => {
+    if (isKeyboardOpen && hasMessages) {
+      // Multiple scroll attempts to handle iOS animation
+      const timers = [
+        setTimeout(() => scrollToBottom(true), 50),
+        setTimeout(() => scrollToBottom(true), 150),
+        setTimeout(() => scrollToBottom(true), 300),
+      ];
+      return () => timers.forEach(clearTimeout);
+    }
+  }, [isKeyboardOpen, hasMessages, scrollToBottom]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -900,6 +934,128 @@ export default function ChatPage() {
     }
   };
 
+  // Format recording time as MM:SS
+  const formatRecordingTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Handle sending audio message - optimized for speed
+  const sendAudioMessage = async () => {
+    if (!isRecording || isSendingAudio) return;
+
+    // Set loading states immediately for instant feedback
+    setIsSendingAudio(true);
+    setIsSending(true);
+
+    try {
+      // Stop recording and get conversation ID in parallel if needed
+      const needsNewConversation = pendingNewChat || !activeConversationId;
+
+      const [audioBlob, newConversationId] = await Promise.all([
+        stopRecording(),
+        needsNewConversation
+          ? agentsClient.createConversation(userId, getAuthOptions())
+          : Promise.resolve(null)
+      ]);
+
+      if (!audioBlob || !isMountedRef.current) {
+        setIsSendingAudio(false);
+        setIsSending(false);
+        return;
+      }
+
+      // Set up conversation
+      let conversationId = activeConversationId;
+      if (newConversationId) {
+        conversationId = newConversationId;
+        const newConversation: Conversation = { id: newConversationId, title: 'New Chat' };
+        setConversations((prev) => [newConversation, ...prev.filter((c) => c.id !== newConversationId)]);
+        setMessagesByConversation((prev) => ({ ...prev, [newConversationId]: [] }));
+        setActiveConversation(newConversationId);
+        setPendingNewChat(false);
+      }
+
+      if (!conversationId) {
+        setIsSendingAudio(false);
+        setIsSending(false);
+        return;
+      }
+
+      // Add placeholder immediately
+      const userMessage: Message = { role: 'user', content: 'Processing audio...', timestamp: new Date() };
+      setMessagesByConversation((prev) => ({
+        ...prev,
+        [conversationId]: [...(prev[conversationId] ?? []), userMessage],
+      }));
+
+      // Send audio to backend
+      const walletAddress = account?.address || getWalletAddress();
+      const response = await agentsClient.chatAudio(
+        audioBlob,
+        userId || '',
+        conversationId,
+        walletAddress,
+        getAuthOptions()
+      );
+
+      if (!isMountedRef.current) return;
+
+      // Build messages
+      const transcribedUserMessage: Message = {
+        role: 'user',
+        content: response.transcription || 'Voice message',
+        timestamp: new Date(),
+      };
+
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: autoFormatAssistantMarkdown(response.message || 'I was unable to process that request.'),
+        timestamp: new Date(),
+        agentName: response.agent_name ?? null,
+        metadata: response.metadata ?? undefined,
+      };
+
+      // Handle intents
+      if (response.metadata?.event === 'swap_intent_ready') {
+        getSwapQuote(response.metadata as Record<string, unknown>);
+      }
+
+      // Update messages in single operation
+      setMessagesByConversation((prev) => {
+        const prevMessages = prev[conversationId] ?? [];
+        const withoutPlaceholder = prevMessages.slice(0, -1);
+        const nextMessages = [...withoutPlaceholder, transcribedUserMessage, assistantMessage];
+        saveMessagesToCache(userId ?? '__anonymous__', conversationId, nextMessages);
+        return { ...prev, [conversationId]: nextMessages };
+      });
+
+    } catch (error) {
+      console.error('[AUDIO] Error sending audio:', error);
+      const fallbackMessage: Message = {
+        role: 'assistant',
+        content: 'Sorry, I could not process your audio message. Please try again.',
+        timestamp: new Date(),
+      };
+
+      if (isMountedRef.current && activeConversationId) {
+        setMessagesByConversation((prev) => {
+          const prevMessages = prev[activeConversationId] ?? [];
+          return {
+            ...prev,
+            [activeConversationId]: [...prevMessages, fallbackMessage],
+          };
+        });
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsSending(false);
+        setIsSendingAudio(false);
+      }
+    }
+  };
+
   const createNewChat = async () => {
     if (isCreatingConversation) return;
 
@@ -1139,14 +1295,14 @@ export default function ChatPage() {
             <div className="absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-500/20 via-slate-900/5 to-black blur-3xl pointer-events-none z-0" />
 
             <div className="flex-1 min-w-0 flex flex-col overflow-hidden z-10">
-              <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col">
+              <div ref={messagesContainerRef} className="flex-1 overflow-y-auto scrollbar-hide flex flex-col">
                 {initializing ? (
                   <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
                     Loading your conversations...
                   </div>
                 ) : !activeConversationId && !pendingNewChat ? (
                   <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                    Crie um novo chat para começar.
+                    Create a new chat to get started.
                   </div>
                 ) : initializationError && !hasMessages && !pendingNewChat ? (
                   <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-center min-h-[50vh]">
@@ -1181,36 +1337,85 @@ export default function ChatPage() {
                       </div>
 
                       {/* Main Input Area */}
-                      <div className="relative group max-w-2xl mx-auto w-full my-8">
+                      <div className="relative group max-w-2xl mx-auto w-full my-8 overflow-hidden">
                         <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                        <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 md:p-2 flex items-center gap-2 md:gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 group-focus-within:shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all duration-300">
-                          <div className="pl-2 md:pl-4 text-zinc-400">
-                            <Search className="w-5 h-5 md:w-6 md:h-6" />
-                          </div>
-                          <input
-                            type="text"
-                            value={inputMessage}
-                            onChange={(e) => setInputMessage(e.target.value)}
-                            onKeyPress={handleKeyPress}
-                            placeholder="Ask Zico anything..."
-                            disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
-                            className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder:text-zinc-600 min-h-[48px]"
-                          />
-                          <div className="flex items-center gap-2 pr-1 md:pr-2">
-                            <button className="hidden md:block p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
-                              <Paperclip className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => sendMessage()}
-                              disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing || !inputMessage.trim()}
-                              className="p-3 min-h-[44px] min-w-[44px] flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
-                              aria-label="Send message"
-                            >
-                              <ArrowUp className="w-5 h-5" />
-                            </button>
-                          </div>
+                        <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 md:gap-3 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 group-focus-within:shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all duration-300 overflow-hidden">
+                          {isRecording ? (
+                            // Recording UI
+                            <>
+                              <button
+                                onClick={cancelRecording}
+                                className="p-2 md:p-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors shrink-0"
+                                aria-label="Cancel recording"
+                              >
+                                <X className="w-5 h-5" />
+                              </button>
+                              <div className="flex-1 min-w-0 flex items-center gap-2 md:gap-3">
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-red-500 animate-pulse" />
+                                  <span className="text-white font-mono text-xs md:text-sm">{formatRecordingTime(recordingTime)}</span>
+                                </div>
+                                <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                                  <motion.div
+                                    className="h-full bg-gradient-to-r from-red-500 to-orange-500"
+                                    initial={{ width: '0%' }}
+                                    animate={{ width: `${Math.min((recordingTime / 60) * 100, 100)}%` }}
+                                    transition={{ duration: 0.5 }}
+                                  />
+                                </div>
+                              </div>
+                              <button
+                                onClick={sendAudioMessage}
+                                disabled={isSendingAudio}
+                                className="p-2.5 md:p-3 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                aria-label="Send audio"
+                              >
+                                {isSendingAudio ? (
+                                  <Loader2 className="w-5 h-5 animate-spin" />
+                                ) : (
+                                  <ArrowUp className="w-5 h-5" />
+                                )}
+                              </button>
+                            </>
+                          ) : (
+                            // Normal input UI
+                            <>
+                              <div className="pl-2 md:pl-4 text-zinc-400 shrink-0">
+                                <Search className="w-5 h-5 md:w-6 md:h-6" />
+                              </div>
+                              <input
+                                type="text"
+                                value={inputMessage}
+                                onChange={(e) => setInputMessage(e.target.value)}
+                                onKeyPress={handleKeyPress}
+                                placeholder="Ask Zico anything..."
+                                disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
+                                className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[44px]"
+                              />
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  onClick={startRecording}
+                                  disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
+                                  className="p-2 md:p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                                  aria-label="Record audio"
+                                >
+                                  <Mic className="w-5 h-5" />
+                                </button>
+                                <button
+                                  onClick={() => sendMessage()}
+                                  disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing || !inputMessage.trim()}
+                                  className="p-2.5 md:p-3 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
+                                  aria-label="Send message"
+                                >
+                                  <ArrowUp className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
-
+                        {audioError && (
+                          <p className="text-red-400 text-xs mt-2 text-center">{audioError}</p>
+                        )}
                       </div>
 
                       {/* Suggestions Grid */}
@@ -1402,7 +1607,7 @@ export default function ChatPage() {
                                       <button
                                         onClick={() => {
                                           setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
-                                          setShowLendingWidget(true);
+                                          setLendingModalOpen(true);
                                         }}
                                         className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                                       >
@@ -1523,6 +1728,8 @@ export default function ChatPage() {
                         </div>
                       </div>
                     )}
+                    {/* Keyboard spacer - ensures content is visible above keyboard */}
+                    {isKeyboardOpen && <div style={{ height: keyboardHeight > 0 ? keyboardHeight : 0 }} />}
                     <div ref={messagesEndRef} />
                   </div>
                 )}
@@ -1566,34 +1773,87 @@ export default function ChatPage() {
                         </AnimatePresence>
 
                         <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                        <div className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex items-center gap-4 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30">
-                          <button
-                            onClick={() => setShowTrendingPrompts(!showTrendingPrompts)}
-                            className="pl-2 text-zinc-400 hover:text-cyan-400 transition-colors"
-                            title="Trending prompts"
-                          >
-                            <Sparkles className="w-5 h-5" />
-                          </button>
-                          <input
-                            type="text"
-                            value={inputMessage}
-                            onChange={(e) => setInputMessage(e.target.value)}
-                            onKeyPress={handleKeyPress}
-                            onFocus={() => setShowTrendingPrompts(false)}
-                            placeholder="Send a message..."
-                            disabled={isSending || !activeConversationId || initializing}
-                            className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder:text-zinc-600 min-h-[48px]"
-                            autoFocus
-                          />
-                          <button
-                            onClick={() => sendMessage()}
-                            disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                            className="p-3 min-h-[44px] min-w-[44px] flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-60"
-                            aria-label="Send message"
-                          >
-                            <ArrowUp className="w-5 h-5" />
-                          </button>
+                        <div className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 overflow-hidden">
+                          {isRecording ? (
+                            // Recording UI
+                            <>
+                              <button
+                                onClick={cancelRecording}
+                                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors shrink-0"
+                                aria-label="Cancel recording"
+                              >
+                                <X className="w-5 h-5" />
+                              </button>
+                              <div className="flex-1 min-w-0 flex items-center gap-2">
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                                  <span className="text-white font-mono text-xs">{formatRecordingTime(recordingTime)}</span>
+                                </div>
+                                <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                                  <motion.div
+                                    className="h-full bg-gradient-to-r from-red-500 to-orange-500"
+                                    initial={{ width: '0%' }}
+                                    animate={{ width: `${Math.min((recordingTime / 60) * 100, 100)}%` }}
+                                    transition={{ duration: 0.5 }}
+                                  />
+                                </div>
+                              </div>
+                              <button
+                                onClick={sendAudioMessage}
+                                disabled={isSendingAudio}
+                                className="p-2.5 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                aria-label="Send audio"
+                              >
+                                {isSendingAudio ? (
+                                  <Loader2 className="w-5 h-5 animate-spin" />
+                                ) : (
+                                  <ArrowUp className="w-5 h-5" />
+                                )}
+                              </button>
+                            </>
+                          ) : (
+                            // Normal input UI
+                            <>
+                              <button
+                                onClick={() => setShowTrendingPrompts(!showTrendingPrompts)}
+                                className="pl-1 text-zinc-400 hover:text-cyan-400 transition-colors shrink-0"
+                                title="Trending prompts"
+                              >
+                                <Sparkles className="w-5 h-5" />
+                              </button>
+                              <input
+                                type="text"
+                                value={inputMessage}
+                                onChange={(e) => setInputMessage(e.target.value)}
+                                onKeyPress={handleKeyPress}
+                                onFocus={() => setShowTrendingPrompts(false)}
+                                placeholder="Send a message..."
+                                disabled={isSending || !activeConversationId || initializing}
+                                className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[44px]"
+                                autoFocus
+                              />
+                              <button
+                                onClick={startRecording}
+                                disabled={isSending || !activeConversationId || initializing}
+                                className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                aria-label="Record audio"
+                              >
+                                <Mic className="w-5 h-5" />
+                              </button>
+                              <button
+                                onClick={() => sendMessage()}
+                                disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
+                                className="p-2.5 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                aria-label="Send message"
+                              >
+                                <ArrowUp className="w-5 h-5" />
+                              </button>
+                            </>
+                          )}
                         </div>
+                        {audioError && (
+                          <p className="text-red-400 text-xs mt-2 text-center">{audioError}</p>
+                        )}
                         <div className="text-center mt-2">
                           <p className="text-[10px] text-zinc-600 uppercase tracking-widest">AI-Native Web3 Interface</p>
                         </div>

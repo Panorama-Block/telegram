@@ -6,7 +6,8 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { SmartAccount } from '@/features/dca/api';
@@ -57,14 +58,21 @@ export function SmartWalletCard({
 }: SmartWalletCardProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [showAccountSelector, setShowAccountSelector] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
+  const [isMounted, setIsMounted] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Loading state
   if (loading) {
     return (
-      <GlassCard className="h-full p-6 flex flex-col justify-center bg-[#0A0A0A]/60 relative overflow-hidden">
+      <GlassCard className="h-full p-4 sm:p-6 flex flex-col justify-center bg-[#0A0A0A]/60 relative overflow-hidden">
         <div className="flex items-center justify-center gap-2">
-          <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
-          <span className="text-sm text-zinc-400">Loading Smart Wallet...</span>
+          <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 animate-spin" />
+          <span className="text-xs sm:text-sm text-zinc-400">Loading Smart Wallet...</span>
         </div>
       </GlassCard>
     );
@@ -74,21 +82,21 @@ export function SmartWalletCard({
   if (!hasSmartWallet) {
     return (
       <GlassCard
-        className="h-full p-6 flex flex-col justify-center bg-[#0A0A0A]/60 relative overflow-hidden group hover:bg-[#0A0A0A]/80 transition-colors cursor-pointer"
+        className="h-full p-4 sm:p-6 flex flex-col justify-center bg-[#0A0A0A]/60 relative overflow-hidden group hover:bg-[#0A0A0A]/80 transition-colors cursor-pointer"
         onClick={onCreateWallet}
       >
         <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
 
         <div className="relative z-10">
-          <div className="flex flex-col items-center text-center gap-3">
-            <div className="p-3 rounded-xl bg-cyan-500/10 text-cyan-400 group-hover:bg-cyan-500/20 transition-colors">
-              <Plus className="w-6 h-6" />
+          <div className="flex flex-col items-center text-center gap-2 sm:gap-3">
+            <div className="p-2.5 sm:p-3 rounded-xl bg-cyan-500/10 text-cyan-400 group-hover:bg-cyan-500/20 transition-colors">
+              <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <div className="text-sm font-medium text-white mb-1">Create Smart Wallet</div>
-              <div className="text-xs text-zinc-500">Enable automated DCA strategies</div>
+              <div className="text-xs sm:text-sm font-medium text-white mb-0.5 sm:mb-1">Create Smart Wallet</div>
+              <div className="text-[10px] sm:text-xs text-zinc-500">Enable automated DCA strategies</div>
             </div>
-            <div className="flex items-center gap-1 text-xs text-cyan-400 group-hover:gap-2 transition-all">
+            <div className="flex items-center gap-1 text-[10px] sm:text-xs text-cyan-400 group-hover:gap-2 transition-all">
               <span>Get Started</span>
               <ChevronRight className="w-3 h-3" />
             </div>
@@ -101,7 +109,7 @@ export function SmartWalletCard({
   // Has Smart Wallet - Show wallet card with actions
   return (
     <GlassCard
-      className={`h-full p-4 flex flex-col justify-between transition-all relative overflow-hidden ${
+      className={`h-full p-3 sm:p-4 flex flex-col justify-between transition-all relative overflow-hidden ${
         isSelected
           ? 'bg-cyan-500/10 border-cyan-500/30'
           : 'bg-[#0A0A0A]/60 hover:bg-[#0A0A0A]/80'
@@ -166,61 +174,79 @@ export function SmartWalletCard({
         {/* Actions menu */}
         <div className="relative">
           <button
-            onClick={() => setShowMenu(!showMenu)}
+            ref={menuButtonRef}
+            onClick={() => {
+              if (!showMenu && menuButtonRef.current) {
+                const rect = menuButtonRef.current.getBoundingClientRect();
+                setMenuPosition({
+                  top: rect.bottom + 8,
+                  right: window.innerWidth - rect.right
+                });
+              }
+              setShowMenu(!showMenu);
+            }}
             className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
           >
             <MoreVertical className="w-4 h-4" />
           </button>
 
-          <AnimatePresence>
-            {showMenu && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setShowMenu(false)}
-                />
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="absolute top-full right-0 mt-2 w-40 bg-[#0A0A0A] border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden"
-                >
-                  <button
-                    onClick={() => {
-                      onDeposit();
-                      setShowMenu(false);
+          {/* Actions menu dropdown - rendered via portal */}
+          {isMounted && createPortal(
+            <AnimatePresence>
+              {showMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-[9998]"
+                    onClick={() => setShowMenu(false)}
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="fixed z-[9999] w-40 bg-[#0A0A0A] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                    style={{
+                      top: menuPosition.top,
+                      right: menuPosition.right
                     }}
-                    className="w-full px-3 py-2.5 text-left text-xs text-zinc-300 hover:bg-white/5 transition-colors flex items-center gap-2"
                   >
-                    <ArrowDownToLine className="w-3.5 h-3.5 text-emerald-400" />
-                    Deposit
-                  </button>
-                  <button
-                    onClick={() => {
-                      onWithdraw();
-                      setShowMenu(false);
-                    }}
-                    className="w-full px-3 py-2.5 text-left text-xs text-zinc-300 hover:bg-white/5 transition-colors flex items-center gap-2"
-                  >
-                    <ArrowUpFromLine className="w-3.5 h-3.5 text-orange-400" />
-                    Withdraw
-                  </button>
-                  <div className="border-t border-white/5">
                     <button
                       onClick={() => {
-                        onDelete();
+                        onDeposit();
                         setShowMenu(false);
                       }}
-                      className="w-full px-3 py-2.5 text-left text-xs text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-2"
+                      className="w-full px-3 py-2.5 text-left text-xs text-zinc-300 hover:bg-white/5 transition-colors flex items-center gap-2"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Delete Wallet
+                      <ArrowDownToLine className="w-3.5 h-3.5 text-emerald-400" />
+                      Deposit
                     </button>
-                  </div>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
+                    <button
+                      onClick={() => {
+                        onWithdraw();
+                        setShowMenu(false);
+                      }}
+                      className="w-full px-3 py-2.5 text-left text-xs text-zinc-300 hover:bg-white/5 transition-colors flex items-center gap-2"
+                    >
+                      <ArrowUpFromLine className="w-3.5 h-3.5 text-orange-400" />
+                      Withdraw
+                    </button>
+                    <div className="border-t border-white/5">
+                      <button
+                        onClick={() => {
+                          onDelete();
+                          setShowMenu(false);
+                        }}
+                        className="w-full px-3 py-2.5 text-left text-xs text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-2"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete Wallet
+                      </button>
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>,
+            document.body
+          )}
         </div>
       </div>
 
@@ -229,12 +255,12 @@ export function SmartWalletCard({
         className="cursor-pointer flex-1 flex flex-col justify-center"
         onClick={onSelect}
       >
-        <div className="text-2xl font-bold font-display text-white mb-1">
+        <div className="text-xl sm:text-2xl font-bold font-display text-white mb-1">
           {balance}
         </div>
 
         {smartAccount && (
-          <div className="flex items-center gap-2 text-xs text-zinc-500">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-zinc-500">
             <span className="font-mono">{shortenAddress(smartAccount.address)}</span>
             {activeStrategies > 0 && (
               <>
@@ -250,19 +276,19 @@ export function SmartWalletCard({
       </div>
 
       {/* Quick action buttons */}
-      <div className="flex gap-2 mt-3">
+      <div className="flex gap-1.5 sm:gap-2 mt-2 sm:mt-3">
         <button
           onClick={onDeposit}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-xs font-medium transition-colors"
+          className="flex-1 flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-[10px] sm:text-xs font-medium transition-colors"
         >
-          <ArrowDownToLine className="w-3.5 h-3.5" />
+          <ArrowDownToLine className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
           Deposit
         </button>
         <button
           onClick={onWithdraw}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 text-orange-400 text-xs font-medium transition-colors"
+          className="flex-1 flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 text-orange-400 text-[10px] sm:text-xs font-medium transition-colors"
         >
-          <ArrowUpFromLine className="w-3.5 h-3.5" />
+          <ArrowUpFromLine className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
           Withdraw
         </button>
       </div>

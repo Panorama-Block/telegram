@@ -27,6 +27,7 @@ import { usePortfolioData } from "@/features/portfolio/usePortfolioData";
 import { useSmartWalletPortfolio } from "@/features/portfolio/useSmartWalletPortfolio";
 import { SmartWalletCard, SmartWalletIndicator } from "@/features/portfolio/SmartWalletCard";
 import { CreateSmartWalletModal } from "@/features/portfolio/CreateSmartWalletModal";
+import { DeleteWalletModal } from "@/features/portfolio/DeleteWalletModal";
 import DepositModal from "@/features/dca/DepositModal";
 import WithdrawModal from "@/features/dca/WithdrawModal";
 import { deleteSmartAccount, deleteStrategy, toggleStrategy, DCAStrategy } from "@/features/dca/api";
@@ -56,6 +57,7 @@ export default function PortfolioPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // DCA Strategy management
@@ -84,13 +86,13 @@ export default function PortfolioPage() {
     }
   };
 
-  const handleDeleteWallet = async () => {
+  const handleDeleteWallet = () => {
     if (!selectedAccount || !account?.address) return;
+    setShowDeleteModal(true);
+  };
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${selectedAccount.name}"? This action cannot be undone.`
-    );
-    if (!confirmed) return;
+  const confirmDeleteWallet = async () => {
+    if (!selectedAccount || !account?.address) return;
 
     setIsDeleting(true);
     try {
@@ -173,33 +175,33 @@ export default function PortfolioPage() {
       )} />
 
       {/* Navigation Header */}
-      <div className="relative z-20 p-6 flex justify-between items-center max-w-7xl mx-auto w-full">
+      <div className="relative z-20 px-4 py-4 sm:p-6 flex justify-between items-center max-w-7xl mx-auto w-full">
         <Link href="/chat?new=true" className="flex items-center gap-2 text-zinc-400 hover:text-white active:text-white transition-colors group">
-            <div className="p-3 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full bg-white/5 border border-white/10 group-hover:bg-white/10 group-active:bg-white/15 transition-colors">
-              <ArrowLeft className="w-5 h-5" />
+            <div className="p-2.5 sm:p-3 min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:min-w-[44px] flex items-center justify-center rounded-full bg-white/5 border border-white/10 group-hover:bg-white/10 group-active:bg-white/15 transition-colors">
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <span className="font-medium">Back to Chat</span>
+            <span className="font-medium text-sm sm:text-base hidden xs:inline">Back to Chat</span>
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
            <NotificationCenter />
            <div className="text-right hidden sm:block">
              <div className="text-xs text-zinc-500">Connected Wallet</div>
              <div className="font-mono text-sm text-white">{account ? shortenAddress(account.address) : 'Not Connected'}</div>
            </div>
-           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-purple-500 shadow-inner" />
+           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-primary to-purple-500 shadow-inner" />
         </div>
       </div>
 
-      <div className="relative z-10 flex-1 flex flex-col py-8 px-4 md:px-8 max-w-7xl mx-auto w-full">
+      <div className="relative z-10 flex-1 flex flex-col py-6 sm:py-8 px-4 md:px-8 max-w-7xl mx-auto w-full">
 
         {/* Page Title & Actions */}
-        <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-3xl md:text-4xl font-display font-bold text-white">Portfolio Analytics</h1>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-display font-bold text-white">Portfolio</h1>
               {/* View Mode Toggle */}
               <SmartWalletIndicator
                 hasSmartWallet={hasSmartWallet}
@@ -207,7 +209,7 @@ export default function PortfolioPage() {
                 onToggle={handleSmartWalletCardClick}
               />
             </div>
-            <p className="text-zinc-400">
+            <p className="text-sm sm:text-base text-zinc-400">
               {isSmartWalletView
                 ? 'Track your Smart Wallet performance and DCA strategies.'
                 : 'Track your performance across all chains.'
@@ -220,7 +222,7 @@ export default function PortfolioPage() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               onClick={handleRefresh}
-              className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white transition-colors"
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs sm:text-sm font-medium text-white transition-colors"
             >
                {currentLoading ? <Loader2 className="w-4 h-4 text-primary animate-spin" /> : <Scan className="w-4 h-4 text-primary" />}
                {currentLoading ? 'Scanning...' : 'Scan Wallet'}
@@ -348,38 +350,43 @@ export default function PortfolioPage() {
                     )}
                   >
                     {/* Main Row */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                         {/* Token Icons */}
-                        <div className="relative">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center text-xs font-bold text-cyan-400 border border-cyan-500/20">
+                        <div className="relative flex-shrink-0">
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center text-[10px] sm:text-xs font-bold text-cyan-400 border border-cyan-500/20">
                             {fromSymbol.slice(0, 2)}
                           </div>
-                          <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#0A0A0A] flex items-center justify-center">
-                            <ArrowRightLeft className="w-3 h-3 text-zinc-500" />
+                          <div className="absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-[#0A0A0A] flex items-center justify-center">
+                            <ArrowRightLeft className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-zinc-500" />
                           </div>
                         </div>
 
                         {/* Strategy Info */}
-                        <div>
-                          <div className="text-sm font-medium text-white flex items-center gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs sm:text-sm font-medium text-white flex items-center gap-1 sm:gap-2 truncate">
                             {strategy.amount} {fromSymbol} → {toSymbol}
                           </div>
-                          <div className="text-xs text-zinc-500 flex items-center gap-2">
-                            <Calendar className="w-3 h-3" />
-                            <span className="capitalize">{strategy.interval}</span>
-                            <span className="text-zinc-600">•</span>
-                            <Clock className="w-3 h-3" />
-                            <span>Next: {new Date(strategy.nextExecution * 1000).toLocaleDateString()}</span>
+                          <div className="text-[10px] sm:text-xs text-zinc-500 flex items-center gap-1 sm:gap-2 flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              <span className="capitalize">{strategy.interval}</span>
+                            </span>
+                            <span className="text-zinc-600 hidden sm:inline">•</span>
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              <span className="hidden sm:inline">Next: </span>
+                              <span>{new Date(strategy.nextExecution * 1000).toLocaleDateString()}</span>
+                            </span>
                           </div>
                         </div>
                       </div>
 
                       {/* Actions */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                         {/* Status Badge */}
                         <div className={cn(
-                          "px-2 py-1 rounded-full text-[10px] font-medium border",
+                          "px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-medium border",
                           strategy.isActive
                             ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
                             : "bg-zinc-500/10 border-zinc-500/20 text-zinc-400"
@@ -390,7 +397,7 @@ export default function PortfolioPage() {
                         {/* Expand Button */}
                         <button
                           onClick={() => setExpandedStrategy(isExpanded ? null : strategy.strategyId || null)}
-                          className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                          className="p-1.5 sm:p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
                         >
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </button>
@@ -456,13 +463,13 @@ export default function PortfolioPage() {
                         </div>
 
                         {/* Action Buttons */}
-                        <div className="flex items-center gap-2 pt-2">
+                        <div className="flex flex-wrap items-center gap-2 pt-2">
                           {/* Pause/Resume Button */}
                           <button
                             onClick={() => handleToggleStrategy(strategy)}
                             disabled={isLoading}
                             className={cn(
-                              "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                              "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors",
                               strategy.isActive
                                 ? "bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 border border-yellow-500/20"
                                 : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20",
@@ -470,11 +477,11 @@ export default function PortfolioPage() {
                             )}
                           >
                             {isLoading ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
                             ) : strategy.isActive ? (
-                              <Pause className="w-4 h-4" />
+                              <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             ) : (
-                              <Play className="w-4 h-4" />
+                              <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             )}
                             {strategy.isActive ? 'Pause' : 'Resume'}
                           </button>
@@ -484,14 +491,14 @@ export default function PortfolioPage() {
                             onClick={() => handleDeleteStrategy(strategy)}
                             disabled={isLoading}
                             className={cn(
-                              "flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-sm font-medium transition-colors",
+                              "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-xs sm:text-sm font-medium transition-colors",
                               isLoading && "opacity-50 cursor-not-allowed"
                             )}
                           >
                             {isLoading ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
                             ) : (
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             )}
                             Delete
                           </button>
@@ -512,11 +519,11 @@ export default function PortfolioPage() {
           transition={{ delay: 0.3 }}
           className="mb-12"
         >
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
              <h3 className="text-lg font-medium text-white">Allocation</h3>
-             <div className="flex gap-4 text-xs">
+             <div className="flex flex-wrap gap-2 sm:gap-4 text-xs">
                 {currentStats.allocation.map(item => (
-                   <div key={item.label} className="flex items-center gap-2">
+                   <div key={item.label} className="flex items-center gap-1.5 sm:gap-2">
                       <div className={cn("w-2 h-2 rounded-full", item.color)} />
                       <span className="text-zinc-400">{item.label} ({item.value.toFixed(0)}%)</span>
                    </div>
@@ -704,6 +711,16 @@ export default function PortfolioPage() {
         }}
         smartAccountAddress={selectedAccount.address}
         smartAccountName={selectedAccount.name}
+      />
+    )}
+
+    {/* Delete Wallet Modal */}
+    {selectedAccount && (
+      <DeleteWalletModal
+        isOpen={showDeleteModal}
+        walletName={selectedAccount.name}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDeleteWallet}
       />
     )}
     </ProtectedRoute>

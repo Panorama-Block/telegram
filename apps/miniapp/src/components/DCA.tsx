@@ -39,6 +39,7 @@ interface Token {
   decimals: number;
   color: string;
   chainId: number;
+  icon?: string;
 }
 
 const SUPPORTED_TOKENS: Token[] = [
@@ -49,6 +50,7 @@ const SUPPORTED_TOKENS: Token[] = [
     decimals: 18,
     color: "bg-blue-500",
     chainId: 1,
+    icon: "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
   },
   {
     symbol: "WETH",
@@ -57,6 +59,7 @@ const SUPPORTED_TOKENS: Token[] = [
     decimals: 18,
     color: "bg-indigo-500",
     chainId: 1,
+    icon: "https://assets.coingecko.com/coins/images/2518/small/weth.png",
   },
   {
     symbol: "USDC",
@@ -65,6 +68,7 @@ const SUPPORTED_TOKENS: Token[] = [
     decimals: 6,
     color: "bg-green-500",
     chainId: 1,
+    icon: "https://assets.coingecko.com/coins/images/6319/small/usdc.png",
   },
   {
     symbol: "USDT",
@@ -73,6 +77,7 @@ const SUPPORTED_TOKENS: Token[] = [
     decimals: 6,
     color: "bg-emerald-500",
     chainId: 1,
+    icon: "https://assets.coingecko.com/coins/images/325/small/Tether.png",
   },
   {
     symbol: "DAI",
@@ -81,6 +86,7 @@ const SUPPORTED_TOKENS: Token[] = [
     decimals: 18,
     color: "bg-yellow-500",
     chainId: 1,
+    icon: "https://assets.coingecko.com/coins/images/9956/small/Badge_Dai.png",
   },
   {
     symbol: "WBTC",
@@ -89,6 +95,7 @@ const SUPPORTED_TOKENS: Token[] = [
     decimals: 8,
     color: "bg-orange-500",
     chainId: 1,
+    icon: "https://assets.coingecko.com/coins/images/7598/small/wrapped_bitcoin_wbtc.png",
   },
   {
     symbol: "LINK",
@@ -97,6 +104,7 @@ const SUPPORTED_TOKENS: Token[] = [
     decimals: 18,
     color: "bg-blue-400",
     chainId: 1,
+    icon: "https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png",
   },
   {
     symbol: "UNI",
@@ -105,6 +113,7 @@ const SUPPORTED_TOKENS: Token[] = [
     decimals: 18,
     color: "bg-pink-500",
     chainId: 1,
+    icon: "https://assets.coingecko.com/coins/images/12504/small/uniswap-uni.png",
   },
 ];
 
@@ -248,7 +257,11 @@ export function DCA({ onClose }: DCAProps) {
       onClick={onClick}
       className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-1.5 hover:bg-zinc-900 transition-colors group"
     >
-      <div className={cn("w-6 h-6 rounded-full", token.color)} />
+      {token.icon ? (
+        <img src={token.icon} alt={token.symbol} className="w-6 h-6 rounded-full object-cover" />
+      ) : (
+        <div className={cn("w-6 h-6 rounded-full", token.color)} />
+      )}
       <span className="text-white font-medium">{token.symbol}</span>
       <ChevronDown className="w-4 h-4 text-zinc-500 group-hover:text-white transition-colors" />
     </button>
@@ -304,7 +317,11 @@ export function DCA({ onClose }: DCAProps) {
                 }}
                 className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/10 transition-colors"
               >
-                <div className={cn("w-10 h-10 rounded-full", token.color)} />
+                {token.icon ? (
+                  <img src={token.icon} alt={token.symbol} className="w-10 h-10 rounded-full object-cover" />
+                ) : (
+                  <div className={cn("w-10 h-10 rounded-full", token.color)} />
+                )}
                 <div className="text-left">
                   <div className="text-white font-medium">{token.symbol}</div>
                   <div className="text-xs text-zinc-500">{token.name}</div>
@@ -493,7 +510,11 @@ export function DCA({ onClose }: DCAProps) {
                       className="w-full flex items-center justify-between p-4 bg-black/40 border border-white/10 rounded-xl hover:bg-black/60 transition-colors"
                     >
                       <div className="flex items-center gap-3">
-                        <div className={cn("w-10 h-10 rounded-full", buyToken.color)} />
+                        {buyToken.icon ? (
+                          <img src={buyToken.icon} alt={buyToken.symbol} className="w-10 h-10 rounded-full object-cover" />
+                        ) : (
+                          <div className={cn("w-10 h-10 rounded-full", buyToken.color)} />
+                        )}
                         <div className="text-left">
                           <div className="text-white font-bold text-lg">{buyToken.symbol}</div>
                           <div className="text-xs text-zinc-500">{buyToken.name}</div>

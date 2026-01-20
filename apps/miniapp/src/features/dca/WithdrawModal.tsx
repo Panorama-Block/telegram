@@ -274,26 +274,26 @@ export default function WithdrawModal({
 
           {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, y: "100%" }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: "100%" }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto"
+            className="fixed inset-x-0 bottom-0 sm:inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <GlassCard className="w-full max-w-lg bg-[#0A0A0A]/95 border-cyan-500/20 overflow-hidden my-auto max-h-[90vh] overflow-y-auto">
+            <GlassCard className="w-full sm:max-w-lg bg-[#0A0A0A] border-cyan-500/20 overflow-hidden rounded-t-2xl sm:rounded-2xl max-h-[90vh] flex flex-col">
               {/* Header */}
-              <div className="relative p-6 border-b border-white/5">
+              <div className="relative p-4 sm:p-6 border-b border-white/5">
                 <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-cyan-500/10 to-transparent pointer-events-none" />
 
-                <div className="relative flex items-start justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
-                      <ArrowUpFromLine className="w-6 h-6 text-cyan-400" />
+                <div className="relative flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                    <div className="p-2.5 sm:p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex-shrink-0">
+                      <ArrowUpFromLine className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />
                     </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-white">Withdraw Funds</h2>
-                      <p className="text-sm text-zinc-400 mt-1">
+                    <div className="min-w-0">
+                      <h2 className="text-lg sm:text-xl font-bold text-white truncate">Withdraw Funds</h2>
+                      <p className="text-xs sm:text-sm text-zinc-400 mt-0.5 sm:mt-1">
                         Transfer to your main wallet
                       </p>
                     </div>
@@ -301,7 +301,7 @@ export default function WithdrawModal({
 
                   <button
                     onClick={onClose}
-                    className="p-2 rounded-lg bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+                    className="p-2 rounded-lg bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -309,7 +309,7 @@ export default function WithdrawModal({
               </div>
 
               {/* Content */}
-              <div className="p-6 space-y-5">
+              <div className="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
                 {/* Success State */}
                 {success ? (
                   <motion.div
@@ -346,16 +346,16 @@ export default function WithdrawModal({
                     )}
 
                     {/* Smart Account Info */}
-                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <Wallet className="w-4 h-4 text-cyan-400" />
-                        <span className="text-sm font-medium text-white">Smart Account</span>
+                    <div className="p-3 sm:p-4 rounded-xl bg-white/5 border border-white/10 space-y-2 sm:space-y-3">
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" />
+                        <span className="text-xs sm:text-sm font-medium text-white">Smart Account</span>
                       </div>
 
-                      <div className="space-y-2 text-xs">
+                      <div className="space-y-1 sm:space-y-1.5 text-[10px] sm:text-xs">
                         <div className="flex justify-between">
                           <span className="text-zinc-500">Name</span>
-                          <span className="text-white font-medium">{smartAccountName}</span>
+                          <span className="text-white font-medium truncate ml-2">{smartAccountName}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-zinc-500">Address</span>
@@ -371,7 +371,7 @@ export default function WithdrawModal({
                             ) : sessionKeyAddress ? (
                               `${sessionKeyAddress.slice(0, 6)}...${sessionKeyAddress.slice(-4)}`
                             ) : (
-                              'Not available'
+                              'N/A'
                             )}
                           </span>
                         </div>
@@ -380,23 +380,23 @@ export default function WithdrawModal({
                           <span className="text-white font-mono">
                             {account?.address
                               ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
-                              : 'Connect wallet'}
+                              : 'Connect'}
                           </span>
                         </div>
                       </div>
                     </div>
 
                     {/* Token Selection */}
-                    <div className="space-y-3">
+                    <div className="space-y-2 sm:space-y-3">
                       <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium text-zinc-300">Select Token</label>
+                        <label className="text-xs sm:text-sm font-medium text-zinc-300">Select Token</label>
                         <button
                           onClick={() => {
                             void fetchSessionBalance();
                             void fetchTokenBalances();
                           }}
                           disabled={isFetchingBalance || isFetchingTokens}
-                          className="flex items-center gap-1 text-xs text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
+                          className="flex items-center gap-1 text-[10px] sm:text-xs text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
                         >
                           <RefreshCw className={cn("w-3 h-3", (isFetchingBalance || isFetchingTokens) && "animate-spin")} />
                           Refresh
@@ -408,30 +408,30 @@ export default function WithdrawModal({
                         type="button"
                         onClick={() => setSelectedToken('ETH')}
                         className={cn(
-                          "w-full flex items-center justify-between p-3 rounded-xl border transition-all",
+                          "w-full flex items-center justify-between p-2.5 sm:p-3 rounded-xl border transition-all",
                           selectedToken === 'ETH'
                             ? "border-cyan-500/30 bg-cyan-500/10"
                             : "border-white/10 bg-white/5 hover:border-white/20"
                         )}
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-sm font-bold">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/10 flex items-center justify-center text-xs sm:text-sm font-bold">
                             Ξ
                           </div>
                           <div className="text-left">
-                            <p className="text-sm font-medium text-white">ETH</p>
-                            <p className="text-xs text-zinc-500">{currentNetwork?.name || 'Ethereum'}</p>
+                            <p className="text-xs sm:text-sm font-medium text-white">ETH</p>
+                            <p className="text-[10px] sm:text-xs text-zinc-500">{currentNetwork?.name || 'Ethereum'}</p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-medium text-white">
+                          <p className="text-xs sm:text-sm font-medium text-white">
                             {isFetchingBalance ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
                             ) : (
                               availableBalance
                             )}
                           </p>
-                          <p className="text-xs text-zinc-500">Available</p>
+                          <p className="text-[10px] sm:text-xs text-zinc-500">Available</p>
                         </div>
                       </button>
 
@@ -447,43 +447,43 @@ export default function WithdrawModal({
                             type="button"
                             onClick={() => setSelectedToken(tokenAddress)}
                             className={cn(
-                              "w-full flex items-center justify-between p-3 rounded-xl border transition-all",
+                              "w-full flex items-center justify-between p-2.5 sm:p-3 rounded-xl border transition-all",
                               selectedToken === tokenAddress
                                 ? "border-cyan-500/30 bg-cyan-500/10"
                                 : "border-white/10 bg-white/5 hover:border-white/20"
                             )}
                           >
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center overflow-hidden">
+                            <div className="flex items-center gap-2 sm:gap-3">
+                              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/10 flex items-center justify-center overflow-hidden">
                                 {token.icon ? (
-                                  <img src={token.icon} alt={token.symbol} className="w-6 h-6 rounded-full" />
+                                  <img src={token.icon} alt={token.symbol} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full" />
                                 ) : (
-                                  <span className="text-xs font-medium">{token.symbol.slice(0, 2)}</span>
+                                  <span className="text-[10px] sm:text-xs font-medium">{token.symbol.slice(0, 2)}</span>
                                 )}
                               </div>
                               <div className="text-left">
-                                <p className="text-sm font-medium text-white">{token.symbol}</p>
-                                <p className="text-xs text-zinc-500">{token.name}</p>
+                                <p className="text-xs sm:text-sm font-medium text-white">{token.symbol}</p>
+                                <p className="text-[10px] sm:text-xs text-zinc-500">{token.name}</p>
                               </div>
                             </div>
                             <div className="text-right">
-                              <p className="text-sm font-medium text-white">{balance}</p>
-                              <p className="text-xs text-zinc-500">Available</p>
+                              <p className="text-xs sm:text-sm font-medium text-white">{balance}</p>
+                              <p className="text-[10px] sm:text-xs text-zinc-500">Available</p>
                             </div>
                           </button>
                         );
                       })}
 
                       {!isFetchingTokens && Object.keys(tokenBalances).length === 0 && (
-                        <p className="text-xs text-zinc-500 text-center py-2">
-                          No ERC20 tokens found in this account
+                        <p className="text-[10px] sm:text-xs text-zinc-500 text-center py-1.5 sm:py-2">
+                          No ERC20 tokens found
                         </p>
                       )}
                     </div>
 
                     {/* Amount Input */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-300">Amount</label>
+                    <div className="space-y-1.5">
+                      <label className="text-xs sm:text-sm font-medium text-zinc-300">Amount</label>
                       <div className="flex gap-2">
                         <input
                           type="number"
@@ -493,17 +493,17 @@ export default function WithdrawModal({
                           onChange={(e) => setAmount(e.target.value)}
                           disabled={loading}
                           placeholder="0.0"
-                          className="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all disabled:opacity-50"
+                          className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all disabled:opacity-50"
                         />
-                        <div className="flex items-center px-4 rounded-xl bg-white/5 border border-white/10 text-zinc-400 font-medium">
+                        <div className="flex items-center px-3 sm:px-4 rounded-xl bg-white/5 border border-white/10 text-zinc-400 text-sm font-medium">
                           {selectedToken === 'ETH'
                             ? 'ETH'
                             : networks.find(n => n.chainId === chainId)?.tokens.find(t => t.address === selectedToken)?.symbol || 'TOKEN'}
                         </div>
                       </div>
-                      <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center justify-between text-[10px] sm:text-xs">
                         <span className="text-zinc-500">
-                          Available: {selectedToken === 'ETH' ? availableBalance : tokenBalances[selectedToken] || '0'} {selectedToken === 'ETH' ? 'ETH' : ''}
+                          Available: {selectedToken === 'ETH' ? availableBalance : tokenBalances[selectedToken] || '0'}
                         </span>
                         <button
                           type="button"
@@ -511,7 +511,7 @@ export default function WithdrawModal({
                             const balance = selectedToken === 'ETH' ? availableBalance : tokenBalances[selectedToken];
                             setAmount(balance || '0');
                           }}
-                          className="text-cyan-400 hover:text-cyan-300 transition-colors"
+                          className="text-cyan-400 hover:text-cyan-300 transition-colors font-medium"
                         >
                           Max
                         </button>
@@ -520,10 +520,10 @@ export default function WithdrawModal({
 
                     {/* Warning Note */}
                     {selectedToken === 'ETH' && (
-                      <div className="flex items-start gap-3 p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/10">
-                        <AlertCircle className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
-                        <p className="text-xs text-zinc-400">
-                          Leave some ETH in the Smart Account to pay for future transaction gas fees.
+                      <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/10">
+                        <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-[10px] sm:text-xs text-zinc-400">
+                          Leave some ETH for future gas fees.
                         </p>
                       </div>
                     )}
@@ -533,11 +533,11 @@ export default function WithdrawModal({
 
               {/* Footer */}
               {!success && (
-                <div className="p-6 pt-0 flex gap-3">
+                <div className="p-4 sm:p-6 pt-0 flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
                   <button
                     onClick={onClose}
                     disabled={loading}
-                    className="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:bg-white/10 hover:text-white transition-all disabled:opacity-50 font-medium"
+                    className="flex-1 px-4 py-2.5 sm:py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:bg-white/10 hover:text-white transition-all disabled:opacity-50 font-medium text-sm sm:text-base"
                   >
                     Cancel
                   </button>
@@ -545,7 +545,7 @@ export default function WithdrawModal({
                     onClick={handleWithdraw}
                     disabled={loading || !amount || parseFloat(amount) <= 0}
                     className={cn(
-                      "flex-1 px-4 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2",
+                      "flex-1 px-4 py-2.5 sm:py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 text-sm sm:text-base",
                       loading || !amount || parseFloat(amount) <= 0
                         ? "bg-cyan-500/20 text-cyan-400/50 cursor-not-allowed"
                         : "bg-cyan-500 text-white hover:bg-cyan-400"

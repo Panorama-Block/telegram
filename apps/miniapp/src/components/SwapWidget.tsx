@@ -60,8 +60,8 @@ const getTokenColor = (token: any) => {
   return 'bg-zinc-500';
 };
 
-const DEFAULT_SELL_TOKEN = { ticker: "ETH", name: "Ethereum", network: "Ethereum", address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", balance: "0.00" };
-const DEFAULT_BUY_TOKEN = { ticker: "AVAX", name: "Avalanche", network: "Avalanche", address: "0x0000000000000000000000000000000000000000", balance: "0.00" };
+const DEFAULT_SELL_TOKEN = { ticker: "ETH", name: "Ethereum", network: "Ethereum", address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", balance: "0.00", icon: "https://assets.coingecko.com/coins/images/279/small/ethereum.png" };
+const DEFAULT_BUY_TOKEN = { ticker: "AVAX", name: "Avalanche", network: "Avalanche", address: "0x0000000000000000000000000000000000000000", balance: "0.00", icon: "https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" };
 
 const getBaseChainId = (networkName: string): number => {
   switch (networkName) {
@@ -112,9 +112,23 @@ const getExplorerUrl = (hash: string, chainId: number) => {
   if (chainId === 10) return `https://optimistic.etherscan.io/tx/${hash}`;
   if (chainId === 137) return `https://polygonscan.com/tx/${hash}`;
   if (chainId === 56) return `https://bscscan.com/tx/${hash}`;
-  if (chainId === 43114) return `https://snowscan.xyz/tx/${hash}`;
+  if (chainId === 43114) return `https://snowtrace.io/tx/${hash}`;
   if (chainId === 42161) return `https://arbiscan.io/tx/${hash}`;
+  if (chainId === 480) return `https://worldscan.org/tx/${hash}`;
   return null;
+};
+
+const getExplorerName = (chainId: number): string => {
+  if (chainId === TON_CHAIN_ID) return 'TON Viewer';
+  if (chainId === 1) return 'Etherscan';
+  if (chainId === 8453) return 'Basescan';
+  if (chainId === 10) return 'Optimism Explorer';
+  if (chainId === 137) return 'Polygonscan';
+  if (chainId === 56) return 'BscScan';
+  if (chainId === 43114) return 'Snowtrace';
+  if (chainId === 42161) return 'Arbiscan';
+  if (chainId === 480) return 'Worldscan';
+  return 'Explorer';
 };
 
 const formatAddress = (address?: string | null) => {
@@ -752,13 +766,17 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                     rightElement={
                       <button
                         onClick={() => openTokenList('sell')}
-                        className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-4 py-2.5 min-h-[44px] hover:bg-zinc-900 active:bg-zinc-800 transition-colors group"
+                        className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2.5 sm:px-4 py-2 sm:py-2.5 min-h-[40px] sm:min-h-[44px] hover:bg-zinc-900 active:bg-zinc-800 transition-colors group"
                       >
-                        <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold", getTokenColor(sellToken))}>
-                          {sellToken.ticker?.[0]}
-                        </div>
-                        <span className="text-white font-medium">{sellToken.ticker}</span>
-                        <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-white transition-colors" />
+                        {sellToken.icon ? (
+                          <img src={sellToken.icon} alt={sellToken.ticker} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover" />
+                        ) : (
+                          <div className={cn("w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[9px] sm:text-[10px] text-white font-bold", getTokenColor(sellToken))}>
+                            {sellToken.ticker?.[0]}
+                          </div>
+                        )}
+                        <span className="text-white font-medium text-sm sm:text-base">{sellToken.ticker}</span>
+                        <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-zinc-500 group-hover:text-white transition-colors" />
                       </button>
                     }
                   />
@@ -789,13 +807,17 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                     rightElement={
                       <button
                         onClick={() => openTokenList('buy')}
-                        className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-4 py-2.5 min-h-[44px] hover:bg-zinc-900 active:bg-zinc-800 transition-colors group"
+                        className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2.5 sm:px-4 py-2 sm:py-2.5 min-h-[40px] sm:min-h-[44px] hover:bg-zinc-900 active:bg-zinc-800 transition-colors group"
                       >
-                        <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold", getTokenColor(buyToken))}>
-                          {buyToken.ticker?.[0]}
-                        </div>
-                        <span className="text-white font-medium">{buyToken.ticker}</span>
-                        <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-white transition-colors" />
+                        {buyToken.icon ? (
+                          <img src={buyToken.icon} alt={buyToken.ticker} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover" />
+                        ) : (
+                          <div className={cn("w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[9px] sm:text-[10px] text-white font-bold", getTokenColor(buyToken))}>
+                            {buyToken.ticker?.[0]}
+                          </div>
+                        )}
+                        <span className="text-white font-medium text-sm sm:text-base">{buyToken.ticker}</span>
+                        <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-zinc-500 group-hover:text-white transition-colors" />
                       </button>
                     }
                   />
@@ -824,28 +846,30 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
                   {/* Refuel Toggle for Bridge */}
                   {(getBaseChainId(sellToken.network) === TON_CHAIN_ID || buyToken.network === 'TON') && (
-                    <div className="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center justify-between mt-2">
-                      <div className="flex flex-col">
-                        <span className="text-sm text-white font-medium flex items-center gap-2">
-                          Refuel (Gas on Destination)
-                          <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded">Recommended</span>
-                        </span>
-                        <span className="text-[10px] text-zinc-500">
-                          Receive some {buyToken.network === 'TON' ? 'TON' : 'ETH'} for gas
-                          {quote?.refuelAmount && (
-                            <span className="text-green-400 ml-1">
-                              (+{Number(quote.refuelAmount).toFixed(4)} {buyToken.network === 'TON' ? 'TON' : 'ETH'} ≈ ${quote.refuelAmountInUsd})
-                            </span>
-                          )}
-                        </span>
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3 mt-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs sm:text-sm text-white font-medium">Refuel</span>
+                            <span className="bg-primary/20 text-primary text-[9px] px-1.5 py-0.5 rounded whitespace-nowrap">Recommended</span>
+                          </div>
+                          <span className="text-[10px] text-zinc-500 mt-0.5">
+                            Receive {buyToken.network === 'TON' ? 'TON' : 'ETH'} for gas
+                            {quote?.refuelAmount && (
+                              <span className="text-green-400 ml-1">
+                                (+{Number(quote.refuelAmount).toFixed(4)})
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        <Switch.Root
+                          checked={refuelEnabled}
+                          onCheckedChange={setRefuelEnabled}
+                          className={cn("w-10 h-6 rounded-full relative transition-colors flex-shrink-0", refuelEnabled ? 'bg-primary' : 'bg-zinc-700')}
+                        >
+                          <Switch.Thumb className={cn("block w-4 h-4 bg-white rounded-full transition-transform translate-x-1 will-change-transform", refuelEnabled ? 'translate-x-5' : 'translate-x-1')} />
+                        </Switch.Root>
                       </div>
-                      <Switch.Root
-                        checked={refuelEnabled}
-                        onCheckedChange={setRefuelEnabled}
-                        className={cn("w-10 h-6 rounded-full relative transition-colors", refuelEnabled ? 'bg-primary' : 'bg-zinc-700')}
-                      >
-                        <Switch.Thumb className={cn("block w-4 h-4 bg-white rounded-full transition-transform translate-x-1 will-change-transform", refuelEnabled ? 'translate-x-5' : 'translate-x-1')} />
-                      </Switch.Root>
                     </div>
                   )}
 
@@ -963,14 +987,42 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                       <div className="text-zinc-400 text-center text-sm max-w-xs">
                         Your transaction has been submitted to the blockchain.
                       </div>
-                      <div className="space-y-2 w-full pt-4">
+
+                      {/* Swap Summary */}
+                      <div className="w-full bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-zinc-500">You sent</span>
+                          <div className="flex items-center gap-2">
+                            {sellToken.icon && <img src={sellToken.icon} alt={sellToken.ticker} className="w-4 h-4 rounded-full" />}
+                            <span className="text-white font-medium">{amount} {sellToken.ticker}</span>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-zinc-500">You receive</span>
+                          <div className="flex items-center gap-2">
+                            {buyToken.icon && <img src={buyToken.icon} alt={buyToken.ticker} className="w-4 h-4 rounded-full" />}
+                            <span className="text-white font-medium">~{estimatedOutput} {buyToken.ticker}</span>
+                          </div>
+                        </div>
+                        {isCrossChain && (
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-zinc-500">Route</span>
+                            <span className="text-zinc-300">{sellToken.network} → {buyToken.network}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Transaction Links */}
+                      <div className="space-y-2 w-full pt-2">
+                        <p className="text-xs text-zinc-500 text-center">Transaction Details</p>
                         {txHashes.map((h, i) => {
                           const explorerUrl = getExplorerUrl(h.hash, h.chainId);
+                          const explorerName = getExplorerName(h.chainId);
                           if (!explorerUrl) {
                             return (
                               <div
                                 key={i}
-                                className="block w-full text-center py-2 bg-white/5 rounded-lg text-zinc-300 text-xs px-4"
+                                className="block w-full text-center py-3 bg-white/5 rounded-xl text-zinc-300 text-xs px-4"
                               >
                                 Transaction pending — check your wallet activity
                               </div>
@@ -982,15 +1034,16 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                               href={explorerUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="block w-full text-center py-2 bg-white/5 rounded-lg text-primary text-xs hover:bg-white/10 truncate px-4"
+                              className="flex items-center justify-between w-full py-3 px-4 bg-white/5 rounded-xl text-xs hover:bg-white/10 transition-colors"
                             >
-                              View TX: {h.hash.slice(0, 10)}...
+                              <span className="text-zinc-400">View on {explorerName}</span>
+                              <span className="text-primary font-mono">{h.hash.slice(0, 8)}...{h.hash.slice(-6)}</span>
                             </a>
                           );
                         })}
                         {swapStatus && (
-                          <div className="text-center text-xs text-zinc-400">
-                            Swap status: {swapStatus}
+                          <div className="text-center text-xs text-zinc-400 pt-2">
+                            Status: <span className="text-primary capitalize">{swapStatus}</span>
                           </div>
                         )}
                         {swapStatusError && (
@@ -1126,11 +1179,14 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                 </div>
                 <span className="text-sm font-medium text-zinc-400">Powered by Thirdweb</span>
               </>
+            ) : sellToken.network === 'Avalanche' ? (
+              <>
+                <img src="https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" alt="Avalanche" className="w-7 h-7 object-contain" />
+                <span className="text-sm font-medium text-zinc-400">Powered by Avax</span>
+              </>
             ) : (
               <>
-                <div className="w-8 h-8 rounded-full bg-[#ff007a]/10 flex items-center justify-center shadow-lg shadow-[#ff007a]/20 border border-[#ff007a]/20">
-                  <div className="text-[#ff007a] font-bold text-sm">🦄</div>
-                </div>
+                <img src="/miniapp/icons/uni_logo.png" alt="Uniswap" className="w-7 h-7 object-contain" />
                 <span className="text-sm font-medium text-zinc-400">Powered by Uniswap</span>
               </>
             )}
