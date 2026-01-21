@@ -77,6 +77,9 @@ const translateError = (message: string): string => {
     'Erro de conexão': 'Connection error',
     'Tempo limite excedido': 'Request timeout',
     'Serviço indisponível': 'Service unavailable',
+    'AMOUNT_TOO_LOW': 'Amount too low. Please increase the swap amount to cover network fees.',
+    'amount is too low': 'Amount too low. Please increase the swap amount to cover network fees.',
+    'The provided amount is too low': 'Amount too low. Please increase the swap amount to cover network fees.',
   };
 
   // Check for exact match
@@ -697,7 +700,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     if (!quote) return "0.00";
     // Handle Bridge Quote (Float)
     if (quote.sourceNetwork && quote.estimatedReceiveAmount) {
-      return Number(quote.estimatedReceiveAmount).toFixed(6);
+      return Number(quote.estimatedReceiveAmount).toFixed(8);
     }
 
     try {
@@ -707,7 +710,8 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
          buyToken.ticker === 'WBTC' || buyToken.ticker === 'BTC.b' ? 8 : 18);
 
       // The backend quote returns estimatedReceiveAmount in smallest units (wei for 18 decimals, etc)
-      return formatAmountHuman(BigInt(quote.estimatedReceiveAmount || quote.toAmount || 0), buyDecimals, 5);
+      // Use 8 decimal places to show small amounts properly
+      return formatAmountHuman(BigInt(quote.estimatedReceiveAmount || quote.toAmount || 0), buyDecimals, 8);
     } catch {
       return "0.00";
     }
