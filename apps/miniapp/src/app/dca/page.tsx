@@ -36,7 +36,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import UniswapIcon from '../../../public/icons/uniswap.svg';
-import { networks, type Token, type Network } from '@/features/swap/tokens';
+import { networks, type Token, type Network, isSwapPairSupported, CROSS_CHAIN_SUPPORTED_SYMBOLS, CROSS_CHAIN_SUPPORTED_CHAIN_IDS } from '@/features/swap/tokens';
 
 interface CreateDCAModalProps {
   isOpen: boolean;
@@ -91,6 +91,20 @@ function CreateDCAModal({
 
   const [showFromSelector, setShowFromSelector] = useState(false);
   const [showToSelector, setShowToSelector] = useState(false);
+
+  // Cross-chain support validation
+  const [pairSupport, setPairSupport] = useState<{ supported: boolean; reason?: string }>({ supported: true });
+
+  // Check if the current pair is supported
+  useEffect(() => {
+    const result = isSwapPairSupported(
+      fromTokenObj,
+      config.fromChainId,
+      toTokenObj,
+      config.toChainId
+    );
+    setPairSupport(result);
+  }, [fromTokenObj, toTokenObj, config.fromChainId, config.toChainId]);
 
   // Session Key Gas states
   const [sessionKeyBalance, setSessionKeyBalance] = useState<string | null>(null);
@@ -525,13 +539,32 @@ function CreateDCAModal({
               </div>
             )}
 
+            {/* Cross-chain not supported warning */}
+            {!pairSupport.supported && (
+              <div className="bg-orange-500/10 border border-orange-500/40 rounded-xl p-3">
+                <div className="flex items-start gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-orange-400 flex-shrink-0 mt-0.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <p className="text-xs font-semibold text-orange-400 mb-1">Pair Not Supported</p>
+                    <p className="text-[11px] text-gray-400 leading-relaxed">{pairSupport.reason}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Create Button */}
             <button
               onClick={() => handleSubmit(false)}
-              disabled={!config.smartAccountId || !config.amount || Number(config.amount) <= 0 || loading}
-              className="w-full py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-gray-100"
+              disabled={!config.smartAccountId || !config.amount || Number(config.amount) <= 0 || loading || !pairSupport.supported}
+              className={`w-full py-3 rounded-xl font-semibold text-sm transition-all disabled:cursor-not-allowed ${
+                !pairSupport.supported
+                  ? 'bg-gray-600 text-gray-400 opacity-50'
+                  : 'bg-white text-black hover:bg-gray-100 disabled:opacity-50'
+              }`}
             >
-              {loading ? 'Creating...' : 'Create Recurring Buy'}
+              {loading ? 'Creating...' : !pairSupport.supported ? 'Pair Not Supported' : 'Create Recurring Buy'}
             </button>
 
             {/* Description */}
@@ -802,64 +835,83 @@ function CreateDCAModal({
               </div>
               <div className="p-4 border-b border-white/10">
                 <div className="flex gap-2 overflow-x-auto pb-2">
-                  {networks.map((network) => (
-                    <button
-                      key={network.chainId}
-                      onClick={() => {
-                        setFromNetwork(network);
-                        setFromTokenObj(network.tokens[0]);
-                        setConfig({
-                          ...config,
-                          fromChainId: network.chainId,
-                          fromToken: network.tokens[0].address,
-                          fromTokenSymbol: network.tokens[0].symbol,
-                        });
-                      }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-                        fromNetwork.chainId === network.chainId
-                          ? 'bg-cyan-400/20 text-cyan-400 border border-cyan-400/30'
-                          : 'bg-[#2A2A2A] text-gray-400 hover:text-white'
-                      }`}
-                    >
-                      {network.name}
-                    </button>
-                  ))}
+                  {networks.map((network) => {
+                    const isChainCrossChainSupported = CROSS_CHAIN_SUPPORTED_CHAIN_IDS.includes(network.chainId);
+                    return (
+                      <button
+                        key={network.chainId}
+                        onClick={() => {
+                          setFromNetwork(network);
+                          setFromTokenObj(network.tokens[0]);
+                          setConfig({
+                            ...config,
+                            fromChainId: network.chainId,
+                            fromToken: network.tokens[0].address,
+                            fromTokenSymbol: network.tokens[0].symbol,
+                          });
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                          fromNetwork.chainId === network.chainId
+                            ? 'bg-cyan-400/20 text-cyan-400 border border-cyan-400/30'
+                            : !isChainCrossChainSupported
+                              ? 'bg-[#2A2A2A] text-gray-500 hover:text-gray-400 opacity-70'
+                              : 'bg-[#2A2A2A] text-gray-400 hover:text-white'
+                        }`}
+                        title={!isChainCrossChainSupported ? 'Cross-chain swaps not supported from this network' : undefined}
+                      >
+                        {network.name}
+                        {!isChainCrossChainSupported && ' ⚠️'}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4">
                 <div className="space-y-2">
-                  {fromNetwork.tokens.map((token) => (
-                    <button
-                      key={token.address}
-                      onClick={() => {
-                        setFromTokenObj(token);
-                        setConfig({
-                          ...config,
-                          fromToken: token.address,
-                          fromTokenSymbol: token.symbol,
-                        });
-                        setShowFromSelector(false);
-                      }}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-[#2A2A2A] transition-colors"
-                    >
-                      <Image
-                        src={token.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
-                        alt={token.symbol}
-                        width={32}
-                        height={32}
-                        className="w-8 h-8 rounded-full"
-                        unoptimized
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
+                  {fromNetwork.tokens.map((token) => {
+                    const isCrossChainSupported = CROSS_CHAIN_SUPPORTED_SYMBOLS.includes(token.symbol);
+                    return (
+                      <button
+                        key={token.address}
+                        onClick={() => {
+                          setFromTokenObj(token);
+                          setConfig({
+                            ...config,
+                            fromToken: token.address,
+                            fromTokenSymbol: token.symbol,
+                          });
+                          setShowFromSelector(false);
                         }}
-                      />
-                      <div className="flex-1 text-left">
-                        <div className="text-white font-medium">{token.symbol}</div>
-                        <div className="text-xs text-gray-400">{fromNetwork.name}</div>
-                      </div>
-                    </button>
-                  ))}
+                        className={`w-full flex items-center gap-3 p-3 rounded-xl hover:bg-[#2A2A2A] transition-colors ${
+                          !isCrossChainSupported ? 'opacity-60' : ''
+                        }`}
+                      >
+                        <Image
+                          src={token.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
+                          alt={token.symbol}
+                          width={32}
+                          height={32}
+                          className="w-8 h-8 rounded-full"
+                          unoptimized
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
+                          }}
+                        />
+                        <div className="flex-1 text-left">
+                          <div className="flex items-center gap-2">
+                            <span className="text-white font-medium">{token.symbol}</span>
+                            {!isCrossChainSupported && (
+                              <span className="px-1.5 py-0.5 text-[9px] font-medium bg-gray-600/50 text-gray-400 rounded">
+                                Same-chain only
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-400">{fromNetwork.name}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

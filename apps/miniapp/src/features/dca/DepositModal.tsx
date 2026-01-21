@@ -1,16 +1,31 @@
 /**
  * Modal to deposit funds into the Smart Account
+ * Styled with glass morphism to match Portfolio page
  */
 
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useActiveAccount, useActiveWalletChain } from 'thirdweb/react';
 import { sendTransaction, prepareTransaction, toWei, defineChain } from 'thirdweb';
 import { createThirdwebClient, type Address } from 'thirdweb';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
-import { networks, Token } from '@/features/swap/tokens';
-import { Button } from '@/components/ui/button';
+import { networks } from '@/features/swap/tokens';
+import { GlassCard } from '@/components/ui/GlassCard';
+import {
+  X,
+  Wallet,
+  ArrowDownToLine,
+  ExternalLink,
+  Loader2,
+  Check,
+  AlertCircle,
+  ChevronDown,
+  Info
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { getSmartAccount } from './api';
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -19,7 +34,6 @@ interface DepositModalProps {
   smartAccountName: string;
 }
 
-// Helper function to get explorer URL for transaction
 function getExplorerUrl(chainId: number, txHash: string): string {
   const explorers: Record<number, string> = {
     1: 'https://etherscan.io/tx/',
@@ -33,6 +47,19 @@ function getExplorerUrl(chainId: number, txHash: string): string {
   return `${explorers[chainId] || 'https://etherscan.io/tx/'}${txHash}`;
 }
 
+function getAddressExplorerUrl(chainId: number, address: string): string {
+  const explorers: Record<number, string> = {
+    1: 'https://etherscan.io/address/',
+    56: 'https://bscscan.com/address/',
+    137: 'https://polygonscan.com/address/',
+    43114: 'https://snowtrace.io/address/',
+    42161: 'https://arbiscan.io/address/',
+    8453: 'https://basescan.org/address/',
+    10: 'https://optimistic.etherscan.io/address/',
+  };
+  return `${explorers[chainId] || 'https://etherscan.io/address/'}${address}`;
+}
+
 export default function DepositModal({
   isOpen,
   onClose,
@@ -41,21 +68,14 @@ export default function DepositModal({
 }: DepositModalProps) {
   const account = useActiveAccount();
   const activeChain = useActiveWalletChain();
-  const [chainId, setChainId] = useState<number>(8453); // Base default
+  const [chainId, setChainId] = useState<number>(8453);
   const [amount, setAmount] = useState('0.01');
   const [isDepositing, setIsDepositing] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [sessionKeyAddress, setSessionKeyAddress] = useState<string>('');
+  const [isLoadingSessionKey, setIsLoadingSessionKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [walletBalance, setWalletBalance] = useState<string>('0');
-  const [isCheckingBalance, setIsCheckingBalance] = useState(false);
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
-
-  // Session Key funding state
-  const [showSessionKeyStep, setShowSessionKeyStep] = useState(false);
-  const [plannedTrades, setPlannedTrades] = useState<number>(5);
-  const [isDepositingToSessionKey, setIsDepositingToSessionKey] = useState(false);
-  const [sessionKeyTxHash, setSessionKeyTxHash] = useState<string | null>(null);
 
   const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID || '' });
 
@@ -65,13 +85,10 @@ export default function DepositModal({
     }
   }, [activeChain]);
 
-  // Get current network
   const currentNetwork = useMemo(() => {
-    const found = networks.find((n) => n.chainId === chainId);
-    return found;
+    return networks.find((n) => n.chainId === chainId);
   }, [chainId]);
 
-  // Get native token for current network
   const nativeToken = useMemo(() => {
     return currentNetwork?.nativeCurrency || {
       symbol: 'ETH',
@@ -82,131 +99,34 @@ export default function DepositModal({
     };
   }, [currentNetwork]);
 
-  // Fetch session key address from smart account (for display purposes only)
+  // Fetch session key address using authenticated API
   useEffect(() => {
     const fetchSessionKey = async () => {
-      if (!smartAccountAddress) return;
+      if (!smartAccountAddress || !isOpen || !account?.address) return;
 
+      setIsLoadingSessionKey(true);
       try {
-        const { DCA_API_URL } = await import('./api');
-        const response = await fetch(`${DCA_API_URL}/dca/account/${smartAccountAddress}`);
-        if (response.ok) {
-          const data = await response.json();
-          setSessionKeyAddress(data.sessionKeyAddress);
-          console.log('Session Key Address (signer):', data.sessionKeyAddress);
-          console.log('Smart Account Address (holds funds):', smartAccountAddress);
+        const accountData = await getSmartAccount(smartAccountAddress, account.address);
+        if (accountData?.sessionKeyAddress) {
+          setSessionKeyAddress(accountData.sessionKeyAddress);
         }
       } catch (err) {
         console.error('Error fetching session key:', err);
+      } finally {
+        setIsLoadingSessionKey(false);
       }
     };
 
     if (isOpen) {
       fetchSessionKey();
     }
-  }, [isOpen, smartAccountAddress]);
+  }, [isOpen, smartAccountAddress, account?.address]);
 
-  // Check if wallet is on wrong network
   const isWrongNetwork = useMemo(() => {
     const currentChain = walletChainId ?? activeChain?.id;
-    if (currentChain == null) {
-      return false;
-    }
+    if (currentChain == null) return false;
     return currentChain !== chainId;
   }, [walletChainId, activeChain, chainId]);
-
-  // Check wallet balance
-  const checkWalletBalance = async () => {
-    if (!account || !currentNetwork) return;
-
-    // TypeScript narrowing
-    const activeAccount = account;
-
-    setIsCheckingBalance(true);
-    try {
-      // TODO: Fix balance checking with correct Thirdweb v5 imports
-      // Temporarily disabled to avoid errors
-      console.log('⚠️ Balance checking temporarily disabled');
-      setWalletBalance('--');
-      setIsCheckingBalance(false);
-      return;
-
-      // For native tokens
-      console.log('🔍 Checking native token balance for:', { chainId });
-
-      // const balance = await getBalance({
-      //   client,
-      //   chain: defineChain(chainId),
-      //   address: activeAccount.address as Address,
-      // });
-
-      // // Convert from wei to readable format
-      // const balanceInTokens = (Number(balance.value) / Math.pow(10, 18)).toFixed(6);
-      // console.log('💰 Native token balance found:', balanceInTokens);
-      // setWalletBalance(balanceInTokens);
-    } catch (err) {
-      console.error('Error checking balance:', err);
-      setWalletBalance('0');
-    } finally {
-      setIsCheckingBalance(false);
-    }
-  };
-
-  // Check wallet balance when component mounts or chain changes
-  useEffect(() => {
-    if (isOpen && account && currentNetwork) {
-      console.log('🔄 Checking balance for:', { token: nativeToken.symbol, chainId });
-      // Reset balance first
-      setWalletBalance('0');
-      checkWalletBalance();
-    }
-  }, [isOpen, account, chainId, currentNetwork]);
-
-  // Ensure wallet is on selected network when modal opens or selection changes
-  useEffect(() => {
-    if (!isOpen || !account) {
-      return;
-    }
-
-    void checkCurrentNetwork();
-
-    if (!window.ethereum) {
-      return;
-    }
-
-    const handleChainChanged = (chainIdHex: string) => {
-      const newChainId = parseInt(chainIdHex, 16);
-      console.log('🔄 Network changed to:', newChainId);
-      setWalletChainId(newChainId);
-    };
-
-    const ethereum = window.ethereum as any;
-    ethereum.on?.('chainChanged', handleChainChanged);
-
-    return () => {
-      ethereum.removeListener?.('chainChanged', handleChainChanged);
-    };
-  }, [isOpen, account, chainId]);
-
-  const checkCurrentNetwork = async () => {
-    if (!window.ethereum) return;
-
-    try {
-      const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
-      const currentChainIdNumber = parseInt(currentChainId, 16);
-
-      console.log('🔍 Current network detected:', currentChainIdNumber);
-
-      setWalletChainId(currentChainIdNumber);
-
-      if (currentChainIdNumber !== chainId) {
-        console.log(`🔄 Trying to switch to selected network (Chain ID: ${chainId})...`);
-        await switchToChain(chainId);
-      }
-    } catch (err) {
-      console.error('Error checking current network:', err);
-    }
-  };
 
   const switchToChain = async (targetChainId: number) => {
     if (!window.ethereum) return;
@@ -218,40 +138,9 @@ export default function DepositModal({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: chainIdHex }],
       });
+      setWalletChainId(targetChainId);
     } catch (err: any) {
-      // Chain not added to MetaMask
-      if (err?.code === 4902 && targetChainId === 11155111) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [
-              {
-                chainId: chainIdHex,
-                chainName: 'Sepolia Test Network',
-                nativeCurrency: {
-                  name: 'Sepolia ETH',
-                  symbol: 'ETH',
-                  decimals: 18,
-                },
-                rpcUrls: ['https://rpc.sepolia.org'],
-                blockExplorerUrls: ['https://sepolia.etherscan.io'],
-              },
-            ],
-          });
-
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: chainIdHex }],
-          });
-          return;
-        } catch (addError) {
-          console.error('Error adding Sepolia network:', addError);
-          throw addError;
-        }
-      }
-
       console.error('Error switching network:', err);
-      throw err;
     }
   };
 
@@ -271,18 +160,11 @@ export default function DepositModal({
       return;
     }
 
-    // Check if wallet is on the correct network
-    const currentWalletChainId = walletChainId ?? activeChain?.id;
-
-    if (typeof currentWalletChainId === 'number' && currentWalletChainId !== chainId) {
-      const expectedNetwork = currentNetwork?.name || `Chain ID: ${chainId}`;
-      const currentWalletNetwork = activeChain?.name || `Chain ID: ${currentWalletChainId}`;
-
-      setError(`⚠️ Your wallet is on ${currentWalletNetwork}, but you selected ${expectedNetwork}.\n\nPlease switch your wallet to ${expectedNetwork} in MetaMask.`);
+    if (isWrongNetwork) {
+      setError(`Switch your wallet to ${currentNetwork?.name} to continue`);
       return;
     }
 
-    // Validate Smart Account address
     if (!smartAccountAddress || smartAccountAddress.length !== 42 || !smartAccountAddress.startsWith('0x')) {
       setError('Invalid Smart Account address');
       return;
@@ -293,24 +175,8 @@ export default function DepositModal({
     setTxHash(null);
 
     try {
-      // IMPORTANT: Always deposit to the SMART ACCOUNT, not the session key!
-      // The smart account is a contract that holds the funds
-      // The session key only signs transactions on behalf of the smart account
-      const depositAddress = smartAccountAddress;
-
-      console.log('💰 Depositing to Smart Account (Account Abstraction)...');
-      console.log('From (your wallet):', account.address);
-      console.log('To (Smart Account - contract):', depositAddress);
-      console.log('Authorized signer (Session Key):', sessionKeyAddress);
-      console.log('Amount:', amount, nativeToken.symbol);
-      console.log('Network:', currentNetwork.name);
-      console.log('Chain ID:', chainId);
-
-      // Native token transfer
-      console.log('🔄 Making native token transfer...', { chainId });
-
       const transaction = prepareTransaction({
-        to: depositAddress as Address,
+        to: smartAccountAddress as Address,
         value: toWei(amount),
         chain: defineChain(chainId),
         client,
@@ -321,569 +187,322 @@ export default function DepositModal({
         account,
       });
 
-      console.log('✅ Native token deposit completed!');
-      console.log('Transaction Hash:', result.transactionHash);
       setTxHash(result.transactionHash);
-
-      // Scroll to success message
-      setTimeout(() => {
-        const successElement = document.querySelector('.bg-green-500\\/10');
-        if (successElement) {
-          successElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 100);
-
-      // After successful deposit to smart account, show session key funding step
-      setTimeout(() => {
-        setShowSessionKeyStep(true);
-      }, 2000);
     } catch (err: any) {
-      console.error('❌ Error depositing:', err);
+      console.error('Error depositing:', err);
 
-      // Parse error message for better user experience
       let errorMessage = 'Error making deposit. Please try again.';
-      
+
       if (err.message) {
         if (err.message.includes('insufficient funds') || err.message.includes('transfer amount exceeds balance')) {
-          errorMessage = `❌ Insufficient balance on ${currentNetwork?.name}!\n\nYou don't have ${amount} ${nativeToken.symbol} available in your wallet.\n\nPlease:\n• Add funds to your wallet\n• Or try a smaller amount`;
+          errorMessage = `Insufficient balance on ${currentNetwork?.name}!`;
         } else if (err.message.includes('user rejected')) {
           errorMessage = 'Transaction cancelled by user.';
         } else if (err.message.includes('gas')) {
-          errorMessage = 'Gas error. Try increasing the gas limit or check your connection.';
-        } else if (err.message.includes('network')) {
-          errorMessage = 'Network error. Check your connection and try again.';
+          errorMessage = 'Gas error. Try increasing the gas limit.';
         } else {
           errorMessage = err.message;
         }
       }
-      
+
       setError(errorMessage);
     } finally {
       setIsDepositing(false);
     }
   };
 
-  // Calculate estimated gas needed for session key based on planned trades
-  const calculateSessionKeyGas = useMemo(() => {
-    // Estimated gas per DCA trade on Ethereum mainnet
-    // Based on Account Abstraction UserOp: ~0.0002 ETH per trade
-    const gasPerTrade = 0.0002;
-
-    // Add 20% buffer for safety
-    const buffer = 1.2;
-
-    const totalGas = plannedTrades * gasPerTrade * buffer;
-
-    return {
-      gasPerTrade,
-      totalGas: totalGas.toFixed(6),
-      breakdown: `${plannedTrades} trades × ${gasPerTrade} ETH + 20% buffer`
-    };
-  }, [plannedTrades]);
-
-  // Deposit ETH from Smart Account to Session Key
-  const handleDepositToSessionKey = async () => {
-    if (!account || !sessionKeyAddress) {
-      setError('Session key address not found');
-      return;
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setTxHash(null);
+      setError(null);
+      setAmount('0.01');
     }
-
-    // Validate session key address
-    if (!sessionKeyAddress || sessionKeyAddress.length !== 42 || !sessionKeyAddress.startsWith('0x')) {
-      setError('Invalid session key address');
-      return;
-    }
-
-    setIsDepositingToSessionKey(true);
-    setError(null);
-    setSessionKeyTxHash(null);
-
-    try {
-      const depositAmount = calculateSessionKeyGas.totalGas;
-
-      console.log('💰 Depositing to Session Key...');
-      console.log('From (Smart Account):', smartAccountAddress);
-      console.log('To (Session Key):', sessionKeyAddress);
-      console.log('Amount:', depositAmount, 'ETH');
-      console.log('Planned trades:', plannedTrades);
-
-      // Transfer ETH from current wallet to session key
-      // Note: This transfers from the user's wallet, not the smart account
-      // In a production environment, you might want to implement a way to transfer from smart account
-      const transaction = prepareTransaction({
-        to: sessionKeyAddress as Address,
-        value: toWei(depositAmount),
-        chain: defineChain(chainId),
-        client,
-      });
-
-      const result = await sendTransaction({
-        transaction,
-        account,
-      });
-
-      console.log('✅ Session Key deposit completed!');
-      console.log('Transaction Hash:', result.transactionHash);
-      setSessionKeyTxHash(result.transactionHash);
-
-      // Close modal after 5 seconds
-      setTimeout(() => {
-        setAmount('0.01');
-        setShowSessionKeyStep(false);
-        onClose();
-      }, 5000);
-    } catch (err: any) {
-      console.error('❌ Error depositing to session key:', err);
-
-      let errorMessage = 'Error depositing to session key. Please try again.';
-
-      if (err.message) {
-        if (err.message.includes('insufficient funds')) {
-          errorMessage = `❌ Insufficient balance!\n\nYou don't have ${calculateSessionKeyGas.totalGas} ETH available.\n\nPlease add funds to your wallet.`;
-        } else if (err.message.includes('user rejected')) {
-          errorMessage = 'Transaction cancelled by user.';
-        } else {
-          errorMessage = err.message;
-        }
-      }
-
-      setError(errorMessage);
-    } finally {
-      setIsDepositingToSessionKey(false);
-    }
-  };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   return (
-    <>
-      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+            onClick={onClose}
+          />
 
-      <div className="fixed inset-0 z-50 flex items-center justify-center px-2 sm:px-4 py-4 sm:py-6">
-        <div className="w-full max-w-lg max-h-[95vh] sm:max-h-[90vh] overflow-y-auto rounded-xl sm:rounded-2xl border border-pano-border/60 bg-pano-surface shadow-2xl shadow-black/40">
-          <div className="flex items-start justify-between border-b border-pano-border/40 px-4 sm:px-6 py-3 sm:py-4">
-            <div className="flex-1 min-w-0">
-              <h2 className="text-base sm:text-lg font-semibold text-pano-text-primary">Deposit funds</h2>
-              <p className="text-[10px] sm:text-xs text-pano-text-muted">
-                Add balance to the smart wallet.
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated p-1.5 sm:p-2 text-pano-text-muted transition-colors hover:text-pano-text-primary flex-shrink-0 ml-2"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+          {/* Modal */}
+          <motion.div
+            initial={{ opacity: 0, y: "100%" }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: "100%" }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="fixed inset-x-0 bottom-0 sm:inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GlassCard className="w-full sm:max-w-lg bg-[#0A0A0A] border-cyan-500/20 overflow-hidden rounded-t-2xl sm:rounded-2xl max-h-[90vh] flex flex-col">
+              {/* Header */}
+              <div className="relative p-4 sm:p-6 border-b border-white/5">
+                <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-cyan-500/10 to-transparent pointer-events-none" />
 
-          <div className="space-y-3 sm:space-y-5 px-4 sm:px-6 py-4 sm:py-5">
-            {/* Session Key Funding Step */}
-            {showSessionKeyStep && sessionKeyAddress ? (
-              <>
-                <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-4 py-3 text-sm">
-                  <h3 className="font-semibold text-cyan-400 mb-2 flex items-center gap-2">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Fund Your Session Key
-                  </h3>
-                  <p className="text-xs text-pano-text-muted mb-3">
-                    To execute DCA trades automatically, the session key needs ETH to pay for gas.
-                    Let&apos;s calculate how much you need based on the number of planned trades.
-                  </p>
-                </div>
-
-                <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
-                  <div>
-                    <label className="text-sm font-medium text-pano-text-primary">How many DCA trades do you plan to execute?</label>
-                    <div className="mt-2 flex gap-2 items-center">
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        value={plannedTrades}
-                        onChange={(e) => setPlannedTrades(parseInt(e.target.value) || 1)}
-                        className="flex-1 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40"
-                        placeholder="5"
-                        disabled={isDepositingToSessionKey}
-                      />
-                      <div className="text-sm text-pano-text-muted">trades</div>
+                <div className="relative flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                    <div className="p-2.5 sm:p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex-shrink-0">
+                      <ArrowDownToLine className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-lg sm:text-xl font-bold text-white truncate">Deposit Funds</h2>
+                      <p className="text-xs sm:text-sm text-zinc-400 mt-0.5 sm:mt-1">
+                        Add balance to your Smart Wallet
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    {[5, 10, 20, 50].map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => setPlannedTrades(preset)}
-                        disabled={isDepositingToSessionKey}
-                        className="rounded-md border border-pano-border-subtle px-3 py-1.5 text-xs text-pano-text-secondary transition-colors hover:border-pano-primary/60 hover:text-pano-text-primary disabled:opacity-50"
-                      >
-                        {preset} trades
-                      </button>
-                    ))}
-                  </div>
+                  <button
+                    onClick={onClose}
+                    className="p-2 rounded-lg bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
+              </div>
 
-                <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/5 px-4 py-4 space-y-3">
-                  <h4 className="text-sm font-semibold text-pano-text-primary">Estimated Gas Calculation</h4>
-
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
-                      <span className="text-pano-text-muted">Gas per trade</span>
-                      <span className="font-semibold text-pano-text-primary">
-                        {calculateSessionKeyGas.gasPerTrade} ETH
-                      </span>
+              {/* Content */}
+              <div className="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
+                {/* Success State */}
+                {txHash ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-col items-center py-8"
+                  >
+                    <div className="w-16 h-16 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center mb-4">
+                      <Check className="w-8 h-8 text-cyan-400" />
                     </div>
-                    <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
-                      <span className="text-pano-text-muted">Number of trades</span>
-                      <span className="font-semibold text-pano-text-primary">
-                        {plannedTrades}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between py-1.5 px-2 rounded bg-black/20">
-                      <span className="text-pano-text-muted">Safety buffer</span>
-                      <span className="font-semibold text-pano-text-primary">
-                        +20%
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between py-2 px-3 rounded bg-cyan-500/20 border border-cyan-500/30">
-                      <span className="text-cyan-400 font-semibold">Total required</span>
-                      <span className="font-bold text-cyan-400 text-base">
-                        {calculateSessionKeyGas.totalGas} ETH
-                      </span>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-pano-text-muted">
-                    {calculateSessionKeyGas.breakdown}
-                  </p>
-                </div>
-
-                <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-3 text-xs space-y-2">
-                  <p className="font-medium text-pano-text-primary">Why does the session key need funds?</p>
-                  <ul className="space-y-1 text-pano-text-muted list-disc list-inside">
-                    <li>The session key signs transactions automatically without popup</li>
-                    <li>It pays for transaction gas with its own balance</li>
-                    <li>Trade funds stay in the Smart Account (secure)</li>
-                    <li>You can recover unused ETH later</li>
-                  </ul>
-                </div>
-
-                {sessionKeyTxHash && (
-                  <div className="rounded-lg border border-pano-success/40 bg-pano-success/10 px-4 py-4 text-sm text-pano-success space-y-2">
-                    <div className="flex items-center gap-2 font-medium">
-                      <span className="text-lg">✅</span>
-                      Session key funded successfully!
-                    </div>
+                    <h3 className="text-lg font-semibold text-white mb-2">Deposit Successful!</h3>
+                    <p className="text-sm text-zinc-400 text-center mb-4">
+                      {amount} {nativeToken.symbol} has been deposited to your Smart Wallet.
+                    </p>
                     <a
-                      className="block truncate text-xs font-mono text-pano-text-primary hover:text-pano-primary"
-                      href={getExplorerUrl(chainId, sessionKeyTxHash)}
+                      href={getExplorerUrl(chainId, txHash)}
                       target="_blank"
                       rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-sm text-cyan-400 hover:text-cyan-300 transition-colors"
                     >
-                      {sessionKeyTxHash}
+                      <span className="font-mono">{txHash.slice(0, 10)}...{txHash.slice(-8)}</span>
+                      <ExternalLink className="w-4 h-4" />
                     </a>
-                    <p className="text-[11px] text-pano-text-muted">
-                      Now you can execute up to {plannedTrades} DCA trades automatically!
-                    </p>
-                  </div>
-                )}
-
-                {error && (
-                  <div className="rounded-lg border border-pano-error/40 bg-pano-error/10 px-4 py-3 text-sm text-pano-error">
-                    {error}
-                  </div>
-                )}
-
-                <div className="flex flex-col gap-3 md:flex-row">
-                  <Button
-                    variant="ghost"
-                    size="md"
-                    fullWidth
-                    onClick={() => {
-                      setShowSessionKeyStep(false);
-                      onClose();
-                    }}
-                    disabled={isDepositingToSessionKey}
-                  >
-                    Skip (do later)
-                  </Button>
-
-                  <Button
-                    variant="primary"
-                    size="md"
-                    fullWidth
-                    onClick={handleDepositToSessionKey}
-                    disabled={isDepositingToSessionKey || !sessionKeyAddress || plannedTrades < 1}
-                    loading={isDepositingToSessionKey}
-                  >
-                    Deposit {calculateSessionKeyGas.totalGas} ETH
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <>
-            {activeChain && activeChain.id !== chainId && (
-              <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-3 py-2 text-[11px] text-pano-warning">
-                Your wallet is on {activeChain.name || 'another network'}. Switch to {currentNetwork?.name || `Chain ID ${chainId}`} before continuing.
-              </div>
-            )}
-
-            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-pano-text-primary">Smart Account (Account Abstraction)</p>
-                  <p className="text-xs text-pano-text-muted">
-                    Funds are stored in the smart account contract, not in the session key.
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    const explorerUrls: Record<number, string> = {
-                      1: 'https://etherscan.io/address/',
-                      8453: 'https://basescan.org/address/',
-                      42161: 'https://arbiscan.io/address/',
-                      10: 'https://optimistic.etherscan.io/address/',
-                      137: 'https://polygonscan.com/address/',
-                      43114: 'https://snowtrace.io/address/',
-                      11155111: 'https://sepolia.etherscan.io/address/',
-                    };
-                    const explorerUrl = (explorerUrls[chainId] || 'https://etherscan.io/address/') + smartAccountAddress;
-                    window.open(explorerUrl, '_blank');
-                  }}
-                  className="text-xs text-pano-text-accent hover:text-pano-primary"
-                >
-                  View explorer
-                </Button>
-              </div>
-
-              <div className="grid gap-2 text-xs text-pano-text-muted">
-                <div className="flex items-center justify-between gap-3">
-                  <span>Name</span>
-                  <span className="font-mono text-pano-text-primary">{smartAccountName}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span>Smart Account (contract)</span>
-                  <span className="font-mono text-pano-text-primary">
-                    {smartAccountAddress
-                      ? `${smartAccountAddress.slice(0, 6)}...${smartAccountAddress.slice(-4)}`
-                      : 'Loading...'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span>Session Key (signer)</span>
-                  <span className="font-mono text-pano-text-primary">
-                    {sessionKeyAddress
-                      ? `${sessionKeyAddress.slice(0, 6)}...${sessionKeyAddress.slice(-4)}`
-                      : 'Loading...'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span>Selected network</span>
-                  <span className="font-medium text-pano-text-primary">
-                    {currentNetwork?.name || `Chain ID: ${chainId}`}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-pano-text-secondary">Network</label>
-                <select
-                  value={chainId}
-                  onChange={(e) => setChainId(Number(e.target.value))}
-                  disabled={isDepositing}
-                  className="w-full rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40 disabled:opacity-50"
-                >
-                  {networks.map((network) => (
-                    <option key={network.chainId} value={network.chainId}>
-                      {network.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-pano-text-secondary">Token</label>
-                <div className="w-full flex items-center gap-2 px-4 py-3 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated">
-                  <div className="flex items-center gap-2">
-                    {nativeToken.icon && (
-                      <img
-                        src={nativeToken.icon}
-                        alt={nativeToken.symbol}
-                        className="w-6 h-6 rounded-full"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
-                        }}
-                      />
+                    <button
+                      onClick={onClose}
+                      className="mt-6 px-6 py-2 rounded-xl bg-cyan-500 text-white font-medium hover:bg-cyan-400 transition-colors"
+                    >
+                      Done
+                    </button>
+                  </motion.div>
+                ) : (
+                  <>
+                    {/* Error Message */}
+                    {error && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20"
+                      >
+                        <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+                        <p className="text-sm text-red-400">{error}</p>
+                      </motion.div>
                     )}
-                    <div className="text-left">
-                      <div className="text-sm font-medium text-pano-text-primary">{nativeToken.symbol}</div>
-                      <div className="text-xs text-pano-text-muted">{nativeToken.name}</div>
+
+                    {/* Wrong Network Warning */}
+                    {isWrongNetwork && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center justify-between p-4 rounded-xl bg-orange-500/10 border border-orange-500/20"
+                      >
+                        <div className="flex items-center gap-3">
+                          <AlertCircle className="w-5 h-5 text-orange-400 flex-shrink-0" />
+                          <p className="text-sm text-orange-400">
+                            Switch to {currentNetwork?.name} to continue
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => switchToChain(chainId)}
+                          className="px-3 py-1.5 rounded-lg bg-orange-500/20 text-orange-400 text-xs font-medium hover:bg-orange-500/30 transition-colors"
+                        >
+                          Switch
+                        </button>
+                      </motion.div>
+                    )}
+
+                    {/* Smart Account Info */}
+                    <div className="p-3 sm:p-4 rounded-xl bg-white/5 border border-white/10 space-y-2 sm:space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" />
+                          <span className="text-xs sm:text-sm font-medium text-white">Smart Account</span>
+                        </div>
+                        <a
+                          href={getAddressExplorerUrl(chainId, smartAccountAddress)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-[10px] sm:text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                        >
+                          View
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+
+                      <div className="space-y-1.5 sm:space-y-2 text-[10px] sm:text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Name</span>
+                          <span className="text-white font-medium truncate ml-2">{smartAccountName}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Address</span>
+                          <span className="text-white font-mono">
+                            {smartAccountAddress.slice(0, 6)}...{smartAccountAddress.slice(-4)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-4 space-y-3">
-              <div>
-                <label className="text-sm font-medium text-pano-text-primary">Amount to deposit</label>
-                <div className="mt-2 flex gap-2">
-                  <input
-                    type="number"
-                    step="0.001"
-                    min="0.000001"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="flex-1 rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 py-3 text-sm text-pano-text-primary focus:outline-none focus:ring-2 focus:ring-pano-primary/40 disabled:opacity-50"
-                    placeholder="0.01"
-                    disabled={isDepositing}
-                  />
-                  <div className="flex items-center rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-4 text-sm font-medium text-pano-text-muted">
-                    {nativeToken.symbol}
-                  </div>
-                </div>
-                <p className="mt-1 text-[11px] text-pano-text-muted">
-                  This amount will be transferred directly from your wallet to the smart wallet.
-                </p>
+                    {/* Network Selection */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs sm:text-sm font-medium text-zinc-300">Network</label>
+                      <div className="relative">
+                        <select
+                          value={chainId}
+                          onChange={(e) => setChainId(Number(e.target.value))}
+                          disabled={isDepositing}
+                          className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all disabled:opacity-50 appearance-none cursor-pointer"
+                        >
+                          {networks.map((network) => (
+                            <option key={network.chainId} value={network.chainId}>
+                              {network.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Token Display */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs sm:text-sm font-medium text-zinc-300">Token</label>
+                      <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-white/5 border border-white/10">
+                        {nativeToken.icon && (
+                          <img
+                            src={nativeToken.icon}
+                            alt={nativeToken.symbol}
+                            className="w-6 h-6 sm:w-8 sm:h-8 rounded-full"
+                          />
+                        )}
+                        <div>
+                          <div className="text-xs sm:text-sm font-medium text-white">{nativeToken.symbol}</div>
+                          <div className="text-[10px] sm:text-xs text-zinc-500">{nativeToken.name}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Amount Input */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs sm:text-sm font-medium text-zinc-300">Amount</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          step="0.001"
+                          min="0.000001"
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value)}
+                          disabled={isDepositing}
+                          placeholder="0.01"
+                          className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all disabled:opacity-50"
+                        />
+                        <div className="flex items-center px-3 sm:px-4 rounded-xl bg-white/5 border border-white/10 text-zinc-400 text-sm font-medium">
+                          {nativeToken.symbol}
+                        </div>
+                      </div>
+                      <p className="text-[10px] sm:text-xs text-zinc-500">
+                        This will be transferred from your wallet to the Smart Wallet.
+                      </p>
+                    </div>
+
+                    {/* Quick Amounts */}
+                    <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+                      {['0.001', '0.005', '0.01', '0.05'].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setAmount(preset)}
+                          disabled={isDepositing}
+                          className={cn(
+                            "px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-medium transition-colors",
+                            amount === preset
+                              ? "bg-cyan-500/20 border border-cyan-500/30 text-cyan-400"
+                              : "bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:border-white/20"
+                          )}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Info Note */}
+                    <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/10">
+                      <Info className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-[10px] sm:text-xs text-zinc-400">
+                        Leave some {nativeToken.symbol} in your main wallet for gas fees.
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                {["0.001", "0.005", "0.01"].map((preset) => (
+              {/* Footer */}
+              {!txHash && (
+                <div className="p-4 sm:p-6 pt-0 flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
                   <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setAmount(preset)}
+                    onClick={onClose}
                     disabled={isDepositing}
-                    className="rounded-md border border-pano-border-subtle px-3 py-1.5 text-xs text-pano-text-secondary transition-colors hover:border-pano-primary/60 hover:text-pano-text-primary disabled:opacity-50"
+                    className="flex-1 px-4 py-2.5 sm:py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:bg-white/10 hover:text-white transition-all disabled:opacity-50 font-medium text-sm sm:text-base"
                   >
-                    {preset} {nativeToken.symbol}
+                    Cancel
                   </button>
-                ))}
-              </div>
-
-              <div className="rounded-lg border border-pano-border-subtle bg-pano-surface-elevated px-3 py-2 text-xs text-pano-text-secondary">
-                <div className="flex items-center justify-between gap-2">
-                  <span>Available balance</span>
-                  <div className="flex items-center gap-2 text-pano-text-primary">
-                    {isCheckingBalance ? (
-                      <span className="flex items-center gap-2">
-                        <span className="h-3 w-3 animate-spin rounded-full border border-pano-primary border-t-transparent" />
-                        Checking...
-                      </span>
+                  <button
+                    onClick={handleDeposit}
+                    disabled={isDepositing || !amount || parseFloat(amount) <= 0 || isWrongNetwork}
+                    className={cn(
+                      "flex-1 px-4 py-2.5 sm:py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 text-sm sm:text-base",
+                      isDepositing || !amount || parseFloat(amount) <= 0 || isWrongNetwork
+                        ? "bg-cyan-500/20 text-cyan-400/50 cursor-not-allowed"
+                        : "bg-cyan-500 text-white hover:bg-cyan-400"
+                    )}
+                  >
+                    {isDepositing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Depositing...
+                      </>
+                    ) : isWrongNetwork ? (
+                      <span className="truncate">Switch to {currentNetwork?.name}</span>
                     ) : (
                       <>
-                        <span className="font-medium">
-                          {walletBalance} {nativeToken.symbol}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={checkWalletBalance}
-                          className="text-pano-text-muted hover:text-pano-primary transition-colors"
-                          disabled={isCheckingBalance}
-                          title="Refresh balance"
-                        >
-                          ↻
-                        </button>
+                        <ArrowDownToLine className="w-4 h-4" />
+                        <span className="truncate">Deposit {amount} {nativeToken.symbol}</span>
                       </>
                     )}
-                  </div>
+                  </button>
                 </div>
-                <p className="mt-1 text-[11px] text-pano-text-muted">
-                  Reserve a fraction of {nativeToken.symbol} to pay gas for this and future transactions.
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-pano-warning/40 bg-pano-warning/10 px-4 py-3 text-[11px] text-pano-warning">
-              To avoid gas errors, leave at least 0.001 {nativeToken.symbol} available after the deposit.
-            </div>
-
-            {txHash && (
-              <div className="rounded-lg border border-pano-success/40 bg-pano-success/10 px-4 py-4 text-sm text-pano-success space-y-2">
-                <div className="flex items-center gap-2 font-medium">
-                  <span className="text-lg">✅</span>
-                  Deposit confirmed! The smart account now has balance.
-                </div>
-                <a
-                  className="block truncate text-xs font-mono text-pano-text-primary hover:text-pano-primary"
-                  href={getExplorerUrl(chainId, txHash)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {txHash}
-                </a>
-                <p className="text-[11px] text-pano-text-muted">
-                  This modal will close automatically shortly.
-                </p>
-              </div>
-            )}
-
-            {error && (
-              <div className="rounded-lg border border-pano-error/40 bg-pano-error/10 px-4 py-3 text-sm text-pano-error space-y-2">
-                <span>{error}</span>
-                {error.includes('Unsupported network') && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      if (window.ethereum) {
-                        window.ethereum.request({
-                          method: 'wallet_switchEthereumChain',
-                          params: [{ chainId: '0x1' }],
-                        });
-                      }
-                    }}
-                    className="w-fit text-xs"
-                  >
-                    Switch to Ethereum Mainnet
-                  </Button>
-                )}
-              </div>
-            )}
-
-            <div className="rounded-lg border border-pano-border-subtle bg-pano-surface px-4 py-3 text-[11px] text-pano-text-muted">
-              After the deposit, the smart wallet can be used in automated flows without requiring new signatures.
-            </div>
-
-            <div className="flex flex-col gap-3 md:flex-row">
-              <Button
-                variant="ghost"
-                size="md"
-                fullWidth
-                onClick={onClose}
-                disabled={isDepositing}
-              >
-                Cancel
-              </Button>
-
-              <Button
-                variant="primary"
-                size="md"
-                fullWidth
-                onClick={handleDeposit}
-                disabled={isDepositing || !account || !amount || parseFloat(amount) <= 0 || isWrongNetwork}
-                loading={isDepositing}
-              >
-                {isWrongNetwork
-                  ? `Switch to ${currentNetwork?.name || 'correct network'}`
-                  : `Deposit ${amount} ${nativeToken.symbol}`}
-              </Button>
-            </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </>
+              )}
+            </GlassCard>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 }

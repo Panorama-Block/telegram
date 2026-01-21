@@ -8,7 +8,7 @@ import {
   ValidationResponse,
   CacheStatus
 } from './types';
-import { LENDING_CONFIG, API_ENDPOINTS, FALLBACK_TOKENS } from './config';
+import { LENDING_CONFIG, API_ENDPOINTS, FALLBACK_TOKENS, TOKEN_ICONS } from './config';
 
 class LendingApiClient {
   private baseUrl: string;
@@ -150,6 +150,7 @@ class LendingApiClient {
       const tokens = tokensArray.map((token: any) => ({
         symbol: token.symbol,
         address: token.address,
+        icon: token.icon || TOKEN_ICONS[token.symbol] || undefined,
         decimals: token.decimals || 18,
         supplyAPY: this.calculateAPY(token.supplyRate || 0),
         borrowAPY: this.calculateAPY(token.borrowRate || 0),

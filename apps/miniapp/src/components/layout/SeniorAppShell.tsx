@@ -195,7 +195,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   };
 
   return (
-    <div className="relative flex h-[100dvh] bg-[#050606] text-pano-text-primary font-sans selection:bg-pano-primary/30 overflow-hidden">
+    <div className="relative flex h-[100dvh] bg-[#050606] text-pano-text-primary font-sans selection:bg-pano-primary/30 overflow-hidden safe-area-pb">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_20%_0%,rgba(10,196,227,0.12),transparent_50%),radial-gradient(80%_70%_at_80%_20%,rgba(11,140,194,0.08),transparent_45%)]" />
 
       {/* Mobile overlay */}
@@ -219,7 +219,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
             <Image src={zicoBlue} alt="Panorama Block" width={40} height={40} className="relative drop-shadow-[0_0_14px_rgba(34,211,238,0.55)]" />
           </div>
           <button
-            className="lg:hidden absolute right-4 p-2 text-pano-text-muted hover:text-pano-text-primary rounded-lg hover:bg-white/5 transition-colors"
+            className="lg:hidden absolute right-4 p-3 min-h-[44px] min-w-[44px] flex items-center justify-center text-pano-text-muted hover:text-pano-text-primary active:text-pano-text-primary rounded-lg hover:bg-white/5 active:bg-white/10 transition-colors"
             onClick={() => setIsSidebarOpen(false)}
             aria-label="Close sidebar"
           >
@@ -349,10 +349,10 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                   <button
                     onClick={() => handleNavClick(item)}
                     className={cn(
-                      'flex-1 flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden',
+                      'flex-1 flex items-center gap-3 px-4 py-3 min-h-[48px] rounded-xl transition-all duration-300 group relative overflow-hidden touch-action-manipulation',
                       active
                         ? 'text-white'
-                        : 'text-pano-text-muted hover:text-white/80 hover:bg-white/5'
+                        : 'text-pano-text-muted hover:text-white/80 hover:bg-white/5 active:bg-white/10 active:text-white'
                     )}
                   >
                     {active && (
@@ -392,14 +392,14 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0 relative z-10">
         {/* Mobile Header */}
-        <div className="lg:hidden h-16 flex items-center justify-between px-4 border-b border-white/5 bg-pano-bg-secondary/90 backdrop-blur-md sticky top-0 z-30">
+        <div className="lg:hidden h-16 flex items-center justify-between px-4 border-b border-white/5 bg-pano-bg-secondary/90 backdrop-blur-md sticky top-0 z-30 safe-area-pt">
           <div className="flex items-center gap-3">
             <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
             <span className="font-bold text-pano-text-primary">Panorama Block</span>
           </div>
           <button
             onClick={() => setIsSidebarOpen(true)}
-            className="p-2 text-pano-text-muted hover:text-pano-text-primary rounded-lg hover:bg-white/5 transition-colors"
+            className="p-3 min-h-[44px] min-w-[44px] flex items-center justify-center text-pano-text-muted hover:text-pano-text-primary active:text-pano-text-primary rounded-lg hover:bg-white/5 active:bg-white/10 transition-colors"
           >
             <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
@@ -445,15 +445,9 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                         setIsProfileOpen(false);
                         router.push('/portfolio');
                       }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 min-h-[44px] text-sm text-white/80 hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-colors text-left"
                     >
-                      Wallet Dashboard
-                    </button>
-                    <button
-                      onClick={() => setIsProfileOpen(false)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-left"
-                    >
-                      Settings
+                      Portfolio
                     </button>
                   </div>
                   <div className="h-px bg-white/5" />

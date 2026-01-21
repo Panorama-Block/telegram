@@ -82,7 +82,8 @@ export function Lending({ onClose, initialAmount, initialAsset, initialAction }:
         decimals: selectedToken.decimals,
         supplyAPY: selectedToken.supplyAPY,
         borrowAPY: selectedToken.borrowAPY,
-        collateralFactor: selectedToken.collateralFactor
+        collateralFactor: selectedToken.collateralFactor,
+        icon: selectedToken.icon
       });
       setInitialAssetSet(true);
     }
@@ -299,13 +300,17 @@ export function Lending({ onClose, initialAmount, initialAsset, initialAction }:
                     rightElement={
                       <button
                         onClick={() => setShowTokenList(true)}
-                        className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-1.5 hover:bg-zinc-900 transition-colors group"
+                        className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2.5 sm:px-3 py-1.5 sm:py-2 min-h-[40px] sm:min-h-[44px] hover:bg-zinc-900 active:bg-zinc-800 transition-colors group"
                       >
-                        <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold", getTokenColor(activeToken))}>
-                          {activeToken.ticker[0]}
-                        </div>
-                        <span className="text-white font-medium">{activeToken.ticker}</span>
-                        <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-white transition-colors" />
+                        {activeToken.icon ? (
+                          <img src={activeToken.icon} alt={activeToken.ticker} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover" />
+                        ) : (
+                          <div className={cn("w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-white text-[9px] sm:text-[10px] font-bold", getTokenColor(activeToken))}>
+                            {activeToken.ticker[0]}
+                          </div>
+                        )}
+                        <span className="text-white font-medium text-sm sm:text-base">{activeToken.ticker}</span>
+                        <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-zinc-500 group-hover:text-white transition-colors" />
                       </button>
                     }
                   />
@@ -342,16 +347,25 @@ export function Lending({ onClose, initialAmount, initialAsset, initialAction }:
               <div className="px-6 pb-4 flex-1 flex flex-col relative z-10 justify-center">
 
                 {/* Main Details Card - Centered */}
-                <div className="bg-white/5 border border-white/10 rounded-xl p-6 space-y-4">
-                   <div className="font-medium text-white text-base text-center mb-2">
-                     {activeTab === 'supply' ? 'Supply' : 'Borrow'} {activeToken?.ticker}
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6 space-y-4">
+                   <div className="flex items-center justify-center gap-2 mb-2">
+                     {activeToken?.icon ? (
+                       <img src={activeToken.icon} alt={activeToken.ticker} className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover" />
+                     ) : (
+                       <div className={cn("w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold", getTokenColor(activeToken))}>
+                         {activeToken?.ticker?.[0]}
+                       </div>
+                     )}
+                     <span className="font-medium text-white text-sm sm:text-base">
+                       {activeTab === 'supply' ? 'Supply' : 'Borrow'} {activeToken?.ticker}
+                     </span>
                    </div>
 
                    <div className="space-y-3 text-sm">
                        {/* Amount Row */}
                        <div className="flex justify-between items-center py-2">
                           <span className="text-zinc-500">Amount</span>
-                          <span className="text-white font-mono font-medium text-lg">{amount} {activeToken?.ticker}</span>
+                          <span className="text-white font-mono font-medium text-base sm:text-lg">{amount} {activeToken?.ticker}</span>
                        </div>
                    </div>
                 </div>
@@ -408,9 +422,7 @@ export function Lending({ onClose, initialAmount, initialAsset, initialAction }:
 
           {/* FOOTER POWERED BY */}
           <div className="py-4 relative z-10 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity shrink-0">
-             <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center shadow-lg shadow-black/50 border border-white/5">
-               <Landmark className={cn("w-3 h-3", poweredBy.color)} />
-             </div>
+             <img src="/miniapp/icons/benqui_logo.png" alt="Benqi" className="w-6 h-6 rounded-full" />
              <span className="text-xs font-medium text-zinc-400">Powered by {poweredBy.text}</span>
           </div>
 

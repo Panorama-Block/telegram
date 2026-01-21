@@ -686,15 +686,35 @@ h1, h2, h3, .font-display, .font-heading {
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Prevent zoom on form inputs */
-  input, textarea, select {
-    font-size: 16px;
-  }
-
   /* Better scrolling on iOS */
   .ios-scroll {
     -webkit-overflow-scrolling: touch;
   }
+}
+
+/* CRITICAL: Prevent iOS auto-zoom on input focus */
+/* iOS Safari zooms when font-size < 16px */
+input,
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="tel"],
+input[type="url"],
+input[type="search"],
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+textarea,
+select {
+  font-size: 16px !important;
+  font-size: max(16px, 1rem) !important;
+}
+
+/* Ensure placeholders don't trigger zoom either */
+input::placeholder,
+textarea::placeholder {
+  font-size: 16px !important;
 }
 
 /* Android Chrome specific optimizations */
@@ -1050,4 +1070,235 @@ h1, h2, h3, .font-display, .font-heading {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ============================================
+   TELEGRAM MINI APP INTEGRATION
+   ============================================ */
+
+/* Telegram Theme Variables - Fallbacks when not in Telegram */
+:root {
+  --tg-theme-bg-color: #050505;
+  --tg-theme-text-color: #f8f8f8;
+  --tg-theme-hint-color: #999999;
+  --tg-theme-link-color: #22d3ee;
+  --tg-theme-button-color: #06b6d4;
+  --tg-theme-button-text-color: #000000;
+  --tg-theme-secondary-bg-color: #0a0a0a;
+  --tg-viewport-height: 100vh;
+  --tg-viewport-stable-height: 100vh;
+}
+
+/* Use Telegram colors when available */
+.tg-bg-primary {
+  background-color: var(--tg-theme-bg-color, hsl(var(--pano-bg-primary)));
+}
+
+.tg-bg-secondary {
+  background-color: var(--tg-theme-secondary-bg-color, hsl(var(--pano-bg-secondary)));
+}
+
+.tg-text-primary {
+  color: var(--tg-theme-text-color, hsl(var(--pano-text-primary)));
+}
+
+.tg-text-hint {
+  color: var(--tg-theme-hint-color, hsl(var(--pano-text-muted)));
+}
+
+.tg-text-link {
+  color: var(--tg-theme-link-color, hsl(var(--pano-primary)));
+}
+
+.tg-button {
+  background-color: var(--tg-theme-button-color, hsl(var(--pano-primary)));
+  color: var(--tg-theme-button-text-color, hsl(var(--pano-text-inverse)));
+}
+
+/* Telegram viewport height utilities */
+.h-tg-viewport {
+  height: var(--tg-viewport-height, 100vh);
+}
+
+.min-h-tg-viewport {
+  min-height: var(--tg-viewport-height, 100vh);
+}
+
+.h-tg-viewport-stable {
+  height: var(--tg-viewport-stable-height, 100vh);
+}
+
+.min-h-tg-viewport-stable {
+  min-height: var(--tg-viewport-stable-height, 100vh);
+}
+
+/* ============================================
+   ENHANCED TOUCH & MOBILE UTILITIES
+   ============================================ */
+
+/* Universal touch-friendly classes (not just for coarse pointers) */
+.touch-friendly {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.touch-friendly-lg {
+  min-height: 48px;
+  min-width: 48px;
+}
+
+.touch-friendly-xl {
+  min-height: 56px;
+  min-width: 56px;
+}
+
+/* Better active states for mobile - non-hover devices */
+@media (hover: none) {
+  .interactive:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
+
+  button:active:not(:disabled),
+  [role="button"]:active:not([aria-disabled="true"]) {
+    transform: scale(0.98);
+    opacity: 0.95;
+  }
+
+  /* Remove hover styles that don't work on touch */
+  .hover-lift:hover {
+    transform: none;
+  }
+}
+
+/* Hover states only for devices that support it */
+@media (hover: hover) and (pointer: fine) {
+  .hover-lift:hover {
+    transform: translateY(-2px);
+  }
+
+  .hover-glow:hover {
+    box-shadow: var(--pano-shadow-glow);
+  }
+
+  .hover-brighten:hover {
+    filter: brightness(1.1);
+  }
+}
+
+/* Prevent text selection on interactive elements */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Prevent callout on long press (iOS) */
+.no-callout {
+  -webkit-touch-callout: none;
+}
+
+/* Disable pull-to-refresh on specific elements */
+.no-overscroll {
+  overscroll-behavior: none;
+}
+
+/* ============================================
+   TELEGRAM-SPECIFIC OPTIMIZATIONS
+   ============================================ */
+
+/* Telegram Mini App bottom safe area for main button */
+.tg-main-button-space {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 60px);
+}
+
+/* Content that accounts for Telegram's dynamic viewport */
+.tg-content {
+  min-height: var(--tg-viewport-stable-height, 100dvh);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Fixed bottom elements in Telegram context */
+.tg-fixed-bottom {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 50;
+}
+
+/* Header that respects Telegram's header area */
+.tg-fixed-top {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding-top: env(safe-area-inset-top);
+  z-index: 50;
+}
+
+/* ============================================
+   ELEVATION & DEPTH UTILITIES
+   ============================================ */
+
+.hover-elevate {
+  transition: transform var(--pano-transition-fast), box-shadow var(--pano-transition-fast);
+}
+
+@media (hover: hover) {
+  .hover-elevate:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--pano-shadow-md);
+  }
+}
+
+.active-elevate-2:active {
+  transform: translateY(0);
+  box-shadow: var(--pano-shadow-sm);
+}
+
+/* ============================================
+   ACCESSIBILITY ENHANCEMENTS
+   ============================================ */
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --pano-border: 0 0% 40%;
+    --pano-text-muted: 0 0% 75%;
+  }
+
+  .glass, .glass-dark, .glass-panel {
+    background: hsl(var(--pano-bg-secondary));
+    border-color: hsl(var(--pano-border));
+  }
+}
+
+/* Focus visible improvements */
+:focus-visible {
+  outline: 2px solid hsl(var(--pano-primary));
+  outline-offset: 2px;
+}
+
+/* Skip focus styles for mouse users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ============================================
+   DARK MODE SYNC WITH TELEGRAM
+   ============================================ */
+
+/* Telegram provides its own dark mode, sync with it */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+}
+
+/* Force dark mode for this app (it's always dark) */
+html {
+  color-scheme: dark;
 }

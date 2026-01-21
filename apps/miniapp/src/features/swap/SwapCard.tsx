@@ -22,6 +22,7 @@ import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2'
 
 import { Button, Card, Input, Label, Select, ErrorStateCard } from '../../shared/ui';
 import { SwapSuccessCard } from '../../components/ui/SwapSuccessCard';
+import { TokenSelectionModal } from '../../components/TokenSelectionModal';
 import { networks, type Network } from './tokens';
 import {
   explorerTxUrl,
@@ -288,6 +289,8 @@ export function SwapCard() {
   } | null>(null);
   const quoteRequestRef = useRef(0);
   const [toTokenDecimals, setToTokenDecimals] = useState<number>(18);
+  const [isFromTokenModalOpen, setIsFromTokenModalOpen] = useState(false);
+  const [isToTokenModalOpen, setIsToTokenModalOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -348,6 +351,45 @@ export function SwapCard() {
       cancelled = true;
     };
   }, [client, toChainId, toNet, toToken]);
+
+  // Helper function to get token display info
+  const getTokenDisplay = (tokenAddress: string, net: Network | undefined) => {
+    if (!net) return { symbol: 'Select', icon: undefined };
+    const token = net.tokens.find(t => t.address.toLowerCase() === tokenAddress.toLowerCase());
+    return {
+      symbol: token?.symbol || 'Select',
+      icon: token?.icon,
+      name: token?.name || ''
+    };
+  };
+
+  const fromTokenDisplay = getTokenDisplay(fromToken, fromNet);
+  const toTokenDisplay = getTokenDisplay(toToken, toNet);
+
+  // Create token arrays in UiToken format for the modal
+  const fromNetTokens = useMemo(() => {
+    if (!fromNet) return [];
+    return fromNet.tokens.map(t => ({
+      ticker: t.symbol,
+      name: t.name || t.symbol,
+      network: fromNet.name,
+      address: t.address,
+      balance: "0.00",
+      icon: t.icon
+    }));
+  }, [fromNet]);
+
+  const toNetTokens = useMemo(() => {
+    if (!toNet) return [];
+    return toNet.tokens.map(t => ({
+      ticker: t.symbol,
+      name: t.name || t.symbol,
+      network: toNet.name,
+      address: t.address,
+      balance: "0.00",
+      icon: t.icon
+    }));
+  }, [toNet]);
 
   const canSubmit = useMemo(() => {
     return Boolean(fromChainId && toChainId && fromToken && toToken && amount && Number(amount) > 0);
@@ -533,10 +575,10 @@ export function SwapCard() {
 
     if (!userTonAddress) {
       pushErrorState({
-        title: 'Carteira TON não conectada',
-        description: 'Por favor, conecte sua carteira TON para continuar.',
+        title: 'TON Wallet not connected',
+        description: 'Please connect your TON wallet to continue.',
         category: 'blocked',
-        primaryLabel: 'Conectar Wallet',
+        primaryLabel: 'Connect Wallet',
         canRetry: true
       }, handleTonSwap);
       return;
@@ -618,7 +660,7 @@ export function SwapCard() {
       setTxHashes([{ hash: 'pending', chainId: TON_CHAIN_ID }]);
 
     } catch (e: any) {
-      applyThrowableAsError(e, 'Falha no Swap TON', handleTonSwap);
+      applyThrowableAsError(e, 'TON Swap failed', handleTonSwap);
     } finally {
       setPreparing(false);
       setExecuting(false);
@@ -661,10 +703,10 @@ export function SwapCard() {
         const userTonAddress = tonConnectUI.account?.address;
         if (!userTonAddress) {
           pushErrorState({
-            title: 'Carteira TON não conectada',
-            description: 'Por favor, conecte sua carteira TON para continuar.',
+            title: 'TON Wallet not connected',
+            description: 'Please connect your TON wallet to continue.',
             category: 'blocked',
-            primaryLabel: 'Conectar Wallet',
+            primaryLabel: 'Connect Wallet',
             canRetry: true
           }, onSwap);
           return;
@@ -926,19 +968,48 @@ export function SwapCard() {
           </div>
           <div>
             <Label htmlFor="from-token" style={{ fontSize: 12 }}>Token</Label>
-            <Select
-              id="from-token"
-              value={fromToken}
-              onChange={(e) => setFromToken(e.target.value)}
+            <button
+              onClick={() => setIsFromTokenModalOpen(true)}
               disabled={!fromNet}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 12px',
+                borderRadius: 8,
+                background: '#252525',
+                border: '1px solid rgba(255,255,255,0.1)',
+                cursor: fromNet ? 'pointer' : 'not-allowed',
+                opacity: fromNet ? 1 : 0.5,
+              }}
             >
-              <option value="" disabled>Select token</option>
-              {fromNet?.tokens.map((token) => (
-                <option key={token.address} value={token.address}>
-                  {token.symbol}
-                </option>
-              ))}
-            </Select>
+              {fromTokenDisplay.icon ? (
+                <img src={fromTokenDisplay.icon} alt={fromTokenDisplay.symbol} style={{ width: 24, height: 24, borderRadius: '50%' }} />
+              ) : (
+                <div style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #52525b, #27272a)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'white',
+                  fontSize: 10,
+                  fontWeight: 700,
+                }}>
+                  {fromTokenDisplay.symbol.substring(0, 2)}
+                </div>
+              )}
+              <span style={{ color: 'white', fontWeight: 500 }}>{fromTokenDisplay.symbol}</span>
+            </button>
+            <TokenSelectionModal
+              isOpen={isFromTokenModalOpen}
+              onClose={() => setIsFromTokenModalOpen(false)}
+              onSelect={(token) => setFromToken(token.address)}
+              customTokens={fromNetTokens}
+            />
           </div>
         </div>
         <div style={{ marginTop: 16 }}>
@@ -991,19 +1062,48 @@ export function SwapCard() {
           </div>
           <div>
             <Label htmlFor="to-token" style={{ fontSize: 12 }}>Token</Label>
-            <Select
-              id="to-token"
-              value={toToken}
-              onChange={(e) => setToToken(e.target.value)}
+            <button
+              onClick={() => setIsToTokenModalOpen(true)}
               disabled={!toNet}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 12px',
+                borderRadius: 8,
+                background: '#252525',
+                border: '1px solid rgba(255,255,255,0.1)',
+                cursor: toNet ? 'pointer' : 'not-allowed',
+                opacity: toNet ? 1 : 0.5,
+              }}
             >
-              <option value="" disabled>Select token</option>
-              {toNet?.tokens.map((token) => (
-                <option key={token.address} value={token.address}>
-                  {token.symbol}
-                </option>
-              ))}
-            </Select>
+              {toTokenDisplay.icon ? (
+                <img src={toTokenDisplay.icon} alt={toTokenDisplay.symbol} style={{ width: 24, height: 24, borderRadius: '50%' }} />
+              ) : (
+                <div style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #52525b, #27272a)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'white',
+                  fontSize: 10,
+                  fontWeight: 700,
+                }}>
+                  {toTokenDisplay.symbol.substring(0, 2)}
+                </div>
+              )}
+              <span style={{ color: 'white', fontWeight: 500 }}>{toTokenDisplay.symbol}</span>
+            </button>
+            <TokenSelectionModal
+              isOpen={isToTokenModalOpen}
+              onClose={() => setIsToTokenModalOpen(false)}
+              onSelect={(token) => setToToken(token.address)}
+              customTokens={toNetTokens}
+            />
           </div>
         </div>
         <div

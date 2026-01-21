@@ -19,6 +19,7 @@ export interface ChatResponse {
   agent_name?: string | null;
   agent_type?: string | null;
   metadata?: Record<string, unknown> | null;
+  transcription?: string | null;
 }
 
 export interface ChatOptions {
@@ -355,5 +356,72 @@ export class AgentsClient {
     });
     if (!data?.messages || !Array.isArray(data.messages)) return [];
     return data.messages;
+  }
+
+  async chatAudio(
+    audioFile: Blob,
+    userId: string,
+    conversationId: string,
+    walletAddress?: string,
+    opts: ChatOptions = {}
+  ): Promise<ChatResponse> {
+    this.ensureConfigured();
+
+    const formData = new FormData();
+
+    // Determine file extension from blob type
+    const mimeToExt: Record<string, string> = {
+      'audio/webm': 'webm',
+      'audio/mp3': 'mp3',
+      'audio/mpeg': 'mp3',
+      'audio/wav': 'wav',
+      'audio/ogg': 'ogg',
+      'audio/flac': 'flac',
+      'audio/mp4': 'm4a',
+      'audio/aac': 'aac',
+    };
+    const ext = mimeToExt[audioFile.type] || 'webm';
+    const filename = `recording.${ext}`;
+
+    formData.append('audio', audioFile, filename);
+    formData.append('user_id', userId);
+    formData.append('conversation_id', conversationId);
+    if (walletAddress) {
+      formData.append('wallet_address', walletAddress);
+    }
+
+    const headers: Record<string, string> = {};
+    if (opts.jwt) headers['authorization'] = `Bearer ${opts.jwt}`;
+
+    const requestUrl = `${this.baseUrl}/chat/audio`;
+    this.logDebug('chatAudio:start', { conversationId, userId, fileSize: audioFile.size, mimeType: audioFile.type });
+
+    const res = await this.fetchWithTimeout(requestUrl, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      this.logDebug('chatAudio:error', { status: res.status, response: text });
+      throw new Error(`Agents audio chat failed: ${res.status} ${text}`);
+    }
+
+    this.logDebug('chatAudio:success', { conversationId, userId });
+
+    const data = await res.json();
+
+    const final: ChatResponse = {
+      message: data?.response || '',
+      requires_action: false,
+      actions: undefined,
+      agent_name: data?.agentName ?? data?.agent_name ?? null,
+      agent_type: data?.agentType ?? data?.agent_type ?? null,
+      metadata: typeof data?.metadata === 'object' && data?.metadata !== null ? data.metadata as Record<string, unknown> : null,
+      transcription: data?.transcription ?? null,
+    };
+
+    return final;
   }
 }
