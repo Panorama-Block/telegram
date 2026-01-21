@@ -59,6 +59,57 @@ const CONVERSATION_LIST_KEY = 'chat:ids';
 const DEBUG_CHAT_FLAG = (process.env.NEXT_PUBLIC_MINIAPP_DEBUG_CHAT ?? process.env.MINIAPP_DEBUG_CHAT ?? '').toLowerCase();
 const DEBUG_CHAT_ENABLED = ['1', 'true', 'on', 'yes'].includes(DEBUG_CHAT_FLAG);
 
+// Token icons mapping for chat intent cards
+const TOKEN_ICONS: Record<string, string> = {
+  'ETH': 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+  'WETH': 'https://assets.coingecko.com/coins/images/2518/small/weth.png',
+  'USDC': 'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
+  'USDT': 'https://assets.coingecko.com/coins/images/325/small/Tether.png',
+  'DAI': 'https://assets.coingecko.com/coins/images/9956/small/Badge_Dai.png',
+  'AVAX': 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png',
+  'WAVAX': 'https://assets.coingecko.com/coins/images/15075/small/wrapped-avax.png',
+  'BTC': 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
+  'WBTC': 'https://assets.coingecko.com/coins/images/7598/small/wrapped_bitcoin_wbtc.png',
+  'BNB': 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png',
+  'MATIC': 'https://assets.coingecko.com/coins/images/4713/small/polygon.png',
+  'POL': 'https://assets.coingecko.com/coins/images/4713/small/polygon.png',
+  'ARB': 'https://assets.coingecko.com/coins/images/16547/small/photo_2023-03-29_21.47.00.jpeg',
+  'OP': 'https://assets.coingecko.com/coins/images/25244/small/Optimism.png',
+  'LINK': 'https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png',
+  'UNI': 'https://assets.coingecko.com/coins/images/12504/small/uniswap-logo.png',
+  'AAVE': 'https://assets.coingecko.com/coins/images/12645/small/AAVE.png',
+  'stETH': 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png',
+  'wstETH': 'https://assets.coingecko.com/coins/images/18834/small/wstETH.png',
+  'TON': 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png',
+  'WLD': 'https://assets.coingecko.com/coins/images/31069/small/worldcoin.jpeg',
+};
+
+// Get token icon URL by symbol
+function getTokenIcon(symbol: string): string | null {
+  const upperSymbol = symbol?.toUpperCase();
+  return TOKEN_ICONS[upperSymbol] || null;
+}
+
+// Check if swap is cross-chain
+function isCrossChainSwap(fromNetwork: string, toNetwork: string): boolean {
+  return fromNetwork?.toLowerCase() !== toNetwork?.toLowerCase();
+}
+
+// Get powered by info for swap
+function getSwapPoweredBy(fromNetwork: string, toNetwork: string): { logo: string; name: string } {
+  const isCrossChain = isCrossChainSwap(fromNetwork, toNetwork);
+
+  if (isCrossChain) {
+    return { logo: '/miniapp/icons/thirdweb_logo.png', name: 'Thirdweb' };
+  }
+
+  if (fromNetwork?.toLowerCase() === 'avalanche') {
+    return { logo: 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png', name: 'Avax' };
+  }
+
+  return { logo: '/miniapp/icons/uni_logo.png', name: 'Uniswap' };
+}
+
 // Helper functions to map metadata to tokens and networks
 function getNetworkByName(networkName: string) {
   const networkMap: Record<string, number> = {
@@ -116,6 +167,7 @@ function metadataToSwapTokens(metadata: Record<string, unknown> | null) {
       network: networkNameMap[fromNetwork.chainId] || fromNetwork.name,
       address: fromToken.address,
       balance: '0.00',
+      icon: fromToken.icon,
     } : null,
     to: toToken ? {
       ticker: toToken.symbol,
@@ -123,6 +175,7 @@ function metadataToSwapTokens(metadata: Record<string, unknown> | null) {
       network: networkNameMap[toNetwork.chainId] || toNetwork.name,
       address: toToken.address,
       balance: '0.00',
+      icon: toToken.icon,
     } : null,
     amount: metadata.amount as string,
   };
@@ -1465,251 +1518,286 @@ export default function ChatPage() {
                                 <MarkdownMessage text={message.content} />
                               </div>
 
-                              {message.metadata?.event === 'swap_intent_ready' && (
-                                <div className="mt-4 w-full max-w-sm">
-                                  {/* Swap Card - SwapWidget Style */}
-                                  <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                    {/* Gradient Glow */}
-                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+                              {message.metadata?.event === 'swap_intent_ready' && (() => {
+                                const fromToken = String(message.metadata?.from_token || '');
+                                const toToken = String(message.metadata?.to_token || '');
+                                const fromNetwork = String(message.metadata?.from_network || '');
+                                const toNetwork = String(message.metadata?.to_network || '');
+                                const fromIcon = getTokenIcon(fromToken);
+                                const toIcon = getTokenIcon(toToken);
+                                const poweredBy = getSwapPoweredBy(fromNetwork, toNetwork);
 
-                                    {/* Header */}
-                                    <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                                      <ArrowLeftRight className="w-5 h-5 text-cyan-400" />
-                                      <span className="text-sm font-semibold text-white">Swap</span>
-                                      {swapLoading && <div className="loader-inline-sm ml-auto" />}
-                                    </div>
+                                return (
+                                  <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                    {/* Swap Card */}
+                                    <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                      {/* Gradient Glow */}
+                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
 
-                                    {/* Content */}
-                                    <div className="relative z-10 p-4 space-y-3">
-                                      {/* From Token */}
-                                      <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                        <div className="flex items-center justify-between mb-1">
-                                          <span className="text-[10px] uppercase tracking-wider text-zinc-500">Sell</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xl font-medium text-white">{String(message.metadata?.amount)}</span>
-                                          <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                            <div className="w-5 h-5 rounded-full bg-zinc-600 flex items-center justify-center text-[9px] text-white font-bold">
-                                              {String(message.metadata?.from_token)?.[0]}
-                                            </div>
-                                            <span className="text-sm font-medium text-white">{String(message.metadata?.from_token)}</span>
-                                          </div>
-                                        </div>
-                                        <div className="text-[10px] text-zinc-500 mt-1">{String(message.metadata?.from_network)}</div>
-                                      </div>
-
-                                      {/* Arrow */}
-                                      <div className="flex justify-center -my-1">
-                                        <div className="bg-[#0A0A0A] border border-white/10 p-1.5 rounded-lg">
-                                          <ArrowDown className="w-4 h-4 text-cyan-400" />
-                                        </div>
-                                      </div>
-
-                                      {/* To Token */}
-                                      <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                        <div className="flex items-center justify-between mb-1">
-                                          <span className="text-[10px] uppercase tracking-wider text-zinc-500">Buy</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xl font-medium text-white">
-                                            {swapLoading ? '...' : swapQuote?.quote ? (
-                                              swapQuote.quote.sourceNetwork ?
-                                                Number(swapQuote.quote.estimatedReceiveAmount).toFixed(4) :
-                                                formatAmountHuman(BigInt(swapQuote.quote.toAmount || swapQuote.quote.estimatedReceiveAmount || 0), 18)
-                                            ) : '~'}
+                                      {/* Header */}
+                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                        <ArrowLeftRight className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
+                                        <span className="text-xs sm:text-sm font-semibold text-white">Swap</span>
+                                        {isCrossChainSwap(fromNetwork, toNetwork) && (
+                                          <span className="ml-auto px-1.5 py-0.5 bg-purple-500/20 text-purple-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-purple-500/30">
+                                            Cross-chain
                                           </span>
-                                          <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                            <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-[9px] text-white font-bold">
-                                              {String(message.metadata?.to_token)?.[0]}
+                                        )}
+                                        {swapLoading && <div className="loader-inline-sm ml-auto" />}
+                                      </div>
+
+                                      {/* Content */}
+                                      <div className="relative z-10 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
+                                        {/* From Token */}
+                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">Sell</span>
+                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">{fromNetwork}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="text-lg sm:text-xl font-medium text-white truncate">{String(message.metadata?.amount)}</span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                              {fromIcon ? (
+                                                <img src={fromIcon} alt={fromToken} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                              ) : (
+                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-zinc-500 to-zinc-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
+                                                  {fromToken[0]}
+                                                </div>
+                                              )}
+                                              <span className="text-xs sm:text-sm font-medium text-white">{fromToken}</span>
                                             </div>
-                                            <span className="text-sm font-medium text-white">{String(message.metadata?.to_token)}</span>
                                           </div>
                                         </div>
-                                        <div className="text-[10px] text-zinc-500 mt-1">{String(message.metadata?.to_network)}</div>
-                                      </div>
 
-                                      {/* Error Message */}
-                                      {swapError && !swapLoading && (
-                                        <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
-                                          <p className="text-xs text-red-300">{swapError}</p>
+                                        {/* Arrow */}
+                                        <div className="flex justify-center -my-0.5 sm:-my-1">
+                                          <div className="bg-[#0A0A0A] border border-white/10 p-1 sm:p-1.5 rounded-lg">
+                                            <ArrowDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" />
+                                          </div>
                                         </div>
-                                      )}
 
-                                      {/* Action Button */}
-                                      <button
-                                        onClick={() => {
-                                          const tokens = metadataToSwapTokens(message.metadata as Record<string, unknown>);
-                                          if (tokens) {
-                                            setSwapWidgetTokens(tokens);
-                                            setShowSwapWidget(true);
-                                          }
-                                        }}
-                                        disabled={swapLoading || !swapQuote?.quote}
-                                        className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                      >
-                                        {swapLoading ? 'Getting best price...' : 'Review Swap'}
-                                      </button>
-                                    </div>
+                                        {/* To Token */}
+                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">Buy</span>
+                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">{toNetwork}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="text-lg sm:text-xl font-medium text-white truncate">
+                                              {swapLoading ? '...' : swapQuote?.quote ? (
+                                                swapQuote.quote.sourceNetwork ?
+                                                  Number(swapQuote.quote.estimatedReceiveAmount).toFixed(4) :
+                                                  formatAmountHuman(BigInt(swapQuote.quote.toAmount || swapQuote.quote.estimatedReceiveAmount || 0), 18)
+                                              ) : '~'}
+                                            </span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                              {toIcon ? (
+                                                <img src={toIcon} alt={toToken} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                              ) : (
+                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
+                                                  {toToken[0]}
+                                                </div>
+                                              )}
+                                              <span className="text-xs sm:text-sm font-medium text-white">{toToken}</span>
+                                            </div>
+                                          </div>
+                                        </div>
 
-                                    {/* Footer */}
-                                    <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                      <div className="w-5 h-5 rounded-full bg-[#ff007a]/20 flex items-center justify-center">
-                                        <span className="text-[10px]">🦄</span>
+                                        {/* Error Message */}
+                                        {swapError && !swapLoading && (
+                                          <div className="p-2 sm:p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl">
+                                            <p className="text-[10px] sm:text-xs text-red-300">{swapError}</p>
+                                          </div>
+                                        )}
+
+                                        {/* Action Button */}
+                                        <button
+                                          onClick={() => {
+                                            const tokens = metadataToSwapTokens(message.metadata as Record<string, unknown>);
+                                            if (tokens) {
+                                              setSwapWidgetTokens(tokens);
+                                              setShowSwapWidget(true);
+                                            }
+                                          }}
+                                          disabled={swapLoading || !swapQuote?.quote}
+                                          className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                        >
+                                          {swapLoading ? 'Getting best price...' : 'Review Swap'}
+                                        </button>
                                       </div>
-                                      <span className="text-[10px] text-zinc-500">Powered by Uniswap</span>
+
+                                      {/* Footer */}
+                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                        <img src={poweredBy.logo} alt={poweredBy.name} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-contain" />
+                                        <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by {poweredBy.name}</span>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              )}
+                                );
+                              })()}
 
-                              {message.metadata?.event === 'lending_intent_ready' && (
-                                <div className="mt-4 w-full max-w-sm">
-                                  {/* Lending Card - SwapWidget Style */}
-                                  <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                    {/* Gradient Glow */}
-                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+                              {message.metadata?.event === 'lending_intent_ready' && (() => {
+                                const token = String(message.metadata?.token || 'USDC');
+                                const network = String(message.metadata?.network || 'Avalanche');
+                                const action = String(message.metadata?.action || 'Supply');
+                                const tokenIcon = getTokenIcon(token);
 
-                                    {/* Header */}
-                                    <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                                      <Landmark className="w-5 h-5 text-cyan-400" />
-                                      <span className="text-sm font-semibold text-white">Lending</span>
-                                      <span className="ml-auto px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[10px] font-medium rounded-full border border-cyan-500/30">
-                                        {String(message.metadata?.action || 'Supply').toUpperCase()}
-                                      </span>
-                                    </div>
+                                return (
+                                  <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                    {/* Lending Card */}
+                                    <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                      {/* Gradient Glow */}
+                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-emerald-500/10 blur-[40px] pointer-events-none" />
 
-                                    {/* Content */}
-                                    <div className="relative z-10 p-4 space-y-3">
-                                      {/* Amount Card */}
-                                      <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                        <div className="flex items-center justify-between mb-1">
-                                          <span className="text-[10px] uppercase tracking-wider text-zinc-500">Amount</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xl font-medium text-white">
-                                            {String(message.metadata?.amount || '0')}
-                                          </span>
-                                          <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                            <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center text-[9px] text-white font-bold">
-                                              {String(message.metadata?.token || 'USDC')?.[0]}
-                                            </div>
-                                            <span className="text-sm font-medium text-white">
-                                              {String(message.metadata?.token || 'USDC')}
+                                      {/* Header */}
+                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                        <Landmark className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
+                                        <span className="text-xs sm:text-sm font-semibold text-white">Lending</span>
+                                        <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-emerald-500/30">
+                                          {action.toUpperCase()}
+                                        </span>
+                                      </div>
+
+                                      {/* Content */}
+                                      <div className="relative z-10 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
+                                        {/* Amount Card */}
+                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">Amount</span>
+                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">{network}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="text-lg sm:text-xl font-medium text-white truncate">
+                                              {String(message.metadata?.amount || '0')}
                                             </span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                              {tokenIcon ? (
+                                                <img src={tokenIcon} alt={token} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                              ) : (
+                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
+                                                  {token[0]}
+                                                </div>
+                                              )}
+                                              <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
+                                            </div>
                                           </div>
                                         </div>
-                                        <div className="text-[10px] text-zinc-500 mt-1">
-                                          {String(message.metadata?.network || 'Avalanche')}
-                                        </div>
+
+                                        {/* Action Button */}
+                                        <button
+                                          onClick={() => {
+                                            setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
+                                            setLendingModalOpen(true);
+                                          }}
+                                          className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                        >
+                                          Review {action}
+                                        </button>
                                       </div>
 
-                                      {/* Action Button */}
-                                      <button
-                                        onClick={() => {
-                                          setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
-                                          setLendingModalOpen(true);
-                                        }}
-                                        className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                      >
-                                        Review Lending
-                                      </button>
-                                    </div>
-
-                                    {/* Footer */}
-                                    <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                      <div className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center">
-                                        <Landmark className="w-3 h-3 text-cyan-400" />
+                                      {/* Footer */}
+                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                        <img src="/miniapp/icons/benqui_logo.png" alt="Benqi" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                        <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Benqi</span>
                                       </div>
-                                      <span className="text-[10px] text-zinc-500">Powered by Benqi</span>
                                     </div>
                                   </div>
-                                </div>
-                              )}
+                                );
+                              })()}
 
-                              {message.metadata?.event === 'staking_intent_ready' && (
-                                <div className="mt-4 w-full max-w-sm">
-                                  {/* Staking Card - SwapWidget Style */}
-                                  <div className="relative rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                    {/* Gradient Glow */}
-                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-blue-500/10 blur-[40px] pointer-events-none" />
+                              {message.metadata?.event === 'staking_intent_ready' && (() => {
+                                const token = String(message.metadata?.token || 'ETH');
+                                const amount = Number(message.metadata?.amount || 0);
+                                const tokenIcon = getTokenIcon(token);
+                                const stTokenIcon = getTokenIcon(`st${token}`) || getTokenIcon('stETH');
 
-                                    {/* Header */}
-                                    <div className="relative z-10 px-4 py-3 border-b border-white/5 flex items-center gap-2">
-                                      <Droplets className="w-5 h-5 text-blue-400" />
-                                      <span className="text-sm font-semibold text-white">Liquid Staking</span>
-                                    </div>
+                                return (
+                                  <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                    {/* Staking Card */}
+                                    <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                      {/* Gradient Glow */}
+                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-blue-500/10 blur-[40px] pointer-events-none" />
 
-                                    {/* Content */}
-                                    <div className="relative z-10 p-4 space-y-3">
-                                      {/* Stake Input */}
-                                      <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                        <div className="flex items-center justify-between mb-1">
-                                          <span className="text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xl font-medium text-white">
-                                            {String(message.metadata?.amount || '0')}
-                                          </span>
-                                          <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                            <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[9px] text-white font-bold">
-                                              {String(message.metadata?.token || 'ETH')?.[0]}
-                                            </div>
-                                            <span className="text-sm font-medium text-white">
-                                              {String(message.metadata?.token || 'ETH')}
+                                      {/* Header */}
+                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                        <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
+                                        <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
+                                      </div>
+
+                                      {/* Content */}
+                                      <div className="relative z-10 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
+                                        {/* Stake Input */}
+                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
+                                          </div>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="text-lg sm:text-xl font-medium text-white truncate">
+                                              {String(message.metadata?.amount || '0')}
                                             </span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                              {tokenIcon ? (
+                                                <img src={tokenIcon} alt={token} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                              ) : (
+                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
+                                                  {token[0]}
+                                                </div>
+                                              )}
+                                              <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
+                                            </div>
                                           </div>
                                         </div>
-                                      </div>
 
-                                      {/* Arrow */}
-                                      <div className="flex justify-center -my-1">
-                                        <div className="bg-[#0A0A0A] border border-white/10 p-1.5 rounded-lg">
-                                          <ArrowDown className="w-4 h-4 text-blue-400" />
-                                        </div>
-                                      </div>
-
-                                      {/* Receive Output */}
-                                      <div className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                        <div className="flex items-center justify-between mb-1">
-                                          <span className="text-[10px] uppercase tracking-wider text-zinc-500">You Receive</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xl font-medium text-white">
-                                            ~{(Number(message.metadata?.amount || 0) * 0.998).toFixed(4)}
-                                          </span>
-                                          <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-2.5 py-1">
-                                            <div className="w-5 h-5 rounded-full bg-sky-500 flex items-center justify-center text-[9px] text-white font-bold">
-                                              st
-                                            </div>
-                                            <span className="text-sm font-medium text-white">
-                                              st{String(message.metadata?.token || 'ETH')}
-                                            </span>
+                                        {/* Arrow */}
+                                        <div className="flex justify-center -my-0.5 sm:-my-1">
+                                          <div className="bg-[#0A0A0A] border border-white/10 p-1 sm:p-1.5 rounded-lg">
+                                            <ArrowDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400" />
                                           </div>
                                         </div>
+
+                                        {/* Receive Output */}
+                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You Receive</span>
+                                          </div>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="text-lg sm:text-xl font-medium text-white truncate">
+                                              ~{(amount * 0.998).toFixed(4)}
+                                            </span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                              {stTokenIcon ? (
+                                                <img src={stTokenIcon} alt={`st${token}`} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                              ) : (
+                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-[7px] sm:text-[8px] text-white font-bold">
+                                                  st
+                                                </div>
+                                              )}
+                                              <span className="text-xs sm:text-sm font-medium text-white">st{token}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Action Button */}
+                                        <button
+                                          onClick={() => {
+                                            setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
+                                            setShowStakingWidget(true);
+                                          }}
+                                          className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                        >
+                                          Review Staking
+                                        </button>
                                       </div>
 
-                                      {/* Action Button */}
-                                      <button
-                                        onClick={() => {
-                                          setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
-                                          setShowStakingWidget(true);
-                                        }}
-                                        className="w-full py-3 rounded-xl bg-white text-black font-semibold text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                      >
-                                        Review Staking
-                                      </button>
-                                    </div>
-
-                                    {/* Footer */}
-                                    <div className="relative z-10 px-4 py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                      <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center">
-                                        <Droplets className="w-3 h-3 text-blue-400" />
+                                      {/* Footer */}
+                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                        <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                        <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Lido</span>
                                       </div>
-                                      <span className="text-[10px] text-zinc-500">Powered by Lido</span>
                                     </div>
                                   </div>
-                                </div>
-                              )}
+                                );
+                              })()}
                             </div>
                           </div>
                         )}
@@ -1730,18 +1818,21 @@ export default function ChatPage() {
                     )}
                     {/* Keyboard spacer - ensures content is visible above keyboard */}
                     {isKeyboardOpen && <div style={{ height: keyboardHeight > 0 ? keyboardHeight : 0 }} />}
+                    {/* Spacer for fixed input bar */}
+                    {hasMessages && <div className="h-24" />}
                     <div ref={messagesEndRef} />
                   </div>
                 )}
+              </div>
 
-                {/* Sticky Bottom Input (Chat State) */}
-                <AnimatePresence>
-                  {hasMessages && (
-                    <motion.div
-                      initial={{ y: 100, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      className="p-2 pt-3 bg-gradient-to-t from-black via-black/90 to-transparent z-20"
-                    >
+              {/* Fixed Bottom Input (Chat State) - OUTSIDE scrollable container */}
+              <AnimatePresence>
+                {hasMessages && (
+                  <motion.div
+                    initial={{ y: 100, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    className="sticky bottom-0 p-2 pt-3 bg-gradient-to-t from-black via-black/95 to-black/80 z-20 backdrop-blur-sm"
+                  >
                       <div className="max-w-3xl mx-auto relative group">
                         {/* Trending Prompts Dropdown */}
                         <AnimatePresence>
@@ -1861,7 +1952,6 @@ export default function ChatPage() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </div>
             </div>
           </div>
         </SeniorAppShell>

@@ -150,17 +150,17 @@ export function Staking({ onClose, initialAmount }: StakingProps) {
                   value={stakeAmount}
                   onChange={(e) => setStakeAmount(e.target.value)}
                   rightElement={
-                    <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-1.5">
-                      <img src={ETH_ICON} alt="ETH" className="w-6 h-6 rounded-full" />
-                      <span className="text-white font-medium">{activeToken.ticker}</span>
+                    <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2.5 sm:px-3 py-1.5 sm:py-2 min-h-[40px] sm:min-h-[44px]">
+                      <img src={ETH_ICON} alt="ETH" className="w-5 h-5 sm:w-6 sm:h-6 rounded-full" />
+                      <span className="text-white font-medium text-sm sm:text-base">{activeToken.ticker}</span>
                     </div>
                   }
                 />
 
                 {/* Arrow Indicator */}
                 <div className="flex justify-center -my-3 relative z-20">
-                  <button className="bg-[#0A0A0A] border border-white/10 p-2 rounded-xl text-zinc-400 hover:text-primary hover:border-primary/50 transition-all">
-                    <ArrowDown className="w-5 h-5" />
+                  <button className="bg-[#0A0A0A] border border-white/10 p-1.5 sm:p-2 rounded-xl text-zinc-400 hover:text-primary hover:border-primary/50 transition-all">
+                    <ArrowDown className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
                 </div>
 
@@ -171,9 +171,9 @@ export function Staking({ onClose, initialAmount }: StakingProps) {
                   readOnly
                   className="text-zinc-400"
                   rightElement={
-                    <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-1.5">
-                      <img src={STETH_ICON} alt="stETH" className="w-6 h-6 rounded-full" />
-                      <span className="text-white font-medium">stETH</span>
+                    <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2.5 sm:px-3 py-1.5 sm:py-2 min-h-[40px] sm:min-h-[44px]">
+                      <img src={STETH_ICON} alt="stETH" className="w-5 h-5 sm:w-6 sm:h-6 rounded-full" />
+                      <span className="text-white font-medium text-sm sm:text-base">stETH</span>
                     </div>
                   }
                 />
@@ -227,28 +227,37 @@ export function Staking({ onClose, initialAmount }: StakingProps) {
                 </div>
 
                 {/* Main Details Card (Swap Mold) */}
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-4 mb-4">
-                   <div className="font-medium text-white text-sm mb-2">
-                     Stake {activeToken.ticker}
+                <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4 space-y-4 mb-4">
+                   <div className="flex items-center gap-2 mb-2">
+                     <img src={ETH_ICON} alt="ETH" className="w-5 h-5 sm:w-6 sm:h-6 rounded-full" />
+                     <span className="font-medium text-white text-sm sm:text-base">
+                       Stake {activeToken.ticker}
+                     </span>
                    </div>
-                   
+
                    {/* Visual Swap inside Card */}
-                   <div className="flex items-center justify-center gap-4 py-2 bg-black/20 rounded-lg border border-white/5">
-                     <div className="text-center">
-                       <div className="text-white font-mono text-sm font-bold">{stakeAmount}</div>
-                       <div className="text-zinc-500 text-[10px]">{activeToken.ticker}</div>
+                   <div className="flex items-center justify-center gap-3 sm:gap-4 py-3 bg-black/20 rounded-lg border border-white/5">
+                     <div className="flex items-center gap-2">
+                       <img src={ETH_ICON} alt="ETH" className="w-6 h-6 sm:w-8 sm:h-8 rounded-full" />
+                       <div className="text-left">
+                         <div className="text-white font-mono text-sm sm:text-base font-bold">{stakeAmount}</div>
+                         <div className="text-zinc-500 text-[10px] sm:text-xs">{activeToken.ticker}</div>
+                       </div>
                      </div>
-                     <ArrowRight className="w-4 h-4 text-zinc-600" />
-                     <div className="text-center">
-                       <div className="text-white font-mono text-sm font-bold">{(Number(stakeAmount) * 0.998).toFixed(4)}</div>
-                       <div className="text-zinc-500 text-[10px]">st{activeToken.ticker}</div>
+                     <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-600" />
+                     <div className="flex items-center gap-2">
+                       <img src={STETH_ICON} alt="stETH" className="w-6 h-6 sm:w-8 sm:h-8 rounded-full" />
+                       <div className="text-left">
+                         <div className="text-white font-mono text-sm sm:text-base font-bold">{(Number(stakeAmount) * 0.998).toFixed(4)}</div>
+                         <div className="text-zinc-500 text-[10px] sm:text-xs">st{activeToken.ticker}</div>
+                       </div>
                      </div>
                    </div>
 
                    <div className="space-y-2 text-sm pt-2">
                        <div className="flex justify-between">
-                          <span className="text-zinc-500">Exchange Rate</span>
-                          <span className="text-white font-mono text-xs">1 {activeToken.ticker} = 0.998 st{activeToken.ticker}</span>
+                          <span className="text-zinc-500 text-xs sm:text-sm">Exchange Rate</span>
+                          <span className="text-white font-mono text-[10px] sm:text-xs">1 {activeToken.ticker} = 0.998 st{activeToken.ticker}</span>
                        </div>
                    </div>
                 </div>
@@ -300,16 +309,22 @@ export function Staking({ onClose, initialAmount }: StakingProps) {
               exit={{ opacity: 0, scale: 0.95 }}
               className="flex flex-col h-full items-center justify-center p-6"
             >
-              <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mb-6">
-                <Check className="w-10 h-10 text-green-500" />
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-green-500/20 flex items-center justify-center mb-6">
+                <Check className="w-8 h-8 sm:w-10 sm:h-10 text-green-500" />
               </div>
-              <h2 className="text-2xl font-display font-bold text-white mb-2">Staking Submitted!</h2>
-              <p className="text-zinc-400 text-center mb-2">
-                You have staked {stakeAmount} {activeToken.ticker}
-              </p>
-              <p className="text-zinc-500 text-sm text-center mb-4">
-                You will receive ~{(Number(stakeAmount) * 0.998).toFixed(4)} st{activeToken.ticker}
-              </p>
+              <h2 className="text-xl sm:text-2xl font-display font-bold text-white mb-2">Staking Submitted!</h2>
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <img src={ETH_ICON} alt="ETH" className="w-5 h-5 rounded-full" />
+                <p className="text-zinc-400 text-center text-sm sm:text-base">
+                  You have staked {stakeAmount} {activeToken.ticker}
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <img src={STETH_ICON} alt="stETH" className="w-5 h-5 rounded-full" />
+                <p className="text-zinc-500 text-xs sm:text-sm text-center">
+                  You will receive ~{(Number(stakeAmount) * 0.998).toFixed(4)} st{activeToken.ticker}
+                </p>
+              </div>
 
               {/* Transaction Link */}
               {txHash && (

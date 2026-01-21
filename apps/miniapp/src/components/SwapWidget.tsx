@@ -63,6 +63,37 @@ const getTokenColor = (token: any) => {
 const DEFAULT_SELL_TOKEN = { ticker: "ETH", name: "Ethereum", network: "Ethereum", address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", balance: "0.00", icon: "https://assets.coingecko.com/coins/images/279/small/ethereum.png" };
 const DEFAULT_BUY_TOKEN = { ticker: "AVAX", name: "Avalanche", network: "Avalanche", address: "0x0000000000000000000000000000000000000000", balance: "0.00", icon: "https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" };
 
+// Translate Portuguese error messages to English
+const translateError = (message: string): string => {
+  const translations: Record<string, string> = {
+    'Estamos enfrentando uma instabilidade pontual': 'We are experiencing temporary instability. Please try again later.',
+    'Erro ao obter cotação': 'Error getting quote',
+    'Falha na transação': 'Transaction failed',
+    'Saldo insuficiente': 'Insufficient balance',
+    'Valor mínimo não atingido': 'Minimum amount not reached',
+    'Valor máximo excedido': 'Maximum amount exceeded',
+    'Rede não suportada': 'Network not supported',
+    'Token não suportado': 'Token not supported',
+    'Erro de conexão': 'Connection error',
+    'Tempo limite excedido': 'Request timeout',
+    'Serviço indisponível': 'Service unavailable',
+  };
+
+  // Check for exact match
+  if (translations[message]) {
+    return translations[message];
+  }
+
+  // Check if message contains any Portuguese phrase
+  for (const [pt, en] of Object.entries(translations)) {
+    if (message.toLowerCase().includes(pt.toLowerCase())) {
+      return message.replace(new RegExp(pt, 'gi'), en);
+    }
+  }
+
+  return message;
+};
+
 const getBaseChainId = (networkName: string): number => {
   switch (networkName) {
     case 'Avalanche': return 43114;
@@ -251,7 +282,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           if (interval) clearInterval(interval);
         }
       } catch (e: any) {
-        if (!cancelled) setSwapStatusError(e.message || 'Failed to fetch swap status');
+        if (!cancelled) setSwapStatusError(translateError(e.message || 'Failed to fetch swap status'));
       }
     };
 
@@ -345,7 +376,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     } catch (e: any) {
       if (quoteRequestRef.current !== requestId) return;
       console.error("Quote error:", e);
-      setQuoteError(e.message || "Unable to fetch quote");
+      setQuoteError(translateError(e.message || "Unable to fetch quote"));
     } finally {
       if (quoteRequestRef.current === requestId) {
         setQuoting(false);
@@ -468,7 +499,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
       } catch (e: any) {
         console.error("TON Swap error:", e);
-        setExecutionError(e.message || "TON Swap failed");
+        setExecutionError(translateError(e.message || "TON Swap failed"));
       } finally {
         setPreparing(false);
         setExecuting(false);
@@ -654,7 +685,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
     } catch (e: any) {
       console.error("Swap execution error:", e);
-      setExecutionError(e.message || "Swap failed");
+      setExecutionError(translateError(e.message || "Swap failed"));
     } finally {
       setPreparing(false);
       setExecuting(false);
@@ -865,9 +896,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                         <Switch.Root
                           checked={refuelEnabled}
                           onCheckedChange={setRefuelEnabled}
-                          className={cn("w-10 h-6 rounded-full relative transition-colors flex-shrink-0", refuelEnabled ? 'bg-primary' : 'bg-zinc-700')}
+                          className={cn("w-9 h-5 rounded-full relative transition-colors flex-shrink-0", refuelEnabled ? 'bg-primary' : 'bg-zinc-700')}
                         >
-                          <Switch.Thumb className={cn("block w-4 h-4 bg-white rounded-full transition-transform translate-x-1 will-change-transform", refuelEnabled ? 'translate-x-5' : 'translate-x-1')} />
+                          <Switch.Thumb className={cn("block w-3.5 h-3.5 bg-white rounded-full transition-transform translate-x-0.5 will-change-transform", refuelEnabled ? 'translate-x-[18px]' : 'translate-x-0.5')} />
                         </Switch.Root>
                       </div>
                     </div>
@@ -916,7 +947,27 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                     </div>
                     <div className="p-4 space-y-4">
                       <div className="flex items-center justify-between">
-                        <span className="font-medium text-white">Swap {sellToken.ticker} to {buyToken.ticker}</span>
+                        <div className="flex items-center gap-2">
+                          {/* From Token */}
+                          {sellToken.icon ? (
+                            <img src={sellToken.icon} alt={sellToken.ticker} className="w-6 h-6 rounded-full object-cover" />
+                          ) : (
+                            <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold", getTokenColor(sellToken))}>
+                              {sellToken.ticker?.[0]}
+                            </div>
+                          )}
+                          <span className="font-medium text-white">{sellToken.ticker}</span>
+                          <ArrowDown className="w-4 h-4 text-zinc-500 rotate-[-90deg]" />
+                          {/* To Token */}
+                          {buyToken.icon ? (
+                            <img src={buyToken.icon} alt={buyToken.ticker} className="w-6 h-6 rounded-full object-cover" />
+                          ) : (
+                            <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold", getTokenColor(buyToken))}>
+                              {buyToken.ticker?.[0]}
+                            </div>
+                          )}
+                          <span className="font-medium text-white">{buyToken.ticker}</span>
+                        </div>
                         <span className="bg-cyan-500/20 text-cyan-400 text-[10px] font-bold px-2 py-0.5 rounded border border-cyan-500/30">+ FAST</span>
                       </div>
                       <div className="space-y-2 text-sm">
@@ -1084,9 +1135,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                           <Switch.Root
                             checked={tosAccepted}
                             onCheckedChange={setTosAccepted}
-                            className={cn("w-10 h-6 rounded-full relative transition-colors", tosAccepted ? 'bg-primary' : 'bg-zinc-700')}
+                            className={cn("w-9 h-5 rounded-full relative transition-colors flex-shrink-0", tosAccepted ? 'bg-primary' : 'bg-zinc-700')}
                           >
-                            <Switch.Thumb className={cn("block w-4 h-4 bg-white rounded-full transition-transform translate-x-1 will-change-transform", tosAccepted ? 'translate-x-5' : 'translate-x-1')} />
+                            <Switch.Thumb className={cn("block w-3.5 h-3.5 bg-white rounded-full transition-transform translate-x-0.5 will-change-transform", tosAccepted ? 'translate-x-[18px]' : 'translate-x-0.5')} />
                           </Switch.Root>
                         </div>
                       </div>
@@ -1174,9 +1225,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           <div className="py-4 md:py-6 relative z-10 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
             {isCrossChain ? (
               <>
-                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center shadow-lg shadow-black/50 border border-white/5">
-                  <Triangle className="w-4 h-4 text-white fill-white rotate-180" />
-                </div>
+                <img src="/miniapp/icons/thirdweb_logo.png" alt="Thirdweb" className="w-7 h-7 object-contain rounded-full" />
                 <span className="text-sm font-medium text-zinc-400">Powered by Thirdweb</span>
               </>
             ) : sellToken.network === 'Avalanche' ? (
