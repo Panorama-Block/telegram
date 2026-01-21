@@ -701,14 +701,17 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     }
 
     try {
-      // We don't know output decimals yet easily, usually 18 or 6. 
-      // Ideally we fetch it or use the one from quote if provided (backend often parses it)
-      // The backend quote returns estimatedReceiveAmount in wei.
-      return formatAmountHuman(BigInt(quote.estimatedReceiveAmount || quote.toAmount || 0), 18, 5); // Assuming 18 for now or backend adjusted
+      // Get decimals from buyToken - common values: 18 (ETH, most tokens), 6 (USDC, USDT), 8 (WBTC)
+      const buyDecimals = buyToken.decimals ||
+        (buyToken.ticker === 'USDC' || buyToken.ticker === 'USDT' ? 6 :
+         buyToken.ticker === 'WBTC' || buyToken.ticker === 'BTC.b' ? 8 : 18);
+
+      // The backend quote returns estimatedReceiveAmount in smallest units (wei for 18 decimals, etc)
+      return formatAmountHuman(BigInt(quote.estimatedReceiveAmount || quote.toAmount || 0), buyDecimals, 5);
     } catch {
       return "0.00";
     }
-  }, [quote]);
+  }, [quote, buyToken]);
 
   // Handlers
   const openTokenList = (slot: 'sell' | 'buy') => {
