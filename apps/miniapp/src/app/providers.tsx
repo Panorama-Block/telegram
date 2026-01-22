@@ -127,10 +127,40 @@ export function ClientProviders({ children }: ClientProvidersProps) {
             }).catch(console.error);
           }, []);
 
+          const TonAutoConnect = () => {
+            const [tonConnectUI] = tonConnect.useTonConnectUI();
+            useEffect(() => {
+              let cancelled = false;
+              const restore = async () => {
+                try {
+                  await tonConnectUI?.connectionRestored;
+                  if (cancelled || !tonConnectUI) return;
+
+                  if (!tonConnectUI.connected) {
+                    const connector = (tonConnectUI as any).connector;
+                    await connector?.restoreConnection?.();
+                  }
+
+                  if (tonConnectUI.account?.address) {
+                    console.log('[TonConnect] session restored:', tonConnectUI.account.address);
+                  }
+                } catch (err) {
+                  console.warn('[TonConnect] connection restore failed:', err);
+                }
+              };
+              restore();
+              return () => {
+                cancelled = true;
+              };
+            }, [tonConnectUI]);
+            return null;
+          };
+
           return (
             <AuthProvider>
               <TransactionSettingsProvider>
                 <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
+                  <TonAutoConnect />
                   <thirdwebReact.ThirdwebProvider>
                     <ChatProvider>
                       {AutoConnectHandler && <AutoConnectHandler />}

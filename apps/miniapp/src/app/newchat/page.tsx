@@ -32,7 +32,7 @@ export default function NewChatPage() {
   const connectButtonRef = useRef<HTMLDivElement>(null);
   const lastTriedAddressRef = useRef<string | null>(null);
   const [isTelegram, setIsTelegram] = useState(false);
-  const isTelegramEnv = isTelegram || isTelegramWebApp();
+  const isTelegramEnv = isTelegramWebApp() || isTelegram;
 
   useEffect(() => {
     // Initial check

@@ -1,28 +1,38 @@
 export function isTelegramWebApp(): boolean {
   if (typeof window === 'undefined') return false;
 
-  const tg = (window as any).Telegram?.WebApp;
+  const tg = (window as any).Telegram;
+  const webApp = tg?.WebApp;
 
-  // ✅ Strongest signal: official Telegram WebApp context
-  if (tg && typeof tg.initData === 'string' && tg.initData.length > 0) {
-    console.log("isTelegram because of the initialData");
+  // 1) Strongest signal: official Telegram WebApp context
+  if (webApp && typeof webApp.initData === 'string' && webApp.initData.length > 0) {
     return true;
   }
 
-  // ✅ Telegram injects tgWebApp* params in URL
+  // 2) Telegram injects tgWebApp* params in URL
   const search = window.location?.search ?? '';
   if (/tgWebApp/i.test(search)) {
-    console.log("isTelegram because of the params in the URL");
     return true;
   }
 
-  // ⚠️ Weak fallback: User Agent (last resort)
+  // 3) Telegram Web (browser) – only if you're on Telegram's web host
+  const host = window.location.hostname.toLowerCase();
+  if (/^web\.telegram\.(org|me)$/i.test(host)) {
+    return true;
+  }
+
+  // 4) Telegram WebApp inside Telegram Web iframe (initData can be empty)
+  if (webApp && tg?.WebView?.isIframe === true && typeof webApp.version === 'string') {
+    return true;
+  }
+
+  // 5) Telegram Web/Desktop can expose WebApp but omit initData unless launched via bot
   const ua = navigator?.userAgent ?? '';
-  if (/Telegram/i.test(ua)) {
-    console.log("isTelegram because of the fallback");
+  const platform = typeof webApp?.platform === 'string' ? webApp.platform : '';
+  const knownPlatforms = new Set(['android', 'ios', 'tdesktop', 'web', 'webk', 'webz', 'macos']);
+  if (webApp && knownPlatforms.has(platform) && /Telegram/i.test(ua)) {
     return true;
   }
 
   return false;
 }
-
