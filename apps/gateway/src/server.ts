@@ -133,7 +133,8 @@ export async function createServer(): Promise<FastifyInstance> {
   const NEXTJS_URL = `http://localhost:${NEXTJS_PORT}`;
 
   app.all('/miniapp', async (req, reply) => {
-    return reply.redirect(302, '/miniapp/');
+    const suffix = req.url.slice('/miniapp'.length);
+    return reply.redirect(302, `/miniapp/${suffix}`);
   });
 
   app.all('/miniapp/*', async (req, reply) => {

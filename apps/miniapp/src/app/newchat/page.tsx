@@ -12,7 +12,7 @@ import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { DEBUG } from '@/shared/config/debug';
 import '@/shared/ui/loader.css';
 import { TonConnectButton, useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
-import { isTelegramWebApp } from '@/lib/isTelegram';
+import { isTelegramWebApp, detectTelegram } from '@/lib/isTelegram';
 import { useLogout } from '@/shared/hooks/useLogout';
 
 export default function NewChatPage() {
@@ -35,35 +35,16 @@ export default function NewChatPage() {
   const isTelegramEnv = isTelegramWebApp() || isTelegram;
 
   useEffect(() => {
-    // Initial check
-    const checkTelegram = () => {
-      const isTg = isTelegramWebApp();
-      console.log('[NewChat] Checking Telegram:', isTg, typeof window !== 'undefined' ? (window as any).Telegram : 'window undefined');
+    // Robust async check
+    const checkTelegramAsync = async () => {
+      const isTg = await detectTelegram();
+      console.log('[NewChat] Async Telegram Detection Result:', isTg);
       if (isTg) {
         setIsTelegram(true);
-        return true;
       }
-      return false;
     };
 
-    if (checkTelegram()) return;
-
-    // Poll for 2 seconds
-    const interval = setInterval(() => {
-      if (checkTelegram()) {
-        clearInterval(interval);
-      }
-    }, 100);
-
-    const timeout = setTimeout(() => {
-      clearInterval(interval);
-      console.log('[NewChat] Stopped polling for Telegram');
-    }, 2000);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
+    checkTelegramAsync();
   }, []);
 
   // Client setup
@@ -84,8 +65,7 @@ export default function NewChatPage() {
   // Wallet configuration
   const wallets = useMemo(() => {
     if (typeof window === 'undefined') return [inAppWallet()];
-    const WebApp = (window as any).Telegram?.WebApp;
-    const isTelegram = !!WebApp;
+    const isTelegram = isTelegramWebApp();
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const mode = isTelegram ? 'redirect' : 'popup';
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
@@ -151,6 +131,7 @@ export default function NewChatPage() {
   }, [account, tonWallet, isConnecting, hasTriedAutoConnectRef.current]);
 
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [showRetryPrompt, setShowRetryPrompt] = useState(false);
 
   // Authenticate with backend
   const authenticateWithBackend = useCallback(async () => {
@@ -424,8 +405,8 @@ export default function NewChatPage() {
     if (isAuthenticating) return 'Authenticating...';
     if (isAuthenticated) return 'Success! Redirecting...';
     if (isConnecting) return 'Setting up your workspace...';
-    if (!account && !tonWallet) return 'Setting up your workspace...';
-    return 'Setting up your workspace...';
+    if (!account && !tonWallet) return '';
+    return '';
   };
 
   // Show error state
@@ -450,6 +431,15 @@ export default function NewChatPage() {
 
   const connected = Boolean(account?.address || tonWallet?.account.address);
   const showFreshConnect = isTelegramEnv && (isConnecting || (isAuthenticating && statusMessage.toLowerCase().includes('ton')));
+
+  useEffect(() => {
+    if (!showFreshConnect) {
+      setShowRetryPrompt(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowRetryPrompt(true), 15000);
+    return () => clearTimeout(timer);
+  }, [showFreshConnect]);
 
   return (
     <div className="fixed inset-0 bg-pano-bg-primary flex items-center justify-center overflow-hidden">
@@ -480,7 +470,7 @@ export default function NewChatPage() {
               {statusMessage}
             </p>
           )}
-          {showFreshConnect && (
+          {showFreshConnect && showRetryPrompt && (
             <button
               onClick={async () => {
                 try {
@@ -496,7 +486,7 @@ export default function NewChatPage() {
               disabled={isLoggingOut}
               className="mt-2 px-4 py-2 rounded-lg bg-white/10 text-white/80 text-xs font-semibold hover:bg-white/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoggingOut ? 'Resetting...' : "didn't get the code? Tap here"}
+              {isLoggingOut ? 'Resetting...' : "Didn't get the confirmation? Tap here"}
             </button>
           )}
         </div>
@@ -509,7 +499,7 @@ export default function NewChatPage() {
         ) : !connected ? (
           <div ref={connectButtonRef} className="mt-4 w-full flex flex-col items-center">
             {isTelegramEnv ? (
-              <div className="w-full max-w-[280px]">
+              <div className="w-full max-w-[280px] flex justify-center items-center">
                 <TonConnectButton className="w-full" />
               </div>
             ) : client ? (
@@ -538,13 +528,13 @@ export default function NewChatPage() {
 
             {/* Debug Info */}
             {DEBUG &&
-            <div className="mt-8 p-3 bg-black/50 rounded-lg text-[10px] font-mono text-gray-400 break-all max-w-xs text-left">
-              <p className="font-bold mb-1 text-gray-300">Debug Info:</p>
-              <p>isTelegram state: <span className={isTelegram ? "text-green-400" : "text-yellow-400"}>{String(isTelegram)}</span></p>
-              <p>window.Telegram: {typeof window !== 'undefined' ? typeof (window as any).Telegram : 'undefined'}</p>
-              <p>WebApp: {typeof window !== 'undefined' && (window as any).Telegram?.WebApp ? 'Present' : 'Missing'}</p>
-              <p>UserAgent: {typeof navigator !== 'undefined' ? navigator.userAgent.substring(0, 50) + '...' : 'N/A'}</p>
-            </div>
+              <div className="mt-8 p-3 bg-black/50 rounded-lg text-[10px] font-mono text-gray-400 break-all max-w-xs text-left">
+                <p className="font-bold mb-1 text-gray-300">Debug Info:</p>
+                <p>isTelegram state: <span className={isTelegram ? "text-green-400" : "text-yellow-400"}>{String(isTelegram)}</span></p>
+                <p>window.Telegram: {typeof window !== 'undefined' ? typeof (window as any).Telegram : 'undefined'}</p>
+                <p>WebApp: {typeof window !== 'undefined' && (window as any).Telegram?.WebApp ? 'Present' : 'Missing'}</p>
+                <p>UserAgent: {typeof navigator !== 'undefined' ? navigator.userAgent.substring(0, 50) + '...' : 'N/A'}</p>
+              </div>
             }
           </div>
         ) : null}

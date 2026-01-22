@@ -10,7 +10,7 @@ import Image from 'next/image';
 import zicoBlue from '../../../../public/icons/zico_blue.svg';
 import '../../../shared/ui/loader.css';
 import { TonConnectButton } from '@tonconnect/ui-react';
-import { isTelegramWebApp } from '@/lib/isTelegram';
+import { isTelegramWebApp, detectTelegram } from '@/lib/isTelegram';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
 interface AuthModalProps {
@@ -30,35 +30,16 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [isTelegram, setIsTelegram] = useState(false);
 
   useEffect(() => {
-    // Initial check
-    const checkTelegram = () => {
-      const isTg = isTelegramWebApp();
-      console.log('[AuthModal] Checking Telegram:', isTg, typeof window !== 'undefined' ? (window as any).Telegram : 'window undefined');
+    // Robust async check
+    const checkTelegramAsync = async () => {
+      const isTg = await detectTelegram();
+      console.log('[AuthModal] Async Telegram Detection Result:', isTg);
       if (isTg) {
         setIsTelegram(true);
-        return true;
       }
-      return false;
     };
 
-    if (checkTelegram()) return;
-
-    // Poll for 2 seconds
-    const interval = setInterval(() => {
-      if (checkTelegram()) {
-        clearInterval(interval);
-      }
-    }, 100);
-
-    const timeout = setTimeout(() => {
-      clearInterval(interval);
-      console.log('[AuthModal] Stopped polling for Telegram');
-    }, 2000);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
+    checkTelegramAsync();
   }, []);
 
   const [error, setError] = useState<string | null>(null);
@@ -81,8 +62,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
   const wallets = useMemo(() => {
     if (typeof window === 'undefined') return [inAppWallet()];
-    const WebApp = (window as any).Telegram?.WebApp;
-    const isTelegram = !!WebApp;
+    const isTelegram = isTelegramWebApp();
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const mode = isTelegram ? 'redirect' : 'popup';
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
