@@ -79,7 +79,7 @@ export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }:
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl"
+          className="fixed inset-0 z-[60] flex items-start md:items-center justify-center pt-4 md:pt-0 p-4 pb-20 md:pb-4 bg-black/60 backdrop-blur-xl overflow-y-auto"
           onClick={onClose}
         >
           <motion.div
@@ -88,7 +88,7 @@ export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }:
             animate="animate"
             exit="exit"
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="w-full max-w-md bg-[#0A0A0A] border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[80vh] rounded-2xl"
+            className="w-full max-w-md bg-[#0A0A0A] border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[65vh] md:max-h-[75vh] rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
