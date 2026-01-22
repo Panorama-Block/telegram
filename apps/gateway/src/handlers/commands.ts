@@ -9,8 +9,13 @@ export function registerCommandHandlers(bot: Bot) {
     const fromId = ctx.from?.id;
     
     // Simple message with miniapp button
+    const baseUrl = env.PUBLIC_WEBAPP_URL;
+    const url = new URL(baseUrl);
+    url.searchParams.set('telegram_user_id', String(fromId));
+    url.searchParams.set('tma', '1');
+
     const keyboard = new InlineKeyboard()
-      .webApp('🚀 Open Panorama Block', `${env.PUBLIC_WEBAPP_URL}?telegram_user_id=${fromId}`);
+      .webApp('🚀 Open Panorama Block', url.toString());
     
     await ctx.reply(
       '🎉 Welcome to Panorama Block!\n\n' +

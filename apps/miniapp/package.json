@@ -36,6 +36,7 @@
     "@radix-ui/react-toggle": "^1.1.10",
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.7",
+    "@tma.js/sdk": "^3.1.6",
     "@ton/core": "^0.56.3",
     "@ton/crypto": "^3.3.0",
     "@ton/ton": "^13.11.2",
