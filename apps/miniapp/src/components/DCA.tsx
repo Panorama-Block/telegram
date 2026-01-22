@@ -339,7 +339,7 @@ export function DCA({ onClose }: DCAProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start md:items-center justify-center pt-4 md:pt-0 p-4 pb-20 md:pb-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
       onClick={onClose}
     >
       <motion.div
@@ -351,14 +351,9 @@ export function DCA({ onClose }: DCAProps) {
         className="w-full md:max-w-[480px]"
         onClick={(e) => e.stopPropagation()}
       >
-        <GlassCard className="w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 h-[85vh] md:h-auto md:min-h-[600px] flex flex-col rounded-t-3xl rounded-b-none md:rounded-2xl border-b-0 md:border-b pb-safe">
+        <GlassCard className="w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 max-h-[78vh] md:max-h-[85vh] md:h-auto md:min-h-[600px] flex flex-col rounded-2xl border pb-safe overflow-y-auto">
           {/* Gradient Glow */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-32 bg-cyan-500/10 blur-[60px] pointer-events-none" />
-
-          {/* Mobile Drag Handle */}
-          <div className="md:hidden w-full flex justify-center pt-3 pb-1">
-            <div className="w-12 h-1.5 bg-zinc-800 rounded-full" />
-          </div>
 
           <AnimatePresence mode="wait">
             {/* --- STATE 1: INPUT --- */}

@@ -377,8 +377,8 @@ function CreateDCAModal({
         className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-[#202020]/85 backdrop-blur-xl rounded-[25px] p-5 shadow-[0px_16px_57.7px_0px_rgba(0,0,0,0.42)] border border-white/10 max-h-[90vh] overflow-y-auto">
+      <div className="fixed inset-0 z-50 flex items-start md:items-center justify-center pt-4 md:pt-0 p-4 pb-20 md:pb-4 overflow-y-auto">
+        <div className="w-full max-w-md bg-[#202020]/85 backdrop-blur-xl rounded-2xl p-5 shadow-[0px_16px_57.7px_0px_rgba(0,0,0,0.42)] border border-white/10 max-h-[70vh] md:max-h-[85vh] overflow-y-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-white">Create Recurring Buy</h2>
@@ -820,8 +820,8 @@ function CreateDCAModal({
             className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm"
             onClick={() => setShowFromSelector(false)}
           />
-          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-[#1A1A1A] rounded-2xl border border-white/10 shadow-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="fixed inset-0 z-[70] flex items-start md:items-center justify-center pt-4 md:pt-0 p-4 pb-20 md:pb-4 overflow-y-auto">
+            <div className="w-full max-w-md bg-[#1A1A1A] rounded-2xl border border-white/10 shadow-2xl max-h-[65vh] md:max-h-[75vh] overflow-hidden flex flex-col">
               <div className="p-4 border-b border-white/10 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-white">Select a token</h3>
                 <button
@@ -926,8 +926,8 @@ function CreateDCAModal({
             className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm"
             onClick={() => setShowToSelector(false)}
           />
-          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-[#1A1A1A] rounded-2xl border border-white/10 shadow-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="fixed inset-0 z-[70] flex items-start md:items-center justify-center pt-4 md:pt-0 p-4 pb-20 md:pb-4 overflow-y-auto">
+            <div className="w-full max-w-md bg-[#1A1A1A] rounded-2xl border border-white/10 shadow-2xl max-h-[65vh] md:max-h-[75vh] overflow-hidden flex flex-col">
               <div className="p-4 border-b border-white/10 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-white">Select a token</h3>
                 <button

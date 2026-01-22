@@ -56,8 +56,8 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
         className="fixed inset-0 bg-black/40 backdrop-blur-md z-50 animate-fadeIn"
         onClick={onClose}
       />
-      <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-        <div className="bg-[#1A1A1A]/95 backdrop-blur-2xl border border-white/10 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-scaleIn">
+      <div className="fixed inset-0 flex items-start md:items-center justify-center pt-4 md:pt-0 p-4 pb-20 md:pb-4 z-50 overflow-y-auto">
+        <div className="bg-[#1A1A1A]/95 backdrop-blur-2xl border border-white/10 rounded-2xl w-full max-w-lg max-h-[65vh] md:max-h-[75vh] flex flex-col overflow-hidden shadow-2xl animate-scaleIn">
           {/* Header */}
           <div className="p-5 border-b border-white/5 flex items-center justify-between bg-[#252525]/30">
             <h2 className="text-xl font-semibold text-white">{title}</h2>
