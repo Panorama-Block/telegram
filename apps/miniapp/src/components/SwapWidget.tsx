@@ -449,8 +449,14 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
       }
 
       // EVM swap - use ThirdWeb SDK directly
-      const decimals = sellToken.decimals || 18;
+      // Get decimals - fallback to known values for common tokens
+      const sellSymbol = (sellToken.ticker || sellToken.symbol || '').toUpperCase();
+      const decimals = sellToken.decimals ||
+        (sellSymbol === 'USDC' || sellSymbol === 'USDT' ? 6 :
+         sellSymbol === 'WBTC' || sellSymbol === 'BTC.B' ? 8 : 18);
       const weiAmount = parseAmountToWei(amount, decimals);
+
+      console.log("[SwapWidget] Token decimals:", { symbol: sellSymbol, decimals, rawDecimals: sellToken.decimals });
 
       console.log("[SwapWidget] Getting quote from ThirdWeb SDK...", {
         fromChainId,
@@ -708,11 +714,17 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
       }
 
       // Standard EVM Swap - SDK with approval FIRST
+      // Get decimals - try from contract first, fallback to known values
+      const sellSymbol = (sellToken.ticker || sellToken.symbol || '').toUpperCase();
+      const knownDecimals = sellSymbol === 'USDC' || sellSymbol === 'USDT' ? 6 :
+                            sellSymbol === 'WBTC' || sellSymbol === 'BTC.B' ? 8 : 18;
       const decimals = await getTokenDecimals({
         client,
         chainId: fromChainId,
         token: sellToken.address
-      }).catch(() => 18);
+      }).catch(() => knownDecimals);
+
+      console.log("[SwapWidget] Swap decimals:", { symbol: sellSymbol, decimals });
 
       const weiAmount = parseAmountToWei(amount, decimals);
       const originToken = normalizeToApi(sellToken.address) as `0x${string}`;
