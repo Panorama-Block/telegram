@@ -32,6 +32,7 @@ import { useTonConnectUI } from '@tonconnect/ui-react';
 import { getUserJettonWallet, toUSDT } from '@/lib/ton-helpers';
 import { beginCell, toNano, Address as TonAddress } from '@ton/core';
 import { inAppWallet } from "thirdweb/wallets";
+// Network auto-switch is handled via useEffect when sellToken changes
 
 interface SwapWidgetProps {
   onClose: () => void;
@@ -360,6 +361,76 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
       cancelled = true;
     };
   }, [client, account?.address, sellToken]);
+
+  // Auto-switch network when sellToken changes
+  useEffect(() => {
+    if (!account?.address || !sellToken) return;
+
+    const requiredChainId = getBaseChainId(sellToken.network);
+
+    // Skip TON chain (non-EVM)
+    if (requiredChainId === TON_CHAIN_ID) return;
+
+    const ethereum = typeof window !== 'undefined' ? (window as any).ethereum : null;
+    if (!ethereum) return;
+
+    const switchNetwork = async () => {
+      try {
+        // Get current chain
+        const currentChainHex = await ethereum.request({ method: 'eth_chainId' });
+        const currentChainId = parseInt(currentChainHex, 16);
+
+        // Only switch if on different chain
+        if (currentChainId === requiredChainId) return;
+
+        const chainIdHex = `0x${requiredChainId.toString(16)}`;
+        console.log(`[SWAP] Auto-switching to chain ${requiredChainId} (${chainIdHex})...`);
+
+        await ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: chainIdHex }],
+        });
+
+        console.log(`[SWAP] Successfully switched to chain ${requiredChainId}`);
+      } catch (error: any) {
+        console.error('[SWAP] Auto-switch failed:', error);
+
+        // If chain not added (4902), try to add it
+        if (error?.code === 4902) {
+          const chainConfigs: Record<number, any> = {
+            1: { name: 'Ethereum Mainnet', symbol: 'ETH', rpc: 'https://eth.llamarpc.com', explorer: 'https://etherscan.io' },
+            43114: { name: 'Avalanche C-Chain', symbol: 'AVAX', rpc: 'https://api.avax.network/ext/bc/C/rpc', explorer: 'https://snowtrace.io' },
+            8453: { name: 'Base', symbol: 'ETH', rpc: 'https://mainnet.base.org', explorer: 'https://basescan.org' },
+            56: { name: 'BNB Smart Chain', symbol: 'BNB', rpc: 'https://bsc-dataseed.binance.org', explorer: 'https://bscscan.com' },
+            137: { name: 'Polygon', symbol: 'MATIC', rpc: 'https://polygon-rpc.com', explorer: 'https://polygonscan.com' },
+            42161: { name: 'Arbitrum One', symbol: 'ETH', rpc: 'https://arb1.arbitrum.io/rpc', explorer: 'https://arbiscan.io' },
+            10: { name: 'Optimism', symbol: 'ETH', rpc: 'https://mainnet.optimism.io', explorer: 'https://optimistic.etherscan.io' },
+          };
+
+          const config = chainConfigs[requiredChainId];
+          if (config) {
+            try {
+              await ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                  chainId: `0x${requiredChainId.toString(16)}`,
+                  chainName: config.name,
+                  nativeCurrency: { name: config.symbol, symbol: config.symbol, decimals: 18 },
+                  rpcUrls: [config.rpc],
+                  blockExplorerUrls: [config.explorer],
+                }],
+              });
+            } catch (addError) {
+              console.error('[SWAP] Failed to add chain:', addError);
+            }
+          }
+        }
+        // User rejected (4001) - silently ignore, they can click the button manually
+      }
+    };
+
+    switchNetwork();
+  }, [account?.address, sellToken?.network]);
 
   // Poll bridge status when we have a swapId
   useEffect(() => {
@@ -1097,10 +1168,14 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                   )}
 
                   <div className="mt-auto pt-6 space-y-4">
+                    {/* Review Swap Button - Network switches automatically when sellToken changes */}
                     <NeonButton
                       onClick={() => setViewState('routing')}
                       disabled={!quote || quoting || !crossChainSupport.supported || insufficientBalance}
-                      className={(!crossChainSupport.supported || insufficientBalance) ? "opacity-50 cursor-not-allowed" : ""}
+                      className={cn(
+                        "w-full",
+                        (!crossChainSupport.supported || insufficientBalance) ? "opacity-50" : ""
+                      )}
                     >
                       {quoting ? "Fetching best price..." : insufficientBalance ? "Insufficient Balance" : !crossChainSupport.supported ? "Pair Not Supported" : "Review Swap"}
                     </NeonButton>

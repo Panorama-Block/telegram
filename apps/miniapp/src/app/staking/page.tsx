@@ -5,11 +5,14 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
-import { useActiveAccount, useSwitchActiveWalletChain } from 'thirdweb/react';
-import { defineChain } from 'thirdweb/chains';
+import { useActiveAccount } from 'thirdweb/react';
 import { useStakingApi } from '@/features/staking/api';
 import { useStakingData } from '@/features/staking/useStakingData';
 import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
+import { NetworkAwareButton } from '@/shared/components/NetworkAwareButton';
+
+// Lido Staking is on Ethereum Mainnet
+const STAKING_CHAIN_ID = 1;
 
 type StakingActionType = 'stake' | 'unstake';
 
@@ -151,7 +154,6 @@ async function getTokenBalance(account: any, tokenAddress: string): Promise<stri
 export default function StakingPage() {
   const router = useRouter();
   const account = useActiveAccount();
-  const switchChain = useSwitchActiveWalletChain();
   const stakingApi = useStakingApi();
   
   // Use the new hook for data management
@@ -176,24 +178,6 @@ export default function StakingPage() {
   const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
   const [loadingBalances, setLoadingBalances] = useState<boolean>(false);
   const [success, setSuccess] = useState<string | null>(null);
-
-  // Switch to Ethereum Mainnet when page loads
-  useEffect(() => {
-    const switchToMainnet = async () => {
-      if (account && switchChain) {
-        try {
-          console.log('Switching to Ethereum Mainnet for staking...');
-          await switchChain(defineChain(1)); // Ethereum Mainnet chainId
-          console.log('✅ Switched to Ethereum Mainnet successfully');
-        } catch (error) {
-          console.error('❌ Failed to switch to Ethereum Mainnet:', error);
-          // Don't show error to user, just log it
-        }
-      }
-    };
-
-    switchToMainnet();
-  }, [account, switchChain]);
 
   // Fetch token balances when account or tokens change
   useEffect(() => {
@@ -242,6 +226,40 @@ export default function StakingPage() {
     setError(null);
 
     try {
+      // FORCE switch to Ethereum Mainnet before any staking transaction
+      const ethereum = typeof window !== 'undefined' ? (window as any).ethereum : null;
+      if (ethereum) {
+        const ETHEREUM_CHAIN_ID = 1;
+        const chainIdHex = '0x1';
+
+        try {
+          const currentChainHex = await ethereum.request({ method: 'eth_chainId' });
+          const currentChainId = parseInt(currentChainHex, 16);
+
+          if (currentChainId !== ETHEREUM_CHAIN_ID) {
+            console.log('[STAKING] Switching to Ethereum Mainnet...');
+            setSuccess('Switching to Ethereum Mainnet...');
+
+            await ethereum.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: chainIdHex }],
+            });
+
+            console.log('[STAKING] Successfully switched to Ethereum Mainnet');
+            // Wait for the switch to complete
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        } catch (switchError: any) {
+          console.error('[STAKING] Switch error:', switchError);
+
+          if (switchError?.code === 4001) {
+            throw new Error('You must switch to Ethereum Mainnet to use Staking');
+          } else {
+            throw new Error('Failed to switch to Ethereum. Please switch manually in your wallet.');
+          }
+        }
+      }
+
       let transaction;
 
       // Execute transaction based on action
@@ -265,27 +283,9 @@ export default function StakingPage() {
           console.log('📦 Transaction data from backend:', transaction.transactionData);
           console.log('📋 Transaction type:', transaction.type);
 
-          // Validate chainId from backend - Lido staking should be on Ethereum mainnet
-          const backendChainId = transaction.transactionData.chainId;
-          if (backendChainId && backendChainId !== 1) {
-            console.warn('⚠️ Backend returned wrong chainId:', backendChainId);
-            console.warn('Expected chainId: 1 (Ethereum Mainnet)');
-            console.warn('This may cause the transaction to fail or go to wrong network');
-          }
-
-          // IMPORTANT: Ensure we're on Ethereum mainnet before executing
-          // Lido staking is on Ethereum mainnet (chainId 1)
-          if (switchChain) {
-            try {
-              console.log('🔄 Switching to Ethereum Mainnet before transaction...');
-              setSuccess('Switching to Ethereum Mainnet...');
-              await switchChain(defineChain(1)); // Ethereum Mainnet
-              console.log('✅ Chain switched to Ethereum Mainnet');
-            } catch (switchError) {
-              console.error('❌ Failed to switch chain:', switchError);
-              // Continue anyway - wallet might already be on correct chain
-            }
-          }
+          // Note: Network validation is handled by NetworkAwareButton
+          // The staking API executeTransaction includes chainId: 1 to ensure
+          // the transaction is sent to Ethereum Mainnet
 
           // Check if this is an approval transaction (two-step unstake process)
           console.log('🔍 Checking transaction type:', transaction.type);
@@ -805,14 +805,16 @@ export default function StakingPage() {
                 </div>
               </div>
 
-              {/* Action Button */}
-              <button
+              {/* Action Button with Network Guard */}
+              <NetworkAwareButton
+                requiredChainId={STAKING_CHAIN_ID}
                 onClick={handleAction}
-                disabled={!canExecute || loading}
-                className="w-full py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-white/90"
+                disabled={!canExecute}
+                loading={loading}
+                className="w-full"
               >
                 {loading ? 'Processing...' : getActionLabel()}
-              </button>
+              </NetworkAwareButton>
 
               {/* Error Messages */}
               {error && (

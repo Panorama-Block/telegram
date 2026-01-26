@@ -181,6 +181,83 @@ function metadataToSwapTokens(metadata: Record<string, unknown> | null) {
   };
 }
 
+// Auto-switch network before opening SwapWidget
+async function autoSwitchNetwork(networkName: string): Promise<boolean> {
+  const networkMap: Record<string, number> = {
+    'ethereum': 1,
+    'avalanche': 43114,
+    'base': 8453,
+    'arbitrum': 42161,
+    'polygon': 137,
+    'binance smart chain': 56,
+    'bsc': 56,
+    'optimism': 10,
+    'world chain': 480,
+  };
+
+  const chainConfigs: Record<number, { name: string; symbol: string; rpc: string; explorer: string }> = {
+    1: { name: 'Ethereum Mainnet', symbol: 'ETH', rpc: 'https://eth.llamarpc.com', explorer: 'https://etherscan.io' },
+    43114: { name: 'Avalanche C-Chain', symbol: 'AVAX', rpc: 'https://api.avax.network/ext/bc/C/rpc', explorer: 'https://snowtrace.io' },
+    8453: { name: 'Base', symbol: 'ETH', rpc: 'https://mainnet.base.org', explorer: 'https://basescan.org' },
+    56: { name: 'BNB Smart Chain', symbol: 'BNB', rpc: 'https://bsc-dataseed.binance.org', explorer: 'https://bscscan.com' },
+    137: { name: 'Polygon', symbol: 'MATIC', rpc: 'https://polygon-rpc.com', explorer: 'https://polygonscan.com' },
+    42161: { name: 'Arbitrum One', symbol: 'ETH', rpc: 'https://arb1.arbitrum.io/rpc', explorer: 'https://arbiscan.io' },
+    10: { name: 'Optimism', symbol: 'ETH', rpc: 'https://mainnet.optimism.io', explorer: 'https://optimistic.etherscan.io' },
+    480: { name: 'World Chain', symbol: 'ETH', rpc: 'https://worldchain-mainnet.g.alchemy.com/public', explorer: 'https://worldscan.org' },
+  };
+
+  const requiredChainId = networkMap[networkName.toLowerCase()];
+  if (!requiredChainId) return true; // Unknown network, proceed anyway
+
+  // Skip TON (non-EVM)
+  if (requiredChainId === -239) return true;
+
+  const ethereum = typeof window !== 'undefined' ? (window as any).ethereum : null;
+  if (!ethereum) return true;
+
+  try {
+    const currentChainHex = await ethereum.request({ method: 'eth_chainId' });
+    const currentChainId = parseInt(currentChainHex, 16);
+
+    if (currentChainId === requiredChainId) return true;
+
+    const chainIdHex = `0x${requiredChainId.toString(16)}`;
+    console.log(`[CHAT] Auto-switching to ${networkName} (chain ${requiredChainId})...`);
+
+    await ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: chainIdHex }],
+    });
+
+    console.log(`[CHAT] Successfully switched to ${networkName}`);
+    return true;
+  } catch (error: any) {
+    console.error('[CHAT] Auto-switch failed:', error);
+
+    if (error?.code === 4902) {
+      const config = chainConfigs[requiredChainId];
+      if (config) {
+        try {
+          await ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: `0x${requiredChainId.toString(16)}`,
+              chainName: config.name,
+              nativeCurrency: { name: config.symbol, symbol: config.symbol, decimals: 18 },
+              rpcUrls: [config.rpc],
+              blockExplorerUrls: [config.explorer],
+            }],
+          });
+          return true;
+        } catch (addError) {
+          console.error('[CHAT] Failed to add chain:', addError);
+        }
+      }
+    }
+    return false;
+  }
+}
+
 function normalizeContent(content: unknown): string {
   if (!content) return '';
   if (typeof content === 'string') return content;
@@ -1612,9 +1689,11 @@ export default function ChatPage() {
 
                                         {/* Action Button */}
                                         <button
-                                          onClick={() => {
+                                          onClick={async () => {
                                             const tokens = metadataToSwapTokens(message.metadata as Record<string, unknown>);
-                                            if (tokens) {
+                                            if (tokens && tokens.from) {
+                                              // Auto-switch network before opening SwapWidget
+                                              await autoSwitchNetwork(tokens.from.network);
                                               setSwapWidgetTokens(tokens);
                                               setShowSwapWidget(true);
                                             }
@@ -1685,7 +1764,9 @@ export default function ChatPage() {
 
                                         {/* Action Button */}
                                         <button
-                                          onClick={() => {
+                                          onClick={async () => {
+                                            // Auto-switch to Avalanche before opening lending modal
+                                            await autoSwitchNetwork('avalanche');
                                             setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
                                             setLendingModalOpen(true);
                                           }}
@@ -1779,7 +1860,9 @@ export default function ChatPage() {
 
                                         {/* Action Button */}
                                         <button
-                                          onClick={() => {
+                                          onClick={async () => {
+                                            // Auto-switch to Ethereum Mainnet before opening staking widget
+                                            await autoSwitchNetwork('ethereum');
                                             setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
                                             setShowStakingWidget(true);
                                           }}

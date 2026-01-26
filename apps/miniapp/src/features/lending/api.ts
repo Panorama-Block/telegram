@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useSwitchActiveWalletChain } from 'thirdweb/react';
+import { defineChain } from 'thirdweb';
 import {
   LendingToken,
   LendingPosition,
@@ -10,14 +11,18 @@ import {
 } from './types';
 import { LENDING_CONFIG, API_ENDPOINTS, FALLBACK_TOKENS, TOKEN_ICONS } from './config';
 
+type SwitchChainFn = (chain: ReturnType<typeof defineChain>) => Promise<void>;
+
 class LendingApiClient {
   private baseUrl: string;
   private account: any;
+  private switchChain: SwitchChainFn | null;
   private lendingDataCache: any = null;
   private lendingDataCacheTime: number = 0;
   private readonly CACHE_DURATION = LENDING_CONFIG.CACHE_DURATION;
 
-  constructor(account: any) {
+  constructor(account: any, switchChain?: SwitchChainFn) {
+    this.switchChain = switchChain || null;
     // Priority 1: Use direct lending API base URL (deployed service)
     const direct = process.env.VITE_LENDING_API_BASE || process.env.NEXT_PUBLIC_LENDING_API_URL;
 
@@ -398,6 +403,54 @@ class LendingApiClient {
         throw new Error(`Invalid to address: ${toAddress}`);
       }
 
+      // IMPORTANT: Switch to the required chain before sending transaction
+      // Use native MetaMask API for reliable chain switching
+      if (chainId) {
+        const ethereum = typeof window !== 'undefined' ? (window as any).ethereum : null;
+        if (ethereum) {
+          const chainIdHex = `0x${chainId.toString(16)}`;
+          try {
+            console.log(`[LENDING] Switching to chain ${chainId} (${chainIdHex}) before transaction...`);
+            await ethereum.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: chainIdHex }],
+            });
+            console.log(`[LENDING] Successfully switched to chain ${chainId}`);
+            // Wait a moment for the switch to take effect
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (switchError: any) {
+            console.error('[LENDING] Failed to switch chain:', switchError);
+            // If chain is not added, try to add it (code 4902)
+            if (switchError?.code === 4902) {
+              console.log('[LENDING] Chain not found, attempting to add Avalanche...');
+              try {
+                await ethereum.request({
+                  method: 'wallet_addEthereumChain',
+                  params: [{
+                    chainId: chainIdHex,
+                    chainName: 'Avalanche C-Chain',
+                    nativeCurrency: { name: 'AVAX', symbol: 'AVAX', decimals: 18 },
+                    rpcUrls: ['https://api.avax.network/ext/bc/C/rpc'],
+                    blockExplorerUrls: ['https://snowtrace.io'],
+                  }],
+                });
+                console.log('[LENDING] Avalanche chain added successfully');
+                // Wait for the chain to be added and switched
+                await new Promise(resolve => setTimeout(resolve, 500));
+              } catch (addError) {
+                console.error('[LENDING] Failed to add chain:', addError);
+                throw new Error('Please switch to Avalanche network manually in your wallet');
+              }
+            } else if (switchError?.code === 4001) {
+              // User rejected the switch
+              throw new Error('You must switch to Avalanche network to complete this transaction');
+            } else {
+              throw new Error('Failed to switch network. Please switch to Avalanche manually.');
+            }
+          }
+        }
+      }
+
       const toHex = (input?: string | number | bigint) => {
         if (input === undefined || input === null || input === '') return undefined;
         if (typeof input === 'bigint') return `0x${input.toString(16)}`;
@@ -534,7 +587,8 @@ class LendingApiClient {
 
 export const useLendingApi = () => {
   const account = useActiveAccount();
-  return useMemo(() => new LendingApiClient(account), [account]);
+  const switchChain = useSwitchActiveWalletChain();
+  return useMemo(() => new LendingApiClient(account, switchChain), [account, switchChain]);
 };
 
 export default LendingApiClient;
