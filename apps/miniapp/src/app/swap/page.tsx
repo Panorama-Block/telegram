@@ -731,10 +731,11 @@ export default function SwapPage() {
   return (
     <ProtectedRoute>
       <SeniorAppShell pageTitle="Liquid Swap">
-        <div className="relative min-h-[100dvh] w-full overflow-hidden bg-[#050505] text-white">
+        <div className="relative min-h-[100dvh] w-full overflow-y-auto bg-[#050505] text-white">
           <AnimatedBackground />
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(8,180,217,0.12),transparent_40%)]" />
-          <div className="flex h-full items-center justify-center px-4 py-10 sm:py-12">
+          {/* Mobile: top aligned, Desktop: centered */}
+          <div className="flex min-h-full items-start md:items-center justify-center px-4 py-4 md:py-10">
             <div className="w-full max-w-3xl space-y-6">
               <div className="flex flex-col gap-2 text-center">
                 <p className="text-sm uppercase tracking-[0.3em] text-white/60">Cross-chain swap</p>
