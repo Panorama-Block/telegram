@@ -220,6 +220,10 @@ export default function SwapPage() {
   const [showSellSelector, setShowSellSelector] = useState(false);
   const [showBuySelector, setShowBuySelector] = useState(false);
 
+  // Balance states
+  const [sellTokenBalance, setSellTokenBalance] = useState<string | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
+
   // Quote and swap states
   const [quote, setQuote] = useState<any | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -250,6 +254,101 @@ export default function SwapPage() {
   const canQuote = useMemo(() => {
     return Boolean(sellToken && buyToken && sellAmount && Number(sellAmount) > 0);
   }, [sellToken, buyToken, sellAmount]);
+
+  // Reset amount when sell token changes - set default to "0.0" until balance is fetched
+  useEffect(() => {
+    setSellAmount('0.0');
+    setSellTokenBalance(null);
+  }, [sellToken.address, fromChainId]);
+
+  // Fetch sell token balance
+  useEffect(() => {
+    // Helper to check if amount can be auto-filled
+    const canAutoFillAmount = !sellAmount || sellAmount === '' || sellAmount === '0.0';
+
+    if (!client || !effectiveAddress || !sellToken) {
+      setSellTokenBalance(null);
+      if (canAutoFillAmount) {
+        setSellAmount('0.0');
+      }
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingBalance(true);
+
+    const fetchBalance = async () => {
+      try {
+        const { getContract } = await import("thirdweb");
+        const { getBalance } = await import("thirdweb/extensions/erc20");
+        const { eth_getBalance, getRpcClient } = await import("thirdweb/rpc");
+
+        const tokenAddress = sellToken.address?.toLowerCase();
+        const isNativeToken = !tokenAddress ||
+          tokenAddress === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' ||
+          tokenAddress === '0x0000000000000000000000000000000000000000' ||
+          tokenAddress === 'native';
+
+        let balance: bigint;
+        let decimals = sellToken.decimals || 18;
+
+        if (isNativeToken) {
+          // Native token balance (ETH, AVAX, etc)
+          const rpcRequest = getRpcClient({ client, chain: defineChain(fromChainId) });
+          balance = await eth_getBalance(rpcRequest, { address: effectiveAddress as `0x${string}` });
+        } else {
+          // ERC20 token balance
+          const tokenContract = getContract({
+            client,
+            chain: defineChain(fromChainId),
+            address: sellToken.address,
+          });
+          const balanceResult = await getBalance({ contract: tokenContract, address: effectiveAddress as `0x${string}` });
+          balance = balanceResult.value;
+          decimals = balanceResult.decimals;
+        }
+
+        if (cancelled) return;
+
+        // Format balance
+        const formattedBalance = formatAmountHuman(balance, decimals, 6);
+        setSellTokenBalance(formattedBalance);
+
+        // Set initial amount to balance or "0.0" if zero (only if amount can be auto-filled)
+        const canAutoFill = !sellAmount || sellAmount === '' || sellAmount === '0.0';
+        if (canAutoFill) {
+          const balanceValue = parseFloat(formattedBalance);
+          setSellAmount(balanceValue > 0 ? formattedBalance : '0.0');
+        }
+      } catch (error) {
+        console.error("[SwapPage] Error fetching balance:", error);
+        if (!cancelled) {
+          setSellTokenBalance("0");
+          const canAutoFill = !sellAmount || sellAmount === '' || sellAmount === '0.0';
+          if (canAutoFill) {
+            setSellAmount('0.0');
+          }
+        }
+      } finally {
+        if (!cancelled) setLoadingBalance(false);
+      }
+    };
+
+    fetchBalance();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client, effectiveAddress, sellToken, fromChainId]);
+
+  // Set max balance handler
+  const handleSetMax = () => {
+    if (!sellTokenBalance || loadingBalance) return;
+    const rawBalance = sellTokenBalance.replace(/,/g, '');
+    if (rawBalance && parseFloat(rawBalance) > 0) {
+      setSellAmount(rawBalance);
+    }
+  };
 
   // Auto-quote effect
   useEffect(() => {
@@ -659,7 +758,19 @@ export default function SwapPage() {
                 <div className="relative rounded-2xl border border-white/10 bg-[#11131a]/70 p-4 sm:p-5">
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-white/50">You sell</div>
-                    <div className="text-xs text-white/60">Balance —</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-white/60">
+                        {loadingBalance ? 'Loading...' : sellTokenBalance ? `${sellTokenBalance} ${sellToken.symbol}` : `-- ${sellToken.symbol}`}
+                      </span>
+                      {sellTokenBalance && !loadingBalance && (
+                        <button
+                          onClick={handleSetMax}
+                          className="text-xs text-cyan-400 hover:text-cyan-300 font-medium transition-colors"
+                        >
+                          Max
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                     <input

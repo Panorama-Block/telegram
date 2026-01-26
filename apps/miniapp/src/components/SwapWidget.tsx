@@ -259,23 +259,36 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     if (initialToToken) setBuyToken(initialToToken);
   }, [initialFromToken, initialToToken]);
 
-  // Reset initial balance flag when sell token changes to update amount
+  // Reset when sell token changes - set default to "0.0" until balance is fetched
   useEffect(() => {
     setInitialBalanceSet(false);
-    setAmount("");
+    setAmount("0.0");
+    setSellTokenBalance(null);
   }, [sellToken.address, sellToken.network]);
 
   // Fetch sell token balance
   useEffect(() => {
+    // Helper to check if amount can be auto-filled
+    const canAutoFillAmount = !amount || amount === "" || amount === "0.0";
+
     if (!client || !account?.address || !sellToken) {
       setSellTokenBalance(null);
+      if (canAutoFillAmount) {
+        setAmount("0.0");
+        setInitialBalanceSet(true);
+      }
       return;
     }
 
     const fromChainId = getBaseChainId(sellToken.network);
     if (fromChainId === TON_CHAIN_ID) {
-      // TON balance handled separately
-      setSellTokenBalance(null);
+      // TON balance handled separately - show 0 as default for now
+      setSellTokenBalance("0");
+      if (canAutoFillAmount) {
+        setAmount("0.0");
+        setInitialBalanceSet(true);
+      }
+      setLoadingBalance(false);
       return;
     }
 
@@ -319,14 +332,23 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         const formattedBalance = formatAmountHuman(balance, decimals, 6);
         setSellTokenBalance(formattedBalance);
 
-        // Set initial amount to balance if not already set
-        if (!initialBalanceSet && formattedBalance && parseFloat(formattedBalance) > 0) {
-          setAmount(formattedBalance);
+        // Set initial amount to balance or "0.0" if zero (only if amount can be auto-filled)
+        const canAutoFill = !amount || amount === "" || amount === "0.0";
+        if (canAutoFill) {
+          const balanceValue = parseFloat(formattedBalance);
+          setAmount(balanceValue > 0 ? formattedBalance : "0.0");
           setInitialBalanceSet(true);
         }
       } catch (error) {
         console.error("[SwapWidget] Error fetching balance:", error);
-        if (!cancelled) setSellTokenBalance(null);
+        if (!cancelled) {
+          setSellTokenBalance("0");
+          const canAutoFill = !amount || amount === "" || amount === "0.0";
+          if (canAutoFill) {
+            setAmount("0.0");
+            setInitialBalanceSet(true);
+          }
+        }
       } finally {
         if (!cancelled) setLoadingBalance(false);
       }
@@ -393,6 +415,16 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     const amountNum = parseFloat(amount);
     return amountNum > balance;
   }, [sellTokenBalance, amount]);
+
+  // Set max balance handler
+  const handleSetMax = () => {
+    if (!sellTokenBalance || loadingBalance) return;
+    // Remove formatting (commas) and set as amount
+    const rawBalance = sellTokenBalance.replace(/,/g, '');
+    if (rawBalance && parseFloat(rawBalance) > 0) {
+      setAmount(rawBalance);
+    }
+  };
 
   // Quote Logic
   useEffect(() => {
@@ -936,6 +968,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                     balance={loadingBalance ? 'Loading...' : sellTokenBalance ? `${sellTokenBalance} ${sellToken.ticker}` : `-- ${sellToken.ticker}`}
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
+                    onMaxClick={sellTokenBalance && !loadingBalance ? handleSetMax : undefined}
                     className={insufficientBalance ? 'border-red-500/50' : ''}
                     rightElement={
                       <button
