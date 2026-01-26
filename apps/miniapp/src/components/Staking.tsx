@@ -91,7 +91,7 @@ export function Staking({ onClose, initialAmount }: StakingProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-start md:items-center justify-center pt-4 md:pt-0 p-4 pb-20 md:pb-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-start justify-center p-4 pb-20 md:pb-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
       onClick={onClose}
     >
       <motion.div
@@ -100,7 +100,7 @@ export function Staking({ onClose, initialAmount }: StakingProps) {
         animate="animate"
         exit="exit"
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="w-full md:max-w-[480px]"
+        className="relative w-full md:max-w-[480px] md:my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <GlassCard

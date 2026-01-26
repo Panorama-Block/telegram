@@ -537,16 +537,14 @@ export default function LendingPage() {
       </header>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Lending Interface - Mobile: top aligned, Desktop: centered */}
-        <div className="min-h-full flex items-start md:items-center justify-center px-3 sm:px-4 py-4">
-          {dataLoading ? (
-            <div className="text-center">
-              <div className="loader-inline-lg mb-4" />
-              <p className="text-gray-400 text-sm">Loading lending data...</p>
-            </div>
-          ) : (
-            <div className="w-full max-w-[90vw] sm:max-w-sm">
+      <div className="flex-1 overflow-y-auto flex items-start justify-center px-3 sm:px-4 py-4">
+        {dataLoading ? (
+          <div className="text-center md:my-auto">
+            <div className="loader-inline-lg mb-4" />
+            <p className="text-gray-400 text-sm">Loading lending data...</p>
+          </div>
+        ) : (
+          <div className="w-full max-w-[90vw] sm:max-w-sm md:my-auto">
             {/* Lending Card */}
             <div className="bg-[#202020]/75 backdrop-blur-xl border border-white/10 rounded-[25px] p-3 shadow-[0px_16px_57.7px_0px_rgba(0,0,0,0.42)]">
               {/* Header */}
@@ -767,7 +765,6 @@ export default function LendingPage() {
             </div>
           </div>
         )}
-        </div>
       </div>
     </div>
     </ProtectedRoute>
