@@ -880,12 +880,11 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
       for (const step of prepared.steps) {
         for (const transaction of step.transactions) {
           const txAction = (transaction as any).action || 'unknown';
-          console.log(`[SwapWidget] Executing ${txAction} transaction...`);
-
-          // Get the chainId from the transaction
           const txChainId = (transaction as any).chainId || fromChainId;
 
-          // Switch chain if needed
+          console.log(`[SwapWidget] Executing ${txAction} transaction on chain ${txChainId}...`);
+
+          // FIRST: Switch chain if needed (before any operations)
           if (currentWalletChainId !== txChainId) {
             console.log(`[SwapWidget] Transaction requires chain ${txChainId}, switching...`);
             try {
@@ -904,22 +903,96 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             }
           }
 
+          // SECOND: For approval transactions, check if we need to reset allowance first
+          // Some tokens (like USDT) require allowance to be 0 before setting a new value
+          if (txAction === 'approval') {
+            const tokenAddress = (transaction as any).to;
+            const txData = (transaction as any).data as string;
+
+            // Extract spender from approve(address,uint256) call data
+            // Function selector is 4 bytes (8 hex chars), address is 32 bytes (64 hex chars)
+            const spenderFromData = ('0x' + txData.slice(34, 74)) as `0x${string}`;
+
+            try {
+              const { getContract } = await import("thirdweb");
+              const { allowance } = await import("thirdweb/extensions/erc20");
+
+              const tokenContract = getContract({
+                client,
+                chain: defineChain(txChainId),
+                address: tokenAddress,
+              });
+
+              const currentAllowance = await allowance({
+                contract: tokenContract,
+                owner: account.address,
+                spender: spenderFromData,
+              });
+
+              console.log(`[SwapWidget] Current allowance for ${tokenAddress}:`, currentAllowance.toString());
+
+              // If there's existing allowance > 0, reset it first (required by some tokens like USDT)
+              if (currentAllowance > 0n) {
+                console.log("[SwapWidget] Resetting allowance to 0 first (required by some tokens)...");
+
+                // Create approve(spender, 0) transaction
+                const resetApproveTx = prepareTransaction({
+                  to: tokenAddress,
+                  data: `0x095ea7b3${spenderFromData.slice(2).padStart(64, '0')}${'0'.repeat(64)}` as `0x${string}`,
+                  value: 0n,
+                  chain: defineChain(txChainId),
+                  client,
+                });
+
+                const resetReceipt = await sendAndConfirmTransaction({
+                  transaction: resetApproveTx,
+                  account,
+                });
+
+                console.log("[SwapWidget] Allowance reset confirmed:", resetReceipt.transactionHash);
+                hashes.push({ hash: resetReceipt.transactionHash, chainId: txChainId });
+              }
+            } catch (allowanceError: any) {
+              console.warn("[SwapWidget] Could not check/reset allowance:", allowanceError.message);
+              // Continue with the original transaction anyway - it might work
+            }
+          }
+
           // Convert raw transaction to thirdweb prepared transaction
+          const txTo = (transaction as any).to;
+          const txData = (transaction as any).data;
+          const txValue = (transaction as any).value ? BigInt((transaction as any).value) : 0n;
+
+          console.log(`[SwapWidget] Preparing ${txAction} tx:`, {
+            to: txTo,
+            data: txData?.slice(0, 66) + '...',
+            value: txValue.toString(),
+            chainId: txChainId,
+          });
+
           const preparedTx = prepareTransaction({
-            to: (transaction as any).to,
-            data: (transaction as any).data,
-            value: (transaction as any).value ? BigInt((transaction as any).value) : 0n,
+            to: txTo,
+            data: txData,
+            value: txValue,
             chain: defineChain(txChainId),
             client,
           });
 
-          const receipt = await sendAndConfirmTransaction({
-            transaction: preparedTx,
-            account,
-          });
-
-          console.log("[SwapWidget] Swap confirmed:", receipt.transactionHash);
-          hashes.push({ hash: receipt.transactionHash, chainId: txChainId });
+          try {
+            const receipt = await sendAndConfirmTransaction({
+              transaction: preparedTx,
+              account,
+            });
+            console.log(`[SwapWidget] ${txAction} tx confirmed:`, receipt.transactionHash);
+            hashes.push({ hash: receipt.transactionHash, chainId: txChainId });
+          } catch (txError: any) {
+            console.error(`[SwapWidget] ${txAction} tx failed:`, {
+              error: txError.message,
+              to: txTo,
+              chainId: txChainId,
+            });
+            throw txError;
+          }
         }
       }
 
