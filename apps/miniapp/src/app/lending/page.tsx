@@ -5,14 +5,15 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import SwapIcon from '../../../public/icons/Swap.svg';
-import { useActiveAccount, useSwitchActiveWalletChain } from 'thirdweb/react';
-import { defineChain } from 'thirdweb';
+import { useActiveAccount } from 'thirdweb/react';
 import { useLendingApi } from '@/features/lending/api';
 import { useLendingData } from '@/features/lending/useLendingData';
 import { VALIDATION_FEE, LENDING_CONFIG } from '@/features/lending/config';
 import { LendingToken } from '@/features/lending/types';
 import { AnimatedBackground } from '@/components/ui/AnimatedBackground';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { NetworkAwareButton } from '@/shared/components/NetworkAwareButton';
+import { LENDING_CONFIG as LENDING_CHAIN_CONFIG } from '@/features/lending/config';
 
 type LendingActionType = 'supply' | 'withdraw' | 'borrow' | 'repay';
 
@@ -90,7 +91,6 @@ async function getTokenBalance(account: any, tokenAddress: string): Promise<stri
 export default function LendingPage() {
   const router = useRouter();
   const account = useActiveAccount();
-  const switchChain = useSwitchActiveWalletChain();
   const lendingApi = useLendingApi();
 
   // Use the new hook for data management
@@ -204,21 +204,50 @@ export default function LendingPage() {
     setSuccess(null);
 
     try {
-      // STEP 0: Switch to Avalanche network before executing transactions
-      // Lending operations are always on Avalanche (chain ID 43114)
-      const targetChainId = LENDING_CONFIG.DEFAULT_CHAIN_ID; // 43114 (Avalanche)
-
-      if (account && switchChain) {
-        console.log('[LENDING] Switching to Avalanche network before transaction...');
-        setError('Switching to Avalanche network...');
+      // FORCE switch to Avalanche before any lending transaction
+      const ethereum = typeof window !== 'undefined' ? (window as any).ethereum : null;
+      if (ethereum) {
+        const AVALANCHE_CHAIN_ID = 43114;
+        const chainIdHex = `0x${AVALANCHE_CHAIN_ID.toString(16)}`; // 0xa86a
 
         try {
-          await switchChain(defineChain(targetChainId));
-          console.log('[LENDING] ✅ Successfully switched to Avalanche network');
-          setError(null);
+          const currentChainHex = await ethereum.request({ method: 'eth_chainId' });
+          const currentChainId = parseInt(currentChainHex, 16);
+
+          if (currentChainId !== AVALANCHE_CHAIN_ID) {
+            console.log('[LENDING] Switching to Avalanche...');
+            setSuccess('Switching to Avalanche network...');
+
+            await ethereum.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: chainIdHex }],
+            });
+
+            console.log('[LENDING] Successfully switched to Avalanche');
+            // Wait for the switch to complete
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
         } catch (switchError: any) {
-          console.error('[LENDING] ❌ Failed to switch network:', switchError);
-          throw new Error('Please approve the network switch to Avalanche in your wallet to continue.');
+          console.error('[LENDING] Switch error:', switchError);
+
+          if (switchError?.code === 4902) {
+            // Chain not added, try to add it
+            await ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [{
+                chainId: chainIdHex,
+                chainName: 'Avalanche C-Chain',
+                nativeCurrency: { name: 'AVAX', symbol: 'AVAX', decimals: 18 },
+                rpcUrls: ['https://api.avax.network/ext/bc/C/rpc'],
+                blockExplorerUrls: ['https://snowtrace.io'],
+              }],
+            });
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } else if (switchError?.code === 4001) {
+            throw new Error('You must switch to Avalanche network to use Lending');
+          } else {
+            throw new Error('Failed to switch to Avalanche. Please switch manually in your wallet.');
+          }
         }
       }
 
@@ -274,7 +303,8 @@ export default function LendingPage() {
         value: validationData.value,
         data: validationData.data,
         gasLimit: validationData.gas,
-        gasPrice: validationData.gasPrice
+        gasPrice: validationData.gasPrice,
+        chainId: LENDING_CONFIG.DEFAULT_CHAIN_ID // 43114 (Avalanche)
       };
 
       const validationSuccess = await lendingApi.executeTransaction(validationTxData);
@@ -290,7 +320,8 @@ export default function LendingPage() {
         value: mainTransactionData.value,
         data: mainTransactionData.data,
         gasLimit: mainTransactionData.gas,
-        gasPrice: mainTransactionData.gasPrice
+        gasPrice: mainTransactionData.gasPrice,
+        chainId: LENDING_CONFIG.DEFAULT_CHAIN_ID // 43114 (Avalanche)
       };
 
       const success = await lendingApi.executeTransaction(mainTxData);
@@ -680,25 +711,16 @@ export default function LendingPage() {
                 </div>
               )}
 
-              {/* Action Button */}
-              <button
+              {/* Action Button with Network Guard */}
+              <NetworkAwareButton
+                requiredChainId={LENDING_CHAIN_CONFIG.DEFAULT_CHAIN_ID}
                 onClick={handleAction}
-                disabled={!canExecute || loading}
-                className="w-full py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black hover:bg-gray-200"
-                data-action={action}
+                disabled={!canExecute}
+                loading={loading}
+                className="w-full"
               >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Processing 2 transactions...
-                  </span>
-                ) : (
-                  `${getActionLabel()}`
-                )}
-              </button>
+                {loading ? "Processing 2 transactions..." : getActionLabel()}
+              </NetworkAwareButton>
 
               {/* Powered by Benqi */}
               <div className="flex items-center justify-center gap-2 mt-2 pt-2 border-t border-white/5">

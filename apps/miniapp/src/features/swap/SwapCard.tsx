@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useSwitchActiveWalletChain } from 'thirdweb/react';
 import {
   createThirdwebClient,
   defineChain,
@@ -18,7 +18,7 @@ import { bridgeApi } from './bridgeApi';
 import { TON_CHAIN_ID } from './tokens';
 
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
-import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
+import { safeExecuteTransactionV2, getCurrentNonce } from '../../shared/utils/transactionUtilsV2';
 
 import { Button, Card, Input, Label, Select, ErrorStateCard } from '../../shared/ui';
 import { SwapSuccessCard } from '../../components/ui/SwapSuccessCard';
@@ -212,6 +212,7 @@ type UiErrorState = {
 
 export function SwapCard() {
   const account = useActiveAccount();
+  const switchChain = useSwitchActiveWalletChain();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
   const wallets = useMemo(() => {
@@ -784,35 +785,77 @@ export function SwapCard() {
       const wei = parseAmountToWei(amount, decimals);
       if (wei <= 0n) throw new Error('Invalid amount');
 
-      const prep = await swapApi.prepare({
+      console.log(`[SwapCard] Preparing swap: ${fromChainId} -> ${toChainId}`);
+      const preparePayload = {
         fromChainId,
         toChainId,
         fromToken: normalizeToApi(fromToken),
         toToken: normalizeToApi(toToken),
         amount: wei.toString(),
         sender: effectiveAddress,
-      });
+      };
+      console.log(`[SwapCard] Prepare payload:`, preparePayload);
+
+      const prep = await swapApi.prepare(preparePayload);
+      console.log(`[SwapCard] Prepare response:`, prep);
+
       const seq = flattenPrepared(prep.prepared);
+      console.log(`[SwapCard] Transactions to execute:`, seq.map(t => ({ chainId: t.chainId, to: t.to, value: t.value })));
+
       if (!seq.length) throw new Error('No transactions returned by prepare');
+
+      // Log the first transaction's chainId - this is where the swap will start
+      const firstTxChainId = seq[0]?.chainId;
+      console.log(`[SwapCard] First transaction chainId: ${firstTxChainId}, fromChainId: ${fromChainId}`);
+
       setPreparing(false);
 
       setExecuting(true);
       const hashes: Array<{ hash: string; chainId: number }> = [];
+
+      // Track the current chain to avoid unnecessary switches
+      let currentChainId: number | null = null;
+
       for (const t of seq) {
-        if (t.chainId !== fromChainId) {
-          throw new Error(`Wallet chain mismatch. Switch to chain ${t.chainId} and retry.`);
+        // Always use the chainId from the transaction itself (returned by backend)
+        const requiredChainId = t.chainId;
+
+        // Switch chain if needed (either first tx or different chain)
+        if (currentChainId !== requiredChainId) {
+          console.log(`[SwapCard] Transaction requires chain ${requiredChainId}, switching...`);
+          try {
+            await switchChain(defineChain(requiredChainId));
+            // Wait a bit for the wallet to fully switch
+            await new Promise(resolve => setTimeout(resolve, 500));
+            currentChainId = requiredChainId;
+            console.log(`[SwapCard] ✅ Switched to chain ${requiredChainId}`);
+          } catch (switchError: any) {
+            console.error(`[SwapCard] Failed to switch to chain ${requiredChainId}:`, switchError);
+            // Try to provide a more helpful error message
+            const networkName = networks.find(n => n.chainId === requiredChainId)?.name || `chain ${requiredChainId}`;
+            throw new Error(`Please switch to ${networkName} in your wallet to continue`);
+          }
         }
-        console.log("olah t.value", t.value)
+
+        // Get the current nonce from the network to avoid "nonce too low" errors
+        const currentNonce = await getCurrentNonce(client, t.chainId, effectiveAddress as `0x${string}`);
+        console.log(`[SwapCard] Current nonce for chain ${t.chainId}: ${currentNonce}`);
+
+        // Log transaction details for debugging
+        console.log(`[SwapCard] Preparing tx for chain ${t.chainId}:`, {
+          to: t.to,
+          chainId: t.chainId,
+          value: t.value,
+          nonce: currentNonce,
+        });
+
         const tx = prepareTransaction({
           to: t.to as Address,
           chain: defineChain(t.chainId),
           client,
           data: t.data as Hex,
           value: t.value != null ? BigInt(t.value as any) : 0n,
-          gas: t.gasLimit != null ? BigInt(t.gasLimit as any) : undefined,
-          maxFeePerGas: t.maxFeePerGas != null ? BigInt(t.maxFeePerGas as any) : undefined,
-          maxPriorityFeePerGas:
-            t.maxPriorityFeePerGas != null ? BigInt(t.maxPriorityFeePerGas as any) : undefined,
+          nonce: currentNonce,
         });
 
         if (!account) {

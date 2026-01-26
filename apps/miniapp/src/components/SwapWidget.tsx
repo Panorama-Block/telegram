@@ -15,8 +15,7 @@ import { DataInput } from "@/components/ui/DataInput";
 import { cn } from "@/lib/utils";
 import { TokenSelectionModal } from "@/components/TokenSelectionModal";
 
-// API Integration
-import { swapApi, SwapApiError } from "@/features/swap/api";
+// API Integration - TON bridge uses separate API
 import { bridgeApi } from "@/features/swap/bridgeApi";
 import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS } from "@/features/swap/tokens";
 import {
@@ -26,14 +25,14 @@ import {
   getTokenDecimals,
   isNative
 } from "@/features/swap/utils";
-import { safeExecuteTransactionV2 } from "@/shared/utils/transactionUtilsV2";
-import { useActiveAccount, ConnectButton } from "thirdweb/react";
-import { prepareTransaction, sendTransaction, createThirdwebClient, defineChain } from "thirdweb";
+import { useActiveAccount, ConnectButton, useSwitchActiveWalletChain } from "thirdweb/react";
+import { Bridge, prepareTransaction, sendTransaction, sendAndConfirmTransaction, createThirdwebClient, defineChain } from "thirdweb";
 import { THIRDWEB_CLIENT_ID } from "@/shared/config/thirdweb";
 import { useTonConnectUI } from '@tonconnect/ui-react';
 import { getUserJettonWallet, toUSDT } from '@/lib/ton-helpers';
 import { beginCell, toNano, Address as TonAddress } from '@ton/core';
 import { inAppWallet } from "thirdweb/wallets";
+// Network auto-switch is handled via useEffect when sellToken changes
 
 interface SwapWidgetProps {
   onClose: () => void;
@@ -172,6 +171,7 @@ const formatAddress = (address?: string | null) => {
 
 export function SwapWidget({ onClose, initialFromToken, initialToToken, initialAmount }: SwapWidgetProps) {
   const account = useActiveAccount();
+  const switchChain = useSwitchActiveWalletChain();
   const clientId = THIRDWEB_CLIENT_ID;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
   const [tonConnectUI] = useTonConnectUI();
@@ -187,7 +187,8 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   const [activeSlot, setActiveSlot] = useState<'sell' | 'buy'>('sell');
   const [sellToken, setSellToken] = useState(initialFromToken || DEFAULT_SELL_TOKEN);
   const [buyToken, setBuyToken] = useState(initialToToken || DEFAULT_BUY_TOKEN);
-  const [amount, setAmount] = useState<string>(initialAmount || "10"); // Default small amount
+  const [amount, setAmount] = useState<string>(initialAmount || ""); // Will be set to balance when loaded
+  const [initialBalanceSet, setInitialBalanceSet] = useState(false);
 
   // Quote State
   const [quote, setQuote] = useState<any>(null);
@@ -203,6 +204,10 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   const [currentSwapId, setCurrentSwapId] = useState<string | null>(null);
   const [swapStatus, setSwapStatus] = useState<string | null>(null);
   const [swapStatusError, setSwapStatusError] = useState<string | null>(null);
+
+  // Balance State
+  const [sellTokenBalance, setSellTokenBalance] = useState<string | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
 
   const isCrossChain = sellToken.network !== buyToken.network;
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
@@ -255,6 +260,178 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     if (initialToToken) setBuyToken(initialToToken);
   }, [initialFromToken, initialToToken]);
 
+  // Reset when sell token changes - set default to "0.0" until balance is fetched
+  useEffect(() => {
+    setInitialBalanceSet(false);
+    setAmount("0.0");
+    setSellTokenBalance(null);
+  }, [sellToken.address, sellToken.network]);
+
+  // Fetch sell token balance
+  useEffect(() => {
+    // Helper to check if amount can be auto-filled
+    const canAutoFillAmount = !amount || amount === "" || amount === "0.0";
+
+    if (!client || !account?.address || !sellToken) {
+      setSellTokenBalance(null);
+      if (canAutoFillAmount) {
+        setAmount("0.0");
+        setInitialBalanceSet(true);
+      }
+      return;
+    }
+
+    const fromChainId = getBaseChainId(sellToken.network);
+    if (fromChainId === TON_CHAIN_ID) {
+      // TON balance handled separately - show 0 as default for now
+      setSellTokenBalance("0");
+      if (canAutoFillAmount) {
+        setAmount("0.0");
+        setInitialBalanceSet(true);
+      }
+      setLoadingBalance(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingBalance(true);
+
+    const fetchBalance = async () => {
+      try {
+        const { getContract } = await import("thirdweb");
+        const { getBalance } = await import("thirdweb/extensions/erc20");
+        const { eth_getBalance, getRpcClient } = await import("thirdweb/rpc");
+
+        const tokenAddress = sellToken.address?.toLowerCase();
+        const isNativeToken = !tokenAddress ||
+          tokenAddress === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' ||
+          tokenAddress === '0x0000000000000000000000000000000000000000' ||
+          tokenAddress === 'native';
+
+        let balance: bigint;
+        let decimals = sellToken.decimals || 18;
+
+        if (isNativeToken) {
+          // Native token balance (ETH, AVAX, etc)
+          const rpcRequest = getRpcClient({ client, chain: defineChain(fromChainId) });
+          balance = await eth_getBalance(rpcRequest, { address: account.address });
+        } else {
+          // ERC20 token balance
+          const tokenContract = getContract({
+            client,
+            chain: defineChain(fromChainId),
+            address: sellToken.address,
+          });
+          const balanceResult = await getBalance({ contract: tokenContract, address: account.address });
+          balance = balanceResult.value;
+          decimals = balanceResult.decimals;
+        }
+
+        if (cancelled) return;
+
+        // Format balance
+        const formattedBalance = formatAmountHuman(balance, decimals, 6);
+        setSellTokenBalance(formattedBalance);
+
+        // Set initial amount to balance or "0.0" if zero (only if amount can be auto-filled)
+        const canAutoFill = !amount || amount === "" || amount === "0.0";
+        if (canAutoFill) {
+          const balanceValue = parseFloat(formattedBalance);
+          setAmount(balanceValue > 0 ? formattedBalance : "0.0");
+          setInitialBalanceSet(true);
+        }
+      } catch (error) {
+        console.error("[SwapWidget] Error fetching balance:", error);
+        if (!cancelled) {
+          setSellTokenBalance("0");
+          const canAutoFill = !amount || amount === "" || amount === "0.0";
+          if (canAutoFill) {
+            setAmount("0.0");
+            setInitialBalanceSet(true);
+          }
+        }
+      } finally {
+        if (!cancelled) setLoadingBalance(false);
+      }
+    };
+
+    fetchBalance();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client, account?.address, sellToken]);
+
+  // Auto-switch network when sellToken changes
+  useEffect(() => {
+    if (!account?.address || !sellToken) return;
+
+    const requiredChainId = getBaseChainId(sellToken.network);
+
+    // Skip TON chain (non-EVM)
+    if (requiredChainId === TON_CHAIN_ID) return;
+
+    const ethereum = typeof window !== 'undefined' ? (window as any).ethereum : null;
+    if (!ethereum) return;
+
+    const switchNetwork = async () => {
+      try {
+        // Get current chain
+        const currentChainHex = await ethereum.request({ method: 'eth_chainId' });
+        const currentChainId = parseInt(currentChainHex, 16);
+
+        // Only switch if on different chain
+        if (currentChainId === requiredChainId) return;
+
+        const chainIdHex = `0x${requiredChainId.toString(16)}`;
+        console.log(`[SWAP] Auto-switching to chain ${requiredChainId} (${chainIdHex})...`);
+
+        await ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: chainIdHex }],
+        });
+
+        console.log(`[SWAP] Successfully switched to chain ${requiredChainId}`);
+      } catch (error: any) {
+        console.error('[SWAP] Auto-switch failed:', error);
+
+        // If chain not added (4902), try to add it
+        if (error?.code === 4902) {
+          const chainConfigs: Record<number, any> = {
+            1: { name: 'Ethereum Mainnet', symbol: 'ETH', rpc: 'https://eth.llamarpc.com', explorer: 'https://etherscan.io' },
+            43114: { name: 'Avalanche C-Chain', symbol: 'AVAX', rpc: 'https://api.avax.network/ext/bc/C/rpc', explorer: 'https://snowtrace.io' },
+            8453: { name: 'Base', symbol: 'ETH', rpc: 'https://mainnet.base.org', explorer: 'https://basescan.org' },
+            56: { name: 'BNB Smart Chain', symbol: 'BNB', rpc: 'https://bsc-dataseed.binance.org', explorer: 'https://bscscan.com' },
+            137: { name: 'Polygon', symbol: 'MATIC', rpc: 'https://polygon-rpc.com', explorer: 'https://polygonscan.com' },
+            42161: { name: 'Arbitrum One', symbol: 'ETH', rpc: 'https://arb1.arbitrum.io/rpc', explorer: 'https://arbiscan.io' },
+            10: { name: 'Optimism', symbol: 'ETH', rpc: 'https://mainnet.optimism.io', explorer: 'https://optimistic.etherscan.io' },
+          };
+
+          const config = chainConfigs[requiredChainId];
+          if (config) {
+            try {
+              await ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                  chainId: `0x${requiredChainId.toString(16)}`,
+                  chainName: config.name,
+                  nativeCurrency: { name: config.symbol, symbol: config.symbol, decimals: 18 },
+                  rpcUrls: [config.rpc],
+                  blockExplorerUrls: [config.explorer],
+                }],
+              });
+            } catch (addError) {
+              console.error('[SWAP] Failed to add chain:', addError);
+            }
+          }
+        }
+        // User rejected (4001) - silently ignore, they can click the button manually
+      }
+    };
+
+    switchNetwork();
+  }, [account?.address, sellToken?.network]);
+
   // Poll bridge status when we have a swapId
   useEffect(() => {
     if (!currentSwapId) return;
@@ -302,6 +479,24 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     return Boolean(sellToken && buyToken && amount && Number(amount) > 0 && crossChainSupport.supported);
   }, [sellToken, buyToken, amount, crossChainSupport.supported]);
 
+  // Check if user has sufficient balance
+  const insufficientBalance = useMemo(() => {
+    if (!sellTokenBalance || !amount || Number(amount) <= 0) return false;
+    const balance = parseFloat(sellTokenBalance.replace(/,/g, ''));
+    const amountNum = parseFloat(amount);
+    return amountNum > balance;
+  }, [sellTokenBalance, amount]);
+
+  // Set max balance handler
+  const handleSetMax = () => {
+    if (!sellTokenBalance || loadingBalance) return;
+    // Remove formatting (commas) and set as amount
+    const rawBalance = sellTokenBalance.replace(/,/g, '');
+    if (rawBalance && parseFloat(rawBalance) > 0) {
+      setAmount(rawBalance);
+    }
+  };
+
   // Quote Logic
   useEffect(() => {
     const requestId = ++quoteRequestRef.current;
@@ -323,33 +518,20 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   }, [canQuote, sellToken, buyToken, amount, account, refuelEnabled]);
 
   async function performQuote(requestId: number) {
-    if (!canQuote) return;
+    if (!canQuote || !client) return;
 
     try {
       setQuoting(true);
       const fromChainId = getBaseChainId(sellToken.network);
       const toChainId = getBaseChainId(buyToken.network);
-      const userAddress = account?.address || localStorage.getItem('userAddress') || '';
-      const sourceTokenSymbol = getBridgeTokenSymbol(sellToken);
-      const destinationTokenSymbol = getBridgeTokenSymbol(buyToken);
 
-      const body = {
-        fromChainId,
-        toChainId,
-        fromToken: normalizeToApi(sellToken.address || 'native'),
-        toToken: normalizeToApi(buyToken.address || 'native'),
-        amount: amount.trim(),
-        smartAccountAddress: userAddress,
-      };
-
-      console.log("Fetching quote...", body);
-
-      let res;
-      // Determine networks for bridge
-      const sourceNetwork = getLayerswapNetwork(sellToken.network);
-      const destinationNetwork = getLayerswapNetwork(buyToken.network);
-
+      // TON bridge uses separate API
       if (fromChainId === TON_CHAIN_ID || buyToken.network === 'TON') {
+        const sourceNetwork = getLayerswapNetwork(sellToken.network);
+        const destinationNetwork = getLayerswapNetwork(buyToken.network);
+        const sourceTokenSymbol = getBridgeTokenSymbol(sellToken);
+        const destinationTokenSymbol = getBridgeTokenSymbol(buyToken);
+
         const bridgeRes = await bridgeApi.quote(
           Number(amount),
           sourceNetwork,
@@ -358,24 +540,52 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           sourceTokenSymbol,
           destinationTokenSymbol
         );
-        res = {
-          success: bridgeRes.success,
-          quote: bridgeRes.quote,
-          message: bridgeRes.success ? undefined : 'Failed to get bridge quote'
-        };
-      } else {
-        res = await swapApi.quote(body);
+
+        if (quoteRequestRef.current !== requestId) return;
+
+        if (!bridgeRes.success || !bridgeRes.quote) {
+          throw new Error('Failed to get bridge quote');
+        }
+
+        setQuote(bridgeRes.quote);
+        return;
       }
+
+      // EVM swap - use ThirdWeb SDK directly
+      // Get decimals - fallback to known values for common tokens
+      const sellSymbol = (sellToken.ticker || sellToken.symbol || '').toUpperCase();
+      const decimals = sellToken.decimals ||
+        (sellSymbol === 'USDC' || sellSymbol === 'USDT' ? 6 :
+         sellSymbol === 'WBTC' || sellSymbol === 'BTC.B' ? 8 : 18);
+      const weiAmount = parseAmountToWei(amount, decimals);
+
+      console.log("[SwapWidget] Token decimals:", { symbol: sellSymbol, decimals, rawDecimals: sellToken.decimals });
+
+      console.log("[SwapWidget] Getting quote from ThirdWeb SDK...", {
+        fromChainId,
+        toChainId,
+        amount: weiAmount.toString(),
+      });
+
+      const quoteResult = await Bridge.Sell.quote({
+        originChainId: fromChainId,
+        originTokenAddress: normalizeToApi(sellToken.address || 'native') as `0x${string}`,
+        destinationChainId: toChainId,
+        destinationTokenAddress: normalizeToApi(buyToken.address || 'native') as `0x${string}`,
+        amount: BigInt(weiAmount),
+        client,
+      });
 
       if (quoteRequestRef.current !== requestId) return;
 
-      if (!res.success || !res.quote) {
-        throw new Error(res.message || 'Failed to get quote');
-      }
+      console.log("[SwapWidget] Quote result:", quoteResult);
 
-      setQuote(res.quote);
-      // Navigate to routing if not already there, but usually we just show price
-      // Maybe we just show preview in input state first
+      setQuote({
+        estimatedReceiveAmount: quoteResult.destinationAmount.toString(),
+        originAmount: quoteResult.originAmount.toString(),
+        estimatedExecutionTimeMs: quoteResult.estimatedExecutionTimeMs,
+      });
+
     } catch (e: any) {
       if (quoteRequestRef.current !== requestId) return;
       console.error("Quote error:", e);
@@ -568,7 +778,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
         const wei = parseAmountToWei(amount, decimals);
 
-        // Prepare Transaction
+        setExecuting(true);
+
+        // Prepare and send transaction
         let transaction;
 
         if (isNative(sellToken.address)) {
@@ -579,12 +791,10 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             value: wei,
           });
         } else {
-          // Manual ERC20 Transfer construction to handle non-standard tokens (like USDT on Mainnet)
-          // Function selector for transfer(address,uint256) is 0xa9059cbb
-          const { encode } = await import("thirdweb/utils");
-          const { prepareContractCall } = await import("thirdweb");
+          // ERC20 Transfer
+          const { prepareContractCall, getContract } = await import("thirdweb");
 
-          const contract = (await import("thirdweb")).getContract({
+          const contract = getContract({
             client,
             chain: defineChain(fromChainId),
             address: sellToken.address
@@ -597,90 +807,120 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           });
         }
 
-        setExecuting(true);
-
-        const result = await safeExecuteTransactionV2(async () => {
-          return await sendTransaction({ account, transaction });
+        const receipt = await sendAndConfirmTransaction({
+          transaction,
+          account,
         });
 
-        if (!result.success || !result.transactionHash) {
-          throw new Error(result.error || "Transaction failed");
-        }
-
-        setTxHashes([{ hash: result.transactionHash, chainId: fromChainId }]);
+        setTxHashes([{ hash: receipt.transactionHash, chainId: fromChainId }]);
         return;
       }
 
-      // Standard EVM Swap
-      // Get decimals to convert amount to wei
+      // Standard EVM Swap - SDK with approval FIRST
+      // Get decimals - try from contract first, fallback to known values
+      const sellSymbol = (sellToken.ticker || sellToken.symbol || '').toUpperCase();
+      const knownDecimals = sellSymbol === 'USDC' || sellSymbol === 'USDT' ? 6 :
+                            sellSymbol === 'WBTC' || sellSymbol === 'BTC.B' ? 8 : 18;
       const decimals = await getTokenDecimals({
         client,
         chainId: fromChainId,
         token: sellToken.address
-      }).catch(() => 18);
+      }).catch(() => knownDecimals);
 
-      const wei = parseAmountToWei(amount, decimals);
+      console.log("[SwapWidget] Swap decimals:", { symbol: sellSymbol, decimals });
 
-      // Prepare tx
-      const prep = await swapApi.prepare({
-        fromChainId,
-        toChainId,
-        fromToken: normalizeToApi(sellToken.address),
-        toToken: normalizeToApi(buyToken.address),
-        amount: wei.toString(),
-        sender: account.address
+      const weiAmount = parseAmountToWei(amount, decimals);
+      const originToken = normalizeToApi(sellToken.address) as `0x${string}`;
+      const destinationToken = normalizeToApi(buyToken.address) as `0x${string}`;
+
+      const hashes: Array<{ hash: string, chainId: number }> = [];
+
+      // Prepare swap - ThirdWeb will return all necessary transactions including approvals
+      console.log("[SwapWidget] Preparing swap...");
+
+      const prepared = await Bridge.Sell.prepare({
+        originChainId: fromChainId,
+        originTokenAddress: originToken,
+        destinationChainId: toChainId,
+        destinationTokenAddress: destinationToken,
+        amount: BigInt(weiAmount),
+        sender: account.address,
+        receiver: account.address,
+        client,
       });
 
-      if (!prep.prepared || (!prep.prepared.transactions && !prep.prepared.steps)) {
-        throw new Error("No transactions returned by prepare");
+      console.log("[SwapWidget] Prepared response:", {
+        steps: prepared.steps.length,
+        transactions: prepared.steps.flatMap(s => s.transactions).map(t => ({
+          action: (t as any).action,
+          chainId: (t as any).chainId,
+          to: (t as any).to,
+          spender: (t as any).spender,
+          value: String((t as any).value || '0'),
+        })),
+        expiration: (prepared as any).expiration,
+      });
+
+      // Check if there's an approval transaction and log the spender
+      const allTxs = prepared.steps.flatMap(s => s.transactions);
+      const approvalTx = allTxs.find(t => (t as any).action === 'approval');
+      if (approvalTx) {
+        console.log("[SwapWidget] Approval needed for spender:", (approvalTx as any).spender || (approvalTx as any).to);
+      } else {
+        console.log("[SwapWidget] No approval needed (already approved or native token)");
       }
 
       setPreparing(false);
       setExecuting(true);
 
-      // Flatten transactions
-      const txs: any[] = [];
-      if (prep.prepared.transactions) txs.push(...prep.prepared.transactions);
-      if (prep.prepared.steps) {
-        for (const s of prep.prepared.steps) {
-          txs.push(...s.transactions);
+      // Track current chain to avoid unnecessary switches
+      let currentWalletChainId: number | null = null;
+
+      // Execute ALL transactions from ThirdWeb (approvals + swaps)
+      for (const step of prepared.steps) {
+        for (const transaction of step.transactions) {
+          const txAction = (transaction as any).action || 'unknown';
+          console.log(`[SwapWidget] Executing ${txAction} transaction...`);
+
+          // Get the chainId from the transaction
+          const txChainId = (transaction as any).chainId || fromChainId;
+
+          // Switch chain if needed
+          if (currentWalletChainId !== txChainId) {
+            console.log(`[SwapWidget] Transaction requires chain ${txChainId}, switching...`);
+            try {
+              await switchChain(defineChain(txChainId));
+              // Wait a bit for the wallet to fully switch
+              await new Promise(resolve => setTimeout(resolve, 500));
+              currentWalletChainId = txChainId;
+              console.log(`[SwapWidget] ✅ Switched to chain ${txChainId}`);
+            } catch (switchError: any) {
+              console.error(`[SwapWidget] Failed to switch to chain ${txChainId}:`, switchError);
+              const networkName = Object.entries({
+                1: 'Ethereum', 8453: 'Base', 42161: 'Arbitrum', 43114: 'Avalanche',
+                137: 'Polygon', 10: 'Optimism', 56: 'BSC', 480: 'World Chain'
+              }).find(([id]) => Number(id) === txChainId)?.[1] || `Chain ${txChainId}`;
+              throw new Error(`Please switch to ${networkName} in your wallet to continue`);
+            }
+          }
+
+          // Convert raw transaction to thirdweb prepared transaction
+          const preparedTx = prepareTransaction({
+            to: (transaction as any).to,
+            data: (transaction as any).data,
+            value: (transaction as any).value ? BigInt((transaction as any).value) : 0n,
+            chain: defineChain(txChainId),
+            client,
+          });
+
+          const receipt = await sendAndConfirmTransaction({
+            transaction: preparedTx,
+            account,
+          });
+
+          console.log("[SwapWidget] Swap confirmed:", receipt.transactionHash);
+          hashes.push({ hash: receipt.transactionHash, chainId: txChainId });
         }
-      }
-
-      const hashes: Array<{ hash: string, chainId: number }> = [];
-
-      for (const t of txs) {
-        if (t.chainId !== fromChainId) {
-          // If multi-chain execution needed (not supported by simple flow yet)
-          console.warn("Cross-chain execution step mismatch", t);
-        }
-
-        const transaction = prepareTransaction({
-          to: t.to,
-          chain: defineChain(t.chainId),
-          client,
-          data: t.data,
-          value: t.value ? BigInt(t.value) : 0n,
-          gas: t.gasLimit ? BigInt(t.gasLimit) : undefined,
-        });
-
-        // Add timeout to prevent infinite waiting
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error("Transaction timeout - wallet may not have responded. Please check your wallet and try again.")), 120000);
-        });
-
-        const result = await Promise.race([
-          safeExecuteTransactionV2(async () => {
-            return await sendTransaction({ account, transaction });
-          }),
-          timeoutPromise
-        ]);
-
-        if (!result.success || !result.transactionHash) {
-          throw new Error(result.error || "Transaction failed");
-        }
-
-        hashes.push({ hash: result.transactionHash, chainId: t.chainId });
       }
 
       setTxHashes(hashes);
@@ -736,8 +976,6 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     animate: isMobile ? { y: 0, opacity: 1 } : { scale: 1, opacity: 1 },
     exit: isMobile ? { y: "100%", opacity: 0 } : { scale: 0.95, opacity: 0 },
   };
-
-  const needsApproval = false; // TODO: Check allowence if ERC20
 
   const primaryLabel = executing ? "Swapping..." : preparing ? "Preparing..." : "Confirm Swap";
   const fromIsTon = sellToken.network === 'TON';
@@ -798,9 +1036,11 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                 <div className="px-4 md:px-6 pb-4 md:pb-6 space-y-2 relative z-10 flex-1 flex flex-col">
                   <DataInput
                     label="Sell"
-                    balance={`${sellToken.balance} ${sellToken.ticker}`}
+                    balance={loadingBalance ? 'Loading...' : sellTokenBalance ? `${sellTokenBalance} ${sellToken.ticker}` : `-- ${sellToken.ticker}`}
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
+                    onMaxClick={sellTokenBalance && !loadingBalance ? handleSetMax : undefined}
+                    className={insufficientBalance ? 'border-red-500/50' : ''}
                     rightElement={
                       <button
                         onClick={() => openTokenList('sell')}
@@ -839,7 +1079,6 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
                   <DataInput
                     label="Buy"
-                    balance={`${buyToken.balance} ${buyToken.ticker}`}
                     value={quoting ? "..." : estimatedOutput}
                     readOnly
                     rightElement={
@@ -859,6 +1098,23 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                       </button>
                     }
                   />
+
+                  {/* Insufficient balance warning */}
+                  {insufficientBalance && (
+                    <div className="bg-red-500/10 border border-red-500/40 rounded-xl p-3 mt-2">
+                      <div className="flex items-start gap-2">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400 flex-shrink-0 mt-0.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <div>
+                          <p className="text-xs font-semibold text-red-400 mb-1">Insufficient Balance</p>
+                          <p className="text-[11px] text-zinc-400 leading-relaxed">
+                            You have {sellTokenBalance} {sellToken.ticker} but trying to swap {amount} {sellToken.ticker}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Cross-chain not supported warning */}
                   {!crossChainSupport.supported && (
@@ -912,12 +1168,16 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                   )}
 
                   <div className="mt-auto pt-6 space-y-4">
+                    {/* Review Swap Button - Network switches automatically when sellToken changes */}
                     <NeonButton
                       onClick={() => setViewState('routing')}
-                      disabled={!quote || quoting || !crossChainSupport.supported}
-                      className={!crossChainSupport.supported ? "opacity-50 cursor-not-allowed" : ""}
+                      disabled={!quote || quoting || !crossChainSupport.supported || insufficientBalance}
+                      className={cn(
+                        "w-full",
+                        (!crossChainSupport.supported || insufficientBalance) ? "opacity-50" : ""
+                      )}
                     >
-                      {quoting ? "Fetching best price..." : !crossChainSupport.supported ? "Pair Not Supported" : "Review Swap"}
+                      {quoting ? "Fetching best price..." : insufficientBalance ? "Insufficient Balance" : !crossChainSupport.supported ? "Pair Not Supported" : "Review Swap"}
                     </NeonButton>
 
                     <div className="text-center text-[10px] text-zinc-500 leading-relaxed">
