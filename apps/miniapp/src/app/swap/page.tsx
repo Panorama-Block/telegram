@@ -460,9 +460,26 @@ export default function SwapPage() {
         console.log('ℹ️  This is expected and safe. The transaction is valid and will execute successfully.');
       }
 
+      // Track current chain to avoid unnecessary switches
+      let currentWalletChainId: number | null = null;
+
       for (const t of seq) {
-        if (t.chainId !== fromChainId) {
-          throw new Error(`Wallet chain mismatch. Switch to chain ${t.chainId} and retry.`);
+        // Switch to the transaction's required chain if needed
+        const requiredChainId = t.chainId;
+        if (currentWalletChainId !== requiredChainId) {
+          const networkName = networks.find(n => n.chainId === requiredChainId)?.name || `Chain ${requiredChainId}`;
+          console.log(`[executeSwap] Transaction requires chain ${requiredChainId} (${networkName}), switching...`);
+
+          try {
+            await switchChain(defineChain(requiredChainId));
+            // Wait a bit for the wallet to fully switch
+            await new Promise(resolve => setTimeout(resolve, 500));
+            currentWalletChainId = requiredChainId;
+            console.log(`[executeSwap] ✅ Switched to chain ${requiredChainId}`);
+          } catch (switchError: any) {
+            console.error(`[executeSwap] Failed to switch to chain ${requiredChainId}:`, switchError);
+            throw new Error(`Please switch to ${networkName} in your wallet to continue the swap`);
+          }
         }
 
         console.log('=== TRANSACTION DEBUG ===');

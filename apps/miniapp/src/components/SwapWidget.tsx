@@ -15,8 +15,7 @@ import { DataInput } from "@/components/ui/DataInput";
 import { cn } from "@/lib/utils";
 import { TokenSelectionModal } from "@/components/TokenSelectionModal";
 
-// API Integration
-import { swapApi, SwapApiError } from "@/features/swap/api";
+// API Integration - TON bridge uses separate API
 import { bridgeApi } from "@/features/swap/bridgeApi";
 import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS } from "@/features/swap/tokens";
 import {
@@ -26,9 +25,8 @@ import {
   getTokenDecimals,
   isNative
 } from "@/features/swap/utils";
-import { safeExecuteTransactionV2 } from "@/shared/utils/transactionUtilsV2";
-import { useActiveAccount, ConnectButton } from "thirdweb/react";
-import { prepareTransaction, sendTransaction, createThirdwebClient, defineChain } from "thirdweb";
+import { useActiveAccount, ConnectButton, useSwitchActiveWalletChain } from "thirdweb/react";
+import { Bridge, prepareTransaction, sendTransaction, sendAndConfirmTransaction, createThirdwebClient, defineChain } from "thirdweb";
 import { THIRDWEB_CLIENT_ID } from "@/shared/config/thirdweb";
 import { useTonConnectUI } from '@tonconnect/ui-react';
 import { getUserJettonWallet, toUSDT } from '@/lib/ton-helpers';
@@ -172,6 +170,7 @@ const formatAddress = (address?: string | null) => {
 
 export function SwapWidget({ onClose, initialFromToken, initialToToken, initialAmount }: SwapWidgetProps) {
   const account = useActiveAccount();
+  const switchChain = useSwitchActiveWalletChain();
   const clientId = THIRDWEB_CLIENT_ID;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
   const [tonConnectUI] = useTonConnectUI();
@@ -323,33 +322,20 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   }, [canQuote, sellToken, buyToken, amount, account, refuelEnabled]);
 
   async function performQuote(requestId: number) {
-    if (!canQuote) return;
+    if (!canQuote || !client) return;
 
     try {
       setQuoting(true);
       const fromChainId = getBaseChainId(sellToken.network);
       const toChainId = getBaseChainId(buyToken.network);
-      const userAddress = account?.address || localStorage.getItem('userAddress') || '';
-      const sourceTokenSymbol = getBridgeTokenSymbol(sellToken);
-      const destinationTokenSymbol = getBridgeTokenSymbol(buyToken);
 
-      const body = {
-        fromChainId,
-        toChainId,
-        fromToken: normalizeToApi(sellToken.address || 'native'),
-        toToken: normalizeToApi(buyToken.address || 'native'),
-        amount: amount.trim(),
-        smartAccountAddress: userAddress,
-      };
-
-      console.log("Fetching quote...", body);
-
-      let res;
-      // Determine networks for bridge
-      const sourceNetwork = getLayerswapNetwork(sellToken.network);
-      const destinationNetwork = getLayerswapNetwork(buyToken.network);
-
+      // TON bridge uses separate API
       if (fromChainId === TON_CHAIN_ID || buyToken.network === 'TON') {
+        const sourceNetwork = getLayerswapNetwork(sellToken.network);
+        const destinationNetwork = getLayerswapNetwork(buyToken.network);
+        const sourceTokenSymbol = getBridgeTokenSymbol(sellToken);
+        const destinationTokenSymbol = getBridgeTokenSymbol(buyToken);
+
         const bridgeRes = await bridgeApi.quote(
           Number(amount),
           sourceNetwork,
@@ -358,24 +344,46 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           sourceTokenSymbol,
           destinationTokenSymbol
         );
-        res = {
-          success: bridgeRes.success,
-          quote: bridgeRes.quote,
-          message: bridgeRes.success ? undefined : 'Failed to get bridge quote'
-        };
-      } else {
-        res = await swapApi.quote(body);
+
+        if (quoteRequestRef.current !== requestId) return;
+
+        if (!bridgeRes.success || !bridgeRes.quote) {
+          throw new Error('Failed to get bridge quote');
+        }
+
+        setQuote(bridgeRes.quote);
+        return;
       }
+
+      // EVM swap - use ThirdWeb SDK directly
+      const decimals = sellToken.decimals || 18;
+      const weiAmount = parseAmountToWei(amount, decimals);
+
+      console.log("[SwapWidget] Getting quote from ThirdWeb SDK...", {
+        fromChainId,
+        toChainId,
+        amount: weiAmount.toString(),
+      });
+
+      const quoteResult = await Bridge.Sell.quote({
+        originChainId: fromChainId,
+        originTokenAddress: normalizeToApi(sellToken.address || 'native') as `0x${string}`,
+        destinationChainId: toChainId,
+        destinationTokenAddress: normalizeToApi(buyToken.address || 'native') as `0x${string}`,
+        amount: BigInt(weiAmount),
+        client,
+      });
 
       if (quoteRequestRef.current !== requestId) return;
 
-      if (!res.success || !res.quote) {
-        throw new Error(res.message || 'Failed to get quote');
-      }
+      console.log("[SwapWidget] Quote result:", quoteResult);
 
-      setQuote(res.quote);
-      // Navigate to routing if not already there, but usually we just show price
-      // Maybe we just show preview in input state first
+      setQuote({
+        estimatedReceiveAmount: quoteResult.destinationAmount.toString(),
+        originAmount: quoteResult.originAmount.toString(),
+        estimatedExecutionTimeMs: quoteResult.estimatedExecutionTimeMs,
+      });
+
     } catch (e: any) {
       if (quoteRequestRef.current !== requestId) return;
       console.error("Quote error:", e);
@@ -568,7 +576,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
         const wei = parseAmountToWei(amount, decimals);
 
-        // Prepare Transaction
+        setExecuting(true);
+
+        // Prepare and send transaction
         let transaction;
 
         if (isNative(sellToken.address)) {
@@ -579,12 +589,10 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             value: wei,
           });
         } else {
-          // Manual ERC20 Transfer construction to handle non-standard tokens (like USDT on Mainnet)
-          // Function selector for transfer(address,uint256) is 0xa9059cbb
-          const { encode } = await import("thirdweb/utils");
-          const { prepareContractCall } = await import("thirdweb");
+          // ERC20 Transfer
+          const { prepareContractCall, getContract } = await import("thirdweb");
 
-          const contract = (await import("thirdweb")).getContract({
+          const contract = getContract({
             client,
             chain: defineChain(fromChainId),
             address: sellToken.address
@@ -597,90 +605,114 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           });
         }
 
-        setExecuting(true);
-
-        const result = await safeExecuteTransactionV2(async () => {
-          return await sendTransaction({ account, transaction });
+        const receipt = await sendAndConfirmTransaction({
+          transaction,
+          account,
         });
 
-        if (!result.success || !result.transactionHash) {
-          throw new Error(result.error || "Transaction failed");
-        }
-
-        setTxHashes([{ hash: result.transactionHash, chainId: fromChainId }]);
+        setTxHashes([{ hash: receipt.transactionHash, chainId: fromChainId }]);
         return;
       }
 
-      // Standard EVM Swap
-      // Get decimals to convert amount to wei
+      // Standard EVM Swap - SDK with approval FIRST
       const decimals = await getTokenDecimals({
         client,
         chainId: fromChainId,
         token: sellToken.address
       }).catch(() => 18);
 
-      const wei = parseAmountToWei(amount, decimals);
+      const weiAmount = parseAmountToWei(amount, decimals);
+      const originToken = normalizeToApi(sellToken.address) as `0x${string}`;
+      const destinationToken = normalizeToApi(buyToken.address) as `0x${string}`;
 
-      // Prepare tx
-      const prep = await swapApi.prepare({
-        fromChainId,
-        toChainId,
-        fromToken: normalizeToApi(sellToken.address),
-        toToken: normalizeToApi(buyToken.address),
-        amount: wei.toString(),
-        sender: account.address
+      const hashes: Array<{ hash: string, chainId: number }> = [];
+
+      // Prepare swap - ThirdWeb will return all necessary transactions including approvals
+      console.log("[SwapWidget] Preparing swap...");
+
+      const prepared = await Bridge.Sell.prepare({
+        originChainId: fromChainId,
+        originTokenAddress: originToken,
+        destinationChainId: toChainId,
+        destinationTokenAddress: destinationToken,
+        amount: BigInt(weiAmount),
+        sender: account.address,
+        receiver: account.address,
+        client,
       });
 
-      if (!prep.prepared || (!prep.prepared.transactions && !prep.prepared.steps)) {
-        throw new Error("No transactions returned by prepare");
+      console.log("[SwapWidget] Prepared response:", {
+        steps: prepared.steps.length,
+        transactions: prepared.steps.flatMap(s => s.transactions).map(t => ({
+          action: (t as any).action,
+          chainId: (t as any).chainId,
+          to: (t as any).to,
+          spender: (t as any).spender,
+          value: String((t as any).value || '0'),
+        })),
+        expiration: (prepared as any).expiration,
+      });
+
+      // Check if there's an approval transaction and log the spender
+      const allTxs = prepared.steps.flatMap(s => s.transactions);
+      const approvalTx = allTxs.find(t => (t as any).action === 'approval');
+      if (approvalTx) {
+        console.log("[SwapWidget] Approval needed for spender:", (approvalTx as any).spender || (approvalTx as any).to);
+      } else {
+        console.log("[SwapWidget] No approval needed (already approved or native token)");
       }
 
       setPreparing(false);
       setExecuting(true);
 
-      // Flatten transactions
-      const txs: any[] = [];
-      if (prep.prepared.transactions) txs.push(...prep.prepared.transactions);
-      if (prep.prepared.steps) {
-        for (const s of prep.prepared.steps) {
-          txs.push(...s.transactions);
+      // Track current chain to avoid unnecessary switches
+      let currentWalletChainId: number | null = null;
+
+      // Execute ALL transactions from ThirdWeb (approvals + swaps)
+      for (const step of prepared.steps) {
+        for (const transaction of step.transactions) {
+          const txAction = (transaction as any).action || 'unknown';
+          console.log(`[SwapWidget] Executing ${txAction} transaction...`);
+
+          // Get the chainId from the transaction
+          const txChainId = (transaction as any).chainId || fromChainId;
+
+          // Switch chain if needed
+          if (currentWalletChainId !== txChainId) {
+            console.log(`[SwapWidget] Transaction requires chain ${txChainId}, switching...`);
+            try {
+              await switchChain(defineChain(txChainId));
+              // Wait a bit for the wallet to fully switch
+              await new Promise(resolve => setTimeout(resolve, 500));
+              currentWalletChainId = txChainId;
+              console.log(`[SwapWidget] ✅ Switched to chain ${txChainId}`);
+            } catch (switchError: any) {
+              console.error(`[SwapWidget] Failed to switch to chain ${txChainId}:`, switchError);
+              const networkName = Object.entries({
+                1: 'Ethereum', 8453: 'Base', 42161: 'Arbitrum', 43114: 'Avalanche',
+                137: 'Polygon', 10: 'Optimism', 56: 'BSC', 480: 'World Chain'
+              }).find(([id]) => Number(id) === txChainId)?.[1] || `Chain ${txChainId}`;
+              throw new Error(`Please switch to ${networkName} in your wallet to continue`);
+            }
+          }
+
+          // Convert raw transaction to thirdweb prepared transaction
+          const preparedTx = prepareTransaction({
+            to: (transaction as any).to,
+            data: (transaction as any).data,
+            value: (transaction as any).value ? BigInt((transaction as any).value) : 0n,
+            chain: defineChain(txChainId),
+            client,
+          });
+
+          const receipt = await sendAndConfirmTransaction({
+            transaction: preparedTx,
+            account,
+          });
+
+          console.log("[SwapWidget] Swap confirmed:", receipt.transactionHash);
+          hashes.push({ hash: receipt.transactionHash, chainId: txChainId });
         }
-      }
-
-      const hashes: Array<{ hash: string, chainId: number }> = [];
-
-      for (const t of txs) {
-        if (t.chainId !== fromChainId) {
-          // If multi-chain execution needed (not supported by simple flow yet)
-          console.warn("Cross-chain execution step mismatch", t);
-        }
-
-        const transaction = prepareTransaction({
-          to: t.to,
-          chain: defineChain(t.chainId),
-          client,
-          data: t.data,
-          value: t.value ? BigInt(t.value) : 0n,
-          gas: t.gasLimit ? BigInt(t.gasLimit) : undefined,
-        });
-
-        // Add timeout to prevent infinite waiting
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error("Transaction timeout - wallet may not have responded. Please check your wallet and try again.")), 120000);
-        });
-
-        const result = await Promise.race([
-          safeExecuteTransactionV2(async () => {
-            return await sendTransaction({ account, transaction });
-          }),
-          timeoutPromise
-        ]);
-
-        if (!result.success || !result.transactionHash) {
-          throw new Error(result.error || "Transaction failed");
-        }
-
-        hashes.push({ hash: result.transactionHash, chainId: t.chainId });
       }
 
       setTxHashes(hashes);
