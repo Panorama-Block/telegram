@@ -186,7 +186,8 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   const [activeSlot, setActiveSlot] = useState<'sell' | 'buy'>('sell');
   const [sellToken, setSellToken] = useState(initialFromToken || DEFAULT_SELL_TOKEN);
   const [buyToken, setBuyToken] = useState(initialToToken || DEFAULT_BUY_TOKEN);
-  const [amount, setAmount] = useState<string>(initialAmount || "10"); // Default small amount
+  const [amount, setAmount] = useState<string>(initialAmount || ""); // Will be set to balance when loaded
+  const [initialBalanceSet, setInitialBalanceSet] = useState(false);
 
   // Quote State
   const [quote, setQuote] = useState<any>(null);
@@ -202,6 +203,10 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   const [currentSwapId, setCurrentSwapId] = useState<string | null>(null);
   const [swapStatus, setSwapStatus] = useState<string | null>(null);
   const [swapStatusError, setSwapStatusError] = useState<string | null>(null);
+
+  // Balance State
+  const [sellTokenBalance, setSellTokenBalance] = useState<string | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
 
   const isCrossChain = sellToken.network !== buyToken.network;
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
@@ -254,6 +259,86 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     if (initialToToken) setBuyToken(initialToToken);
   }, [initialFromToken, initialToToken]);
 
+  // Reset initial balance flag when sell token changes to update amount
+  useEffect(() => {
+    setInitialBalanceSet(false);
+    setAmount("");
+  }, [sellToken.address, sellToken.network]);
+
+  // Fetch sell token balance
+  useEffect(() => {
+    if (!client || !account?.address || !sellToken) {
+      setSellTokenBalance(null);
+      return;
+    }
+
+    const fromChainId = getBaseChainId(sellToken.network);
+    if (fromChainId === TON_CHAIN_ID) {
+      // TON balance handled separately
+      setSellTokenBalance(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingBalance(true);
+
+    const fetchBalance = async () => {
+      try {
+        const { getContract } = await import("thirdweb");
+        const { getBalance } = await import("thirdweb/extensions/erc20");
+        const { eth_getBalance, getRpcClient } = await import("thirdweb/rpc");
+
+        const tokenAddress = sellToken.address?.toLowerCase();
+        const isNativeToken = !tokenAddress ||
+          tokenAddress === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' ||
+          tokenAddress === '0x0000000000000000000000000000000000000000' ||
+          tokenAddress === 'native';
+
+        let balance: bigint;
+        let decimals = sellToken.decimals || 18;
+
+        if (isNativeToken) {
+          // Native token balance (ETH, AVAX, etc)
+          const rpcRequest = getRpcClient({ client, chain: defineChain(fromChainId) });
+          balance = await eth_getBalance(rpcRequest, { address: account.address });
+        } else {
+          // ERC20 token balance
+          const tokenContract = getContract({
+            client,
+            chain: defineChain(fromChainId),
+            address: sellToken.address,
+          });
+          const balanceResult = await getBalance({ contract: tokenContract, address: account.address });
+          balance = balanceResult.value;
+          decimals = balanceResult.decimals;
+        }
+
+        if (cancelled) return;
+
+        // Format balance
+        const formattedBalance = formatAmountHuman(balance, decimals, 6);
+        setSellTokenBalance(formattedBalance);
+
+        // Set initial amount to balance if not already set
+        if (!initialBalanceSet && formattedBalance && parseFloat(formattedBalance) > 0) {
+          setAmount(formattedBalance);
+          setInitialBalanceSet(true);
+        }
+      } catch (error) {
+        console.error("[SwapWidget] Error fetching balance:", error);
+        if (!cancelled) setSellTokenBalance(null);
+      } finally {
+        if (!cancelled) setLoadingBalance(false);
+      }
+    };
+
+    fetchBalance();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client, account?.address, sellToken]);
+
   // Poll bridge status when we have a swapId
   useEffect(() => {
     if (!currentSwapId) return;
@@ -300,6 +385,14 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   const canQuote = useMemo(() => {
     return Boolean(sellToken && buyToken && amount && Number(amount) > 0 && crossChainSupport.supported);
   }, [sellToken, buyToken, amount, crossChainSupport.supported]);
+
+  // Check if user has sufficient balance
+  const insufficientBalance = useMemo(() => {
+    if (!sellTokenBalance || !amount || Number(amount) <= 0) return false;
+    const balance = parseFloat(sellTokenBalance.replace(/,/g, ''));
+    const amountNum = parseFloat(amount);
+    return amountNum > balance;
+  }, [sellTokenBalance, amount]);
 
   // Quote Logic
   useEffect(() => {
@@ -769,8 +862,6 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     exit: isMobile ? { y: "100%", opacity: 0 } : { scale: 0.95, opacity: 0 },
   };
 
-  const needsApproval = false; // TODO: Check allowence if ERC20
-
   const primaryLabel = executing ? "Swapping..." : preparing ? "Preparing..." : "Confirm Swap";
   const fromIsTon = sellToken.network === 'TON';
   const toIsTon = buyToken.network === 'TON';
@@ -830,9 +921,10 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                 <div className="px-4 md:px-6 pb-4 md:pb-6 space-y-2 relative z-10 flex-1 flex flex-col">
                   <DataInput
                     label="Sell"
-                    balance={`${sellToken.balance} ${sellToken.ticker}`}
+                    balance={loadingBalance ? 'Loading...' : sellTokenBalance ? `${sellTokenBalance} ${sellToken.ticker}` : `-- ${sellToken.ticker}`}
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
+                    className={insufficientBalance ? 'border-red-500/50' : ''}
                     rightElement={
                       <button
                         onClick={() => openTokenList('sell')}
@@ -871,7 +963,6 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
                   <DataInput
                     label="Buy"
-                    balance={`${buyToken.balance} ${buyToken.ticker}`}
                     value={quoting ? "..." : estimatedOutput}
                     readOnly
                     rightElement={
@@ -891,6 +982,23 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                       </button>
                     }
                   />
+
+                  {/* Insufficient balance warning */}
+                  {insufficientBalance && (
+                    <div className="bg-red-500/10 border border-red-500/40 rounded-xl p-3 mt-2">
+                      <div className="flex items-start gap-2">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400 flex-shrink-0 mt-0.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <div>
+                          <p className="text-xs font-semibold text-red-400 mb-1">Insufficient Balance</p>
+                          <p className="text-[11px] text-zinc-400 leading-relaxed">
+                            You have {sellTokenBalance} {sellToken.ticker} but trying to swap {amount} {sellToken.ticker}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Cross-chain not supported warning */}
                   {!crossChainSupport.supported && (
@@ -946,10 +1054,10 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                   <div className="mt-auto pt-6 space-y-4">
                     <NeonButton
                       onClick={() => setViewState('routing')}
-                      disabled={!quote || quoting || !crossChainSupport.supported}
-                      className={!crossChainSupport.supported ? "opacity-50 cursor-not-allowed" : ""}
+                      disabled={!quote || quoting || !crossChainSupport.supported || insufficientBalance}
+                      className={(!crossChainSupport.supported || insufficientBalance) ? "opacity-50 cursor-not-allowed" : ""}
                     >
-                      {quoting ? "Fetching best price..." : !crossChainSupport.supported ? "Pair Not Supported" : "Review Swap"}
+                      {quoting ? "Fetching best price..." : insufficientBalance ? "Insufficient Balance" : !crossChainSupport.supported ? "Pair Not Supported" : "Review Swap"}
                     </NeonButton>
 
                     <div className="text-center text-[10px] text-zinc-500 leading-relaxed">
