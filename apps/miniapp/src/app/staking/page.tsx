@@ -597,9 +597,9 @@ export default function StakingPage() {
       </header>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-hidden">
-        {/* Staking Interface */}
-        <div className="h-full flex items-center justify-center p-4">
+      <div className="flex-1 overflow-y-auto">
+        {/* Staking Interface - Mobile: top aligned, Desktop: centered */}
+        <div className="min-h-full flex items-start md:items-center justify-center px-4 py-4">
           {dataLoading ? (
             <div className="text-center">
               <div className="loader-inline-lg mb-4" />
