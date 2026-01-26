@@ -32,6 +32,7 @@ import { useTonConnectUI } from '@tonconnect/ui-react';
 import { getUserJettonWallet, toUSDT } from '@/lib/ton-helpers';
 import { beginCell, toNano, Address as TonAddress } from '@ton/core';
 import { inAppWallet } from "thirdweb/wallets";
+// Network auto-switch is handled via useEffect when sellToken changes
 
 interface SwapWidgetProps {
   onClose: () => void;
@@ -259,23 +260,36 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     if (initialToToken) setBuyToken(initialToToken);
   }, [initialFromToken, initialToToken]);
 
-  // Reset initial balance flag when sell token changes to update amount
+  // Reset when sell token changes - set default to "0.0" until balance is fetched
   useEffect(() => {
     setInitialBalanceSet(false);
-    setAmount("");
+    setAmount("0.0");
+    setSellTokenBalance(null);
   }, [sellToken.address, sellToken.network]);
 
   // Fetch sell token balance
   useEffect(() => {
+    // Helper to check if amount can be auto-filled
+    const canAutoFillAmount = !amount || amount === "" || amount === "0.0";
+
     if (!client || !account?.address || !sellToken) {
       setSellTokenBalance(null);
+      if (canAutoFillAmount) {
+        setAmount("0.0");
+        setInitialBalanceSet(true);
+      }
       return;
     }
 
     const fromChainId = getBaseChainId(sellToken.network);
     if (fromChainId === TON_CHAIN_ID) {
-      // TON balance handled separately
-      setSellTokenBalance(null);
+      // TON balance handled separately - show 0 as default for now
+      setSellTokenBalance("0");
+      if (canAutoFillAmount) {
+        setAmount("0.0");
+        setInitialBalanceSet(true);
+      }
+      setLoadingBalance(false);
       return;
     }
 
@@ -319,14 +333,23 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         const formattedBalance = formatAmountHuman(balance, decimals, 6);
         setSellTokenBalance(formattedBalance);
 
-        // Set initial amount to balance if not already set
-        if (!initialBalanceSet && formattedBalance && parseFloat(formattedBalance) > 0) {
-          setAmount(formattedBalance);
+        // Set initial amount to balance or "0.0" if zero (only if amount can be auto-filled)
+        const canAutoFill = !amount || amount === "" || amount === "0.0";
+        if (canAutoFill) {
+          const balanceValue = parseFloat(formattedBalance);
+          setAmount(balanceValue > 0 ? formattedBalance : "0.0");
           setInitialBalanceSet(true);
         }
       } catch (error) {
         console.error("[SwapWidget] Error fetching balance:", error);
-        if (!cancelled) setSellTokenBalance(null);
+        if (!cancelled) {
+          setSellTokenBalance("0");
+          const canAutoFill = !amount || amount === "" || amount === "0.0";
+          if (canAutoFill) {
+            setAmount("0.0");
+            setInitialBalanceSet(true);
+          }
+        }
       } finally {
         if (!cancelled) setLoadingBalance(false);
       }
@@ -338,6 +361,76 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
       cancelled = true;
     };
   }, [client, account?.address, sellToken]);
+
+  // Auto-switch network when sellToken changes
+  useEffect(() => {
+    if (!account?.address || !sellToken) return;
+
+    const requiredChainId = getBaseChainId(sellToken.network);
+
+    // Skip TON chain (non-EVM)
+    if (requiredChainId === TON_CHAIN_ID) return;
+
+    const ethereum = typeof window !== 'undefined' ? (window as any).ethereum : null;
+    if (!ethereum) return;
+
+    const switchNetwork = async () => {
+      try {
+        // Get current chain
+        const currentChainHex = await ethereum.request({ method: 'eth_chainId' });
+        const currentChainId = parseInt(currentChainHex, 16);
+
+        // Only switch if on different chain
+        if (currentChainId === requiredChainId) return;
+
+        const chainIdHex = `0x${requiredChainId.toString(16)}`;
+        console.log(`[SWAP] Auto-switching to chain ${requiredChainId} (${chainIdHex})...`);
+
+        await ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: chainIdHex }],
+        });
+
+        console.log(`[SWAP] Successfully switched to chain ${requiredChainId}`);
+      } catch (error: any) {
+        console.error('[SWAP] Auto-switch failed:', error);
+
+        // If chain not added (4902), try to add it
+        if (error?.code === 4902) {
+          const chainConfigs: Record<number, any> = {
+            1: { name: 'Ethereum Mainnet', symbol: 'ETH', rpc: 'https://eth.llamarpc.com', explorer: 'https://etherscan.io' },
+            43114: { name: 'Avalanche C-Chain', symbol: 'AVAX', rpc: 'https://api.avax.network/ext/bc/C/rpc', explorer: 'https://snowtrace.io' },
+            8453: { name: 'Base', symbol: 'ETH', rpc: 'https://mainnet.base.org', explorer: 'https://basescan.org' },
+            56: { name: 'BNB Smart Chain', symbol: 'BNB', rpc: 'https://bsc-dataseed.binance.org', explorer: 'https://bscscan.com' },
+            137: { name: 'Polygon', symbol: 'MATIC', rpc: 'https://polygon-rpc.com', explorer: 'https://polygonscan.com' },
+            42161: { name: 'Arbitrum One', symbol: 'ETH', rpc: 'https://arb1.arbitrum.io/rpc', explorer: 'https://arbiscan.io' },
+            10: { name: 'Optimism', symbol: 'ETH', rpc: 'https://mainnet.optimism.io', explorer: 'https://optimistic.etherscan.io' },
+          };
+
+          const config = chainConfigs[requiredChainId];
+          if (config) {
+            try {
+              await ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                  chainId: `0x${requiredChainId.toString(16)}`,
+                  chainName: config.name,
+                  nativeCurrency: { name: config.symbol, symbol: config.symbol, decimals: 18 },
+                  rpcUrls: [config.rpc],
+                  blockExplorerUrls: [config.explorer],
+                }],
+              });
+            } catch (addError) {
+              console.error('[SWAP] Failed to add chain:', addError);
+            }
+          }
+        }
+        // User rejected (4001) - silently ignore, they can click the button manually
+      }
+    };
+
+    switchNetwork();
+  }, [account?.address, sellToken?.network]);
 
   // Poll bridge status when we have a swapId
   useEffect(() => {
@@ -393,6 +486,16 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     const amountNum = parseFloat(amount);
     return amountNum > balance;
   }, [sellTokenBalance, amount]);
+
+  // Set max balance handler
+  const handleSetMax = () => {
+    if (!sellTokenBalance || loadingBalance) return;
+    // Remove formatting (commas) and set as amount
+    const rawBalance = sellTokenBalance.replace(/,/g, '');
+    if (rawBalance && parseFloat(rawBalance) > 0) {
+      setAmount(rawBalance);
+    }
+  };
 
   // Quote Logic
   useEffect(() => {
@@ -1009,6 +1112,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                     balance={loadingBalance ? 'Loading...' : sellTokenBalance ? `${sellTokenBalance} ${sellToken.ticker}` : `-- ${sellToken.ticker}`}
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
+                    onMaxClick={sellTokenBalance && !loadingBalance ? handleSetMax : undefined}
                     className={insufficientBalance ? 'border-red-500/50' : ''}
                     rightElement={
                       <button
@@ -1137,10 +1241,14 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                   )}
 
                   <div className="mt-auto pt-6 space-y-4">
+                    {/* Review Swap Button - Network switches automatically when sellToken changes */}
                     <NeonButton
                       onClick={() => setViewState('routing')}
                       disabled={!quote || quoting || !crossChainSupport.supported || insufficientBalance}
-                      className={(!crossChainSupport.supported || insufficientBalance) ? "opacity-50 cursor-not-allowed" : ""}
+                      className={cn(
+                        "w-full",
+                        (!crossChainSupport.supported || insufficientBalance) ? "opacity-50" : ""
+                      )}
                     >
                       {quoting ? "Fetching best price..." : insufficientBalance ? "Insufficient Balance" : !crossChainSupport.supported ? "Pair Not Supported" : "Review Swap"}
                     </NeonButton>

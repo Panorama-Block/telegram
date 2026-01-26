@@ -1,7 +1,10 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useActiveAccount } from 'thirdweb/react';
+import { useActiveAccount, useSwitchActiveWalletChain } from 'thirdweb/react';
+import { defineChain } from 'thirdweb';
+
+type SwitchChainFn = (chain: ReturnType<typeof defineChain>) => Promise<void>;
 
 export interface StakingToken {
   symbol: string;
@@ -76,13 +79,16 @@ export interface CacheStatus {
 class StakingApiClient {
   private baseUrl: string;
   private account: any;
+  private switchChain: SwitchChainFn | null;
 
   // Cache for Lido protocol data to prevent infinite loops
   private lidoDataCache: any = null;
   private lidoDataCacheTime: number = 0;
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-  constructor(account: any) {
+  constructor(account: any, switchChain?: SwitchChainFn) {
+    this.switchChain = switchChain || null;
+
     // Priority: Use environment variable or fallback to localhost
     const direct = process.env.NEXT_PUBLIC_STAKING_API_URL || process.env.VITE_STAKING_API_URL;
 
@@ -546,6 +552,30 @@ class StakingApiClient {
         console.warn('Lido staking should be on Ethereum mainnet (chainId 1)');
       }
 
+      // IMPORTANT: Switch to Ethereum Mainnet before sending transaction
+      // Use native MetaMask API for reliable chain switching
+      const ethereum = typeof window !== 'undefined' ? (window as any).ethereum : null;
+      if (ethereum) {
+        const chainIdHex = '0x1'; // Ethereum Mainnet
+        try {
+          console.log(`[STAKING] Switching to Ethereum Mainnet (chainId: 1) before transaction...`);
+          await ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: chainIdHex }],
+          });
+          console.log(`[STAKING] Successfully switched to Ethereum Mainnet`);
+          // Wait a moment for the switch to take effect
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (switchError: any) {
+          console.error('[STAKING] Failed to switch chain:', switchError);
+          if (switchError?.code === 4001) {
+            // User rejected the switch
+            throw new Error('You must switch to Ethereum Mainnet to complete this transaction');
+          }
+          // For other errors, try to continue - user might already be on the right chain
+        }
+      }
+
       // Extract transaction data
       const toAddress = txData.to;
       const value = txData.value;
@@ -710,7 +740,8 @@ class StakingApiClient {
 
 export const useStakingApi = () => {
   const account = useActiveAccount();
-  return useMemo(() => new StakingApiClient(account), [account]);
+  const switchChain = useSwitchActiveWalletChain();
+  return useMemo(() => new StakingApiClient(account, switchChain), [account, switchChain]);
 };
 
 export default StakingApiClient;
