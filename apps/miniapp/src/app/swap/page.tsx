@@ -735,8 +735,8 @@ export default function SwapPage() {
           <AnimatedBackground />
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(8,180,217,0.12),transparent_40%)]" />
           {/* Mobile: top aligned, Desktop: centered */}
-          <div className="flex min-h-full items-start md:items-center justify-center px-4 py-4 md:py-10">
-            <div className="w-full max-w-3xl space-y-6">
+          <div className="min-h-[100dvh] flex items-start justify-center px-4 py-4 md:py-10">
+            <div className="w-full max-w-3xl space-y-6 md:my-auto">
               <div className="flex flex-col gap-2 text-center">
                 <p className="text-sm uppercase tracking-[0.3em] text-white/60">Cross-chain swap</p>
                 <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">Route assets with Zico</h1>

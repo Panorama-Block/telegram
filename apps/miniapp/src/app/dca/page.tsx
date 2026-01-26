@@ -1341,9 +1341,9 @@ export default function DCAPage() {
           </div>
         </header>
 
-        {/* Main Content */}
-        <div className="flex-1 overflow-y-auto">
-          <Container size="xl" className="px-4 md:px-6 py-6 md:py-8 space-y-4 md:space-y-6">
+        {/* Main Content - Mobile: top aligned, Desktop: centered */}
+        <div className="flex-1 overflow-y-auto flex items-start justify-center py-4 md:py-6">
+          <Container size="xl" className="px-4 md:px-6 space-y-4 md:space-y-6 md:my-auto">
             {/* Hero Section */}
             <div className="text-center space-y-2 md:space-y-3 mb-6 md:mb-8">
               <div className="inline-flex items-center justify-center w-12 h-12 md:w-16 md:h-16 rounded-full bg-cyan-400/20 border border-cyan-400/30 mb-3 md:mb-4">

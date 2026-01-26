@@ -339,7 +339,7 @@ export function DCA({ onClose }: DCAProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-start md:items-center justify-center pt-4 md:pt-0 p-4 pb-20 md:pb-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-start justify-center p-4 pb-20 md:pb-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
       onClick={onClose}
     >
       <motion.div
@@ -348,7 +348,7 @@ export function DCA({ onClose }: DCAProps) {
         animate="animate"
         exit="exit"
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="w-full md:max-w-[480px]"
+        className="relative w-full md:max-w-[480px] md:my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <GlassCard className="w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 max-h-[78vh] md:max-h-[85vh] md:h-auto md:min-h-[600px] flex flex-col rounded-2xl border pb-safe overflow-y-auto">
