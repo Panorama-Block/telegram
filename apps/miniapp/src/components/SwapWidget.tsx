@@ -269,7 +269,6 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
   // Fetch sell token balance
   useEffect(() => {
-    // Helper to check if amount can be auto-filled
     const canAutoFillAmount = !amount || amount === "" || amount === "0.0";
 
     if (!client || !account?.address || !sellToken) {
@@ -282,8 +281,8 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     }
 
     const fromChainId = getBaseChainId(sellToken.network);
+
     if (fromChainId === TON_CHAIN_ID) {
-      // TON balance handled separately - show 0 as default for now
       setSellTokenBalance("0");
       if (canAutoFillAmount) {
         setAmount("0.0");
@@ -312,11 +311,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         let decimals = sellToken.decimals || 18;
 
         if (isNativeToken) {
-          // Native token balance (ETH, AVAX, etc)
           const rpcRequest = getRpcClient({ client, chain: defineChain(fromChainId) });
           balance = await eth_getBalance(rpcRequest, { address: account.address });
         } else {
-          // ERC20 token balance
           const tokenContract = getContract({
             client,
             chain: defineChain(fromChainId),
@@ -329,11 +326,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
         if (cancelled) return;
 
-        // Format balance
         const formattedBalance = formatAmountHuman(balance, decimals, 6);
         setSellTokenBalance(formattedBalance);
 
-        // Set initial amount to balance or "0.0" if zero (only if amount can be auto-filled)
         const canAutoFill = !amount || amount === "" || amount === "0.0";
         if (canAutoFill) {
           const balanceValue = parseFloat(formattedBalance);
@@ -362,75 +357,8 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     };
   }, [client, account?.address, sellToken]);
 
-  // Auto-switch network when sellToken changes
-  useEffect(() => {
-    if (!account?.address || !sellToken) return;
-
-    const requiredChainId = getBaseChainId(sellToken.network);
-
-    // Skip TON chain (non-EVM)
-    if (requiredChainId === TON_CHAIN_ID) return;
-
-    const ethereum = typeof window !== 'undefined' ? (window as any).ethereum : null;
-    if (!ethereum) return;
-
-    const switchNetwork = async () => {
-      try {
-        // Get current chain
-        const currentChainHex = await ethereum.request({ method: 'eth_chainId' });
-        const currentChainId = parseInt(currentChainHex, 16);
-
-        // Only switch if on different chain
-        if (currentChainId === requiredChainId) return;
-
-        const chainIdHex = `0x${requiredChainId.toString(16)}`;
-        console.log(`[SWAP] Auto-switching to chain ${requiredChainId} (${chainIdHex})...`);
-
-        await ethereum.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: chainIdHex }],
-        });
-
-        console.log(`[SWAP] Successfully switched to chain ${requiredChainId}`);
-      } catch (error: any) {
-        console.error('[SWAP] Auto-switch failed:', error);
-
-        // If chain not added (4902), try to add it
-        if (error?.code === 4902) {
-          const chainConfigs: Record<number, any> = {
-            1: { name: 'Ethereum Mainnet', symbol: 'ETH', rpc: 'https://eth.llamarpc.com', explorer: 'https://etherscan.io' },
-            43114: { name: 'Avalanche C-Chain', symbol: 'AVAX', rpc: 'https://api.avax.network/ext/bc/C/rpc', explorer: 'https://snowtrace.io' },
-            8453: { name: 'Base', symbol: 'ETH', rpc: 'https://mainnet.base.org', explorer: 'https://basescan.org' },
-            56: { name: 'BNB Smart Chain', symbol: 'BNB', rpc: 'https://bsc-dataseed.binance.org', explorer: 'https://bscscan.com' },
-            137: { name: 'Polygon', symbol: 'MATIC', rpc: 'https://polygon-rpc.com', explorer: 'https://polygonscan.com' },
-            42161: { name: 'Arbitrum One', symbol: 'ETH', rpc: 'https://arb1.arbitrum.io/rpc', explorer: 'https://arbiscan.io' },
-            10: { name: 'Optimism', symbol: 'ETH', rpc: 'https://mainnet.optimism.io', explorer: 'https://optimistic.etherscan.io' },
-          };
-
-          const config = chainConfigs[requiredChainId];
-          if (config) {
-            try {
-              await ethereum.request({
-                method: 'wallet_addEthereumChain',
-                params: [{
-                  chainId: `0x${requiredChainId.toString(16)}`,
-                  chainName: config.name,
-                  nativeCurrency: { name: config.symbol, symbol: config.symbol, decimals: 18 },
-                  rpcUrls: [config.rpc],
-                  blockExplorerUrls: [config.explorer],
-                }],
-              });
-            } catch (addError) {
-              console.error('[SWAP] Failed to add chain:', addError);
-            }
-          }
-        }
-        // User rejected (4001) - silently ignore, they can click the button manually
-      }
-    };
-
-    switchNetwork();
-  }, [account?.address, sellToken?.network]);
+  // Network switching is handled automatically during swap execution via ThirdWeb SDK
+  // This avoids opening external wallet popups for in-app wallet users (Google, email login)
 
   // Poll bridge status when we have a swapId
   useEffect(() => {

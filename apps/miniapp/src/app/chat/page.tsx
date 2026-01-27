@@ -33,6 +33,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { SeniorAppShell } from '@/components/layout';
 import { SwapWidget } from '@/components/SwapWidget';
 import { Staking } from '@/components/Staking';
+import { OnboardingModal } from '@/components/OnboardingModal';
 import { Droplets } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { useAudioRecorder } from '@/shared/hooks/useAudioRecorder';
@@ -1418,6 +1419,9 @@ export default function ChatPage() {
                       'Loading...'
             }
           />
+
+          {/* Onboarding Modal - Shows when user has no balance after login */}
+          <OnboardingModal />
 
         <SeniorAppShell pageTitle="Zico AI Agent">
           <div className="flex flex-col h-full relative bg-black">
