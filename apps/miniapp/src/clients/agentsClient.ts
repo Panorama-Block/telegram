@@ -201,6 +201,21 @@ export class AgentsClient {
         url: typeof input === 'string' ? input : (input as URL).toString(),
       });
       return await fetch(input, { ...init, signal: controller.signal });
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        this.logDebug('fetch:abort', {
+          method: (init.method ?? 'GET').toUpperCase(),
+          url: typeof input === 'string' ? input : (input as URL).toString(),
+          timeoutMs: this.timeoutMs,
+        });
+        throw new Error(`Agents request timed out after ${this.timeoutMs}ms`);
+      }
+      this.logDebug('fetch:error', {
+        method: (init.method ?? 'GET').toUpperCase(),
+        url: typeof input === 'string' ? input : (input as URL).toString(),
+        error: (error as Error)?.message ?? String(error),
+      });
+      throw error;
     } finally {
       if (timeoutId !== null) clearTimeout(timeoutId);
     }
