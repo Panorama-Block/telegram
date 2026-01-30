@@ -94,14 +94,14 @@ export function OnboardingModal() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-4"
           onClick={handleDismiss}
         >
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            className="bg-[#0A0A0A] border border-white/10 rounded-2xl p-6 max-w-sm w-full space-y-5 relative"
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+            className="bg-[#0A0A0A]/95 border border-white/20 rounded-2xl p-5 max-w-sm w-full space-y-4 relative max-h-[85vh] overflow-y-auto shadow-2xl shadow-black/50"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close button */}
@@ -123,18 +123,33 @@ export function OnboardingModal() {
               </p>
             </div>
 
+            {/* EVM Only Badge + Network Icons */}
+            <div className="flex flex-col items-center gap-3">
+              <span className="bg-blue-500/20 text-blue-400 text-xs font-bold px-3 py-1.5 rounded-full border border-blue-500/30">
+                EVM NETWORKS ONLY
+              </span>
+              <div className="flex items-center gap-2">
+                <img src="https://assets.coingecko.com/coins/images/279/small/ethereum.png" alt="Ethereum" className="w-6 h-6 rounded-full" title="Ethereum" />
+                <img src="https://avatars.githubusercontent.com/u/108554348?s=200&v=4" alt="Base" className="w-6 h-6 rounded-full" title="Base" />
+                <img src="https://assets.coingecko.com/coins/images/16547/small/photo_2023-03-29_21.47.00.jpeg" alt="Arbitrum" className="w-6 h-6 rounded-full" title="Arbitrum" />
+                <img src="https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" alt="Avalanche" className="w-6 h-6 rounded-full" title="Avalanche" />
+                <img src="https://assets.coingecko.com/coins/images/4713/small/polygon.png" alt="Polygon" className="w-6 h-6 rounded-full" title="Polygon" />
+                <img src="https://assets.coingecko.com/coins/images/25244/small/Optimism.png" alt="Optimism" className="w-6 h-6 rounded-full" title="Optimism" />
+              </div>
+            </div>
+
             {/* QR Code */}
             <div className="bg-white rounded-xl p-4 mx-auto w-fit">
               <QRCodeSVG
                 value={account.address}
-                size={160}
+                size={140}
                 level="H"
               />
             </div>
 
             {/* Address */}
             <div className="space-y-2">
-              <p className="text-xs text-zinc-500 text-center">Your wallet address</p>
+              <p className="text-xs text-zinc-500 text-center">Your EVM wallet address</p>
               <button
                 onClick={handleCopyAddress}
                 className="w-full flex items-center justify-between gap-2 bg-white/5 border border-white/10 rounded-xl px-4 py-3 hover:bg-white/10 transition-colors"
