@@ -169,6 +169,51 @@ const formatAddress = (address?: string | null) => {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 };
 
+const verifyMinimumAmountWithLimits = async ({
+  amount,
+  sourceNetwork,
+  destinationNetwork,
+  sourceToken,
+  destinationToken,
+  refuelEnabled,
+}: {
+  amount: string;
+  sourceNetwork: string;
+  destinationNetwork: string;
+  sourceToken: string;
+  destinationToken: string;
+  refuelEnabled: boolean;
+}): Promise<{ ok: boolean; message?: string }> => {
+  const amountNum = Number(amount);
+  if (!amount || Number.isNaN(amountNum) || amountNum <= 0) return { ok: true };
+
+  try {
+    const params = new URLSearchParams({
+      source_network: sourceNetwork,
+      source_token: sourceToken,
+      destination_network: destinationNetwork,
+      destination_token: destinationToken,
+      refuel: String(refuelEnabled),
+    });
+
+    const response = await fetch(`https://api.layerswap.io/api/v2/limits?${params.toString()}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch limits');
+    }
+
+    const data = await response.json();
+    const minAmount = Number(data?.data?.min_amount);
+
+    if (!Number.isNaN(minAmount) && amountNum < minAmount) {
+      return { ok: false, message: `Minimum amount is ${minAmount}.` };
+    }
+  } catch (e: any) {
+    return { ok: false, message: translateError(e.message || 'Unable to fetch limits') };
+  }
+
+  return { ok: true };
+};
+
 export function SwapWidget({ onClose, initialFromToken, initialToToken, initialAmount }: SwapWidgetProps) {
   const account = useActiveAccount();
   const switchChain = useSwitchActiveWalletChain();
@@ -459,6 +504,23 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         const destinationNetwork = getLayerswapNetwork(buyToken.network);
         const sourceTokenSymbol = getBridgeTokenSymbol(sellToken);
         const destinationTokenSymbol = getBridgeTokenSymbol(buyToken);
+
+        const minimumCheck = await verifyMinimumAmountWithLimits({
+          amount,
+          sourceNetwork,
+          destinationNetwork,
+          sourceToken: sourceTokenSymbol,
+          destinationToken: destinationTokenSymbol,
+          refuelEnabled,
+        });
+
+        if (quoteRequestRef.current !== requestId) return;
+
+        if (!minimumCheck.ok) {
+          setQuote(null);
+          setQuoteError(minimumCheck.message || 'Minimum amount not reached');
+          return;
+        }
 
         const bridgeRes = await bridgeApi.quote(
           Number(amount),
@@ -1455,6 +1517,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                             <div className="w-full">
                               <ConnectButton
                                 client={client!}
+                                wallets={wallets}
                                 theme={"dark"}
                                 connectButton={{
                                   label: "Connect Wallet",
