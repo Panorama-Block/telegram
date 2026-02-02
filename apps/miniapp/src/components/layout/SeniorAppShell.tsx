@@ -17,12 +17,17 @@ import { Lending } from '@/components/Lending';
 import { Staking } from '@/components/Staking';
 import { DCA } from '@/components/DCA';
 
+// Feature flags
+import { FEATURE_FLAGS } from '@/config/features';
+
 type NavItem = {
   id: string;
   label: string;
   href?: string;
   icon: React.ReactNode;
   isModal?: boolean;
+  disabled?: boolean;
+  comingSoon?: boolean;
 };
 
 interface SeniorAppShellProps {
@@ -213,10 +218,10 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
-        <div className="p-6 flex items-center justify-center border-b border-white/5 relative">
+        <div className="h-20 flex items-center justify-center border-b border-white/5 relative">
           <div className="relative">
             <div className="absolute inset-0 blur-xl bg-cyan-500/30" />
-            <Image src={zicoBlue} alt="Panorama Block" width={40} height={40} className="relative drop-shadow-[0_0_14px_rgba(34,211,238,0.55)]" />
+            <Image src={zicoBlue} alt="Panorama Block" width={32} height={32} className="relative drop-shadow-[0_0_14px_rgba(34,211,238,0.55)]" />
           </div>
           <button
             className="lg:hidden absolute right-4 p-3 min-h-[44px] min-w-[44px] flex items-center justify-center text-pano-text-muted hover:text-pano-text-primary active:text-pano-text-primary rounded-lg hover:bg-white/5 active:bg-white/10 transition-colors"

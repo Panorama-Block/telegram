@@ -1,4 +1,3 @@
-
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Droplets,
@@ -9,13 +8,17 @@ import {
   Receipt,
   Check,
   ExternalLink,
-  AlertCircle
+  AlertCircle,
+  Clock
 } from "lucide-react";
 import { useState } from "react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NeonButton } from "@/components/ui/NeonButton";
 import { DataInput } from "@/components/ui/DataInput";
 import { useStakingApi } from "@/features/staking/api";
+
+// Feature flags
+import { FEATURE_FLAGS, FEATURE_METADATA } from "@/config/features";
 
 // Token icons from CoinGecko
 const ETH_ICON = 'https://assets.coingecko.com/coins/images/279/small/ethereum.png';
@@ -85,6 +88,81 @@ export function Staking({ onClose, initialAmount }: StakingProps) {
     animate: isMobile ? { y: 0, opacity: 1 } : { scale: 1, opacity: 1 },
     exit: isMobile ? { y: "100%", opacity: 0 } : { scale: 0.95, opacity: 0 },
   };
+
+  // Coming Soon State
+  if (!FEATURE_FLAGS.STAKING_ENABLED) {
+    const metadata = FEATURE_METADATA.staking;
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      >
+        <motion.div
+          variants={modalVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={{ type: "spring", damping: 25, stiffness: 300 }}
+          className="relative w-full max-w-[340px] md:max-w-[400px]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <GlassCard className="w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 flex flex-col rounded-2xl border">
+            {/* Header */}
+            <div className="px-4 py-3 flex items-center justify-between relative z-10 border-b border-white/5">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+                  <Droplets className="w-4 h-4 text-cyan-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">Liquid Staking</h2>
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Coming Soon</p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4 text-zinc-400" />
+              </button>
+            </div>
+
+            {/* Coming Soon Content - Compact */}
+            <div className="px-4 py-5 text-center">
+              <div className="mb-4 flex justify-center">
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center">
+                    <Clock className="w-7 h-7 text-cyan-400" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 mb-3">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="text-cyan-400 text-xs font-medium">Coming Soon</span>
+              </div>
+
+              <h3 className="text-lg font-bold text-white mb-1.5">{metadata?.name || 'Liquid Staking'}</h3>
+              <p className="text-zinc-400 text-xs leading-relaxed mb-3">{metadata?.description || 'This feature is under development.'}</p>
+
+              {metadata?.expectedLaunch && (
+                <p className="text-zinc-500 text-[10px]">Expected: {metadata.expectedLaunch}</p>
+              )}
+            </div>
+
+            {/* Footer - Only Go to Chat */}
+            <div className="px-4 py-3 border-t border-white/5">
+              <NeonButton onClick={onClose} className="w-full text-sm py-2.5">
+                Go to Chat
+              </NeonButton>
+            </div>
+          </GlassCard>
+        </motion.div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div

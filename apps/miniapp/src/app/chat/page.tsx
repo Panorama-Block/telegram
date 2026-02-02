@@ -38,6 +38,7 @@ import { Droplets } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { useAudioRecorder } from '@/shared/hooks/useAudioRecorder';
 import { useKeyboardHeight } from '@/shared/hooks/useKeyboardHeight';
+import { FEATURE_FLAGS } from '@/config/features';
 
 
 interface Message {
@@ -390,9 +391,9 @@ export default function ChatPage() {
   const [isSendingAudio, setIsSendingAudio] = useState(false);
   const trendingPrompts = [
     { icon: <ArrowLeftRight className="w-4 h-4" />, text: 'Swap 0.1 ETH to USDC on Base' },
-    { icon: <Landmark className="w-4 h-4" />, text: 'Supply 100 USDC on Avalanche' },
-    { icon: <Droplets className="w-4 h-4" />, text: 'Stake 0.5 ETH with Lido' },
-    { icon: <PieChart className="w-4 h-4" />, text: 'What is my portfolio worth?' },
+    { icon: <ArrowLeftRight className="w-4 h-4" />, text: 'Swap 50 USDC to SOL on Solana' },
+    { icon: <TrendingUp className="w-4 h-4" />, text: 'What are the top trending tokens today?' },
+    { icon: <PieChart className="w-4 h-4" />, text: 'Give me a market analysis of Bitcoin' },
   ];
 
   const debug = useCallback(
@@ -1473,7 +1474,7 @@ export default function ChatPage() {
                       {/* Main Input Area */}
                       <div className="relative group max-w-2xl mx-auto w-full my-8 overflow-hidden">
                         <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                        <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 md:gap-3 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 group-focus-within:shadow-[0_0_15px_rgba(6,182,212,0.15)] transition-all duration-300 overflow-hidden">
+                        <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 md:gap-3 shadow-2xl transition-all duration-300 overflow-hidden">
                           {isRecording ? (
                             // Recording UI
                             <>
@@ -1556,9 +1557,9 @@ export default function ChatPage() {
                       <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
                         {[
                           { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
-                          { label: 'Supply 100 USDC on Avalanche', prompt: 'Supply 100 USDC on Avalanche' },
-                          { label: 'Stake 0.5 ETH with Lido', prompt: 'Stake 0.5 ETH with Lido' },
-                          { label: 'What is my portfolio worth?', prompt: 'What is my portfolio worth?' },
+                          { label: 'Swap 50 USDC to SOL on Solana', prompt: 'Swap 50 USDC to SOL on Solana' },
+                          { label: 'What are the top trending tokens?', prompt: 'What are the top trending tokens today?' },
+                          { label: 'Market analysis of Bitcoin', prompt: 'Give me a market analysis of Bitcoin' },
                         ].map((item) => (
                           <motion.button
                             key={item.label}
@@ -1577,7 +1578,8 @@ export default function ChatPage() {
                     </motion.div>
                   </div>
                 ) : (
-                  <div className="flex-1 flex flex-col gap-6 px-4 md:px-8 py-6">
+                  <div className="flex-1 flex flex-col py-6">
+                    <div className="w-full max-w-5xl mx-auto px-4 md:px-6 flex flex-col gap-6">
                     {activeMessages.map((message, index) => (
                       <motion.div
                         key={`${message.role}-${index}`}
@@ -1725,6 +1727,30 @@ export default function ChatPage() {
                                 const action = String(message.metadata?.action || 'Supply');
                                 const tokenIcon = getTokenIcon(token);
 
+                                // Coming Soon state
+                                if (!FEATURE_FLAGS.LENDING_ENABLED) {
+                                  return (
+                                    <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                      <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+                                        <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                          <Landmark className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
+                                          <span className="text-xs sm:text-sm font-semibold text-white">Lending</span>
+                                          <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-cyan-500/30">
+                                            COMING SOON
+                                          </span>
+                                        </div>
+                                        <div className="relative z-10 p-4 sm:p-5 text-center">
+                                          <p className="text-zinc-400 text-xs sm:text-sm mb-3">
+                                            Lending feature is coming soon. Stay tuned!
+                                          </p>
+                                          <p className="text-zinc-500 text-[10px]">Expected: Q1 2026</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+
                                 return (
                                   <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
                                     {/* Lending Card */}
@@ -1795,6 +1821,30 @@ export default function ChatPage() {
                                 const amount = Number(message.metadata?.amount || 0);
                                 const tokenIcon = getTokenIcon(token);
                                 const stTokenIcon = getTokenIcon(`st${token}`) || getTokenIcon('stETH');
+
+                                // Coming Soon state
+                                if (!FEATURE_FLAGS.STAKING_ENABLED) {
+                                  return (
+                                    <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                      <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+                                        <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                          <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
+                                          <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
+                                          <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-cyan-500/30">
+                                            COMING SOON
+                                          </span>
+                                        </div>
+                                        <div className="relative z-10 p-4 sm:p-5 text-center">
+                                          <p className="text-zinc-400 text-xs sm:text-sm mb-3">
+                                            Liquid Staking feature is coming soon. Stay tuned!
+                                          </p>
+                                          <p className="text-zinc-500 text-[10px]">Expected: Q1 2026</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                }
 
                                 return (
                                   <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
@@ -1908,6 +1958,7 @@ export default function ChatPage() {
                     {/* Spacer for fixed input bar */}
                     {hasMessages && <div className="h-24" />}
                     <div ref={messagesEndRef} />
+                    </div>
                   </div>
                 )}
               </div>
@@ -1918,9 +1969,9 @@ export default function ChatPage() {
                   <motion.div
                     initial={{ y: 100, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
-                    className="sticky bottom-0 p-2 pt-3 bg-gradient-to-t from-black via-black/95 to-black/80 z-20 backdrop-blur-sm"
+                    className="sticky bottom-0 px-4 md:px-8 pb-2 pt-3 bg-gradient-to-t from-black via-black/95 to-black/80 z-20 backdrop-blur-sm"
                   >
-                      <div className="max-w-3xl mx-auto relative group">
+                      <div className="max-w-5xl mx-auto relative group">
                         {/* Trending Prompts Dropdown */}
                         <AnimatePresence>
                           {showTrendingPrompts && (
@@ -1951,7 +2002,7 @@ export default function ChatPage() {
                         </AnimatePresence>
 
                         <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                        <div className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 shadow-2xl group-focus-within:ring-1 group-focus-within:ring-cyan-500/30 overflow-hidden">
+                        <div className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 shadow-2xl overflow-hidden">
                           {isRecording ? (
                             // Recording UI
                             <>
