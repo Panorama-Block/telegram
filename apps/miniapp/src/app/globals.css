@@ -1276,10 +1276,16 @@ textarea::placeholder {
   }
 }
 
-/* Focus visible improvements */
-:focus-visible {
+/* Focus visible improvements - exclude inputs/textareas for softer UX */
+:focus-visible:not(input):not(textarea):not([data-no-focus-ring]) {
   outline: 2px solid hsl(var(--pano-primary));
   outline-offset: 2px;
+}
+
+/* Remove focus ring from inputs and textareas */
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
 }
 
 /* Skip focus styles for mouse users */
