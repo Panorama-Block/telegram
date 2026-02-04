@@ -33,6 +33,8 @@ export default function NewChatPage() {
   const lastTriedAddressRef = useRef<string | null>(null);
   const [isTelegram, setIsTelegram] = useState(false);
   const isTelegramEnv = isTelegramWebApp() || isTelegram;
+  const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
+
 
   useEffect(() => {
     // Robust async check
@@ -46,6 +48,30 @@ export default function NewChatPage() {
 
     checkTelegramAsync();
   }, []);
+
+  useEffect(() => {
+    // Fetch the payload (nonce) early and attach it to the TonConnect proof request.
+    const prepareAuth = async () => {
+      if (!authApiBase) return;
+      tonConnectUI.setConnectRequestParameters({ state: 'loading' });
+      try {
+        const response = await fetch(`${authApiBase}/auth/ton/payload`, { method: 'POST' });
+        const { payload } = await response.json();
+
+        tonConnectUI.setConnectRequestParameters({
+          state: 'ready',
+          value: { tonProof: payload },
+        });
+      } catch (err) {
+        console.error('[NewChat] Failed to prepare TonConnect proof payload', err);
+        tonConnectUI.setConnectRequestParameters(null);
+      }
+    };
+
+    if (!tonWallet) {
+      prepareAuth();
+    }
+  }, [authApiBase, tonConnectUI, tonWallet]);
 
   // Client setup
   const client = useMemo(() => {
@@ -142,7 +168,6 @@ export default function NewChatPage() {
       return;
     }
 
-    const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
     if (!authApiBase) {
       throw new Error('VITE_AUTH_API_BASE not configured');
     }
@@ -154,100 +179,51 @@ export default function NewChatPage() {
 
       if (isTon) {
         // --- TON Authentication Flow ---
-        setStatusMessage('Requesting TON login payload...');
-        console.log('🔍 [NEWCHAT] Requesting TON payload from:', `${authApiBase}/auth/ton/payload`);
+        const proof = tonWallet.connectItems?.tonProof;
 
-        const payloadResponse = await fetch(`${authApiBase}/auth/ton/payload`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address: currentAddress })
-        });
+        if (proof && 'proof' in proof) {
+          try {
+            setIsAuthenticating(true);
+            setStatusMessage('Verifying connection proof...');
 
-        if (!payloadResponse.ok) {
-          const errorText = await payloadResponse.text();
-          throw new Error(`Failed to get TON payload: ${errorText}`);
-        }
+            console.log('🔍 [NEWCHAT][TON] Verifying proof at:', `${authApiBase}/auth/ton/verify`);
+            console.log('🧾 [NEWCHAT][TON] Proof payload:', {
+              address: tonWallet.account.address,
+              network: tonWallet.account.chain,
+              public_key: tonWallet.account.publicKey?.slice(0, 8) ? `${tonWallet.account.publicKey.slice(0, 8)}...` : undefined,
+              proof: proof.proof,
+              state_init: tonWallet.account.walletStateInit ? '[present]' : '[missing]',
+            });
 
-        const { payload: proofPayload } = await payloadResponse.json();
+            const verifyResponse = await fetch(`${authApiBase}/auth/ton/verify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                address: tonWallet.account.address,
+                network: tonWallet.account.chain,
+                public_key: tonWallet.account.publicKey,
+                proof: {
+                  ...proof.proof,
+                  state_init: tonWallet.account.walletStateInit, // Required for some backends
+                }
+              })
+            });
 
-        setStatusMessage('Please sign the message in your TON wallet...');
-
-        // Construct the data to sign
-        // The backend expects a specific format for verifyTonSignature
-        // We need to use the wallet to sign this payload.
-        // Since we are in a browser environment, we use the timestamp and domain.
-        const timestamp = Math.floor(Date.now() / 1000);
-        const domain = window.location.host;
-
-        // Note: tonConnectUI.connector.signData is the standard way if supported.
-        // If the wallet doesn't support signData, we might be stuck.
-        // We'll try to cast and use it.
-        const connector = (tonConnectUI as any).connector;
-        if (!connector || typeof connector.signData !== 'function') {
-          throw new Error('Wallet does not support signData');
-        }
-
-        // IMPORTANT: The backend `verifyTonSignature` expects `publicKey`.
-        const publicKey = tonWallet?.account.publicKey;
-        if (!publicKey) throw new Error('TON Wallet public key not found');
-
-        let signature = '';
-        let signedTimestamp = String(Math.floor(Date.now() / 1000));
-
-        try {
-          const response = await (tonConnectUI as any).connector.signData({
-            type: 'text',
-            text: proofPayload
-          });
-
-          console.log('✅ [NEWCHAT] TON signData response:', response);
-
-          signature = response.signature;
-          if (response.timestamp) {
-            signedTimestamp = String(response.timestamp);
+            console.log('📡 [NEWCHAT][TON] Verify response status:', verifyResponse.status);
+            const { token } = await verifyResponse.json();
+            localStorage.setItem('authToken', token);
+            setIsAuthenticated(true);
+            router.push('/chat');
+            return; // End of TON flow
+          } catch (err) {
+            console.error("Proof verification failed", err);
+            setError("Wallet verification failed.");
+          } finally {
+            setIsAuthenticating(false);
           }
-        } catch (e) {
-          console.error('❌ [NEWCHAT] TON SignData failed or not supported:', e);
-          throw new Error(`TON Signing failed: ${e instanceof Error ? e.message : String(e)}`);
         }
-
-        setStatusMessage('Verifying TON signature...');
-
-        const verifyResponse = await fetch(`${authApiBase}/auth/ton/verify`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            address: currentAddress,
-            payload: proofPayload,
-            signature,
-            publicKey,
-            timestamp: signedTimestamp,
-            domain,
-            payloadMeta: { type: 'text', text: proofPayload }
-          })
-        });
-
-        if (!verifyResponse.ok) {
-          const errText = await verifyResponse.text();
-          throw new Error(`TON Verification failed: ${errText}`);
-        }
-
-        const verifyResult = await verifyResponse.json();
-        const { token: authToken } = verifyResult;
-
-        setStatusMessage('Saving session...');
-        localStorage.setItem('authPayload', JSON.stringify({ address: currentAddress, chain: 'ton' }));
-        localStorage.setItem('authSignature', signature);
-        localStorage.setItem('authToken', authToken);
-
-        setIsAuthenticated(true);
-        setStatusMessage('Success! Redirecting to chat...');
-
-        setTimeout(() => {
-          router.push('/chat');
-        }, 500);
-
-        return; // End of TON flow
+        setStatusMessage('Please connect your TON wallet to sign the proof...');
+        return; // End of TON flow when proof is missing
       }
 
       // --- EVM Authentication Flow (Thirdweb) ---
