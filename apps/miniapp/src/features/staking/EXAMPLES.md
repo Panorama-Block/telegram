@@ -123,8 +123,7 @@ export function StakingDashboard() {
           <h3>Your Position</h3>
           <p>Staked: {position.stakedAmount}</p>
           <p>stETH Balance: {position.stETHBalance}</p>
-          <p>Rewards: {position.rewards}</p>
-          <p>APY: {position.apy}%</p>
+          <p>APY: {position.apy == null ? '--' : `${position.apy}%`}</p>
         </div>
       )}
       
@@ -132,8 +131,8 @@ export function StakingDashboard() {
       {tokens.map(token => (
         <div key={token.address} style={{ border: '1px solid #ccc', margin: '10px', padding: '10px' }}>
           <h4>{token.symbol}</h4>
-          <p>Staking APY: {token.stakingAPY}%</p>
-          <p>Total Staked: {token.totalStaked}</p>
+          <p>Staking APY: {token.stakingAPY == null ? '--' : `${token.stakingAPY}%`}</p>
+          <p>Total Staked: {token.totalStaked ?? '--'}</p>
           
           <button onClick={() => handleStake('1.0')}>
             Stake 1.0 {token.symbol}
@@ -234,17 +233,17 @@ class StakingPositionMonitor {
   
   private checkPosition(position: StakingPosition) {
     const stakedAmount = parseFloat(position.stakedAmount) / 1e18;
-    const rewards = parseFloat(position.rewards) / 1e18;
     const apy = position.apy;
     
     console.log(`📊 Position Update:`);
     console.log(`   Staked: ${stakedAmount.toFixed(4)} ETH`);
-    console.log(`   Rewards: ${rewards.toFixed(4)} ETH`);
-    console.log(`   APY: ${apy.toFixed(2)}%`);
+    console.log(`   APY: ${apy == null ? 'n/a' : `${apy.toFixed(2)}%`}`);
     
     // Calculate estimated annual rewards
-    const estimatedAnnualRewards = stakedAmount * (apy / 100);
-    console.log(`   Estimated Annual Rewards: ${estimatedAnnualRewards.toFixed(4)} ETH`);
+    if (apy != null) {
+      const estimatedAnnualRewards = stakedAmount * (apy / 100);
+      console.log(`   Estimated Annual Rewards: ${estimatedAnnualRewards.toFixed(4)} ETH`);
+    }
   }
 }
 
@@ -605,4 +604,3 @@ validateTransactionValue('invalid'); // false
 ```
 
 These examples demonstrate the flexibility and power of the Liquid Staking Service API Client, showing how it can be integrated into various application patterns and use cases, with special attention to BigInt handling for large transaction values.
-

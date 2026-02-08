@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from "framer-motion";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NotificationCenter } from "@/components/NotificationCenter";
@@ -19,12 +19,14 @@ import {
   ArrowRightLeft,
   Calendar,
   Clock,
+  Droplets,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 import { usePortfolioData } from "@/features/portfolio/usePortfolioData";
 import { useSmartWalletPortfolio } from "@/features/portfolio/useSmartWalletPortfolio";
+import { useStakingData } from "@/features/staking/useStakingData";
 import { SmartWalletCard, SmartWalletIndicator } from "@/features/portfolio/SmartWalletCard";
 import { CreateSmartWalletModal } from "@/features/portfolio/CreateSmartWalletModal";
 import { DeleteWalletModal } from "@/features/portfolio/DeleteWalletModal";
@@ -37,6 +39,11 @@ import { useTransactionHistory } from "@/features/gateway";
 
 type ViewMode = 'main' | 'smart';
 type TabMode = 'history' | 'assets';
+
+function formatAPY(apy: number | null | undefined): string {
+  if (apy == null || !Number.isFinite(apy)) return '--';
+  return `${apy.toFixed(4)}%`;
+}
 
 export default function PortfolioPage() {
   const account = useActiveAccount();
@@ -79,6 +86,12 @@ export default function PortfolioPage() {
   // DCA Strategy management
   const [expandedStrategy, setExpandedStrategy] = useState<string | null>(null);
   const [strategyActionLoading, setStrategyActionLoading] = useState<string | null>(null);
+
+  const { tokens: stakingTokens } = useStakingData();
+  const lidoApy = useMemo(() => {
+    const eth = stakingTokens.find((t) => t.symbol === 'ETH') || stakingTokens.find((t) => t.symbol === 'stETH');
+    return eth?.stakingAPY ?? null;
+  }, [stakingTokens]);
 
   // Determine which data to show based on view mode
   const isSmartWalletView = viewMode === 'smart' && hasSmartWallet;
@@ -691,8 +704,78 @@ export default function PortfolioPage() {
                       <div className="text-[10px] text-zinc-600 font-mono">{asset.price}</div>
                     </div>
                   </div>
+                {/* Protocol badge */}
+                <div className="flex items-center gap-1 mt-0.5 pl-11">
+                  {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3 text-zinc-600" />}
+                  {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-500/70" />}
+                  {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400/70" />}
+                  <span className="text-[10px] text-zinc-600">
+                    {asset.protocol}
+                    {asset.protocol === 'Lido' && <span> · {formatAPY(lidoApy)}</span>}
+                  </span>
+                </div>
                 ))}
               </div>
+
+          {/* Desktop Table View */}
+          <GlassCard className="overflow-hidden bg-[#0A0A0A]/60 hidden md:block mt-4">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/5 text-xs text-zinc-500 uppercase tracking-wider">
+                    <th className="p-4 font-medium">Asset</th>
+                    <th className="p-4 font-medium">Protocol</th>
+                    <th className="p-4 font-medium">Balance</th>
+                    <th className="p-4 font-medium">Value</th>
+                    <th className="p-4 font-medium">Price</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {currentAssets.map((asset) => (
+                    <tr key={`desktop-${asset.network}-${asset.symbol}-${asset.address}`} className="group hover:bg-white/5 transition-colors">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-inner",
+                            "bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10"
+                          )}>
+                            {asset.icon ? (
+                              <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
+                            ) : (
+                              asset.symbol[0]
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-medium text-white">{asset.name}</div>
+                            <div className="flex items-center gap-1.5">
+                               <span className="text-xs text-zinc-500">{asset.symbol}</span>
+                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-400 border border-white/5">{asset.network}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4 text-zinc-400 text-sm">
+                        <div className="flex items-center gap-2">
+                          {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3" />}
+                          {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-400" />}
+                          {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400" />}
+                          <span>
+                            {asset.protocol}
+                            {asset.protocol === 'Lido' && (
+                              <span className="text-zinc-500"> · {formatAPY(lidoApy)}</span>
+                            )}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-4 text-zinc-300 font-mono text-sm">{asset.balance}</td>
+                      <td className="p-4 text-white font-mono font-medium text-sm">{asset.value}</td>
+                      <td className="p-4 text-zinc-500 font-mono text-sm">{asset.price}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </GlassCard>
             </div>
           )}
         </motion.div>

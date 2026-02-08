@@ -118,6 +118,8 @@ export const networks: Network[] = [
     nativeCurrency: { symbol: 'ETH', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
     tokens: [
       { symbol: 'ETH', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
+      { symbol: 'stETH', address: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84', icon: 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png', decimals: 18, name: 'stETH' },
+      { symbol: 'wstETH', address: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0', icon: 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png', decimals: 18, name: 'wstETH' },
       { symbol: 'USDC', address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
       { symbol: 'USDT', address: '0xdac17f958d2ee523a2206206994597c13d831ec7', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
       { symbol: 'WBTC', address: '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599', icon: 'https://assets.coingecko.com/coins/images/7598/small/wrapped_bitcoin_wbtc.png', decimals: 8, name: 'Wrapped Bitcoin' },
@@ -204,4 +206,3 @@ export const networks: Network[] = [
     ],
   },
 ];
-

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import SwapIcon from '../../../public/icons/Swap.svg';
 import UniswapIcon from '../../../public/icons/uniswap.svg';
@@ -200,12 +201,16 @@ function getAddressFromToken(): string | null {
 export default function SwapPage() {
   const account = useActiveAccount();
   const switchChain = useSwitchActiveWalletChain();
+  const searchParams = useSearchParams();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const userAddress = localStorage.getItem('userAddress');
   const effectiveAddress = account?.address || addressFromToken || userAddress;
+
+  const prefillSignatureRef = useRef<string | null>(null);
+  const skipAmountResetRef = useRef(0);
 
   const [fromChainId, setFromChainId] = useState(8453); // Base
   const [toChainId, setToChainId] = useState(42161); // Arbitrum
@@ -241,6 +246,49 @@ export default function SwapPage() {
   const [tosAccepted, setTosAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
+  // Prefill support (used by Staking "Instant Unstake via Swap" CTA)
+  useEffect(() => {
+    const fromChain = Number(searchParams.get('fromChainId'));
+    const toChain = Number(searchParams.get('toChainId'));
+    const sell = searchParams.get('sellToken');
+    const buy = searchParams.get('buyToken');
+    const sellAmountParam = searchParams.get('sellAmount');
+
+    if (!fromChain || !toChain || !sell || !buy) return;
+
+    const signature = `${fromChain}:${toChain}:${sell.toLowerCase()}:${buy.toLowerCase()}:${sellAmountParam || ''}`;
+    if (prefillSignatureRef.current === signature) return;
+    prefillSignatureRef.current = signature;
+
+    const findToken = (chainId: number, address: string): Token | null => {
+      const network = networks.find((n) => n.chainId === chainId);
+      if (!network) return null;
+
+      if (isNative(address)) {
+        return network.nativeCurrency;
+      }
+
+      const normalized = address.toLowerCase();
+      return network.tokens.find((t) => t.address?.toLowerCase() === normalized) || null;
+    };
+
+    const nextSellToken = findToken(fromChain, sell) || { symbol: 'TOKEN', address: sell };
+    const nextBuyToken = findToken(toChain, buy) || { symbol: 'TOKEN', address: buy };
+
+    // Multiple state updates below can trigger the "reset amount" effect a couple times.
+    // Skip those resets so the prefilled amount is preserved.
+    skipAmountResetRef.current = 3;
+
+    setFromChainId(fromChain);
+    setToChainId(toChain);
+    setSellToken(nextSellToken);
+    setBuyToken(nextBuyToken);
+
+    if (sellAmountParam && String(sellAmountParam).trim().length > 0) {
+      setSellAmount(String(sellAmountParam));
+    }
+  }, [searchParams]);
+
   // Helper to check if swap involves Avalanche
   const isAvalancheSwap = useMemo(() => {
     const isAvalancheChain = fromChainId === 43114 || toChainId === 43114;
@@ -258,9 +306,13 @@ export default function SwapPage() {
 
   // Reset amount when sell token changes - set default to "0.0" until balance is fetched
   useEffect(() => {
-    setSellAmount('0.0');
     setSellTokenBalance(null);
     setSellTokenBalanceRaw(null);
+    if (skipAmountResetRef.current > 0) {
+      skipAmountResetRef.current -= 1;
+      return;
+    }
+    setSellAmount('0.0');
   }, [sellToken.address, fromChainId]);
 
   // Fetch sell token balance
@@ -394,6 +446,7 @@ export default function SwapPage() {
         fromToken: normalizeToApi(sellToken.address),
         toToken: normalizeToApi(buyToken.address),
         amount: sellAmount.trim(),
+        unit: 'token',
         smartAccountAddress,
       };
 

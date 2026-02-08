@@ -76,6 +76,7 @@ export default function SwapExternalPage() {
           fromToken,
           toToken,
           amount,
+          unit: 'token',
           smartAccountAddress: account.address,
         });
         if (!quoteRes.success || !quoteRes.quote) throw new Error(quoteRes.message || 'Quote failed');
