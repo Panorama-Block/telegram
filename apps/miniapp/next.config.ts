@@ -43,6 +43,11 @@ const nextConfig: NextConfig = {
                        process.env.NEXT_PUBLIC_STAKING_API_URL ||
                        '';
 
+    const swapBase = process.env.VITE_SWAP_API_BASE ||
+                     process.env.NEXT_PUBLIC_SWAP_API_BASE ||
+                     process.env.SWAP_API_BASE ||
+                     '';
+
     const rewrites = [];
 
     if (!lendingBase) {
@@ -65,6 +70,20 @@ const nextConfig: NextConfig = {
       rewrites.push({
         source: "/api/staking/:path*",
         destination: `${stakingBase}/:path*`,
+        basePath: false,
+      });
+    }
+
+    if (!swapBase) {
+      console.warn('[Next.js] Swap API base URL not configured, proxy will not work');
+      console.warn('[Next.js] Please set SWAP_API_BASE or NEXT_PUBLIC_SWAP_API_BASE in .env');
+    } else {
+      const trimmed = swapBase.replace(/\/+$/, '');
+      const swapWithPath = trimmed.endsWith('/swap') ? trimmed : `${trimmed}/swap`;
+      console.log('[Next.js] Swap API proxy configured:', swapWithPath);
+      rewrites.push({
+        source: "/api/swap/:path*",
+        destination: `${swapWithPath}/:path*`,
         basePath: false,
       });
     }

@@ -12,6 +12,11 @@ import { isNative } from '@/features/swap/utils';
 const FALLBACK_PRICES: Record<string, number> = {
   'ETH': 3900,
   'WETH': 3900,
+  // Lido LSTs (fallback to ETH peg when real price is unavailable)
+  'stETH': 3900,
+  'wstETH': 3900,
+  // Stablecoins
+  'USDe': 1.00,
   'BTC': 101000,
   'WBTC': 101000,
   'USDC': 1.00,
@@ -33,19 +38,22 @@ const FALLBACK_PRICES: Record<string, number> = {
 // Fetch real prices from CoinGecko
 async function fetchRealPrices(): Promise<Record<string, number>> {
   try {
-    const ids = 'ethereum,bitcoin,usd-coin,tether,dai,matic-network,avalanche-2,binancecoin,arbitrum,optimism,worldcoin-wld,aave,uniswap,chainlink';
-    const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`,
-      { next: { revalidate: 60 } } // Cache for 60 seconds
-    );
+    const ids = 'ethereum,staked-ether,wrapped-steth,ethena-usde,bitcoin,usd-coin,tether,dai,matic-network,avalanche-2,binancecoin,arbitrum,optimism,worldcoin-wld,aave,uniswap,chainlink';
+    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
 
     if (!response.ok) throw new Error('Price fetch failed');
 
     const data = await response.json();
 
+    const ethUsd = data.ethereum?.usd || FALLBACK_PRICES['ETH'];
+
     return {
-      'ETH': data.ethereum?.usd || FALLBACK_PRICES['ETH'],
-      'WETH': data.ethereum?.usd || FALLBACK_PRICES['WETH'],
+      'ETH': ethUsd,
+      'WETH': ethUsd,
+      // Lido LSTs: prefer their own CoinGecko ids, otherwise fallback to ETH
+      'stETH': data['staked-ether']?.usd || ethUsd,
+      'wstETH': data['wrapped-steth']?.usd || ethUsd,
+      'USDe': data['ethena-usde']?.usd || 1,
       'BTC': data.bitcoin?.usd || FALLBACK_PRICES['BTC'],
       'WBTC': data.bitcoin?.usd || FALLBACK_PRICES['WBTC'],
       'USDC': data['usd-coin']?.usd || 1,
@@ -149,7 +157,7 @@ export function usePortfolioData() {
                 symbol: token.symbol,
                 name: token.name || token.symbol,
                 network: network.name,
-                protocol: 'Wallet',
+                protocol: token.symbol === 'stETH' || token.symbol === 'wstETH' ? 'Lido' : 'Wallet',
                 address: token.address,
                 decimals: token.decimals || 18,
                 balance: `${parseFloat(balanceStr).toLocaleString('en-US', { maximumFractionDigits: 4 })} ${token.symbol}`,

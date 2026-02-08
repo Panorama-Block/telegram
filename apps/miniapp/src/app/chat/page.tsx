@@ -1375,14 +1375,15 @@ export default function ChatPage() {
         }
       } else {
         console.log('🔄 Using Swap API for EVM swap');
-        const quoteResponse = await swapApi.quote({
-          fromChainId: fromNetwork.chainId,
-          toChainId: toNetwork.chainId,
-          fromToken: normalizeToApi(fromToken.address),
-          toToken: normalizeToApi(toToken.address),
-          amount: String(amount),
-          smartAccountAddress: effectiveAddress || undefined,
-        });
+      const quoteResponse = await swapApi.quote({
+        fromChainId: fromNetwork.chainId,
+        toChainId: toNetwork.chainId,
+        fromToken: normalizeToApi(fromToken.address),
+        toToken: normalizeToApi(toToken.address),
+        amount: String(amount),
+        unit: 'token',
+        smartAccountAddress: effectiveAddress || undefined,
+      });
 
         if (quoteResponse.success && quoteResponse.quote) {
           setSwapQuote({

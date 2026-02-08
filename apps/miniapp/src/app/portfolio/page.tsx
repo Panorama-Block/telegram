@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from "framer-motion";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NotificationCenter } from "@/components/NotificationCenter";
@@ -19,12 +19,14 @@ import {
   ArrowRightLeft,
   Calendar,
   Clock,
+  Droplets,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 import { usePortfolioData } from "@/features/portfolio/usePortfolioData";
 import { useSmartWalletPortfolio } from "@/features/portfolio/useSmartWalletPortfolio";
+import { useStakingData } from "@/features/staking/useStakingData";
 import { SmartWalletCard, SmartWalletIndicator } from "@/features/portfolio/SmartWalletCard";
 import { CreateSmartWalletModal } from "@/features/portfolio/CreateSmartWalletModal";
 import { DeleteWalletModal } from "@/features/portfolio/DeleteWalletModal";
@@ -35,6 +37,11 @@ import { useActiveAccount } from "thirdweb/react";
 import { shortenAddress } from "thirdweb/utils";
 
 type ViewMode = 'main' | 'smart';
+
+function formatAPY(apy: number | null | undefined): string {
+  if (apy == null || !Number.isFinite(apy)) return '--';
+  return `${apy.toFixed(4)}%`;
+}
 
 export default function PortfolioPage() {
   const account = useActiveAccount();
@@ -63,6 +70,12 @@ export default function PortfolioPage() {
   // DCA Strategy management
   const [expandedStrategy, setExpandedStrategy] = useState<string | null>(null);
   const [strategyActionLoading, setStrategyActionLoading] = useState<string | null>(null);
+
+  const { tokens: stakingTokens } = useStakingData();
+  const lidoApy = useMemo(() => {
+    const eth = stakingTokens.find((t) => t.symbol === 'ETH') || stakingTokens.find((t) => t.symbol === 'stETH');
+    return eth?.stakingAPY ?? null;
+  }, [stakingTokens]);
 
   // Determine which data to show based on view mode
   const isSmartWalletView = viewMode === 'smart' && hasSmartWallet;
@@ -611,8 +624,15 @@ export default function PortfolioPage() {
                 </div>
                 <div className="flex items-center justify-between pt-3 border-t border-white/5">
                   <div className="flex items-center gap-1.5 text-zinc-400 text-xs">
-                    <Wallet className="w-3 h-3" />
-                    <span>{asset.protocol}</span>
+                    {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3" />}
+                    {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-400" />}
+                    {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400" />}
+                    <span>
+                      {asset.protocol}
+                      {asset.protocol === 'Lido' && (
+                        <span className="text-zinc-500"> · {formatAPY(lidoApy)}</span>
+                      )}
+                    </span>
                   </div>
                   <div className="text-zinc-300 font-mono text-sm">{asset.balance}</div>
                 </div>
@@ -661,7 +681,13 @@ export default function PortfolioPage() {
                         <div className="flex items-center gap-2">
                           {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3" />}
                           {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-400" />}
-                          {asset.protocol}
+                          {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400" />}
+                          <span>
+                            {asset.protocol}
+                            {asset.protocol === 'Lido' && (
+                              <span className="text-zinc-500"> · {formatAPY(lidoApy)}</span>
+                            )}
+                          </span>
                         </div>
                       </td>
                       <td className="p-4 text-zinc-300 font-mono text-sm">{asset.balance}</td>

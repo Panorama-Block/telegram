@@ -518,6 +518,7 @@ export function SwapCard() {
           fromToken: normalizeToApi(fromToken),
           toToken: normalizeToApi(toToken),
           amount: amount.trim(),
+          unit: 'token',
           smartAccountAddress,
         };
         const res = await swapApi.quote(body);
