@@ -1,0 +1,412 @@
+/* ===== Docs Architecture Page ===== */
+
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+/* ── Root ── */
+.docs-root {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  background: #0f172a;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Background glows ── */
+.docs-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.docs-glow--purple {
+  width: 600px;
+  height: 600px;
+  top: -200px;
+  left: -100px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, transparent 70%);
+}
+
+.docs-glow--cyan {
+  width: 500px;
+  height: 500px;
+  bottom: -150px;
+  right: -100px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.12) 0%, transparent 70%);
+}
+
+/* ── Header ── */
+.docs-header {
+  position: relative;
+  z-index: 10;
+  padding: 16px 32px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.docs-header__content {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.docs-header__title {
+  font-family: "Orbitron", sans-serif;
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 0.15em;
+  color: #f1f5f9;
+  margin: 0;
+}
+
+.docs-header__title-accent {
+  color: #8b5cf6;
+  text-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+}
+
+.docs-header__subtitle {
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  color: #64748b;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* Layer breadcrumb in header */
+.docs-header__layers {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.docs-layer {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+}
+
+.docs-layer--purple {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.docs-layer--zico {
+  background: rgba(236, 72, 153, 0.15);
+  color: #f472b6;
+  border: 1px solid rgba(236, 72, 153, 0.3);
+}
+
+.docs-layer--cyan {
+  background: rgba(6, 182, 212, 0.15);
+  color: #22d3ee;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.docs-layer--amber {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.docs-layer-arrow {
+  color: #334155;
+  font-size: 14px;
+}
+
+/* ── Canvas ── */
+.docs-canvas {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Legend ── */
+.docs-legend {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 32px;
+  border-top: 1px solid rgba(139, 92, 246, 0.2);
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(16px);
+  font-family: "Rajdhani", sans-serif;
+}
+
+.docs-legend__title {
+  font-family: "Orbitron", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.12em;
+}
+
+.docs-legend__items {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.docs-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.docs-legend__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.docs-legend__dot--purple {
+  background: #8b5cf6;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.6);
+}
+
+.docs-legend__dot--pink {
+  background: #ec4899;
+  box-shadow: 0 0 8px rgba(236, 72, 153, 0.6);
+}
+
+.docs-legend__dot--cyan {
+  background: #06b6d4;
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.6);
+}
+
+.docs-legend__dot--amber {
+  background: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+}
+
+.docs-legend__dot--gray {
+  background: #64748b;
+}
+
+.docs-legend__line {
+  width: 24px;
+  height: 2px;
+}
+
+.docs-legend__line--solid {
+  background: #8b5cf6;
+  box-shadow: 0 0 6px rgba(139, 92, 246, 0.4);
+}
+
+.docs-legend__line--dashed {
+  background: repeating-linear-gradient(
+    90deg,
+    #64748b 0px,
+    #64748b 6px,
+    transparent 6px,
+    transparent 10px
+  );
+}
+
+/* ===== Service Node ===== */
+
+.snode {
+  position: relative;
+  min-width: 200px;
+  padding: 14px 18px 10px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(100, 116, 139, 0.3);
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  cursor: grab;
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+/* Category styles */
+.snode--core {
+  border-color: rgba(139, 92, 246, 0.45);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.12);
+}
+
+.snode--defi {
+  border-color: rgba(6, 182, 212, 0.45);
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.12);
+}
+
+.snode--external {
+  border-color: rgba(100, 116, 139, 0.35);
+}
+
+.snode--infra {
+  border-color: rgba(245, 158, 11, 0.45);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.12);
+}
+
+.snode--zico {
+  border-color: rgba(236, 72, 153, 0.5);
+  box-shadow: 0 0 30px rgba(236, 72, 153, 0.2), 0 0 60px rgba(236, 72, 153, 0.08);
+  min-width: 240px;
+}
+
+/* Hover states */
+.snode:hover {
+  border-color: rgba(139, 92, 246, 0.6);
+}
+
+.snode--zico:hover {
+  border-color: rgba(236, 72, 153, 0.7);
+  box-shadow: 0 0 40px rgba(236, 72, 153, 0.3), 0 0 80px rgba(236, 72, 153, 0.1);
+}
+
+/* Inner layout */
+.snode__inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.snode__icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(139, 92, 246, 0.12);
+  color: #a78bfa;
+  flex-shrink: 0;
+}
+
+.snode--defi .snode__icon-wrap {
+  background: rgba(6, 182, 212, 0.12);
+  color: #22d3ee;
+}
+
+.snode--external .snode__icon-wrap {
+  background: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+}
+
+.snode--infra .snode__icon-wrap {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+}
+
+.snode--zico .snode__icon-wrap {
+  background: rgba(236, 72, 153, 0.15);
+  color: #f472b6;
+  width: 40px;
+  height: 40px;
+}
+
+.snode__icon-wrap--img {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.snode__brand-img {
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.snode__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.snode__label {
+  font-family: "Orbitron", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #f1f5f9;
+}
+
+.snode--zico .snode__label {
+  font-size: 14px;
+  color: #f472b6;
+  text-shadow: 0 0 12px rgba(236, 72, 153, 0.4);
+}
+
+.snode__desc {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* Status badges */
+.snode-badge {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.snode-badge--active {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.snode-badge--beta {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.snode-badge--inactive {
+  background: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+}
+
+/* ===== React Flow overrides ===== */
+
+.docs-canvas .react-flow__background {
+  background: #0f172a;
+}
+
+.docs-canvas .react-flow__controls button {
+  background: rgba(15, 23, 42, 0.95);
+  border: none;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.15);
+  color: #94a3b8;
+  width: 32px;
+  height: 32px;
+}
+
+.docs-canvas .react-flow__controls button:hover {
+  background: rgba(139, 92, 246, 0.2);
+  color: #e2e8f0;
+}
+
+.docs-canvas .react-flow__controls button svg {
+  fill: currentColor;
+}
+
+.docs-canvas .react-flow__minimap {
+  border-radius: 12px;
+}
+
+.docs-canvas .react-flow__edge-path {
+  stroke-linecap: round;
+}
