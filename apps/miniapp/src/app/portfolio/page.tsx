@@ -33,8 +33,10 @@ import WithdrawModal from "@/features/dca/WithdrawModal";
 import { deleteSmartAccount, deleteStrategy, toggleStrategy, DCAStrategy } from "@/features/dca/api";
 import { useActiveAccount } from "thirdweb/react";
 import { shortenAddress } from "thirdweb/utils";
+import { useTransactionHistory } from "@/features/gateway";
 
 type ViewMode = 'main' | 'smart';
+type TabMode = 'history' | 'assets';
 
 export default function PortfolioPage() {
   const account = useActiveAccount();
@@ -53,7 +55,21 @@ export default function PortfolioPage() {
     refreshAssets: refreshSmartAssets,
   } = useSmartWalletPortfolio();
 
+  // Transaction History
+  const {
+    transactions,
+    loading: txLoading,
+    error: txError,
+    refresh: refreshTx,
+    loadMore: loadMoreTx,
+    hasMore: hasMoreTx,
+  } = useTransactionHistory({
+    userId: account?.address || '',
+    limit: 10,
+  });
+
   const [viewMode, setViewMode] = useState<ViewMode>('main');
+  const [activeTab, setActiveTab] = useState<TabMode>('history');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -512,167 +528,173 @@ export default function PortfolioPage() {
           </motion.div>
         )}
 
-        {/* Section 2: Allocation Bar */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="mb-12"
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-             <h3 className="text-lg font-medium text-white">Allocation</h3>
-             <div className="flex flex-wrap gap-2 sm:gap-4 text-xs">
-                {currentStats.allocation.map(item => (
-                   <div key={item.label} className="flex items-center gap-1.5 sm:gap-2">
-                      <div className={cn("w-2 h-2 rounded-full", item.color)} />
-                      <span className="text-zinc-400">{item.label} ({item.value.toFixed(0)}%)</span>
-                   </div>
-                ))}
-             </div>
-          </div>
-          <div className="h-4 w-full rounded-full flex overflow-hidden bg-white/5">
-             {currentStats.allocation.map(item => (
+        {/* Allocation Bar */}
+        {currentStats.allocation.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="mb-8"
+          >
+            <div className="h-4 w-full rounded-full flex overflow-hidden bg-white/5">
+              {currentStats.allocation.map(item => (
                 <div
-                   key={item.label}
-                   className={cn("h-full transition-all duration-500", item.color)}
-                   style={{ width: `${item.value}%` }}
+                  key={item.label}
+                  className={cn("h-full transition-all duration-500", item.color)}
+                  style={{ width: `${item.value}%` }}
                 />
-             ))}
-          </div>
-        </motion.div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2 sm:gap-4 mt-2">
+              {currentStats.allocation.map(item => (
+                <div key={item.label} className="flex items-center gap-1.5 sm:gap-2">
+                  <div className={cn("w-2 h-2 rounded-full", item.color)} />
+                  <span className="text-xs text-zinc-400">{item.label} ({item.value.toFixed(0)}%)</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
-        {/* Section 3: Detailed Positions */}
+        {/* Tabs: History / Assets */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="space-y-4"
         >
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white">Active Positions</h2>
+          {/* Tab Switcher */}
+          <div className="flex gap-1 mb-4 bg-white/5 rounded-xl p-1 w-fit">
+            <button
+              onClick={() => setActiveTab('history')}
+              className={cn(
+                "px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                activeTab === 'history'
+                  ? "bg-white/10 text-white"
+                  : "text-zinc-500 hover:text-zinc-300"
+              )}
+            >
+              History
+            </button>
+            <button
+              onClick={() => setActiveTab('assets')}
+              className={cn(
+                "px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                activeTab === 'assets'
+                  ? "bg-white/10 text-white"
+                  : "text-zinc-500 hover:text-zinc-300"
+              )}
+            >
+              Assets
+            </button>
           </div>
 
-          {/* Empty/Loading States */}
-          {currentAssets.length === 0 && !currentLoading && (
-            <GlassCard className="p-8 text-center text-zinc-500 text-sm bg-[#0A0A0A]/60">
-              {isSmartWalletView
-                ? 'No assets in Smart Wallet. Deposit funds to get started.'
-                : account
-                  ? 'No assets found. Try creating a wallet or bridging funds.'
-                  : 'Connect wallet to view portfolio.'
-              }
-              {isSmartWalletView && selectedAccount && (
+          {/* Tab Content */}
+          {activeTab === 'history' && (
+            <div>
+              {txLoading && transactions.length === 0 && (
+                <div className="py-8 text-center text-zinc-600 text-sm flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading...
+                </div>
+              )}
+
+              {!txLoading && transactions.length === 0 && (
+                <div className="py-8 text-center text-zinc-600 text-sm">
+                  {txError ? <span className="text-red-400/70">{txError.message}</span> : 'No activity yet.'}
+                </div>
+              )}
+
+              <div className="space-y-1">
+                {transactions.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors"
+                  >
+                    <div className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
+                      tx.status === 'confirmed' ? "bg-emerald-500/10 text-emerald-400" :
+                      tx.status === 'failed' ? "bg-red-500/10 text-red-400" :
+                      "bg-yellow-500/10 text-yellow-400"
+                    )}>
+                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-white">
+                        {tx.fromAmountDisplay} {tx.fromAssetSymbol}
+                        <span className="text-zinc-600 mx-1">&rarr;</span>
+                        {tx.toAmountDisplay ? `${tx.toAmountDisplay} ` : ''}{tx.toAssetSymbol || ''}
+                      </div>
+                      <div className="text-[11px] text-zinc-600">
+                        <span className="capitalize">{tx.action}</span>
+                        <span className="mx-1">&middot;</span>
+                        {new Date(tx.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <div className={cn(
+                      "px-2 py-0.5 rounded-full text-[10px] font-medium",
+                      tx.status === 'confirmed' ? "bg-emerald-500/10 text-emerald-400" :
+                      tx.status === 'failed' ? "bg-red-500/10 text-red-400" :
+                      "bg-yellow-500/10 text-yellow-400"
+                    )}>
+                      {tx.status}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {hasMoreTx && transactions.length > 0 && (
                 <button
-                  onClick={() => setShowDepositModal(true)}
-                  className="block mt-4 mx-auto text-cyan-400 hover:text-cyan-300 transition-colors"
+                  onClick={loadMoreTx}
+                  disabled={txLoading}
+                  className="w-full mt-2 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
                 >
-                  Deposit Funds
+                  {txLoading ? 'Loading...' : 'Load more'}
                 </button>
               )}
-            </GlassCard>
-          )}
-          {currentLoading && currentAssets.length === 0 && (
-            <GlassCard className="p-8 text-center text-zinc-500 text-sm bg-[#0A0A0A]/60">
-              Scanning blockchain...
-            </GlassCard>
+            </div>
           )}
 
-          {/* Mobile Cards View */}
-          <div className="md:hidden space-y-3">
-            {currentAssets.map((asset) => (
-              <GlassCard
-                key={`mobile-${asset.network}-${asset.symbol}-${asset.address}`}
-                className="p-4 bg-[#0A0A0A]/60"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      "w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-inner",
-                      "bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10"
-                    )}>
+          {activeTab === 'assets' && (
+            <div>
+              {currentAssets.length === 0 && !currentLoading && (
+                <div className="py-8 text-center text-zinc-600 text-sm">
+                  {isSmartWalletView ? 'No assets in Smart Wallet.' : account ? 'No assets found.' : 'Connect wallet.'}
+                </div>
+              )}
+              {currentLoading && currentAssets.length === 0 && (
+                <div className="py-8 text-center text-zinc-600 text-sm flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Scanning...
+                </div>
+              )}
+
+              <div className="space-y-1">
+                {currentAssets.map((asset) => (
+                  <div
+                    key={`${asset.network}-${asset.symbol}-${asset.address}`}
+                    className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10 flex-shrink-0">
                       {asset.icon ? (
                         <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
                       ) : (
                         asset.symbol[0]
                       )}
                     </div>
-                    <div>
-                      <div className="font-medium text-white">{asset.name}</div>
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-zinc-500">{asset.symbol}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-400 border border-white/5">{asset.network}</span>
+                        <span className="text-sm text-white font-medium">{asset.symbol}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-500">{asset.network}</span>
                       </div>
+                      <span className="text-xs text-zinc-500 font-mono">{asset.balance}</span>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm text-white font-mono">{asset.value}</div>
+                      <div className="text-[10px] text-zinc-600 font-mono">{asset.price}</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-white font-mono font-semibold">{asset.value}</div>
-                    <div className="text-xs text-zinc-500">{asset.price}</div>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between pt-3 border-t border-white/5">
-                  <div className="flex items-center gap-1.5 text-zinc-400 text-xs">
-                    <Wallet className="w-3 h-3" />
-                    <span>{asset.protocol}</span>
-                  </div>
-                  <div className="text-zinc-300 font-mono text-sm">{asset.balance}</div>
-                </div>
-              </GlassCard>
-            ))}
-          </div>
-
-          {/* Desktop Table View */}
-          <GlassCard className="overflow-hidden bg-[#0A0A0A]/60 hidden md:block">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-white/5 text-xs text-zinc-500 uppercase tracking-wider">
-                    <th className="p-4 font-medium">Asset</th>
-                    <th className="p-4 font-medium">Protocol</th>
-                    <th className="p-4 font-medium">Balance</th>
-                    <th className="p-4 font-medium">Value</th>
-                    <th className="p-4 font-medium">Price</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {currentAssets.map((asset) => (
-                    <tr key={`desktop-${asset.network}-${asset.symbol}-${asset.address}`} className="group hover:bg-white/5 transition-colors">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-inner",
-                            "bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10"
-                          )}>
-                            {asset.icon ? (
-                              <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
-                            ) : (
-                              asset.symbol[0]
-                            )}
-                          </div>
-                          <div>
-                            <div className="font-medium text-white">{asset.name}</div>
-                            <div className="flex items-center gap-1.5">
-                               <span className="text-xs text-zinc-500">{asset.symbol}</span>
-                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-400 border border-white/5">{asset.network}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4 text-zinc-400 text-sm">
-                        <div className="flex items-center gap-2">
-                          {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3" />}
-                          {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-400" />}
-                          {asset.protocol}
-                        </div>
-                      </td>
-                      <td className="p-4 text-zinc-300 font-mono text-sm">{asset.balance}</td>
-                      <td className="p-4 text-white font-mono font-medium text-sm">{asset.value}</td>
-                      <td className="p-4 text-zinc-500 font-mono text-sm">{asset.price}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                ))}
+              </div>
             </div>
-          </GlassCard>
+          )}
         </motion.div>
 
       </div>
