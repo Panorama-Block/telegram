@@ -1,51 +1,49 @@
-/* ===== Docs Architecture Page ===== */
+/* ===== Docs Architecture — Panorama Design System ===== */
 
-@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
-
-/* ── Root ── */
 .docs-root {
   position: relative;
   width: 100vw;
   height: 100dvh;
-  background: #0f172a;
+  background: #050606;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  font-family: var(--font-jakarta), sans-serif;
 }
 
-/* ── Background glows ── */
+/* ── Background glows (matches SeniorAppShell radial gradients) ── */
 .docs-glow {
   position: absolute;
   border-radius: 50%;
-  filter: blur(120px);
+  filter: blur(140px);
   pointer-events: none;
   z-index: 0;
 }
 
 .docs-glow--purple {
-  width: 600px;
-  height: 600px;
+  width: 500px;
+  height: 500px;
   top: -200px;
   left: -100px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(10, 196, 227, 0.12) 0%, transparent 50%);
 }
 
 .docs-glow--cyan {
-  width: 500px;
-  height: 500px;
+  width: 400px;
+  height: 400px;
   bottom: -150px;
-  right: -100px;
-  background: radial-gradient(circle, rgba(6, 182, 212, 0.12) 0%, transparent 70%);
+  right: -80px;
+  background: radial-gradient(circle, rgba(11, 140, 194, 0.08) 0%, transparent 45%);
 }
 
-/* ── Header ── */
+/* ── Header (matches desktop header: bg-[#08090c]/90 backdrop-blur-2xl border-white/5) ── */
 .docs-header {
   position: relative;
   z-index: 10;
-  padding: 16px 32px;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.2);
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(16px);
+  padding: 14px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(8, 9, 12, 0.9);
+  backdrop-filter: blur(40px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -54,76 +52,71 @@
 .docs-header__content {
   display: flex;
   align-items: baseline;
-  gap: 16px;
+  gap: 12px;
 }
 
 .docs-header__title {
-  font-family: "Orbitron", sans-serif;
-  font-weight: 900;
-  font-size: 20px;
-  letter-spacing: 0.15em;
-  color: #f1f5f9;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.98);
   margin: 0;
 }
 
 .docs-header__title-accent {
-  color: #8b5cf6;
-  text-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+  color: #06b6d4;
 }
 
 .docs-header__subtitle {
-  font-family: "Rajdhani", sans-serif;
-  font-weight: 500;
-  font-size: 14px;
-  color: #64748b;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.03em;
   margin: 0;
 }
 
-/* Layer breadcrumb in header */
 .docs-header__layers {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
+/* Layer chips (matches sidebar nav active style: bg-cyan-500/10 border-cyan-500/20) */
 .docs-layer {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 4px 12px;
-  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 8px;
   letter-spacing: 0.04em;
 }
 
 .docs-layer--purple {
-  background: rgba(139, 92, 246, 0.15);
-  color: #a78bfa;
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .docs-layer--zico {
-  background: rgba(236, 72, 153, 0.15);
-  color: #f472b6;
-  border: 1px solid rgba(236, 72, 153, 0.3);
+  background: rgba(6, 182, 212, 0.1);
+  color: #22d3ee;
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.1);
 }
 
 .docs-layer--cyan {
-  background: rgba(6, 182, 212, 0.15);
-  color: #22d3ee;
-  border: 1px solid rgba(6, 182, 212, 0.3);
+  background: rgba(6, 182, 212, 0.06);
+  color: rgba(6, 182, 212, 0.7);
+  border: 1px solid rgba(6, 182, 212, 0.12);
 }
 
 .docs-layer--amber {
-  background: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.06);
+  color: rgba(245, 158, 11, 0.6);
+  border: 1px solid rgba(245, 158, 11, 0.12);
 }
 
 .docs-layer-arrow {
-  color: #334155;
-  font-size: 14px;
+  color: rgba(255, 255, 255, 0.15);
+  font-size: 12px;
 }
 
 /* ── Canvas ── */
@@ -133,142 +126,155 @@
   z-index: 1;
 }
 
-/* ── Legend ── */
+/* ── Legend (matches header glass style) ── */
 .docs-legend {
   position: relative;
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 12px 32px;
-  border-top: 1px solid rgba(139, 92, 246, 0.2);
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(16px);
-  font-family: "Rajdhani", sans-serif;
+  gap: 20px;
+  padding: 10px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(8, 9, 12, 0.9);
+  backdrop-filter: blur(40px);
 }
 
 .docs-legend__title {
-  font-family: "Orbitron", sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  color: #94a3b8;
-  letter-spacing: 0.12em;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.25);
+  letter-spacing: 0.1em;
 }
 
 .docs-legend__items {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
 .docs-legend__item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #94a3b8;
-  font-weight: 500;
+  gap: 5px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .docs-legend__dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
 }
 
-.docs-legend__dot--purple {
-  background: #8b5cf6;
-  box-shadow: 0 0 8px rgba(139, 92, 246, 0.6);
-}
-
 .docs-legend__dot--pink {
-  background: #ec4899;
-  box-shadow: 0 0 8px rgba(236, 72, 153, 0.6);
+  background: #22d3ee;
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.5);
 }
 
 .docs-legend__dot--cyan {
   background: #06b6d4;
-  box-shadow: 0 0 8px rgba(6, 182, 212, 0.6);
+  box-shadow: 0 0 6px rgba(6, 182, 212, 0.4);
 }
 
 .docs-legend__dot--amber {
   background: #f59e0b;
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
 }
 
-.docs-legend__dot--gray {
-  background: #64748b;
+.docs-legend__dot--future {
+  background: #7c3aed;
+  box-shadow: 0 0 6px rgba(124, 58, 237, 0.4);
 }
 
 .docs-legend__line {
-  width: 24px;
+  width: 20px;
   height: 2px;
 }
 
 .docs-legend__line--solid {
-  background: #8b5cf6;
-  box-shadow: 0 0 6px rgba(139, 92, 246, 0.4);
+  background: #06b6d4;
 }
 
 .docs-legend__line--dashed {
   background: repeating-linear-gradient(
     90deg,
-    #64748b 0px,
-    #64748b 6px,
-    transparent 6px,
-    transparent 10px
+    rgba(255, 255, 255, 0.2) 0px,
+    rgba(255, 255, 255, 0.2) 5px,
+    transparent 5px,
+    transparent 9px
   );
 }
 
-/* ===== Service Node ===== */
+/* ===== Service Node (matches GlassCard: bg-white/5 backdrop-blur-md border-white/10 rounded-2xl) ===== */
 
 .snode {
   position: relative;
   min-width: 200px;
-  padding: 14px 18px 10px;
-  border-radius: 14px;
-  border: 1.5px solid rgba(100, 116, 139, 0.3);
-  background: rgba(15, 23, 42, 0.85);
+  padding: 14px 16px 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(12px);
   cursor: grab;
   transition: border-color 0.25s, box-shadow 0.25s;
 }
 
-/* Category styles */
+.snode:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
 .snode--core {
-  border-color: rgba(139, 92, 246, 0.45);
-  box-shadow: 0 0 20px rgba(139, 92, 246, 0.12);
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .snode--defi {
-  border-color: rgba(6, 182, 212, 0.45);
-  box-shadow: 0 0 20px rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.15);
+  background: rgba(6, 182, 212, 0.04);
+}
+
+.snode--defi:hover {
+  border-color: rgba(6, 182, 212, 0.25);
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.08);
 }
 
 .snode--external {
-  border-color: rgba(100, 116, 139, 0.35);
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .snode--infra {
-  border-color: rgba(245, 158, 11, 0.45);
-  box-shadow: 0 0 20px rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.12);
+  background: rgba(245, 158, 11, 0.03);
+}
+
+.snode--infra:hover {
+  border-color: rgba(245, 158, 11, 0.2);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.06);
 }
 
 .snode--zico {
-  border-color: rgba(236, 72, 153, 0.5);
-  box-shadow: 0 0 30px rgba(236, 72, 153, 0.2), 0 0 60px rgba(236, 72, 153, 0.08);
+  border-color: rgba(34, 211, 238, 0.22);
+  background: rgba(6, 182, 212, 0.06);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.08), 0 0 30px rgba(34, 211, 238, 0.06);
   min-width: 240px;
 }
 
-/* Hover states */
-.snode:hover {
-  border-color: rgba(139, 92, 246, 0.6);
+.snode--zico:hover {
+  border-color: rgba(34, 211, 238, 0.35);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.15), 0 0 40px rgba(34, 211, 238, 0.1);
 }
 
-.snode--zico:hover {
-  border-color: rgba(236, 72, 153, 0.7);
-  box-shadow: 0 0 40px rgba(236, 72, 153, 0.3), 0 0 80px rgba(236, 72, 153, 0.1);
+.snode--future {
+  border-color: rgba(124, 58, 237, 0.15);
+  background: rgba(124, 58, 237, 0.04);
+  border-style: dashed;
+}
+
+.snode--future:hover {
+  border-color: rgba(124, 58, 237, 0.25);
+  box-shadow: 0 0 20px rgba(124, 58, 237, 0.08);
 }
 
 /* Inner layout */
@@ -285,35 +291,40 @@
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: rgba(139, 92, 246, 0.12);
-  color: #a78bfa;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.3);
   flex-shrink: 0;
 }
 
 .snode--defi .snode__icon-wrap {
-  background: rgba(6, 182, 212, 0.12);
-  color: #22d3ee;
+  background: rgba(6, 182, 212, 0.08);
+  color: #0891b2;
 }
 
 .snode--external .snode__icon-wrap {
-  background: rgba(100, 116, 139, 0.15);
-  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.3);
 }
 
 .snode--infra .snode__icon-wrap {
-  background: rgba(245, 158, 11, 0.12);
-  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.06);
+  color: #b45309;
 }
 
 .snode--zico .snode__icon-wrap {
-  background: rgba(236, 72, 153, 0.15);
-  color: #f472b6;
+  background: rgba(34, 211, 238, 0.1);
+  color: #22d3ee;
   width: 40px;
   height: 40px;
 }
 
+.snode--future .snode__icon-wrap {
+  background: rgba(124, 58, 237, 0.08);
+  color: #7c3aed;
+}
+
 .snode__icon-wrap--img {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .snode__brand-img {
@@ -328,79 +339,226 @@
 }
 
 .snode__label {
-  font-family: "Orbitron", sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: #f1f5f9;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .snode--zico .snode__label {
-  font-size: 14px;
-  color: #f472b6;
-  text-shadow: 0 0 12px rgba(236, 72, 153, 0.4);
+  font-size: 13px;
+  color: #22d3ee;
+}
+
+.snode--future .snode__label {
+  color: #a78bfa;
 }
 
 .snode__desc {
-  font-family: "Rajdhani", sans-serif;
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 500;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
 }
 
 /* Status badges */
 .snode-badge {
   display: inline-block;
   margin-top: 8px;
-  padding: 2px 10px;
+  padding: 2px 8px;
   border-radius: 6px;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-align: center;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
 }
 
 .snode-badge--active {
-  background: rgba(34, 197, 94, 0.15);
-  color: #4ade80;
-  border: 1px solid rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.2);
 }
 
 .snode-badge--beta {
-  background: rgba(251, 191, 36, 0.15);
-  color: #fbbf24;
-  border: 1px solid rgba(251, 191, 36, 0.3);
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.2);
 }
 
 .snode-badge--inactive {
-  background: rgba(100, 116, 139, 0.15);
-  color: #94a3b8;
-  border: 1px solid rgba(100, 116, 139, 0.3);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.snode-badge--planned {
+  background: rgba(124, 58, 237, 0.1);
+  color: #8b5cf6;
+  border: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+/* ===== Group Nodes (Containers — glass style matching GlassCard) ===== */
+
+.gnode {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.gnode--blockchain {
+  background: #08090c;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.gnode--engine {
+  background: #0a0c10;
+  border: 1px solid rgba(6, 182, 212, 0.1);
+  border-radius: 20px;
+}
+
+/* Corner accents */
+.gnode__corner {
+  position: absolute;
+  z-index: 2;
+}
+
+.gnode__corner--tl {
+  top: 0; left: 0;
+  width: 28px; height: 28px;
+  border-top: 2px solid;
+  border-left: 2px solid;
+  border-top-left-radius: 24px;
+}
+
+.gnode__corner--tr {
+  top: 0; right: 0;
+  width: 28px; height: 28px;
+  border-top: 2px solid;
+  border-right: 2px solid;
+  border-top-right-radius: 24px;
+}
+
+.gnode__corner--bl {
+  bottom: 0; left: 0;
+  width: 28px; height: 28px;
+  border-bottom: 2px solid;
+  border-left: 2px solid;
+  border-bottom-left-radius: 24px;
+}
+
+.gnode__corner--br {
+  bottom: 0; right: 0;
+  width: 28px; height: 28px;
+  border-bottom: 2px solid;
+  border-right: 2px solid;
+  border-bottom-right-radius: 24px;
+}
+
+.gnode--blockchain .gnode__corner--tl,
+.gnode--blockchain .gnode__corner--tr,
+.gnode--blockchain .gnode__corner--bl,
+.gnode--blockchain .gnode__corner--br {
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.gnode--engine .gnode__corner--tl,
+.gnode--engine .gnode__corner--tr,
+.gnode--engine .gnode__corner--bl,
+.gnode--engine .gnode__corner--br {
+  width: 20px; height: 20px;
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
+.gnode--engine .gnode__corner--tl { border-top-left-radius: 20px; }
+.gnode--engine .gnode__corner--tr { border-top-right-radius: 20px; }
+.gnode--engine .gnode__corner--bl { border-bottom-left-radius: 20px; }
+.gnode--engine .gnode__corner--br { border-bottom-right-radius: 20px; }
+
+/* Label badge (matches sidebar item style) */
+.gnode__badge {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 8px;
+  z-index: 5;
+}
+
+.gnode--blockchain .gnode__badge {
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.12);
+}
+
+.gnode--engine .gnode__badge {
+  background: rgba(6, 182, 212, 0.06);
+  border: 1px solid rgba(6, 182, 212, 0.1);
+}
+
+.gnode__logo {
+  object-fit: contain;
+  opacity: 0.6;
+}
+
+.gnode__label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gnode--blockchain .gnode__label { color: rgba(245, 158, 11, 0.7); }
+.gnode--engine .gnode__label { color: rgba(6, 182, 212, 0.6); }
+
+.gnode__sep {
+  color: rgba(255, 255, 255, 0.1);
+  font-size: 10px;
+}
+
+.gnode__desc {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.gnode__glow {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60%; height: 40%;
+  background: radial-gradient(ellipse, rgba(245, 158, 11, 0.03) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* ===== React Flow overrides ===== */
 
 .docs-canvas .react-flow__background {
-  background: #0f172a;
+  background: #050606;
 }
 
 .docs-canvas .react-flow__controls button {
-  background: rgba(15, 23, 42, 0.95);
+  background: rgba(255, 255, 255, 0.04);
   border: none;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.15);
-  color: #94a3b8;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.3);
   width: 32px;
   height: 32px;
 }
 
 .docs-canvas .react-flow__controls button:hover {
-  background: rgba(139, 92, 246, 0.2);
-  color: #e2e8f0;
+  background: rgba(6, 182, 212, 0.08);
+  color: #22d3ee;
 }
 
 .docs-canvas .react-flow__controls button svg {
   fill: currentColor;
+}
+
+.docs-canvas .react-flow__controls {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
 }
 
 .docs-canvas .react-flow__minimap {
