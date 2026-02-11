@@ -17,7 +17,7 @@ import MarkdownMessage from '@/shared/ui/MarkdownMessage';
 import Image from 'next/image';
 import '../../shared/ui/loader.css';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
-import { AgentsClient } from '@/clients/agentsClient';
+import { AgentsClient, type Conversation } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { swapApi } from '@/features/swap/api';
@@ -49,10 +49,7 @@ interface Message {
   metadata?: Record<string, unknown> | null;
 }
 
-interface Conversation {
-  id: string;
-  title: string;
-}
+
 
 const MAX_CONVERSATION_TITLE_LENGTH = 48;
 const LAST_CONVERSATION_STORAGE_KEY = 'chat:lastConversationId';
@@ -310,18 +307,34 @@ function autoFormatAssistantMarkdown(text: string): string {
 
   return t.trim();
 }
-function deriveConversationTitle(fallbackTitle: string, messages: Message[]): string {
+function deriveConversationTitle(fallbackTitle: string | undefined, messages: Message[]): string {
   const firstUserMessage = messages.find((msg) => msg.role === 'user' && msg.content.trim().length > 0);
-  if (!firstUserMessage) return fallbackTitle;
+  if (!firstUserMessage) return fallbackTitle || 'New Chat';
 
   const normalized = firstUserMessage.content.trim().replace(/\s+/g, ' ');
-  if (!normalized) return fallbackTitle;
+  if (!normalized) return fallbackTitle || 'New Chat';
 
   if (normalized.length > MAX_CONVERSATION_TITLE_LENGTH) {
     return `${normalized.slice(0, MAX_CONVERSATION_TITLE_LENGTH - 3)}...`;
   }
 
   return normalized;
+}
+
+function normalizeConversationId(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+
+  if (value && typeof value === 'object') {
+    const rec = value as Record<string, unknown>;
+    return (
+      normalizeConversationId(rec.conversation_id) ||
+      normalizeConversationId(rec.conversationId) ||
+      normalizeConversationId(rec.id)
+    );
+  }
+
+  return null;
 }
 
 export default function ChatPage() {
@@ -451,12 +464,12 @@ export default function ChatPage() {
   // CRITICAL: Use the currently connected wallet address as the primary userId
   // This ensures each user sees only their own chats, even on shared devices
   const userId = account?.address?.toLowerCase() || getWalletAddress() || (user?.id ? String(user.id) : undefined);
-  
+
   // Filter out disclaimer messages from the backend
   const DISCLAIMER_TEXT = 'This highly experimental chatbot is not intended for making important decisions';
   const rawMessages = activeConversationId ? (messagesByConversation[activeConversationId] ?? []) : [];
   const activeMessages = rawMessages.filter((msg) => !msg.content.includes(DISCLAIMER_TEXT));
-  
+
   const isHistoryLoading = loadingConversationId === activeConversationId;
   // When pendingNewChat is true, we're in "new chat" mode without a backend conversation
   // In this case, always show the welcome screen (hasMessages = false)
@@ -468,6 +481,12 @@ export default function ChatPage() {
     }
     return 'User';
   }, [account?.address, getWalletAddress]);
+
+  const activeConversationTitle = useMemo(() => {
+    if (!activeConversationId) return 'Zico AI Agent';
+    const conversation = conversations.find((c) => c.id === activeConversationId);
+    return conversation?.title || 'Chat';
+  }, [activeConversationId, conversations]);
 
   const getConversationPreview = useCallback(
     (conversationId: string) => {
@@ -585,6 +604,7 @@ export default function ChatPage() {
       setLoadingConversationId(conversationId);
       const userKey = userId ?? '__anonymous__';
       debug('messages:load:start', { conversationId, userId: userKey });
+      console.log('🔄 [CHAT] Loading messages for conversation:', conversationId);
 
       try {
         const authOpts = getAuthOptions();
@@ -611,11 +631,13 @@ export default function ChatPage() {
             content,
             timestamp,
             agentName: msg.agent_name ?? null,
+            metadata: msg.metadata ?? null,
           } satisfies Message;
         });
 
         setInitializationError(null);
         debug('messages:load:success', { conversationId, messages: mappedHistory.length });
+        console.log('✅ [CHAT] Messages loaded:', mappedHistory.length, 'for conversation:', conversationId);
         // If backend returned empty but we have cached messages, keep cached
         const finalHistory = mappedHistory.length === 0 && cached && cached.length > 0 ? cached : mappedHistory;
         setMessagesByConversation((prev) => ({
@@ -700,12 +722,12 @@ export default function ChatPage() {
     const initialise = async () => {
       try {
         const authOpts = getAuthOptions();
-        let conversationIds: string[] = [];
+        let fetchedConversations: Conversation[] = [];
         let conversationsRequestFailed = false;
 
         try {
-          conversationIds = await agentsClient.listConversations(userId, authOpts);
-          debug('bootstrap:listConversations', { userId: userKey, received: conversationIds.length });
+          fetchedConversations = await agentsClient.listConversations(userId, authOpts);
+          debug('bootstrap:listConversations', { userId: userKey, received: fetchedConversations.length });
         } catch (error) {
           console.error('Error fetching chat conversations:', error);
           conversationsRequestFailed = true;
@@ -719,7 +741,6 @@ export default function ChatPage() {
         }
 
         if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) {
-          console.log("return early: ", isMountedRef.current, bootstrapKeyRef.current)
           return;
         }
 
@@ -766,19 +787,19 @@ export default function ChatPage() {
         const storedConversationId =
           typeof window !== 'undefined' ? localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY) : null;
 
-        if (conversationIds.length > 0) {
-          if (storedConversationId && conversationIds.includes(storedConversationId)) {
+        if (fetchedConversations.length > 0) {
+          if (storedConversationId && fetchedConversations.some(c => c.id === storedConversationId)) {
             targetConversationId = storedConversationId;
             debug('bootstrap:restoreStoredConversation', { targetConversationId });
           } else {
-            targetConversationId = conversationIds[0];
+            targetConversationId = fetchedConversations[0].id;
             debug('bootstrap:useFirstConversation', { targetConversationId });
           }
         } else {
           try {
             targetConversationId = await agentsClient.createConversation(userId, authOpts);
             if (targetConversationId) {
-              conversationIds = [targetConversationId];
+              fetchedConversations = [{ id: targetConversationId, title: 'New Chat' }];
             }
             debug('bootstrap:createConversation', { targetConversationId });
           } catch (error) {
@@ -795,31 +816,21 @@ export default function ChatPage() {
 
         if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) return;
 
-        const mappedConversations: Conversation[] = conversationIds.length > 0
-          ? conversationIds.map((id, index) => ({ id, title: `Chat ${index + 1}` }))
-          : targetConversationId
-            ? [{ id: targetConversationId, title: 'New Chat' }]
-            : [];
-
-        setConversations(mappedConversations);
+        setConversations(fetchedConversations);
         try {
-          localStorage.setItem(`${CONVERSATION_LIST_KEY}:${userKey}`, JSON.stringify(conversationIds));
+          // Store only IDs to maintain compatibility with loadCachedConversationIds
+          const idsToCache = fetchedConversations.map(c => c.id);
+          localStorage.setItem(`${CONVERSATION_LIST_KEY}:${userKey}`, JSON.stringify(idsToCache));
         } catch (e) {
           console.warn('[CHAT CACHE] Failed to store conversation list', e);
         }
 
-        // Initialize messagesByConversation with empty array for target conversation
-        if (targetConversationId) {
-          setMessagesByConversation((prev) => ({
-            ...prev,
-            [targetConversationId as string]: prev[targetConversationId as string] ?? [],
-          }));
-        }
+
 
         // Use the selected/remembered conversation as the active one
         setActiveConversation(targetConversationId);
         setInitializationError(null);
-        debug('bootstrap:targetSelected', { targetId: targetConversationId, totalConversations: mappedConversations.length });
+        debug('bootstrap:targetSelected', { targetId: targetConversationId, totalConversations: fetchedConversations.length });
       } catch (error) {
         console.error('Error initialising chat:', error);
         debug('bootstrap:error', { error: error instanceof Error ? error.message : String(error) });
@@ -866,7 +877,7 @@ export default function ChatPage() {
           setIsSending(false);
           return;
         }
-        
+
         conversationId = newConversationId;
         const newConversation: Conversation = {
           id: newConversationId,
@@ -1195,6 +1206,7 @@ export default function ChatPage() {
 
     try {
       const newConversationId = await agentsClient.createConversation(userId, getAuthOptions());
+      console.log('[DEBUG] createNewChat: Generated ID:', newConversationId);
       if (!newConversationId || !isMountedRef.current) return;
 
       const newConversation: Conversation = {
@@ -1226,7 +1238,9 @@ export default function ChatPage() {
     }
   };
 
-  const handleSelectConversation = (conversationId: string) => {
+  const handleSelectConversation = (conversationInput: unknown) => {
+    const conversationId = normalizeConversationId(conversationInput);
+    if (!conversationId) return;
     setActiveConversation(conversationId);
     setInitializationError(null);
     debug('conversation:select', { conversationId });
@@ -1234,6 +1248,7 @@ export default function ChatPage() {
 
   // Handle ?new=true query parameter to show new chat welcome screen
   const newChatRequested = searchParams.get('new') === 'true';
+  const conversationIdFromUrl = normalizeConversationId(searchParams.get('conversation_id') ?? searchParams.get('id'));
   const newChatTriggeredRef = useRef(false);
 
   useEffect(() => {
@@ -1252,12 +1267,21 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newChatRequested, initializing, userId]);
 
+  useEffect(() => {
+    if (!conversationIdFromUrl || initializing) return;
+    if (activeConversationId === conversationIdFromUrl) return;
+
+    setPendingNewChat(false);
+    setInitializationError(null);
+    setActiveConversation(conversationIdFromUrl);
+  }, [activeConversationId, conversationIdFromUrl, initializing, setActiveConversation]);
+
   // Listen for custom event from sidebar "+" button
   useEffect(() => {
     const handleNewChatEvent = (event: Event) => {
       console.log('[CHAT] New chat event received');
       const customEvent = event as CustomEvent<{ pending?: boolean; conversationId?: string }>;
-      
+
       if (customEvent.detail?.pending) {
         // Show welcome screen without creating backend conversation
         // Conversation will be created when user sends first message
@@ -1267,9 +1291,10 @@ export default function ChatPage() {
         setInitializationError(null);
       } else if (customEvent.detail?.conversationId) {
         // Legacy: Conversation was already created, set it up
-        const newConversationId = customEvent.detail.conversationId;
+        const newConversationId = normalizeConversationId(customEvent.detail.conversationId);
+        if (!newConversationId) return;
         console.log('[CHAT] Setting up new conversation:', newConversationId);
-        
+
         const newConversation: Conversation = {
           id: newConversationId,
           title: 'New Chat',
@@ -1287,17 +1312,23 @@ export default function ChatPage() {
     };
 
     const handleSelectChatEvent = (event: Event) => {
-      const customEvent = event as CustomEvent<{ conversationId: string }>;
-      console.log('[CHAT] Select chat event received:', customEvent.detail?.conversationId);
-      if (customEvent.detail?.conversationId) {
+      const customEvent = event as CustomEvent<{ conversationId: unknown }>;
+      console.log('📍 [CHAT] Select chat event received:', customEvent.detail);
+      const conversationId = normalizeConversationId(customEvent.detail?.conversationId);
+      if (conversationId) {
+        console.log('👉 [CHAT] Handling selection for ID:', conversationId);
         setPendingNewChat(false); // Exit pending mode when selecting existing chat
-        handleSelectConversation(customEvent.detail.conversationId);
+        handleSelectConversation(conversationId);
+      } else {
+        console.warn('⚠️ [CHAT] Received select event without conversationId:', customEvent.detail);
       }
     };
 
+    console.log('[ChatPage] Adding event listeners for panorama:selectchat');
     window.addEventListener('panorama:newchat', handleNewChatEvent);
     window.addEventListener('panorama:selectchat', handleSelectChatEvent);
     return () => {
+      console.log('[ChatPage] Removing event listeners for panorama:selectchat');
       window.removeEventListener('panorama:newchat', handleNewChatEvent);
       window.removeEventListener('panorama:selectchat', handleSelectChatEvent);
     };
@@ -1365,6 +1396,7 @@ export default function ChatPage() {
 
         if (bridgeRes.success && bridgeRes.quote) {
           setSwapQuote({
+            success: true,
             quote: bridgeRes.quote,
             approval: undefined
           });
@@ -1387,6 +1419,7 @@ export default function ChatPage() {
 
         if (quoteResponse.success && quoteResponse.quote) {
           setSwapQuote({
+            success: true,
             quote: quoteResponse.quote,
             approval: quoteResponse.approval
           });
@@ -1424,553 +1457,553 @@ export default function ChatPage() {
           {/* Onboarding Modal - Shows when user has no balance after login */}
           <OnboardingModal />
 
-        <SeniorAppShell pageTitle="Zico AI Agent">
-          <div className="flex flex-col h-full relative bg-black">
-            {/* Ambient God Ray */}
-            <div className="absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-500/20 via-slate-900/5 to-black blur-3xl pointer-events-none z-0" />
+          <SeniorAppShell pageTitle={activeConversationTitle}>
+            <div className="flex flex-col h-full relative bg-black">
+              {/* Ambient God Ray */}
+              <div className="absolute top-0 inset-x-0 h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-500/20 via-slate-900/5 to-black blur-3xl pointer-events-none z-0" />
 
-            <div className="flex-1 min-w-0 flex flex-col overflow-hidden z-10">
-              <div ref={messagesContainerRef} className="flex-1 overflow-y-auto scrollbar-hide flex flex-col">
-                {initializing ? (
-                  <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                    Loading your conversations...
-                  </div>
-                ) : !activeConversationId && !pendingNewChat ? (
-                  <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                    Create a new chat to get started.
-                  </div>
-                ) : initializationError && !hasMessages && !pendingNewChat ? (
-                  <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-center min-h-[50vh]">
-                    <p className="text-zinc-400">{initializationError}</p>
-                    <button
-                      onClick={retryBootstrap}
-                      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
-                    >
-                      Try again
-                    </button>
-                  </div>
-                ) : isHistoryLoading && !hasMessages && !pendingNewChat ? (
-                  <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
-                    Loading conversation...
-                  </div>
-                ) : !hasMessages || pendingNewChat ? (
-                  <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
-                    <motion.div
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ duration: 0.8, ease: "easeOut" }}
-                      className="w-full max-w-3xl text-center flex flex-col items-center"
-                    >
-                      {/* Title & Subtitle */}
-                      <div className="space-y-2 md:space-y-4 relative mb-8">
-                        <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
-                          Hello, {displayName}.
-                        </h1>
-                        <p className="text-xl text-zinc-400 font-light">
-                          Zico is ready to navigate the chain.
-                        </p>
-                      </div>
+              <div className="flex-1 min-w-0 flex flex-col overflow-hidden z-10">
+                <div ref={messagesContainerRef} className="flex-1 overflow-y-auto scrollbar-hide flex flex-col">
+                  {initializing ? (
+                    <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                      Loading your conversations...
+                    </div>
+                  ) : !activeConversationId && !pendingNewChat ? (
+                    <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                      Create a new chat to get started.
+                    </div>
+                  ) : initializationError && !hasMessages && !pendingNewChat ? (
+                    <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-center min-h-[50vh]">
+                      <p className="text-zinc-400">{initializationError}</p>
+                      <button
+                        onClick={retryBootstrap}
+                        className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : isHistoryLoading && !hasMessages && !pendingNewChat ? (
+                    <div className="flex-1 flex items-center justify-center text-sm text-zinc-500 min-h-[50vh]">
+                      Loading conversation...
+                    </div>
+                  ) : !hasMessages || pendingNewChat ? (
+                    <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
+                      <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ duration: 0.8, ease: "easeOut" }}
+                        className="w-full max-w-3xl text-center flex flex-col items-center"
+                      >
+                        {/* Title & Subtitle */}
+                        <div className="space-y-2 md:space-y-4 relative mb-8">
+                          <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
+                            Hello, {displayName}.
+                          </h1>
+                          <p className="text-xl text-zinc-400 font-light">
+                            Zico is ready to navigate the chain.
+                          </p>
+                        </div>
 
-                      {/* Main Input Area */}
-                      <div className="relative group max-w-2xl mx-auto w-full my-8 overflow-hidden">
-                        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                        <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 md:gap-3 shadow-2xl transition-all duration-300 overflow-hidden">
-                          {isRecording ? (
-                            // Recording UI
-                            <>
-                              <button
-                                onClick={cancelRecording}
-                                className="p-2 md:p-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors shrink-0"
-                                aria-label="Cancel recording"
-                              >
-                                <X className="w-5 h-5" />
-                              </button>
-                              <div className="flex-1 min-w-0 flex items-center gap-2 md:gap-3">
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-red-500 animate-pulse" />
-                                  <span className="text-white font-mono text-xs md:text-sm">{formatRecordingTime(recordingTime)}</span>
-                                </div>
-                                <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
-                                  <motion.div
-                                    className="h-full bg-gradient-to-r from-red-500 to-orange-500"
-                                    initial={{ width: '0%' }}
-                                    animate={{ width: `${Math.min((recordingTime / 60) * 100, 100)}%` }}
-                                    transition={{ duration: 0.5 }}
-                                  />
-                                </div>
-                              </div>
-                              <button
-                                onClick={sendAudioMessage}
-                                disabled={isSendingAudio}
-                                className="p-2.5 md:p-3 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
-                                aria-label="Send audio"
-                              >
-                                {isSendingAudio ? (
-                                  <Loader2 className="w-5 h-5 animate-spin" />
-                                ) : (
-                                  <ArrowUp className="w-5 h-5" />
-                                )}
-                              </button>
-                            </>
-                          ) : (
-                            // Normal input UI
-                            <>
-                              <div className="pl-2 md:pl-4 text-zinc-400 shrink-0">
-                                <Search className="w-5 h-5 md:w-6 md:h-6" />
-                              </div>
-                              <input
-                                type="text"
-                                value={inputMessage}
-                                onChange={(e) => setInputMessage(e.target.value)}
-                                onKeyPress={handleKeyPress}
-                                placeholder="Ask Zico anything..."
-                                disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
-                                className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[44px]"
-                              />
-                              <div className="flex items-center gap-1 shrink-0">
+                        {/* Main Input Area */}
+                        <div className="relative group max-w-2xl mx-auto w-full my-8 overflow-hidden">
+                          <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
+                          <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 md:gap-3 shadow-2xl transition-all duration-300 overflow-hidden">
+                            {isRecording ? (
+                              // Recording UI
+                              <>
                                 <button
-                                  onClick={startRecording}
+                                  onClick={cancelRecording}
+                                  className="p-2 md:p-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors shrink-0"
+                                  aria-label="Cancel recording"
+                                >
+                                  <X className="w-5 h-5" />
+                                </button>
+                                <div className="flex-1 min-w-0 flex items-center gap-2 md:gap-3">
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-red-500 animate-pulse" />
+                                    <span className="text-white font-mono text-xs md:text-sm">{formatRecordingTime(recordingTime)}</span>
+                                  </div>
+                                  <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                                    <motion.div
+                                      className="h-full bg-gradient-to-r from-red-500 to-orange-500"
+                                      initial={{ width: '0%' }}
+                                      animate={{ width: `${Math.min((recordingTime / 60) * 100, 100)}%` }}
+                                      transition={{ duration: 0.5 }}
+                                    />
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={sendAudioMessage}
+                                  disabled={isSendingAudio}
+                                  className="p-2.5 md:p-3 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                  aria-label="Send audio"
+                                >
+                                  {isSendingAudio ? (
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                  ) : (
+                                    <ArrowUp className="w-5 h-5" />
+                                  )}
+                                </button>
+                              </>
+                            ) : (
+                              // Normal input UI
+                              <>
+                                <div className="pl-2 md:pl-4 text-zinc-400 shrink-0">
+                                  <Search className="w-5 h-5 md:w-6 md:h-6" />
+                                </div>
+                                <input
+                                  type="text"
+                                  value={inputMessage}
+                                  onChange={(e) => setInputMessage(e.target.value)}
+                                  onKeyPress={handleKeyPress}
+                                  placeholder="Ask Zico anything..."
                                   disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
-                                  className="p-2 md:p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                                  aria-label="Record audio"
-                                >
-                                  <Mic className="w-5 h-5" />
-                                </button>
-                                <button
-                                  onClick={() => sendMessage()}
-                                  disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing || !inputMessage.trim()}
-                                  className="p-2.5 md:p-3 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
-                                  aria-label="Send message"
-                                >
-                                  <ArrowUp className="w-5 h-5" />
-                                </button>
-                              </div>
-                            </>
+                                  className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[44px]"
+                                />
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    onClick={startRecording}
+                                    disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
+                                    className="p-2 md:p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                                    aria-label="Record audio"
+                                  >
+                                    <Mic className="w-5 h-5" />
+                                  </button>
+                                  <button
+                                    onClick={() => sendMessage()}
+                                    disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing || !inputMessage.trim()}
+                                    className="p-2.5 md:p-3 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
+                                    aria-label="Send message"
+                                  >
+                                    <ArrowUp className="w-5 h-5" />
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                          {audioError && (
+                            <p className="text-red-400 text-xs mt-2 text-center">{audioError}</p>
                           )}
                         </div>
-                        {audioError && (
-                          <p className="text-red-400 text-xs mt-2 text-center">{audioError}</p>
-                        )}
-                      </div>
 
-                      {/* Suggestions Grid */}
-                      <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
-                        {[
-                          { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
-                          { label: 'Swap 50 USDC to SOL on Solana', prompt: 'Swap 50 USDC to SOL on Solana' },
-                          { label: 'What are the top trending tokens?', prompt: 'What are the top trending tokens today?' },
-                          { label: 'Market analysis of Bitcoin', prompt: 'Give me a market analysis of Bitcoin' },
-                        ].map((item) => (
-                          <motion.button
-                            key={item.label}
-                            onClick={() => sendMessage(item.prompt)}
-                            disabled={isSending || (!activeConversationId && !pendingNewChat)}
+                        {/* Suggestions Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
+                          {[
+                            { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
+                            { label: 'Swap 50 USDC to SOL on Solana', prompt: 'Swap 50 USDC to SOL on Solana' },
+                            { label: 'What are the top trending tokens?', prompt: 'What are the top trending tokens today?' },
+                            { label: 'Market analysis of Bitcoin', prompt: 'Give me a market analysis of Bitcoin' },
+                          ].map((item) => (
+                            <motion.button
+                              key={item.label}
+                              onClick={() => sendMessage(item.prompt)}
+                              disabled={isSending || (!activeConversationId && !pendingNewChat)}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="w-full text-left"
+                            >
+                              <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 min-h-[48px] flex items-center text-sm text-zinc-300 hover:text-white active:text-white hover:bg-white/10 active:bg-white/15 transition-colors">
+                                {item.label}
+                              </div>
+                            </motion.button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex flex-col py-6">
+                      <div className="w-full max-w-5xl mx-auto px-4 md:px-6 flex flex-col gap-6">
+                        {activeMessages.map((message, index) => (
+                          <motion.div
+                            key={`${message.role}-${index}`}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="w-full text-left"
+                            className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                           >
-                            <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 min-h-[48px] flex items-center text-sm text-zinc-300 hover:text-white active:text-white hover:bg-white/10 active:bg-white/15 transition-colors">
-                              {item.label}
-                            </div>
-                          </motion.button>
+                            {message.role === 'user' ? (
+                              <div className="max-w-[80%] bg-zinc-800/80 backdrop-blur-sm text-white px-6 py-4 rounded-2xl rounded-tr-sm border border-white/5 shadow-lg">
+                                <p className="text-base leading-relaxed">{message.content}</p>
+                              </div>
+                            ) : (
+                              <div className="flex gap-4 max-w-[90%]">
+                                <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,211,238,0.3)] overflow-hidden p-1">
+                                  <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
+                                </div>
+                                <div className="space-y-4">
+                                  <div className="text-zinc-100 text-base leading-relaxed">
+                                    <MarkdownMessage text={message.content} />
+                                  </div>
+
+                                  {message.metadata?.event === 'swap_intent_ready' && (() => {
+                                    const fromToken = String(message.metadata?.from_token || '');
+                                    const toToken = String(message.metadata?.to_token || '');
+                                    const fromNetwork = String(message.metadata?.from_network || '');
+                                    const toNetwork = String(message.metadata?.to_network || '');
+                                    const fromIcon = getTokenIcon(fromToken);
+                                    const toIcon = getTokenIcon(toToken);
+                                    const poweredBy = getSwapPoweredBy(fromNetwork, toNetwork);
+
+                                    return (
+                                      <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                        {/* Swap Card */}
+                                        <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                          {/* Gradient Glow */}
+                                          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+
+                                          {/* Header */}
+                                          <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                            <ArrowLeftRight className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
+                                            <span className="text-xs sm:text-sm font-semibold text-white">Swap</span>
+                                            {isCrossChainSwap(fromNetwork, toNetwork) && (
+                                              <span className="ml-auto px-1.5 py-0.5 bg-purple-500/20 text-purple-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-purple-500/30">
+                                                Cross-chain
+                                              </span>
+                                            )}
+                                            {swapLoading && <div className="loader-inline-sm ml-auto" />}
+                                          </div>
+
+                                          {/* Content */}
+                                          <div className="relative z-10 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
+                                            {/* From Token */}
+                                            <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                              <div className="flex items-center justify-between mb-1">
+                                                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">Sell</span>
+                                                <span className="text-[9px] sm:text-[10px] text-zinc-500">{fromNetwork}</span>
+                                              </div>
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span className="text-lg sm:text-xl font-medium text-white truncate">{String(message.metadata?.amount)}</span>
+                                                <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                                  {fromIcon ? (
+                                                    <img src={fromIcon} alt={fromToken} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                                  ) : (
+                                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-zinc-500 to-zinc-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
+                                                      {fromToken[0]}
+                                                    </div>
+                                                  )}
+                                                  <span className="text-xs sm:text-sm font-medium text-white">{fromToken}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Arrow */}
+                                            <div className="flex justify-center -my-0.5 sm:-my-1">
+                                              <div className="bg-[#0A0A0A] border border-white/10 p-1 sm:p-1.5 rounded-lg">
+                                                <ArrowDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" />
+                                              </div>
+                                            </div>
+
+                                            {/* To Token */}
+                                            <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                              <div className="flex items-center justify-between mb-1">
+                                                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">Buy</span>
+                                                <span className="text-[9px] sm:text-[10px] text-zinc-500">{toNetwork}</span>
+                                              </div>
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span className="text-lg sm:text-xl font-medium text-white truncate">
+                                                  {swapLoading ? '...' : swapQuote?.quote ? (
+                                                    swapQuote.quote.sourceNetwork ?
+                                                      Number(swapQuote.quote.estimatedReceiveAmount).toFixed(4) :
+                                                      formatAmountHuman(BigInt(swapQuote.quote.toAmount || swapQuote.quote.estimatedReceiveAmount || 0), 18)
+                                                  ) : '~'}
+                                                </span>
+                                                <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                                  {toIcon ? (
+                                                    <img src={toIcon} alt={toToken} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                                  ) : (
+                                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
+                                                      {toToken[0]}
+                                                    </div>
+                                                  )}
+                                                  <span className="text-xs sm:text-sm font-medium text-white">{toToken}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Error Message */}
+                                            {swapError && !swapLoading && (
+                                              <div className="p-2 sm:p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl">
+                                                <p className="text-[10px] sm:text-xs text-red-300">{swapError}</p>
+                                              </div>
+                                            )}
+
+                                            {/* Action Button */}
+                                            <button
+                                              onClick={async () => {
+                                                const tokens = metadataToSwapTokens(message.metadata as Record<string, unknown>);
+                                                if (tokens && tokens.from) {
+                                                  // Auto-switch network before opening SwapWidget
+                                                  await autoSwitchNetwork(tokens.from.network);
+                                                  setSwapWidgetTokens(tokens);
+                                                  setShowSwapWidget(true);
+                                                }
+                                              }}
+                                              disabled={swapLoading || !swapQuote?.quote}
+                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                            >
+                                              {swapLoading ? 'Getting best price...' : 'Review Swap'}
+                                            </button>
+                                          </div>
+
+                                          {/* Footer */}
+                                          <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                            <img src={poweredBy.logo} alt={poweredBy.name} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-contain" />
+                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by {poweredBy.name}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+
+                                  {message.metadata?.event === 'lending_intent_ready' && (() => {
+                                    const token = String(message.metadata?.token || 'USDC');
+                                    const network = String(message.metadata?.network || 'Avalanche');
+                                    const action = String(message.metadata?.action || 'Supply');
+                                    const tokenIcon = getTokenIcon(token);
+
+                                    // Coming Soon state
+                                    if (!FEATURE_FLAGS.LENDING_ENABLED) {
+                                      return (
+                                        <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                          <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+                                            <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                              <Landmark className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
+                                              <span className="text-xs sm:text-sm font-semibold text-white">Lending</span>
+                                              <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-cyan-500/30">
+                                                COMING SOON
+                                              </span>
+                                            </div>
+                                            <div className="relative z-10 p-4 sm:p-5 text-center">
+                                              <p className="text-zinc-400 text-xs sm:text-sm mb-3">
+                                                Lending feature is coming soon. Stay tuned!
+                                              </p>
+                                              <p className="text-zinc-500 text-[10px]">Expected: Q1 2026</p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+
+                                    return (
+                                      <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                        {/* Lending Card */}
+                                        <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                          {/* Gradient Glow */}
+                                          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-emerald-500/10 blur-[40px] pointer-events-none" />
+
+                                          {/* Header */}
+                                          <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                            <Landmark className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
+                                            <span className="text-xs sm:text-sm font-semibold text-white">Lending</span>
+                                            <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-emerald-500/30">
+                                              {action.toUpperCase()}
+                                            </span>
+                                          </div>
+
+                                          {/* Content */}
+                                          <div className="relative z-10 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
+                                            {/* Amount Card */}
+                                            <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                              <div className="flex items-center justify-between mb-1">
+                                                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">Amount</span>
+                                                <span className="text-[9px] sm:text-[10px] text-zinc-500">{network}</span>
+                                              </div>
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span className="text-lg sm:text-xl font-medium text-white truncate">
+                                                  {String(message.metadata?.amount || '0')}
+                                                </span>
+                                                <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                                  {tokenIcon ? (
+                                                    <img src={tokenIcon} alt={token} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                                  ) : (
+                                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
+                                                      {token[0]}
+                                                    </div>
+                                                  )}
+                                                  <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Action Button */}
+                                            <button
+                                              onClick={async () => {
+                                                // Auto-switch to Avalanche before opening lending modal
+                                                await autoSwitchNetwork('avalanche');
+                                                setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
+                                                setLendingModalOpen(true);
+                                              }}
+                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                            >
+                                              Review {action}
+                                            </button>
+                                          </div>
+
+                                          {/* Footer */}
+                                          <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                            <img src="/miniapp/icons/benqui_logo.png" alt="Benqi" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Benqi</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+
+                                  {message.metadata?.event === 'staking_intent_ready' && (() => {
+                                    const token = String(message.metadata?.token || 'ETH');
+                                    const amount = Number(message.metadata?.amount || 0);
+                                    const tokenIcon = getTokenIcon(token);
+                                    const stTokenIcon = getTokenIcon(`st${token}`) || getTokenIcon('stETH');
+
+                                    // Coming Soon state
+                                    if (!FEATURE_FLAGS.STAKING_ENABLED) {
+                                      return (
+                                        <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                          <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+                                            <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                              <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
+                                              <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
+                                              <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-cyan-500/30">
+                                                COMING SOON
+                                              </span>
+                                            </div>
+                                            <div className="relative z-10 p-4 sm:p-5 text-center">
+                                              <p className="text-zinc-400 text-xs sm:text-sm mb-3">
+                                                Liquid Staking feature is coming soon. Stay tuned!
+                                              </p>
+                                              <p className="text-zinc-500 text-[10px]">Expected: Q1 2026</p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+
+                                    return (
+                                      <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                        {/* Staking Card */}
+                                        <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                          {/* Gradient Glow */}
+                                          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-blue-500/10 blur-[40px] pointer-events-none" />
+
+                                          {/* Header */}
+                                          <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                            <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
+                                            <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
+                                          </div>
+
+                                          {/* Content */}
+                                          <div className="relative z-10 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
+                                            {/* Stake Input */}
+                                            <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                              <div className="flex items-center justify-between mb-1">
+                                                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
+                                              </div>
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span className="text-lg sm:text-xl font-medium text-white truncate">
+                                                  {String(message.metadata?.amount || '0')}
+                                                </span>
+                                                <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                                  {tokenIcon ? (
+                                                    <img src={tokenIcon} alt={token} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                                  ) : (
+                                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
+                                                      {token[0]}
+                                                    </div>
+                                                  )}
+                                                  <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Arrow */}
+                                            <div className="flex justify-center -my-0.5 sm:-my-1">
+                                              <div className="bg-[#0A0A0A] border border-white/10 p-1 sm:p-1.5 rounded-lg">
+                                                <ArrowDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400" />
+                                              </div>
+                                            </div>
+
+                                            {/* Receive Output */}
+                                            <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                              <div className="flex items-center justify-between mb-1">
+                                                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You Receive</span>
+                                              </div>
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span className="text-lg sm:text-xl font-medium text-white truncate">
+                                                  ~{(amount * 0.998).toFixed(4)}
+                                                </span>
+                                                <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                                  {stTokenIcon ? (
+                                                    <img src={stTokenIcon} alt={`st${token}`} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                                  ) : (
+                                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-[7px] sm:text-[8px] text-white font-bold">
+                                                      st
+                                                    </div>
+                                                  )}
+                                                  <span className="text-xs sm:text-sm font-medium text-white">st{token}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Action Button */}
+                                            <button
+                                              onClick={async () => {
+                                                // Auto-switch to Ethereum Mainnet before opening staking widget
+                                                await autoSwitchNetwork('ethereum');
+                                                setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
+                                                setShowStakingWidget(true);
+                                              }}
+                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                            >
+                                              Review Staking
+                                            </button>
+                                          </div>
+
+                                          {/* Footer */}
+                                          <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                            <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Lido</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            )}
+                          </motion.div>
                         ))}
-                      </div>
-                    </motion.div>
-                  </div>
-                ) : (
-                  <div className="flex-1 flex flex-col py-6">
-                    <div className="w-full max-w-5xl mx-auto px-4 md:px-6 flex flex-col gap-6">
-                    {activeMessages.map((message, index) => (
-                      <motion.div
-                        key={`${message.role}-${index}`}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                      >
-                        {message.role === 'user' ? (
-                          <div className="max-w-[80%] bg-zinc-800/80 backdrop-blur-sm text-white px-6 py-4 rounded-2xl rounded-tr-sm border border-white/5 shadow-lg">
-                            <p className="text-base leading-relaxed">{message.content}</p>
-                          </div>
-                        ) : (
+
+                        {isSending && (
                           <div className="flex gap-4 max-w-[90%]">
-                            <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,211,238,0.3)] overflow-hidden p-1">
+                            <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 animate-pulse overflow-hidden p-1">
                               <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
                             </div>
-                            <div className="space-y-4">
-                              <div className="text-zinc-100 text-base leading-relaxed">
-                                <MarkdownMessage text={message.content} />
-                              </div>
-
-                              {message.metadata?.event === 'swap_intent_ready' && (() => {
-                                const fromToken = String(message.metadata?.from_token || '');
-                                const toToken = String(message.metadata?.to_token || '');
-                                const fromNetwork = String(message.metadata?.from_network || '');
-                                const toNetwork = String(message.metadata?.to_network || '');
-                                const fromIcon = getTokenIcon(fromToken);
-                                const toIcon = getTokenIcon(toToken);
-                                const poweredBy = getSwapPoweredBy(fromNetwork, toNetwork);
-
-                                return (
-                                  <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
-                                    {/* Swap Card */}
-                                    <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                      {/* Gradient Glow */}
-                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
-
-                                      {/* Header */}
-                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
-                                        <ArrowLeftRight className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
-                                        <span className="text-xs sm:text-sm font-semibold text-white">Swap</span>
-                                        {isCrossChainSwap(fromNetwork, toNetwork) && (
-                                          <span className="ml-auto px-1.5 py-0.5 bg-purple-500/20 text-purple-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-purple-500/30">
-                                            Cross-chain
-                                          </span>
-                                        )}
-                                        {swapLoading && <div className="loader-inline-sm ml-auto" />}
-                                      </div>
-
-                                      {/* Content */}
-                                      <div className="relative z-10 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
-                                        {/* From Token */}
-                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">Sell</span>
-                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">{fromNetwork}</span>
-                                          </div>
-                                          <div className="flex items-center justify-between gap-2">
-                                            <span className="text-lg sm:text-xl font-medium text-white truncate">{String(message.metadata?.amount)}</span>
-                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
-                                              {fromIcon ? (
-                                                <img src={fromIcon} alt={fromToken} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
-                                              ) : (
-                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-zinc-500 to-zinc-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
-                                                  {fromToken[0]}
-                                                </div>
-                                              )}
-                                              <span className="text-xs sm:text-sm font-medium text-white">{fromToken}</span>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* Arrow */}
-                                        <div className="flex justify-center -my-0.5 sm:-my-1">
-                                          <div className="bg-[#0A0A0A] border border-white/10 p-1 sm:p-1.5 rounded-lg">
-                                            <ArrowDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" />
-                                          </div>
-                                        </div>
-
-                                        {/* To Token */}
-                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">Buy</span>
-                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">{toNetwork}</span>
-                                          </div>
-                                          <div className="flex items-center justify-between gap-2">
-                                            <span className="text-lg sm:text-xl font-medium text-white truncate">
-                                              {swapLoading ? '...' : swapQuote?.quote ? (
-                                                swapQuote.quote.sourceNetwork ?
-                                                  Number(swapQuote.quote.estimatedReceiveAmount).toFixed(4) :
-                                                  formatAmountHuman(BigInt(swapQuote.quote.toAmount || swapQuote.quote.estimatedReceiveAmount || 0), 18)
-                                              ) : '~'}
-                                            </span>
-                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
-                                              {toIcon ? (
-                                                <img src={toIcon} alt={toToken} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
-                                              ) : (
-                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
-                                                  {toToken[0]}
-                                                </div>
-                                              )}
-                                              <span className="text-xs sm:text-sm font-medium text-white">{toToken}</span>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* Error Message */}
-                                        {swapError && !swapLoading && (
-                                          <div className="p-2 sm:p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl">
-                                            <p className="text-[10px] sm:text-xs text-red-300">{swapError}</p>
-                                          </div>
-                                        )}
-
-                                        {/* Action Button */}
-                                        <button
-                                          onClick={async () => {
-                                            const tokens = metadataToSwapTokens(message.metadata as Record<string, unknown>);
-                                            if (tokens && tokens.from) {
-                                              // Auto-switch network before opening SwapWidget
-                                              await autoSwitchNetwork(tokens.from.network);
-                                              setSwapWidgetTokens(tokens);
-                                              setShowSwapWidget(true);
-                                            }
-                                          }}
-                                          disabled={swapLoading || !swapQuote?.quote}
-                                          className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                        >
-                                          {swapLoading ? 'Getting best price...' : 'Review Swap'}
-                                        </button>
-                                      </div>
-
-                                      {/* Footer */}
-                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                        <img src={poweredBy.logo} alt={poweredBy.name} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-contain" />
-                                        <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by {poweredBy.name}</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-
-                              {message.metadata?.event === 'lending_intent_ready' && (() => {
-                                const token = String(message.metadata?.token || 'USDC');
-                                const network = String(message.metadata?.network || 'Avalanche');
-                                const action = String(message.metadata?.action || 'Supply');
-                                const tokenIcon = getTokenIcon(token);
-
-                                // Coming Soon state
-                                if (!FEATURE_FLAGS.LENDING_ENABLED) {
-                                  return (
-                                    <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
-                                      <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
-                                        <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
-                                          <Landmark className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
-                                          <span className="text-xs sm:text-sm font-semibold text-white">Lending</span>
-                                          <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-cyan-500/30">
-                                            COMING SOON
-                                          </span>
-                                        </div>
-                                        <div className="relative z-10 p-4 sm:p-5 text-center">
-                                          <p className="text-zinc-400 text-xs sm:text-sm mb-3">
-                                            Lending feature is coming soon. Stay tuned!
-                                          </p>
-                                          <p className="text-zinc-500 text-[10px]">Expected: Q1 2026</p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                }
-
-                                return (
-                                  <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
-                                    {/* Lending Card */}
-                                    <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                      {/* Gradient Glow */}
-                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-emerald-500/10 blur-[40px] pointer-events-none" />
-
-                                      {/* Header */}
-                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
-                                        <Landmark className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
-                                        <span className="text-xs sm:text-sm font-semibold text-white">Lending</span>
-                                        <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-emerald-500/30">
-                                          {action.toUpperCase()}
-                                        </span>
-                                      </div>
-
-                                      {/* Content */}
-                                      <div className="relative z-10 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
-                                        {/* Amount Card */}
-                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">Amount</span>
-                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">{network}</span>
-                                          </div>
-                                          <div className="flex items-center justify-between gap-2">
-                                            <span className="text-lg sm:text-xl font-medium text-white truncate">
-                                              {String(message.metadata?.amount || '0')}
-                                            </span>
-                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
-                                              {tokenIcon ? (
-                                                <img src={tokenIcon} alt={token} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
-                                              ) : (
-                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
-                                                  {token[0]}
-                                                </div>
-                                              )}
-                                              <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* Action Button */}
-                                        <button
-                                          onClick={async () => {
-                                            // Auto-switch to Avalanche before opening lending modal
-                                            await autoSwitchNetwork('avalanche');
-                                            setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
-                                            setLendingModalOpen(true);
-                                          }}
-                                          className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                        >
-                                          Review {action}
-                                        </button>
-                                      </div>
-
-                                      {/* Footer */}
-                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                        <img src="/miniapp/icons/benqui_logo.png" alt="Benqi" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
-                                        <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Benqi</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-
-                              {message.metadata?.event === 'staking_intent_ready' && (() => {
-                                const token = String(message.metadata?.token || 'ETH');
-                                const amount = Number(message.metadata?.amount || 0);
-                                const tokenIcon = getTokenIcon(token);
-                                const stTokenIcon = getTokenIcon(`st${token}`) || getTokenIcon('stETH');
-
-                                // Coming Soon state
-                                if (!FEATURE_FLAGS.STAKING_ENABLED) {
-                                  return (
-                                    <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
-                                      <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
-                                        <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
-                                          <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
-                                          <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
-                                          <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-cyan-500/30">
-                                            COMING SOON
-                                          </span>
-                                        </div>
-                                        <div className="relative z-10 p-4 sm:p-5 text-center">
-                                          <p className="text-zinc-400 text-xs sm:text-sm mb-3">
-                                            Liquid Staking feature is coming soon. Stay tuned!
-                                          </p>
-                                          <p className="text-zinc-500 text-[10px]">Expected: Q1 2026</p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                }
-
-                                return (
-                                  <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
-                                    {/* Staking Card */}
-                                    <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                      {/* Gradient Glow */}
-                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-blue-500/10 blur-[40px] pointer-events-none" />
-
-                                      {/* Header */}
-                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
-                                        <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
-                                        <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
-                                      </div>
-
-                                      {/* Content */}
-                                      <div className="relative z-10 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
-                                        {/* Stake Input */}
-                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
-                                          </div>
-                                          <div className="flex items-center justify-between gap-2">
-                                            <span className="text-lg sm:text-xl font-medium text-white truncate">
-                                              {String(message.metadata?.amount || '0')}
-                                            </span>
-                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
-                                              {tokenIcon ? (
-                                                <img src={tokenIcon} alt={token} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
-                                              ) : (
-                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
-                                                  {token[0]}
-                                                </div>
-                                              )}
-                                              <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* Arrow */}
-                                        <div className="flex justify-center -my-0.5 sm:-my-1">
-                                          <div className="bg-[#0A0A0A] border border-white/10 p-1 sm:p-1.5 rounded-lg">
-                                            <ArrowDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400" />
-                                          </div>
-                                        </div>
-
-                                        {/* Receive Output */}
-                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You Receive</span>
-                                          </div>
-                                          <div className="flex items-center justify-between gap-2">
-                                            <span className="text-lg sm:text-xl font-medium text-white truncate">
-                                              ~{(amount * 0.998).toFixed(4)}
-                                            </span>
-                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
-                                              {stTokenIcon ? (
-                                                <img src={stTokenIcon} alt={`st${token}`} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
-                                              ) : (
-                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-[7px] sm:text-[8px] text-white font-bold">
-                                                  st
-                                                </div>
-                                              )}
-                                              <span className="text-xs sm:text-sm font-medium text-white">st{token}</span>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* Action Button */}
-                                        <button
-                                          onClick={async () => {
-                                            // Auto-switch to Ethereum Mainnet before opening staking widget
-                                            await autoSwitchNetwork('ethereum');
-                                            setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
-                                            setShowStakingWidget(true);
-                                          }}
-                                          className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                        >
-                                          Review Staking
-                                        </button>
-                                      </div>
-
-                                      {/* Footer */}
-                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                        <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
-                                        <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Lido</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })()}
+                            <div className="flex items-center gap-1 pt-3">
+                              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.3s]" />
+                              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.15s]" />
+                              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce" />
                             </div>
                           </div>
                         )}
-                      </motion.div>
-                    ))}
-
-                    {isSending && (
-                      <div className="flex gap-4 max-w-[90%]">
-                        <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 animate-pulse overflow-hidden p-1">
-                          <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
-                        </div>
-                        <div className="flex items-center gap-1 pt-3">
-                          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.3s]" />
-                          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.15s]" />
-                          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce" />
-                        </div>
+                        {/* Keyboard spacer - ensures content is visible above keyboard */}
+                        {isKeyboardOpen && <div style={{ height: keyboardHeight > 0 ? keyboardHeight : 0 }} />}
+                        {/* Spacer for fixed input bar */}
+                        {hasMessages && <div className="h-24" />}
+                        <div ref={messagesEndRef} />
                       </div>
-                    )}
-                    {/* Keyboard spacer - ensures content is visible above keyboard */}
-                    {isKeyboardOpen && <div style={{ height: keyboardHeight > 0 ? keyboardHeight : 0 }} />}
-                    {/* Spacer for fixed input bar */}
-                    {hasMessages && <div className="h-24" />}
-                    <div ref={messagesEndRef} />
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              {/* Fixed Bottom Input (Chat State) - OUTSIDE scrollable container */}
-              <AnimatePresence>
-                {hasMessages && (
-                  <motion.div
-                    initial={{ y: 100, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    className="sticky bottom-0 px-4 md:px-8 pb-2 pt-3 bg-gradient-to-t from-black via-black/95 to-black/80 z-20 backdrop-blur-sm"
-                  >
+                {/* Fixed Bottom Input (Chat State) - OUTSIDE scrollable container */}
+                <AnimatePresence>
+                  {hasMessages && (
+                    <motion.div
+                      initial={{ y: 100, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      className="sticky bottom-0 px-4 md:px-8 pb-2 pt-3 bg-gradient-to-t from-black via-black/95 to-black/80 z-20 backdrop-blur-sm"
+                    >
                       <div className="max-w-5xl mx-auto relative group">
                         {/* Trending Prompts Dropdown */}
                         <AnimatePresence>
@@ -2090,9 +2123,9 @@ export default function ChatPage() {
                     </motion.div>
                   )}
                 </AnimatePresence>
+              </div>
             </div>
-          </div>
-        </SeniorAppShell>
+          </SeniorAppShell>
 
           {/* Lending Modal */}
           <AnimatePresence>

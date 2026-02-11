@@ -100,6 +100,7 @@ export type QuoteResponse = {
     refuelAmountInUsd?: number;
   };
   message?: string;
+  approval?: PreparedTx;
 };
 
 export type PrepareRequest = {
