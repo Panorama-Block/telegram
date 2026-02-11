@@ -35,6 +35,22 @@ interface SeniorAppShellProps {
   pageTitle?: string;
 }
 
+function normalizeConversationId(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+
+  if (value && typeof value === 'object') {
+    const rec = value as Record<string, unknown>;
+    return (
+      normalizeConversationId(rec.conversation_id) ||
+      normalizeConversationId(rec.conversationId) ||
+      normalizeConversationId(rec.id)
+    );
+  }
+
+  return null;
+}
+
 export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: SeniorAppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -46,13 +62,13 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   const [showChatHistory, setShowChatHistory] = useState(true);
 
   // Chat context for conversation history
-  const { 
-    conversations, 
-    activeConversationId, 
+  const {
+    conversations,
+    activeConversationId,
     isLoading: isLoadingConversations,
     createConversation,
     setActiveConversationId,
-    isCreatingConversation 
+    isCreatingConversation
   } = useChat();
 
   // Modal states
@@ -66,6 +82,8 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     if (!address) return null;
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   }, [address]);
+  const normalizedPathname = useMemo(() => pathname?.replace(/\/+$/, '') || '/', [pathname]);
+  const isChatRoute = normalizedPathname === '/chat' || normalizedPathname.endsWith('/chat');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -148,34 +166,40 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       if (item.id === 'dca') return showDCA;
       return false;
     }
-    if (item.href === '/chat') return pathname === '/chat';
+    if (item.href === '/chat') return isChatRoute;
     return item.href ? pathname.startsWith(item.href) : false;
   };
 
   const handleNewChat = useCallback(() => {
     setIsSidebarOpen(false);
-    
-    if (pathname === '/chat') {
-      // Already on chat page, signal to show new chat welcome screen
-      // Don't create conversation in backend - will be created on first message
-      window.dispatchEvent(new CustomEvent('panorama:newchat', { detail: { pending: true } }));
+
+    if (isChatRoute) {
+      // Force URL state so chat page enters pending new chat mode and clears any conversation_id.
+      router.replace('/chat?new=true');
     } else {
       // Navigate to chat with new=true to show welcome screen
       router.push('/chat?new=true');
     }
-  }, [pathname, router]);
+  }, [isChatRoute, router]);
 
-  const handleSelectConversation = useCallback((conversationId: string) => {
+  const handleSelectConversation = useCallback((conversationInput: unknown) => {
+    const conversationId = normalizeConversationId(conversationInput);
+    console.log('[SeniorAppShell] handleSelectConversation called with:', conversationInput, 'normalized to:', conversationId);
+    if (!conversationId) return;
+
     setIsSidebarOpen(false);
     setActiveConversationId(conversationId);
-    
-    if (pathname !== '/chat') {
-      router.push(`/chat?id=${conversationId}`);
+
+    if (!isChatRoute) {
+      console.log('[SeniorAppShell] Navigating to /chat with id');
+      router.push(`/chat?conversation_id=${conversationId}`);
     } else {
+      router.replace(`/chat?conversation_id=${conversationId}`);
+      console.log('[SeniorAppShell] Dispatching panorama:selectchat event');
       // Dispatch event for chat page to switch conversation
       window.dispatchEvent(new CustomEvent('panorama:selectchat', { detail: { conversationId } }));
     }
-  }, [pathname, router, setActiveConversationId]);
+  }, [isChatRoute, router, setActiveConversationId]);
 
   const handleNavClick = (item: NavItem) => {
     setIsSidebarOpen(false);
@@ -239,11 +263,11 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
             const active = isActive(item);
             const isNewChatItem = item.id === 'chat';
             const needsDivider = idx > 0 && navItems[idx - 1].id === 'chat';
-            
+
             return (
               <div key={item.id} className="relative flex flex-col">
                 {needsDivider && <div className="my-2 h-px bg-white/10" />}
-                
+
                 {/* New Chat button with special styling */}
                 {isNewChatItem ? (
                   <div className="space-y-2">
@@ -279,7 +303,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
                       </svg>
                     </button>
-                    
+
                     {/* Chat History Section */}
                     <div className="mt-2">
                       <button
@@ -287,17 +311,17 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                         className="w-full flex items-center justify-between px-4 py-2 text-xs text-zinc-500 hover:text-zinc-400 transition-colors"
                       >
                         <span className="font-medium uppercase tracking-wider">Recent Chats</span>
-                        <svg 
-                          className={cn('w-4 h-4 transition-transform', showChatHistory && 'rotate-180')} 
-                          viewBox="0 0 24 24" 
-                          fill="none" 
-                          stroke="currentColor" 
+                        <svg
+                          className={cn('w-4 h-4 transition-transform', showChatHistory && 'rotate-180')}
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
                           strokeWidth="2"
                         >
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                         </svg>
                       </button>
-                      
+
                       <AnimatePresence>
                         {showChatHistory && (
                           <motion.div
@@ -322,11 +346,14 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                                 </div>
                               ) : (
                                 conversations.slice(0, 8).map((conversation) => {
-                                  const isActiveConv = activeConversationId === conversation.id;
+                                  const conversationId = normalizeConversationId(conversation);
+                                  if (!conversationId) return null;
+
+                                  const isActiveConv = activeConversationId === conversationId;
                                   return (
                                     <button
-                                      key={conversation.id}
-                                      onClick={() => handleSelectConversation(conversation.id)}
+                                      key={conversationId}
+                                      onClick={() => handleSelectConversation(conversationId)}
                                       className={cn(
                                         'w-full text-left px-4 py-2 rounded-lg text-xs transition-all truncate',
                                         isActiveConv
@@ -400,7 +427,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
         <div className="lg:hidden h-16 flex items-center justify-between px-4 border-b border-white/5 bg-pano-bg-secondary/90 backdrop-blur-md sticky top-0 z-30 safe-area-pt">
           <div className="flex items-center gap-3">
             <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
-            <span className="font-bold text-pano-text-primary">Panorama Block</span>
+            <span className="font-bold text-pano-text-primary">{pageTitle}</span>
           </div>
           <button
             onClick={() => setIsSidebarOpen(true)}
@@ -457,15 +484,15 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                   </div>
                   <div className="h-px bg-white/5" />
                   <button
-                      onClick={() => {
-                        setIsProfileOpen(false);
-                        logout();
-                      }}
-                      disabled={isLoggingOut}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isLoggingOut ? 'Disconnecting...' : 'Disconnect'}
-                    </button>
+                    onClick={() => {
+                      setIsProfileOpen(false);
+                      logout();
+                    }}
+                    disabled={isLoggingOut}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoggingOut ? 'Disconnecting...' : 'Disconnect'}
+                  </button>
                 </div>
               )}
             </div>

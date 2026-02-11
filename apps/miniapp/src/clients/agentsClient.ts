@@ -27,8 +27,14 @@ export interface ChatOptions {
   headers?: Record<string, string>;
 }
 
+export interface Conversation {
+  id: string;
+  title?: string;
+  updated_at?: string;
+}
+
 export interface ConversationListResponse {
-  conversation_ids: string[];
+  conversations: Conversation[];
 }
 
 export interface ConversationCreateResponse {
@@ -241,7 +247,7 @@ export class AgentsClient {
     if (req.chain_id) body.chain_id = req.chain_id;
     if (req.wallet_address) body.wallet_address = req.wallet_address;
     if (req.metadata) body.metadata = req.metadata;
-    
+
     // Apply a timeout to avoid long hangs
     const requestUrl = `${this.baseUrl}/chat`;
     const res = await this.fetchWithTimeout(requestUrl, {
@@ -259,14 +265,14 @@ export class AgentsClient {
     this.logDebug('chat:success', { conversationId: req.conversation_id, userId: req.user_id });
 
     const data = await res.json();
-    
+
     // Preferred extraction via path if configured
     let extractedMessage: string | undefined;
     if (this.messagePath) {
       const byPath = this.extractByPath(data, this.messagePath);
       extractedMessage = AgentsClient.joinContent(byPath);
     }
-    
+
     const coerced = AgentsClient.coerceResponse(data);
     const final: ChatResponse = {
       message: (extractedMessage && extractedMessage.trim()) ? extractedMessage : coerced.message,
@@ -276,7 +282,7 @@ export class AgentsClient {
       agent_type: data?.agentType ?? data?.agent_type ?? null,
       metadata: typeof data?.metadata === 'object' && data?.metadata !== null ? data.metadata as Record<string, unknown> : null,
     };
-    
+
     if (this.debugShape && !final.message) {
       // Lightweight shape log for diagnostics (no content included)
       const root: any = data || {};
@@ -286,11 +292,11 @@ export class AgentsClient {
       // eslint-disable-next-line no-console
       console.info(JSON.stringify({ level: 'info', message: 'agents_response_shape', keys, hasMessages, choicesLen }));
     }
-    
+
     return final;
   }
 
-  async listConversations(userId?: string, opts: ChatOptions = {}): Promise<string[]> {
+  async listConversations(userId?: string, opts: ChatOptions = {}): Promise<Conversation[]> {
     this.ensureConfigured();
     const headers = this.buildHeaders(opts);
 
@@ -309,9 +315,51 @@ export class AgentsClient {
       throw new Error(`Agents list conversations failed: ${res.status} ${text}`);
     }
 
-    const data = (await res.json()) as ConversationListResponse;
-    this.logDebug('listConversations:success', { userId, conversations: data.conversation_ids?.length ?? 0 });
-    return Array.isArray(data.conversation_ids) ? data.conversation_ids : [];
+    const data = (await res.json()) as any;
+    // Handle both old (list of strings) and new (list of objects) formats for backward compatibility
+    let conversations: Conversation[] = [];
+
+    // Check if data is array of strings (old format)
+    if (Array.isArray(data)) {
+      if (data.length > 0 && typeof data[0] === 'string') {
+        conversations = data.map((id: string) => ({ id, title: 'Chat' }));
+      } else if (data.length > 0 && typeof data[0] === 'object') {
+        conversations = data.map((item: any) => {
+          const rawId = item.conversationId || item.id;
+          const id = (typeof rawId === 'object' && rawId !== null && rawId.id)
+            ? String(rawId.id)
+            : String(rawId);
+
+          return {
+            id,
+            title: item.title,
+            updated_at: item.updatedAt || item.updated_at
+          };
+        });
+      } else {
+        conversations = [];
+      }
+    } else if (data?.conversation_ids && Array.isArray(data.conversation_ids)) {
+      // Old wrapper format
+      conversations = data.conversation_ids.map((id: string) => ({ id, title: 'Chat' }));
+    } else if (data?.conversations && Array.isArray(data.conversations)) {
+      // New wrapper format
+      conversations = data.conversations.map((item: any) => {
+        const rawId = item.conversationId || item.id;
+        const id = (typeof rawId === 'object' && rawId !== null && rawId.id)
+          ? String(rawId.id)
+          : String(rawId);
+
+        return {
+          id,
+          title: item.title,
+          updated_at: item.updatedAt || item.updated_at
+        };
+      });
+    }
+
+    this.logDebug('listConversations:success', { userId, count: conversations.length });
+    return conversations;
   }
 
   async createConversation(userId?: string, opts: ChatOptions = {}): Promise<string> {
