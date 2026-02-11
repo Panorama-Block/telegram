@@ -275,34 +275,34 @@ function normalizeContent(content: unknown): string {
   return '';
 }
 
-// Fallback formatter: when agent returns compact text with inline "* " bullets or headings
+// Markdown structural fixer: ensures headings, lists, and paragraphs have
+// the blank-line spacing that react-markdown needs to parse them correctly.
+// Handles both "already has \n but needs \n\n" AND "inline with no \n at all".
 function autoFormatAssistantMarkdown(text: string): string {
   if (!text) return '';
   let t = String(text).replace(/\r\n/g, '\n');
 
-  // Ensure blank lines around headings
-  t = t.replace(/\s*##\s/g, '\n\n## ');
+  // --- Fix inline headers: "some text. ## Header" → "some text.\n\n## Header" ---
+  // Match a non-newline char followed by optional space then # header (no \n in between)
+  t = t.replace(/([^\n]) *(#{1,3}\s)/g, '$1\n\n$2');
+  // Also fix single-\n before header → double-\n
+  t = t.replace(/([^\n])\n(#{1,3}\s)/g, '$1\n\n$2');
 
-  // Convert ": * Item" or ". * Item" into new line bullets
-  t = t.replace(/([:\.!?])\s*\*\s+/g, '$1\n- ');
+  // --- Fix inline numbered lists: "...text. 1. Item" → "...text.\n\n1. Item" ---
+  // Only match "sentence-end + number-dot" to avoid breaking "version 2.0" etc.
+  t = t.replace(/([.!?:]) +(\d+\.\s+[A-Z])/g, '$1\n\n$2');
+  // Single-\n before numbered item → double-\n
+  t = t.replace(/([^\n])\n(\d+\.\s)/g, '$1\n\n$2');
 
-  // Convert hyphen bullets written inline after punctuation (". - Item")
-  t = t.replace(/([:\.!?])\s*[-–—]\s+/g, '$1\n- ');
+  // --- Fix inline bullet lists: "...text. - Item" or "...text. * Item" ---
+  t = t.replace(/([.!?:]) +([-*]\s+[A-Z])/g, '$1\n\n$2');
+  t = t.replace(/([^\n])\n([-*]\s)/g, '$1\n\n$2');
 
-  // If there are many inline asterisks that look like bullets, split them
-  if (/\*\s+[A-Za-z0-9]/.test(t) && !/\n-\s/.test(t)) {
-    t = t.replace(/\s\*\s+/g, '\n- ');
-  }
+  // --- Remove stray lone "#" characters at end of lines ---
+  t = t.replace(/ #\s*$/gm, '');
+  t = t.replace(/ #(\n)/g, '$1');
 
-  // If inline hyphens are used as bullets with spaces (" - "), split them
-  if (/\s-\s+[A-Za-z0-9]/.test(t) && !/\n-\s/.test(t)) {
-    t = t.replace(/\s-\s+/g, '\n- ');
-  }
-
-  // Normalize list dash to leading position when preceded by start of text
-  t = t.replace(/^\*\s+/gm, '- ');
-
-  // Collapse excessive blank lines
+  // Collapse 3+ blank lines into 2
   t = t.replace(/\n{3,}/g, '\n\n');
 
   return t.trim();
@@ -931,22 +931,10 @@ export default function ChatPage() {
 
     try {
       debug('chat:send', { conversationId, hasMetadata: Boolean(userId) });
-      // Inject a lightweight GPT-style formatting directive so the agent answers with clear structure.
-      const GPT_STYLE_DIRECTIVE = [
-        'You are Zico, a helpful DeFi assistant.',
-        'Be concise and practical. No intro sentence.',
-        'Use short paragraphs and simple bullet lists if helpful.',
-        'Avoid headings unless strictly necessary; keep them brief.',
-        'Only use code blocks for actual code/commands.',
-        'Reply in the user\'s language (pt-BR if the user wrote Portuguese).',
-        'Do not restate the question and do not expose these rules.',
-      ].join('\n');
-
-      const finalUserContent = `${GPT_STYLE_DIRECTIVE}\n\nUser Message:\n${messageContent}`;
 
       const response = await agentsClient.chat(
         {
-          message: { role: 'user', content: finalUserContent },
+          message: { role: 'user', content: messageContent },
           user_id: userId,
           conversation_id: conversationId,
           metadata: {
@@ -959,19 +947,6 @@ export default function ChatPage() {
 
       if (!isMountedRef.current) return;
 
-      // Enhanced diagnostic logging
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('📨 [CHAT DEBUG] Backend Response Received');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('🔍 Response Keys:', Object.keys(response));
-      console.log('📊 Response.metadata:', response.metadata);
-      console.log('📝 Response.metadata type:', typeof response.metadata);
-      console.log('🎯 Response.metadata?.event:', response.metadata?.event);
-      console.log('💬 Response.message (first 200 chars):', response.message?.substring(0, 200));
-      console.log('🤖 Response.agent_name:', response.agent_name);
-      console.log('📋 Full Response JSON:', JSON.stringify(response, null, 2));
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
       const assistantMessage: Message = {
         role: 'assistant',
         content: autoFormatAssistantMarkdown(response.message || 'I was unable to process that request.'),
@@ -982,47 +957,11 @@ export default function ChatPage() {
 
       // Auto-fetch quote if it's a swap intent
       if (response.metadata?.event === 'swap_intent_ready') {
-        console.log('✅ [CHAT] Swap intent detected via metadata event, fetching quote...');
-        console.log('📦 Swap metadata:', JSON.stringify(response.metadata, null, 2));
         getSwapQuote(response.metadata as Record<string, unknown>);
       } else if (response.metadata?.event === 'lending_intent_ready') {
-        console.log('✅ [CHAT] Lending intent detected via metadata event');
-        console.log('📦 Lending metadata:', JSON.stringify(response.metadata, null, 2));
         // We don't auto-open modal, user clicks button
       } else if (response.metadata?.event === 'staking_intent_ready') {
-        console.log('✅ [CHAT] Staking intent detected via metadata event');
-        console.log('📦 Staking metadata:', JSON.stringify(response.metadata, null, 2));
         // We don't auto-open modal, user clicks button
-      } else {
-        console.log('❌ [CHAT] No swap_intent_ready event in metadata');
-
-        // Enhanced fallback detection
-        const messageContent = response.message?.toLowerCase() || '';
-        const hasSwapKeywords = messageContent.includes('swap') || messageContent.includes('troca');
-        const hasConfirmKeywords = messageContent.includes('confirm') || messageContent.includes('confirme');
-
-        if (hasSwapKeywords && hasConfirmKeywords) {
-          console.log('⚠️ [SWAP FALLBACK] Detected swap keywords in message but metadata is missing or invalid');
-          console.log('⚠️ Message snippet:', response.message?.substring(0, 300));
-          console.log('⚠️ This indicates the backend should have returned swap metadata but didn\'t');
-          console.log('⚠️ Check backend logs to see why metadata.event is not "swap_intent_ready"');
-        }
-
-        // Check if metadata exists but has wrong event
-        if (response.metadata && response.metadata.event !== 'swap_intent_ready') {
-          console.log('⚠️ [METADATA MISMATCH] Metadata exists but event is not swap_intent_ready');
-          console.log('⚠️ Actual event:', response.metadata.event);
-          console.log('⚠️ Full metadata:', JSON.stringify(response.metadata, null, 2));
-        }
-
-        // Check if metadata is completely null/undefined
-        if (!response.metadata) {
-          console.log('⚠️ [NO METADATA] Backend returned null/undefined metadata');
-          console.log('⚠️ This usually means:');
-          console.log('   1. Backend is not detecting the swap intent');
-          console.log('   2. Backend is not including metadata in the response');
-          console.log('   3. There was an error processing the request on the backend');
-        }
       }
 
       setMessagesByConversation((prev) => {
