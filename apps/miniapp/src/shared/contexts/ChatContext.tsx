@@ -32,7 +32,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
-  
+
   const agentsClient = useMemo(() => new AgentsClient(), []);
   const account = useActiveAccount();
   const { user, isLoading: authLoading } = useAuth();
@@ -68,41 +68,41 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (conversationId) {
       try {
         localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, conversationId);
-      } catch {}
+      } catch { }
     }
   }, []);
 
   const refreshConversations = useCallback(async () => {
     if (!userId) return;
-    
+
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const authOpts = getAuthOptions();
-      const conversationIds = await agentsClient.listConversations(userId, authOpts);
-      
+      const conversationsFromBackend = await agentsClient.listConversations(userId, authOpts);
+
       if (!isMountedRef.current) return;
-      
-      const mappedConversations: Conversation[] = conversationIds.map((id, index) => ({
-        id,
-        title: `Chat ${index + 1}`,
+
+      const mappedConversations: Conversation[] = conversationsFromBackend.map((c, index) => ({
+        id: c.id,
+        title: c.title || `Chat ${index + 1}`,
       }));
-      
+
       setConversations(mappedConversations);
-      
+
       // Cache conversation IDs
       try {
-        localStorage.setItem(`${CONVERSATION_LIST_KEY}:${userId}`, JSON.stringify(conversationIds));
-      } catch {}
-      
+        localStorage.setItem(`${CONVERSATION_LIST_KEY}:${userId}`, JSON.stringify(conversationsFromBackend.map(c => c.id)));
+      } catch { }
+
       // Set active conversation if none selected
       if (!activeConversationId && mappedConversations.length > 0) {
         const storedId = localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY);
-        if (storedId && conversationIds.includes(storedId)) {
+        if (storedId && conversationsFromBackend.some(c => c.id === storedId)) {
           setActiveConversationId(storedId);
         } else {
-          setActiveConversationId(conversationIds[0]);
+          setActiveConversationId(conversationsFromBackend[0].id);
         }
       }
     } catch (err) {
@@ -119,23 +119,23 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const createConversation = useCallback(async (): Promise<string | null> => {
     if (!userId || isCreatingConversation) return null;
-    
+
     setIsCreatingConversation(true);
-    
+
     try {
       const authOpts = getAuthOptions();
       const newConversationId = await agentsClient.createConversation(userId, authOpts);
-      
+
       if (!newConversationId || !isMountedRef.current) return null;
-      
+
       const newConversation: Conversation = {
         id: newConversationId,
         title: 'New Chat',
       };
-      
+
       setConversations(prev => [newConversation, ...prev]);
       setActiveConversationId(newConversationId);
-      
+
       return newConversationId;
     } catch (err) {
       console.error('Error creating conversation:', err);
@@ -158,7 +158,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   // Load conversations when userId is available
   useEffect(() => {
     if (authLoading || !userId || bootstrappedRef.current) return;
-    
+
     bootstrappedRef.current = true;
     refreshConversations();
   }, [authLoading, userId, refreshConversations]);
