@@ -2,10 +2,11 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useActiveAccount } from "thirdweb/react";
 import { createThirdwebClient, defineChain, getContract, readContract, toTokens } from "thirdweb";
 import { getWalletBalance } from "thirdweb/wallets";
-import { networks } from "@/features/swap/tokens";
+import { networks, TON_CHAIN_ID } from "@/features/swap/tokens";
 import { PortfolioAsset, PortfolioStats } from './types';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { isNative } from '@/features/swap/utils';
+import { useTonAddress, useTonWallet } from '@tonconnect/ui-react';
 
 // Fallback prices - will be overwritten by real API prices when available
 // Only includes major tokens with reliable market prices
@@ -27,13 +28,14 @@ const FALLBACK_PRICES: Record<string, number> = {
   'WLD': 2.50,
   'AAVE': 370,
   'UNI': 17,
-  'LINK': 28
+  'LINK': 28,
+  'TON': 5.50
 };
 
 // Fetch real prices from CoinGecko
 async function fetchRealPrices(): Promise<Record<string, number>> {
   try {
-    const ids = 'ethereum,bitcoin,usd-coin,tether,dai,matic-network,avalanche-2,binancecoin,arbitrum,optimism,worldcoin-wld,aave,uniswap,chainlink';
+    const ids = 'ethereum,bitcoin,usd-coin,tether,dai,matic-network,avalanche-2,binancecoin,arbitrum,optimism,worldcoin-wld,aave,uniswap,chainlink,the-open-network,toncoin';
     const response = await fetch(
       `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`,
       { next: { revalidate: 60 } } // Cache for 60 seconds
@@ -62,6 +64,7 @@ async function fetchRealPrices(): Promise<Record<string, number>> {
       'AAVE': data.aave?.usd || FALLBACK_PRICES['AAVE'],
       'UNI': data.uniswap?.usd || FALLBACK_PRICES['UNI'],
       'LINK': data.chainlink?.usd || FALLBACK_PRICES['LINK'],
+      'TON': data['the-open-network']?.usd || data.toncoin?.usd || FALLBACK_PRICES['TON'],
     };
   } catch (e) {
     console.warn('Failed to fetch real prices, using fallback:', e);
@@ -69,19 +72,102 @@ async function fetchRealPrices(): Promise<Record<string, number>> {
   }
 }
 
+type TonNetworkHint = 'mainnet' | 'testnet';
+const TON_USDT_MASTER_ADDRESS = 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs';
+
+function formatUnits(value: bigint, decimals: number): string {
+  const negative = value < 0n;
+  const abs = negative ? -value : value;
+  const base = 10n ** BigInt(decimals);
+  const whole = abs / base;
+  const fraction = abs % base;
+
+  if (fraction === 0n) return `${negative ? '-' : ''}${whole.toString()}`;
+
+  const fracStr = fraction.toString().padStart(decimals, '0').replace(/0+$/, '');
+  return `${negative ? '-' : ''}${whole.toString()}.${fracStr}`;
+}
+
+async function fetchTonBalance(rawAddress: string, networkHint: TonNetworkHint): Promise<string | null> {
+  try {
+    const [{ getHttpEndpoint }, { TonClient }, { Address, fromNano }] = await Promise.all([
+      import('@orbs-network/ton-access'),
+      import('@ton/ton'),
+      import('@ton/core'),
+    ]);
+    const endpoint = await getHttpEndpoint({ network: networkHint });
+    const client = new TonClient({ endpoint });
+    const addr = Address.parse(rawAddress);
+    const bal = await client.getBalance(addr);
+    return fromNano(bal);
+  } catch (e) {
+    console.warn('Failed to fetch TON balance:', e);
+    return null;
+  }
+}
+
+async function fetchTonJettonBalance(
+  rawAddress: string,
+  networkHint: TonNetworkHint,
+  jettonMasterAddress: string,
+  decimals: number
+): Promise<string | null> {
+  try {
+    const [{ getHttpEndpoint }, { TonClient, Address, beginCell }] = await Promise.all([
+      import('@orbs-network/ton-access'),
+      import('@ton/ton'),
+    ]);
+
+    const endpoint = await getHttpEndpoint({ network: networkHint });
+    const client = new TonClient({ endpoint });
+    const userAddress = Address.parse(rawAddress);
+    const master = Address.parse(jettonMasterAddress);
+
+    const jettonWalletResp = await client.runMethod(master, 'get_wallet_address', [
+      { type: 'slice', cell: beginCell().storeAddress(userAddress).endCell() }
+    ]);
+    const jettonWalletAddress = jettonWalletResp.stack.readAddress();
+
+    const walletDataResp = await client.runMethod(jettonWalletAddress, 'get_wallet_data');
+    const rawBalance = walletDataResp.stack.readBigNumber();
+    return formatUnits(rawBalance, decimals);
+  } catch (e) {
+    console.warn('Failed to fetch TON jetton balance:', e);
+    return null;
+  }
+}
+
 export function usePortfolioData() {
   const account = useActiveAccount();
+  const tonWallet = useTonWallet();
+  const tonAddress = useTonAddress();
   const [assets, setAssets] = useState<PortfolioAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [prices, setPrices] = useState<Record<string, number>>(FALLBACK_PRICES);
+
+  const tonNetwork: TonNetworkHint = useMemo(() => {
+    const chain: any = (tonWallet as any)?.account?.chain;
+    if (chain === 'testnet' || chain === TON_CHAIN_ID) {
+      return 'testnet';
+    }
+    if (chain === 'mainnet' || chain === -3) {
+      return 'mainnet';
+    }
+    return 'mainnet';
+  }, [tonWallet]);
 
   const client = useMemo(() => createThirdwebClient({
     clientId: THIRDWEB_CLIENT_ID || ''
   }), []);
 
   const fetchPortfolio = useCallback(async () => {
-    if (!account || !client) return;
+    // Allow TON-only users (no EVM wallet connected)
+    if (!account && !tonAddress) {
+      setAssets([]);
+      return;
+    }
+    if (!client) return;
 
     setLoading(true);
     const newAssets: PortfolioAsset[] = [];
@@ -90,8 +176,19 @@ export function usePortfolioData() {
     const currentPrices = await fetchRealPrices();
     setPrices(currentPrices);
 
-    // Flatten all tokens to fetch
-    const tasks = networks.flatMap(network => 
+    // Fetch TON balance in parallel (if connected)
+    const tonBalancePromise = tonAddress
+      ? fetchTonBalance(tonAddress, tonNetwork)
+      : Promise.resolve(null);
+    const tonUsdtBalancePromise = tonAddress && tonNetwork === 'mainnet'
+      ? fetchTonJettonBalance(tonAddress, tonNetwork, TON_USDT_MASTER_ADDRESS, 6)
+      : Promise.resolve(null);
+
+    // Flatten all EVM tokens to fetch (skip TON network)
+    const tasks = account
+      ? networks
+          .filter(network => network.chainId !== TON_CHAIN_ID)
+          .flatMap(network =>
       network.tokens.map(async (token) => {
         try {
           const chain = defineChain(network.chainId);
@@ -168,9 +265,68 @@ export function usePortfolioData() {
           // Silent fail for individual token fetch errors
         }
       })
-    );
+    )
+      : [];
 
     await Promise.allSettled(tasks);
+
+    const tonBalance = await tonBalancePromise;
+    const tonValue = tonBalance ? parseFloat(tonBalance) : 0;
+    if (tonAddress && tonBalance && tonValue > 0) {
+      const price = currentPrices['TON'] || 0;
+      const value = tonValue * price;
+      const formattedPrice = price > 0
+        ? `$${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : '-';
+      const formattedValue = value > 0
+        ? `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : '-';
+
+      newAssets.push({
+        symbol: 'TON',
+        name: 'Toncoin',
+        network: 'TON',
+        protocol: 'Wallet',
+        address: tonAddress,
+        decimals: 9,
+        balance: `${tonValue.toLocaleString('en-US', { maximumFractionDigits: 4 })} TON`,
+        balanceRaw: tonBalance,
+        price: formattedPrice,
+        value: formattedValue,
+        valueRaw: value,
+        isPositive: true,
+        apy: '-',
+        icon: 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png',
+        actions: ['Swap']
+      });
+    }
+
+    const tonUsdtBalance = await tonUsdtBalancePromise;
+    const tonUsdtAmount = tonUsdtBalance ? parseFloat(tonUsdtBalance) : 0;
+    if (tonAddress && tonUsdtBalance && tonUsdtAmount > 0) {
+      const price = currentPrices['USDT'] || 1;
+      const value = tonUsdtAmount * price;
+      const formattedPrice = `$${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      const formattedValue = `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+      newAssets.push({
+        symbol: 'USDT',
+        name: 'Tether USD',
+        network: 'TON',
+        protocol: 'Wallet',
+        address: TON_USDT_MASTER_ADDRESS,
+        decimals: 6,
+        balance: `${tonUsdtAmount.toLocaleString('en-US', { maximumFractionDigits: 4 })} USDT`,
+        balanceRaw: tonUsdtBalance,
+        price: formattedPrice,
+        value: formattedValue,
+        valueRaw: value,
+        isPositive: true,
+        apy: '-',
+        icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png',
+        actions: ['Swap']
+      });
+    }
 
     // Sort by value desc
     newAssets.sort((a, b) => b.valueRaw - a.valueRaw);
@@ -179,7 +335,7 @@ export function usePortfolioData() {
     setLoading(false);
     setLastUpdated(new Date());
 
-  }, [account, client]);
+  }, [account, tonAddress, tonNetwork, client]);
 
   // Initial fetch
   useEffect(() => {

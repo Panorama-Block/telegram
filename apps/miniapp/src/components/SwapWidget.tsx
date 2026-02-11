@@ -18,6 +18,9 @@ import { TokenSelectionModal } from "@/components/TokenSelectionModal";
 // API Integration - TON bridge uses separate API
 import { bridgeApi } from "@/features/swap/bridgeApi";
 import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS } from "@/features/swap/tokens";
+
+// Gateway integration for transaction history
+import { startSwapTracking, type SwapTracker } from "@/features/gateway";
 import {
   normalizeToApi,
   formatAmountHuman,
@@ -253,6 +256,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   // Balance State
   const [sellTokenBalance, setSellTokenBalance] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
+
+  // Transaction Tracking State
+  const [swapTracker, setSwapTracker] = useState<SwapTracker | null>(null);
 
   const isCrossChain = sellToken.network !== buyToken.network;
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
@@ -601,7 +607,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         return;
       }
 
-      // We need an EVM destination address. 
+      // We need an EVM destination address.
       // If the user is connected via Thirdweb, use that.
       // Otherwise check localStorage or ask user (not implemented here yet, assuming connected)
       const evmAddress = account?.address || localStorage.getItem('userAddress');
@@ -613,6 +619,35 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
       setPreparing(true);
       setExecutionError(null);
       setTxHashes([]);
+
+      // Initialize swap tracker for history (non-blocking)
+      let tracker: SwapTracker | null = null;
+      try {
+        const sellDecimals = sellToken.decimals || 6; // TON USDT is 6 decimals
+        tracker = await startSwapTracking({
+          userId: userTonAddress,
+          walletAddress: userTonAddress,
+          chain: 'TON',
+          action: isCrossChain ? 'bridge' : 'swap',
+          fromChainId: TON_CHAIN_ID,
+          fromAsset: {
+            address: sellToken.address || 'native',
+            symbol: sellToken.ticker || 'USDT',
+            decimals: sellDecimals,
+          },
+          fromAmount: amount,
+          toChainId: getBaseChainId(buyToken.network),
+          toAsset: {
+            address: buyToken.address || 'native',
+            symbol: buyToken.ticker,
+            decimals: buyToken.decimals || 18,
+          },
+          provider: 'layerswap',
+        });
+        setSwapTracker(tracker);
+      } catch (trackErr) {
+        console.warn('[SwapWidget] Failed to init swap tracker:', trackErr);
+      }
 
       try {
         // 1. Create Swap on Backend
@@ -696,13 +731,24 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         const result = await tonConnectUI.sendTransaction(transaction);
         console.log('TON Transaction sent:', result);
 
-        // TON Connect doesn't always return hash easily in all wallets, 
+        // TON Connect doesn't always return hash easily in all wallets,
         // but if successful we show pending.
         setTxHashes([{ hash: 'pending', chainId: TON_CHAIN_ID }]);
+
+        // Track transaction and mark as confirmed
+        if (tracker) {
+          tracker.addHash('pending', TON_CHAIN_ID, 'bridge');
+          await tracker.markConfirmed(estimatedOutput);
+        }
 
       } catch (e: any) {
         console.error("TON Swap error:", e);
         setExecutionError(translateError(e.message || "TON Swap failed"));
+
+        // Mark as failed in tracker
+        if (tracker) {
+          await tracker.markFailed('TON_TX_FAILED', e.message || 'TON Swap failed');
+        }
       } finally {
         setPreparing(false);
         setExecuting(false);
@@ -717,6 +763,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     setExecutionError(null);
     setTxHashes([]);
 
+    // Initialize tracker variable for EVM flow
+    let tracker: SwapTracker | null = null;
+
     try {
       const toChainId = getBaseChainId(buyToken.network);
 
@@ -727,6 +776,34 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           setExecutionError("Please connect your TON wallet");
           setPreparing(false);
           return;
+        }
+
+        // Initialize swap tracker for EVM -> TON bridge (non-blocking)
+        try {
+          const sellDecimals = sellToken.decimals || 18;
+          tracker = await startSwapTracking({
+            userId: account.address,
+            walletAddress: account.address,
+            chain: sellToken.network.toUpperCase(),
+            action: 'bridge',
+            fromChainId,
+            fromAsset: {
+              address: sellToken.address || 'native',
+              symbol: sellToken.ticker,
+              decimals: sellDecimals,
+            },
+            fromAmount: amount,
+            toChainId: TON_CHAIN_ID,
+            toAsset: {
+              address: buyToken.address || 'native',
+              symbol: buyToken.ticker,
+              decimals: buyToken.decimals || 6,
+            },
+            provider: 'layerswap',
+          });
+          setSwapTracker(tracker);
+        } catch (trackErr) {
+          console.warn('[SwapWidget] Failed to init swap tracker:', trackErr);
         }
 
         // 1. Create Bridge Transaction
@@ -803,6 +880,12 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         });
 
         setTxHashes([{ hash: receipt.transactionHash, chainId: fromChainId }]);
+
+        // Track hash and mark as confirmed
+        if (tracker) {
+          tracker.addHash(receipt.transactionHash, fromChainId, 'bridge');
+          await tracker.markConfirmed(estimatedOutput);
+        }
         return;
       }
 
@@ -818,6 +901,33 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
       }).catch(() => knownDecimals);
 
       console.log("[SwapWidget] Swap decimals:", { symbol: sellSymbol, decimals });
+
+      // Initialize swap tracker for EVM swap/bridge (non-blocking)
+      try {
+        tracker = await startSwapTracking({
+          userId: account.address,
+          walletAddress: account.address,
+          chain: sellToken.network.toUpperCase(),
+          action: isCrossChain ? 'bridge' : 'swap',
+          fromChainId,
+          fromAsset: {
+            address: sellToken.address || 'native',
+            symbol: sellToken.ticker,
+            decimals,
+          },
+          fromAmount: amount,
+          toChainId,
+          toAsset: {
+            address: buyToken.address || 'native',
+            symbol: buyToken.ticker,
+            decimals: buyToken.decimals || 18,
+          },
+          provider: 'thirdweb',
+        });
+        setSwapTracker(tracker);
+      } catch (trackErr) {
+        console.warn('[SwapWidget] Failed to init swap tracker:', trackErr);
+      }
 
       const weiAmount = parseAmountToWei(amount, decimals);
       const originToken = normalizeToApi(sellToken.address) as `0x${string}`;
@@ -975,6 +1085,11 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             });
             console.log(`[SwapWidget] ${txAction} tx confirmed:`, receipt.transactionHash);
             hashes.push({ hash: receipt.transactionHash, chainId: txChainId });
+
+            // Track each hash in the tracker
+            if (tracker) {
+              tracker.addHash(receipt.transactionHash, txChainId, txAction);
+            }
           } catch (txError: any) {
             console.error(`[SwapWidget] ${txAction} tx failed:`, {
               error: txError.message,
@@ -987,11 +1102,20 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
       }
 
       setTxHashes(hashes);
-      // Success handled by UI showing hashes
+
+      // Mark swap as confirmed in tracker
+      if (tracker) {
+        await tracker.markConfirmed(estimatedOutput);
+      }
 
     } catch (e: any) {
       console.error("Swap execution error:", e);
       setExecutionError(translateError(e.message || "Swap failed"));
+
+      // Mark swap as failed in tracker
+      if (tracker) {
+        await tracker.markFailed('SWAP_FAILED', e.message || 'Swap failed');
+      }
     } finally {
       setPreparing(false);
       setExecuting(false);
