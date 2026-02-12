@@ -51,6 +51,26 @@ function normalizeConversationId(value: unknown): string | null {
   return null;
 }
 
+const GENERIC_CONVERSATION_TITLES = new Set(['chat', 'new chat']);
+
+function isGenericConversationTitle(title?: string): boolean {
+  if (!title) return true;
+  const normalized = title.trim().toLowerCase();
+  if (!normalized) return true;
+  if (GENERIC_CONVERSATION_TITLES.has(normalized)) return true;
+  return /^chat\s+\d+$/.test(normalized);
+}
+
+function deriveConversationTitleFromCache(messages: Array<{ role?: string; content?: string }>): string | null {
+  const firstUserMessage = messages.find((msg) => msg?.role === 'user' && typeof msg?.content === 'string' && msg.content.trim().length > 0);
+  if (!firstUserMessage?.content) return null;
+
+  const normalized = firstUserMessage.content.trim().replace(/\s+/g, ' ');
+  if (!normalized) return null;
+  if (normalized.length > 48) return `${normalized.slice(0, 45)}...`;
+  return normalized;
+}
+
 export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: SeniorAppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -70,6 +90,16 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     setActiveConversationId,
     isCreatingConversation
   } = useChat();
+
+  useEffect(() => {
+    console.info('[CHAT TRACE][SeniorAppShell] history:render-source', {
+      count: conversations.length,
+      ids: conversations.map((conversation) => conversation.id),
+      activeConversationId,
+      isLoadingConversations,
+      showChatHistory,
+    });
+  }, [conversations, activeConversationId, isLoadingConversations, showChatHistory]);
 
   // Modal states
   const [showSwap, setShowSwap] = useState(false);
@@ -169,6 +199,27 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     if (item.href === '/chat') return isChatRoute;
     return item.href ? pathname.startsWith(item.href) : false;
   };
+
+  const resolveConversationTitle = useCallback((conversationId: string, fallbackTitle?: string) => {
+    if (typeof window === 'undefined') return fallbackTitle || 'Chat';
+    if (!isGenericConversationTitle(fallbackTitle)) return fallbackTitle || 'Chat';
+
+    try {
+      const exactKey = Object.keys(localStorage).find(
+        (key) => key.startsWith('chat:cache:') && key.endsWith(`:${conversationId}`)
+      );
+      if (!exactKey) return fallbackTitle || 'Chat';
+
+      const raw = localStorage.getItem(exactKey);
+      if (!raw) return fallbackTitle || 'Chat';
+      const parsed = JSON.parse(raw) as Array<{ role?: string; content?: string }>;
+      if (!Array.isArray(parsed)) return fallbackTitle || 'Chat';
+
+      return deriveConversationTitleFromCache(parsed) || fallbackTitle || 'Chat';
+    } catch {
+      return fallbackTitle || 'Chat';
+    }
+  }, []);
 
   const handleNewChat = useCallback(() => {
     setIsSidebarOpen(false);
@@ -365,7 +416,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 opacity-60">
                                           <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                         </svg>
-                                        <span className="truncate">{conversation.title}</span>
+                                        <span className="truncate">{resolveConversationTitle(conversationId, conversation.title)}</span>
                                       </div>
                                     </button>
                                   );

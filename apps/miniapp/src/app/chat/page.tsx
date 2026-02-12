@@ -19,6 +19,7 @@ import '../../shared/ui/loader.css';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 import { AgentsClient, type Conversation } from '@/clients/agentsClient';
 import { useAuth } from '@/shared/contexts/AuthContext';
+import { useChat } from '@/shared/contexts/ChatContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { swapApi } from '@/features/swap/api';
 import { bridgeApi } from '@/features/swap/bridgeApi';
@@ -39,6 +40,8 @@ import { cn } from '@/shared/lib/utils';
 import { useAudioRecorder } from '@/shared/hooks/useAudioRecorder';
 import { useKeyboardHeight } from '@/shared/hooks/useKeyboardHeight';
 import { FEATURE_FLAGS } from '@/config/features';
+import { useWalletIdentity } from '@/shared/contexts/WalletIdentityContext';
+import { resolveChatIdentity } from '@/shared/lib/chatIdentity';
 
 
 interface Message {
@@ -361,6 +364,7 @@ export default function ChatPage() {
   // Keyboard handling for mobile
   const { keyboardHeight, isKeyboardOpen } = useKeyboardHeight();
   const { user, isLoading: authLoading } = useAuth();
+  const { refreshConversations: refreshSidebarConversations, setActiveConversationId: setSidebarActiveConversationId } = useChat();
   const isMountedRef = useRef(true);
   const bootstrapKeyRef = useRef<string | undefined>(undefined);
   const lastBootstrapTimeRef = useRef<number>(0);
@@ -369,6 +373,7 @@ export default function ChatPage() {
   const account = useActiveAccount();
   const activeWallet = useActiveWallet();
   const { logout } = useLogout();
+  const { address: identityAddress, tonAddress, tonAddressRaw } = useWalletIdentity();
   const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
@@ -436,6 +441,7 @@ export default function ChatPage() {
     setConversations([]);
     setMessagesByConversation({});
     setActiveConversationId(null);
+    setSidebarActiveConversationId(null);
     setSwapQuote(null);
     setSwapError(null);
     lastBootstrapTimeRef.current = Date.now();
@@ -444,26 +450,17 @@ export default function ChatPage() {
       isMountedRef.current = false;
       debug('component:unmount');
     };
-  }, [debug]);
+  }, [debug, setSidebarActiveConversationId]);
 
-  // Use wallet address as userId instead of Telegram user ID
-  const getWalletAddress = useCallback(() => {
-    if (typeof window === 'undefined') return undefined;
-    const authPayload = localStorage.getItem('authPayload');
-    if (authPayload) {
-      try {
-        const payload = JSON.parse(authPayload);
-        return payload.address?.toLowerCase();
-      } catch (error) {
-        console.error('Error parsing authPayload:', error);
-      }
-    }
-    return undefined;
-  }, []);
-
-  // CRITICAL: Use the currently connected wallet address as the primary userId
-  // This ensures each user sees only their own chats, even on shared devices
-  const userId = account?.address?.toLowerCase() || getWalletAddress() || (user?.id ? String(user.id) : undefined);
+  const resolvedIdentity = resolveChatIdentity({
+    accountAddress: account?.address,
+    identityAddress,
+    tonAddress,
+    tonAddressRaw,
+    telegramUserId: user?.id,
+  });
+  const walletIdentity = resolvedIdentity.walletAddress;
+  const userId = resolvedIdentity.userId;
 
   // Filter out disclaimer messages from the backend
   const DISCLAIMER_TEXT = 'This highly experimental chatbot is not intended for making important decisions';
@@ -475,12 +472,12 @@ export default function ChatPage() {
   // In this case, always show the welcome screen (hasMessages = false)
   const hasMessages = pendingNewChat ? false : activeMessages.length > 0;
   const displayName = useMemo(() => {
-    const address = account?.address || getWalletAddress();
+    const address = account?.address || walletIdentity;
     if (address) {
       return `${address.slice(0, 6)}...${address.slice(-4)}`;
     }
     return 'User';
-  }, [account?.address, getWalletAddress]);
+  }, [account?.address, walletIdentity]);
 
   const activeConversationTitle = useMemo(() => {
     if (!activeConversationId) return 'Zico AI Agent';
@@ -568,35 +565,46 @@ export default function ChatPage() {
   // Debug userId
   useEffect(() => {
     if (userId) {
-      const source = account?.address ? 'connected-wallet' : getWalletAddress() ? 'localStorage-wallet' : 'telegram';
+      const source = resolvedIdentity.source;
       debug('userId:resolved', { userId, source, connectedWallet: account?.address });
       console.log('🔐 [CHAT] Using userId:', userId, '| Source:', source);
     } else {
       console.warn('⚠️ [CHAT] No userId available - chat will not load');
     }
-  }, [userId, account?.address, getWalletAddress, debug]);
+  }, [userId, account?.address, resolvedIdentity.source, debug]);
 
   // Clear chat state when wallet changes to prevent showing previous user's data
   useEffect(() => {
-    const currentUserId = account?.address?.toLowerCase() || getWalletAddress();
+    const currentUserId = userId;
     if (currentUserId && bootstrapKeyRef.current && bootstrapKeyRef.current !== currentUserId && bootstrapKeyRef.current !== '__anonymous__') {
       console.log('🔄 [CHAT] Wallet changed, clearing previous user data');
       setConversations([]);
       setMessagesByConversation({});
       setActiveConversationId(null);
+      setSidebarActiveConversationId(null);
       setInitializationError(null);
       try {
         clearCachedUserData(bootstrapKeyRef.current);
       } catch { }
       // Bootstrap will be triggered by the useEffect below
     }
-  }, [account?.address, getWalletAddress, clearCachedUserData]);
+  }, [userId, clearCachedUserData, setSidebarActiveConversationId]);
 
   const getAuthOptions = useCallback(() => {
     if (typeof window === 'undefined') return undefined;
     const token = localStorage.getItem('authToken');
     return token ? { jwt: token } : undefined;
   }, []);
+
+  const setActiveConversation = useCallback((conversationId: string | null) => {
+    setActiveConversationId(conversationId);
+    setSidebarActiveConversationId(conversationId);
+    if (conversationId) {
+      try {
+        localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, conversationId);
+      } catch { }
+    }
+  }, [setSidebarActiveConversationId]);
 
   const loadConversationMessages = useCallback(
     async (conversationId: string) => {
@@ -775,6 +783,7 @@ export default function ChatPage() {
           setConversations([]);
           setMessagesByConversation({});
           setActiveConversationId(null);
+          setSidebarActiveConversationId(null);
           debug('bootstrap:abort', { reason: 'listConversationsFailed' });
           return;
         }
@@ -840,27 +849,18 @@ export default function ChatPage() {
       } finally {
         if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
           setInitializing(false);
-          debug('bootstrap:complete', { hasError: Boolean(initializationError) });
+          debug('bootstrap:complete');
         }
       }
     };
 
     initialise();
-  }, [agentsClient, authLoading, bootstrapVersion, debug, getAuthOptions, loadConversationMessages, loadCachedConversationIds, userId]);
+  }, [agentsClient, authLoading, bootstrapVersion, debug, getAuthOptions, loadCachedConversationIds, loadMessagesFromCache, setActiveConversation, setSidebarActiveConversationId, userId]);
 
   const retryBootstrap = useCallback(() => {
     debug('bootstrap:retry');
     setBootstrapVersion((prev) => prev + 1);
   }, [debug]);
-
-  const setActiveConversation = useCallback((conversationId: string | null) => {
-    setActiveConversationId(conversationId);
-    if (conversationId) {
-      try {
-        localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, conversationId);
-      } catch { }
-    }
-  }, []);
 
   const sendMessage = async (content?: string) => {
     const messageContent = content ?? inputMessage.trim();
@@ -892,6 +892,9 @@ export default function ChatPage() {
         setActiveConversation(newConversationId);
         setPendingNewChat(false);
         console.log('[CHAT] Created conversation:', newConversationId);
+        refreshSidebarConversations().catch((error) => {
+          console.warn('[CHAT] Failed to refresh sidebar conversations after create:', error);
+        });
       } catch (error) {
         console.error('[CHAT] Error creating conversation:', error);
         setIsSending(false);
@@ -914,29 +917,31 @@ export default function ChatPage() {
     }));
     saveMessagesToCache(userId ?? '__anonymous__', conversationId, updatedMessages);
 
-    setConversations((prev) => {
-      const ensureConversationExists = prev.some((conversation) => conversation.id === conversationId)
-        ? prev
-        : [{ id: conversationId, title: 'New Chat' }, ...prev];
+      setConversations((prev) => {
+        const ensureConversationExists = prev.some((conversation) => conversation.id === conversationId)
+          ? prev
+          : [{ id: conversationId, title: 'New Chat' }, ...prev];
 
       return ensureConversationExists.map((conversation) =>
         conversation.id === conversationId
           ? { ...conversation, title: deriveConversationTitle(conversation.title, updatedMessages) }
           : conversation
       );
-    });
+      });
 
     setInputMessage('');
     setIsSending(true);
 
     try {
-      debug('chat:send', { conversationId, hasMetadata: Boolean(userId) });
+      const walletAddress = account?.address || walletIdentity;
+      debug('chat:send', { conversationId, hasUserId: Boolean(userId), hasWalletAddress: Boolean(walletAddress) });
 
       const response = await agentsClient.chat(
         {
           message: { role: 'user', content: messageContent },
           user_id: userId,
           conversation_id: conversationId,
+          wallet_address: walletAddress || undefined,
           metadata: {
             source: 'miniapp-chat',
             sent_at: new Date().toISOString(),
@@ -1005,6 +1010,9 @@ export default function ChatPage() {
       if (isMountedRef.current) {
         setIsSending(false);
       }
+      refreshSidebarConversations().catch((error) => {
+        console.warn('[CHAT] Failed to refresh sidebar conversations after send:', error);
+      });
       debug('chat:complete', { conversationId });
     }
   };
@@ -1057,6 +1065,9 @@ export default function ChatPage() {
         setMessagesByConversation((prev) => ({ ...prev, [newConversationId]: [] }));
         setActiveConversation(newConversationId);
         setPendingNewChat(false);
+        refreshSidebarConversations().catch((error) => {
+          console.warn('[CHAT] Failed to refresh sidebar conversations after audio create:', error);
+        });
       }
 
       if (!conversationId) {
@@ -1073,7 +1084,7 @@ export default function ChatPage() {
       }));
 
       // Send audio to backend
-      const walletAddress = account?.address || getWalletAddress();
+      const walletAddress = account?.address || walletIdentity;
       const response = await agentsClient.chatAudio(
         audioBlob,
         userId || '',
@@ -1161,6 +1172,9 @@ export default function ChatPage() {
       setInitializationError(null);
       setActiveConversation(newConversationId);
       debug('conversation:create:success', { newConversationId });
+      refreshSidebarConversations().catch((error) => {
+        console.warn('[CHAT] Failed to refresh sidebar conversations after new chat:', error);
+      });
     } catch (error) {
       console.error('Error creating chat conversation:', error);
       debug('conversation:create:error', {
@@ -1197,7 +1211,7 @@ export default function ChatPage() {
       router.replace('/chat', { scroll: false });
       // Don't create conversation - just show welcome screen
       setPendingNewChat(true);
-      setActiveConversationId(null);
+      setActiveConversation(null);
     }
 
     if (!newChatRequested) {
@@ -1226,7 +1240,7 @@ export default function ChatPage() {
         // Conversation will be created when user sends first message
         console.log('[CHAT] Setting pending new chat mode');
         setPendingNewChat(true);
-        setActiveConversationId(null); // Clear active conversation to show welcome
+        setActiveConversation(null); // Clear active conversation to show welcome
         setInitializationError(null);
       } else if (customEvent.detail?.conversationId) {
         // Legacy: Conversation was already created, set it up
@@ -1247,6 +1261,9 @@ export default function ChatPage() {
         setInitializationError(null);
         setPendingNewChat(false);
         setActiveConversation(newConversationId);
+        refreshSidebarConversations().catch((error) => {
+          console.warn('[CHAT] Failed to refresh sidebar conversations after legacy new chat:', error);
+        });
       }
     };
 
@@ -1319,9 +1336,8 @@ export default function ChatPage() {
       setSwapError(null);
       console.log('🔄 Fetching quote...');
 
-      const addressFromToken = getWalletAddress();
       const userAddress = localStorage.getItem('userAddress');
-      const effectiveAddress = account?.address || addressFromToken || userAddress;
+      const effectiveAddress = account?.address || walletIdentity || userAddress || undefined;
 
       console.log('📍 Using address:', effectiveAddress);
 
@@ -1375,7 +1391,7 @@ export default function ChatPage() {
     } finally {
       setSwapLoading(false);
     }
-  }, [account?.address, getWalletAddress]);
+  }, [account?.address, walletIdentity]);
 
   return (
     <ProtectedRoute>
