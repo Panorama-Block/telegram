@@ -247,6 +247,11 @@ export class AgentsClient {
     if (req.chain_id) body.chain_id = req.chain_id;
     if (req.wallet_address) body.wallet_address = req.wallet_address;
     if (req.metadata) body.metadata = req.metadata;
+    this.logDebug('chat:request', {
+      conversationId: req.conversation_id,
+      hasUserId: Boolean(req.user_id),
+      hasWalletAddress: Boolean(req.wallet_address),
+    });
 
     // Apply a timeout to avoid long hangs
     const requestUrl = `${this.baseUrl}/chat`;
@@ -262,7 +267,12 @@ export class AgentsClient {
       throw new Error(`Agents chat failed: ${res.status} ${text}`);
     }
 
-    this.logDebug('chat:success', { conversationId: req.conversation_id, userId: req.user_id });
+    this.logDebug('chat:success', {
+      conversationId: req.conversation_id,
+      userId: req.user_id,
+      hasUserId: Boolean(req.user_id),
+      hasWalletAddress: Boolean(req.wallet_address),
+    });
 
     const data = await res.json();
 
@@ -316,6 +326,13 @@ export class AgentsClient {
     }
 
     const data = (await res.json()) as any;
+    console.info('[CHAT TRACE][AgentsClient] listConversations:raw', {
+      userId,
+      type: Array.isArray(data) ? 'array' : typeof data,
+      keys: data && typeof data === 'object' ? Object.keys(data) : [],
+      conversation_ids_count: Array.isArray(data?.conversation_ids) ? data.conversation_ids.length : null,
+      conversations_count: Array.isArray(data?.conversations) ? data.conversations.length : null,
+    });
     // Handle both old (list of strings) and new (list of objects) formats for backward compatibility
     let conversations: Conversation[] = [];
 
@@ -358,6 +375,11 @@ export class AgentsClient {
       });
     }
 
+    console.info('[CHAT TRACE][AgentsClient] listConversations:parsed', {
+      userId,
+      count: conversations.length,
+      ids: conversations.map((item) => item.id),
+    });
     this.logDebug('listConversations:success', { userId, count: conversations.length });
     return conversations;
   }
@@ -369,7 +391,9 @@ export class AgentsClient {
     const body: Record<string, unknown> = {};
     if (userId) body.user_id = userId;
 
-    const url = `${this.baseUrl}/chat/conversations`;
+    const params = new URLSearchParams();
+    if (userId) params.set('user_id', userId);
+    const url = `${this.baseUrl}/chat/conversations${params.toString() ? `?${params.toString()}` : ''}`;
     const res = await this.fetchWithTimeout(url, {
       method: 'POST',
       headers,
