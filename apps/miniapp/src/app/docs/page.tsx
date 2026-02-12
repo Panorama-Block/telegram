@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ArchitectureDiagram } from "./architecture-diagram";
+import { DocsContent } from "./docs-content";
 
 export const metadata: Metadata = {
   title: "Architecture | Panorama Block",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function DocsPage() {
-  return <ArchitectureDiagram />;
+  return <DocsContent />;
 }

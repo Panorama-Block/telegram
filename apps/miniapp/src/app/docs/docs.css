@@ -2,76 +2,47 @@
 
 .docs-root {
   position: relative;
-  width: 100vw;
-  height: 100dvh;
-  background: #050606;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   font-family: var(--font-jakarta), sans-serif;
 }
 
-/* ── Background glows (matches SeniorAppShell radial gradients) ── */
-.docs-glow {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(140px);
-  pointer-events: none;
-  z-index: 0;
-}
-
-.docs-glow--purple {
-  width: 500px;
-  height: 500px;
-  top: -200px;
-  left: -100px;
-  background: radial-gradient(circle, rgba(10, 196, 227, 0.12) 0%, transparent 50%);
-}
-
-.docs-glow--cyan {
-  width: 400px;
-  height: 400px;
-  bottom: -150px;
-  right: -80px;
-  background: radial-gradient(circle, rgba(11, 140, 194, 0.08) 0%, transparent 45%);
-}
-
-/* ── Header (matches desktop header: bg-[#08090c]/90 backdrop-blur-2xl border-white/5) ── */
-.docs-header {
+/* ── Layers bar (compact, inside the diagram area) ── */
+.docs-layers-bar {
   position: relative;
   z-index: 10;
-  padding: 14px 24px;
+  padding: 8px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(8, 9, 12, 0.9);
-  backdrop-filter: blur(40px);
+  background: rgba(8, 9, 12, 0.8);
+  backdrop-filter: blur(20px);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.docs-header__content {
+.docs-download-btn {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-
-.docs-header__title {
-  font-weight: 700;
-  font-size: 16px;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.98);
-  margin: 0;
-}
-
-.docs-header__title-accent {
-  color: #06b6d4;
-}
-
-.docs-header__subtitle {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.4);
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.03em;
-  margin: 0;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.docs-download-btn:hover {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: rgba(6, 182, 212, 0.2);
+  color: #22d3ee;
 }
 
 .docs-header__layers {
@@ -567,4 +538,239 @@
 
 .docs-canvas .react-flow__edge-path {
   stroke-linecap: round;
+}
+
+/* ===== Toolbar ===== */
+
+.docs-toolbar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(8, 9, 12, 0.85);
+  backdrop-filter: blur(20px);
+  gap: 8px;
+}
+
+.docs-toolbar__left,
+.docs-toolbar__right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.docs-tb-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.docs-tb-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.docs-tb-btn--primary {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: rgba(6, 182, 212, 0.2);
+  color: #22d3ee;
+}
+
+.docs-tb-btn--primary:hover {
+  background: rgba(6, 182, 212, 0.18);
+  border-color: rgba(6, 182, 212, 0.35);
+  color: #67e8f9;
+}
+
+.docs-tb-btn--danger {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.docs-tb-btn--danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+/* ===== Node Modal ===== */
+
+.nmodal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+.nmodal {
+  width: 420px;
+  max-width: 90vw;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0c0d10;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.nmodal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.nmodal__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.02em;
+}
+
+.nmodal__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.nmodal__close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.nmodal__body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.nmodal__label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.04em;
+}
+
+.nmodal__row {
+  display: flex;
+  gap: 12px;
+}
+
+.nmodal__row .nmodal__label {
+  flex: 1;
+}
+
+.nmodal__input,
+.nmodal__select {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.nmodal__input::placeholder {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.nmodal__input:focus,
+.nmodal__select:focus {
+  border-color: rgba(6, 182, 212, 0.3);
+}
+
+.nmodal__select {
+  appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.3)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+}
+
+.nmodal__select option {
+  background: #0c0d10;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.nmodal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.nmodal__btn {
+  padding: 8px 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.nmodal__btn--cancel {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.nmodal__btn--cancel:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.nmodal__btn--save {
+  background: rgba(6, 182, 212, 0.15);
+  border-color: rgba(6, 182, 212, 0.25);
+  color: #22d3ee;
+}
+
+.nmodal__btn--save:hover {
+  background: rgba(6, 182, 212, 0.25);
+  border-color: rgba(6, 182, 212, 0.4);
+}
+
+.nmodal__btn--save:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
