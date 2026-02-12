@@ -4,6 +4,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { AgentsClient } from '@/clients/agentsClient';
 import { useActiveAccount } from 'thirdweb/react';
 import { useAuth } from './AuthContext';
+import { useWalletIdentity } from './WalletIdentityContext';
+import { resolveChatIdentity } from '@/shared/lib/chatIdentity';
 
 export interface Conversation {
   id: string;
@@ -36,26 +38,34 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const agentsClient = useMemo(() => new AgentsClient(), []);
   const account = useActiveAccount();
   const { user, isLoading: authLoading } = useAuth();
+  const { address: identityAddress, tonAddress, tonAddressRaw } = useWalletIdentity();
   const isMountedRef = useRef(true);
   const bootstrappedRef = useRef(false);
 
-  // Get wallet address from localStorage as fallback
-  const getWalletAddress = useCallback(() => {
-    if (typeof window === 'undefined') return undefined;
-    const authPayload = localStorage.getItem('authPayload');
-    if (authPayload) {
-      try {
-        const payload = JSON.parse(authPayload);
-        return payload.address?.toLowerCase();
-      } catch (error) {
-        console.error('Error parsing authPayload:', error);
-      }
-    }
-    return undefined;
-  }, []);
+  const identity = resolveChatIdentity({
+    accountAddress: account?.address,
+    identityAddress,
+    tonAddress,
+    tonAddressRaw,
+    telegramUserId: user?.id,
+  });
+  const walletIdentity = identity.walletAddress;
+  const userId = identity.userId;
 
-  // Use the currently connected wallet address as the primary userId
-  const userId = account?.address?.toLowerCase() || getWalletAddress() || (user?.id ? String(user.id) : undefined);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    console.info('[CHAT TRACE][ChatContext] identity', {
+      accountAddress: account?.address?.toLowerCase() || null,
+      identityAddress: identityAddress || null,
+      tonAddress: tonAddress || null,
+      tonAddressRaw: tonAddressRaw || null,
+      walletIdentity: walletIdentity || null,
+      telegramUserId: user?.id ? String(user.id) : null,
+      resolvedUserId: userId || null,
+      identitySource: identity.source,
+      hasAuthToken: Boolean(localStorage.getItem('authToken')),
+    });
+  }, [account?.address, identityAddress, tonAddress, tonAddressRaw, walletIdentity, user?.id, userId, identity.source]);
 
   const getAuthOptions = useCallback(() => {
     if (typeof window === 'undefined') return undefined;
@@ -79,8 +89,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
+      console.info('[CHAT TRACE][ChatContext] refresh:start', { userId });
       const authOpts = getAuthOptions();
       const conversationsFromBackend = await agentsClient.listConversations(userId, authOpts);
+      console.info('[CHAT TRACE][ChatContext] refresh:response', {
+        userId,
+        count: conversationsFromBackend.length,
+        ids: conversationsFromBackend.map((c) => c.id),
+      });
 
       if (!isMountedRef.current) return;
 
@@ -90,6 +106,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }));
 
       setConversations(mappedConversations);
+      console.info('[CHAT TRACE][ChatContext] refresh:setConversations', {
+        userId,
+        count: mappedConversations.length,
+        ids: mappedConversations.map((c) => c.id),
+      });
 
       // Cache conversation IDs
       try {
@@ -107,6 +128,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.error('Error fetching conversations:', err);
+      console.info('[CHAT TRACE][ChatContext] refresh:error', {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
       if (isMountedRef.current) {
         setError('Failed to load conversations');
       }
@@ -159,18 +184,29 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (authLoading || !userId || bootstrappedRef.current) return;
 
+    console.info('[CHAT TRACE][ChatContext] bootstrap:load', { userId });
     bootstrappedRef.current = true;
     refreshConversations();
   }, [authLoading, userId, refreshConversations]);
 
   // Reset when user changes
   useEffect(() => {
+    console.info('[CHAT TRACE][ChatContext] reset:onUserChange', { userId });
     bootstrappedRef.current = false;
     setConversations([]);
     setActiveConversationIdState(null);
     setIsLoading(true);
     setError(null);
   }, [userId]);
+
+  useEffect(() => {
+    console.info('[CHAT TRACE][ChatContext] state:conversations', {
+      count: conversations.length,
+      ids: conversations.map((c) => c.id),
+      activeConversationId,
+      isLoading,
+    });
+  }, [conversations, activeConversationId, isLoading]);
 
   const value = useMemo(() => ({
     conversations,

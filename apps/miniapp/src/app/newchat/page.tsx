@@ -212,6 +212,12 @@ export default function NewChatPage() {
             console.log('📡 [NEWCHAT][TON] Verify response status:', verifyResponse.status);
             const { token } = await verifyResponse.json();
             localStorage.setItem('authToken', token);
+            localStorage.setItem('authPayload', JSON.stringify({
+              address: tonWallet.account.address,
+              walletType: 'ton',
+            }));
+            localStorage.setItem('userAddress', tonWallet.account.address.toLowerCase());
+            localStorage.setItem('walletAddress', tonWallet.account.address.toLowerCase());
             setIsAuthenticated(true);
             router.push('/chat');
             return; // End of TON flow
