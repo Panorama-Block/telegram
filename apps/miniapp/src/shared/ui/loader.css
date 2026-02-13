@@ -92,3 +92,9 @@
   50% { clip-path: inset(0); }
   to { clip-path: inset(0 0 0 100%); }
 }
+
+/* Blinking cursor for streaming typewriter */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}

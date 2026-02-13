@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp, Plus, MessageSquare, Loader2, Mic, Square, X } from 'lucide-react';
+import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp, Plus, MessageSquare, Loader2, Mic, Square, X, Copy, Check } from 'lucide-react';
 
 // Window.ethereum type declaration
 declare global {
@@ -42,6 +42,9 @@ import { useKeyboardHeight } from '@/shared/hooks/useKeyboardHeight';
 import { FEATURE_FLAGS } from '@/config/features';
 import { useWalletIdentity } from '@/shared/contexts/WalletIdentityContext';
 import { resolveChatIdentity } from '@/shared/lib/chatIdentity';
+import { useAgentStream } from '@/shared/hooks/useAgentStream';
+import { useTypewriter } from '@/shared/hooks/useTypewriter';
+import { ThoughtProcess } from '@/components/chat/ThoughtProcess';
 
 
 interface Message {
@@ -357,8 +360,10 @@ export default function ChatPage() {
   const [navigationType, setNavigationType] = useState<'swap' | 'lending' | 'staking' | 'dca' | null>(null);
   // Pending new chat state - when true, we show welcome screen without creating backend conversation
   const [pendingNewChat, setPendingNewChat] = useState(false);
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
 
   // Keyboard handling for mobile
@@ -406,7 +411,27 @@ export default function ChatPage() {
     cancelRecording,
     error: audioError,
   } = useAudioRecorder();
-  const [isSendingAudio, setIsSendingAudio] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+
+  // Streaming agent state
+  const {
+    thoughts: streamThoughts,
+    tokens: streamTokens,
+    isStreaming,
+    isDone: streamDone,
+    error: streamError,
+    result: streamResult,
+    send: sendStream,
+    cancel: cancelStream,
+    reset: resetStream,
+  } = useAgentStream();
+
+  // Typewriter: reveals streamTokens gradually (~2 chars per frame ≈ 120 chars/sec)
+  // The typewriter keeps ticking even after the stream ends, so the user sees
+  // the full text form on screen before the final message is committed.
+  // ~540 chars/sec at 60fps (9 chars per frame)
+  const { displayed: displayedTokens, isRevealing: typewriterRevealing } = useTypewriter(streamTokens, 9);
+
   const trendingPrompts = [
     { icon: <ArrowLeftRight className="w-4 h-4" />, text: 'Swap 0.1 ETH to USDC on Base' },
     { icon: <ArrowLeftRight className="w-4 h-4" />, text: 'Swap 50 USDC to SOL on Solana' },
@@ -679,12 +704,42 @@ export default function ChatPage() {
     [agentsClient, debug, getAuthOptions, userId, loadMessagesFromCache, saveMessagesToCache]
   );
 
-  const scrollToBottom = useCallback((immediate = false) => {
-    if (immediate) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-    } else {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
+  // ── Smart auto-scroll ──
+  // Any physical user interaction (touch / wheel / pointer) PAUSES
+  // auto-scrolling immediately. It resumes only when the user sends
+  // a new message (via forceScrollToBottom).
+  //
+  // Critical: we use direct `el.scrollTop` assignment (instant) instead
+  // of `scrollIntoView({ behavior: 'smooth' })`. Smooth-scroll creates
+  // a 300-500 ms animation that fights with touch-scrolling — that was
+  // the root cause of the "pulled back to bottom" bug.
+  const autoScrollRef = useRef(true);
+
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const pause = () => { autoScrollRef.current = false; };
+    el.addEventListener('touchstart', pause, { passive: true });
+    el.addEventListener('wheel', pause, { passive: true });
+    el.addEventListener('pointerdown', pause, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', pause);
+      el.removeEventListener('wheel', pause);
+      el.removeEventListener('pointerdown', pause);
+    };
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    if (!autoScrollRef.current) return;
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
+  const forceScrollToBottom = useCallback(() => {
+    autoScrollRef.current = true;
+    const el = messagesContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, []);
 
   useEffect(() => {
@@ -701,15 +756,20 @@ export default function ChatPage() {
   // Scroll to bottom when keyboard opens
   useEffect(() => {
     if (isKeyboardOpen && hasMessages) {
-      // Multiple scroll attempts to handle iOS animation
       const timers = [
-        setTimeout(() => scrollToBottom(true), 50),
-        setTimeout(() => scrollToBottom(true), 150),
-        setTimeout(() => scrollToBottom(true), 300),
+        setTimeout(() => scrollToBottom(), 50),
+        setTimeout(() => scrollToBottom(), 150),
+        setTimeout(() => scrollToBottom(), 300),
       ];
       return () => timers.forEach(clearTimeout);
     }
   }, [isKeyboardOpen, hasMessages, scrollToBottom]);
+
+  // Follow streaming tokens — every frame, instant scrollTop assignment.
+  useEffect(() => {
+    if (!displayedTokens) return;
+    scrollToBottom();
+  }, [displayedTokens, scrollToBottom]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -862,6 +922,9 @@ export default function ChatPage() {
     setBootstrapVersion((prev) => prev + 1);
   }, [debug]);
 
+  // Track which conversation the current stream belongs to
+  const streamConversationRef = useRef<string | null>(null);
+
   const sendMessage = async (content?: string) => {
     const messageContent = content ?? inputMessage.trim();
     if (!messageContent || isSending) return;
@@ -931,42 +994,47 @@ export default function ChatPage() {
 
     setInputMessage('');
     setIsSending(true);
+    streamConversationRef.current = conversationId;
 
-    try {
-      const walletAddress = account?.address || walletIdentity;
-      debug('chat:send', { conversationId, hasUserId: Boolean(userId), hasWalletAddress: Boolean(walletAddress) });
+    // User just sent a message — force scroll to bottom so they see it
+    forceScrollToBottom();
 
-      const response = await agentsClient.chat(
-        {
-          message: { role: 'user', content: messageContent },
-          user_id: userId,
-          conversation_id: conversationId,
-          wallet_address: walletAddress || undefined,
-          metadata: {
-            source: 'miniapp-chat',
-            sent_at: new Date().toISOString(),
-          },
-        },
-        getAuthOptions()
-      );
+    const walletAddress = account?.address || walletIdentity;
+    debug('chat:send:stream', { conversationId, hasUserId: Boolean(userId), hasWalletAddress: Boolean(walletAddress) });
 
-      if (!isMountedRef.current) return;
+    const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') ?? undefined : undefined;
 
+    // Fire-and-forget — the useEffect below handles the result
+    sendStream({
+      message: messageContent,
+      userId: userId ?? '',
+      conversationId,
+      walletAddress: walletAddress || undefined,
+      jwt: authToken,
+    });
+  };
+
+  // When the stream finishes AND the typewriter has caught up, materialise
+  // the assistant message. This ensures the user sees the full text forming
+  // on screen before it "commits" as a regular chat bubble.
+  useEffect(() => {
+    const conversationId = streamConversationRef.current;
+    if (!conversationId) return;
+
+    // Wait for both: stream done + typewriter finished revealing
+    if (streamDone && !typewriterRevealing && streamResult) {
+      const responseText = streamResult.response || streamTokens || '';
       const assistantMessage: Message = {
         role: 'assistant',
-        content: autoFormatAssistantMarkdown(response.message || 'I was unable to process that request.'),
+        content: autoFormatAssistantMarkdown(responseText || 'I was unable to process that request.'),
         timestamp: new Date(),
-        agentName: response.agent_name ?? null,
-        metadata: response.metadata ?? undefined,
+        agentName: streamResult.agent ?? null,
+        metadata: streamResult.metadata ?? undefined,
       };
 
       // Auto-fetch quote if it's a swap intent
-      if (response.metadata?.event === 'swap_intent_ready') {
-        getSwapQuote(response.metadata as Record<string, unknown>);
-      } else if (response.metadata?.event === 'lending_intent_ready') {
-        // We don't auto-open modal, user clicks button
-      } else if (response.metadata?.event === 'staking_intent_ready') {
-        // We don't auto-open modal, user clicks button
+      if (streamResult.metadata?.event === 'swap_intent_ready') {
+        getSwapQuote(streamResult.metadata as Record<string, unknown>);
       }
 
       setMessagesByConversation((prev) => {
@@ -978,20 +1046,20 @@ export default function ChatPage() {
         saveMessagesToCache(userId ?? '__anonymous__', conversationId, nextMessages[conversationId]);
         return nextMessages;
       });
-    } catch (error) {
-      console.error('Error sending message:', error);
-      debug('chat:error', {
-        conversationId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      const fallbackContent =
-        error instanceof DOMException && error.name === 'AbortError'
-          ? 'The agent is taking longer than expected. Please wait a moment and try again.'
-          : 'Sorry, I could not get a response right now. Please try again in a moment.';
+
+      setIsSending(false);
+      streamConversationRef.current = null;
+      refreshSidebarConversations().catch(() => {});
+      debug('chat:stream:complete', { conversationId });
+    }
+
+    if (streamError) {
+      console.error('Stream error:', streamError);
+      debug('chat:stream:error', { conversationId, error: streamError });
 
       const fallbackMessage: Message = {
         role: 'assistant',
-        content: fallbackContent,
+        content: 'Sorry, I could not get a response right now. Please try again in a moment.',
         timestamp: new Date(),
       };
 
@@ -1006,16 +1074,12 @@ export default function ChatPage() {
           return nextMessages;
         });
       }
-    } finally {
-      if (isMountedRef.current) {
-        setIsSending(false);
-      }
-      refreshSidebarConversations().catch((error) => {
-        console.warn('[CHAT] Failed to refresh sidebar conversations after send:', error);
-      });
-      debug('chat:complete', { conversationId });
+
+      setIsSending(false);
+      streamConversationRef.current = null;
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamDone, streamError, typewriterRevealing]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1031,120 +1095,31 @@ export default function ChatPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Handle sending audio message - optimized for speed
-  const sendAudioMessage = async () => {
-    if (!isRecording || isSendingAudio) return;
+  // Handle audio: transcribe only, then place text in input for user review
+  const transcribeAndDraft = async () => {
+    if (!isRecording || isTranscribing) return;
 
-    // Set loading states immediately for instant feedback
-    setIsSendingAudio(true);
-    setIsSending(true);
+    setIsTranscribing(true);
 
     try {
-      // Stop recording and get conversation ID in parallel if needed
-      const needsNewConversation = pendingNewChat || !activeConversationId;
+      const audioBlob = await stopRecording();
 
-      const [audioBlob, newConversationId] = await Promise.all([
-        stopRecording(),
-        needsNewConversation
-          ? agentsClient.createConversation(userId, getAuthOptions())
-          : Promise.resolve(null)
-      ]);
+      if (!audioBlob || !isMountedRef.current) return;
 
-      if (!audioBlob || !isMountedRef.current) {
-        setIsSendingAudio(false);
-        setIsSending(false);
-        return;
-      }
-
-      // Set up conversation
-      let conversationId = activeConversationId;
-      if (newConversationId) {
-        conversationId = newConversationId;
-        const newConversation: Conversation = { id: newConversationId, title: 'New Chat' };
-        setConversations((prev) => [newConversation, ...prev.filter((c) => c.id !== newConversationId)]);
-        setMessagesByConversation((prev) => ({ ...prev, [newConversationId]: [] }));
-        setActiveConversation(newConversationId);
-        setPendingNewChat(false);
-        refreshSidebarConversations().catch((error) => {
-          console.warn('[CHAT] Failed to refresh sidebar conversations after audio create:', error);
-        });
-      }
-
-      if (!conversationId) {
-        setIsSendingAudio(false);
-        setIsSending(false);
-        return;
-      }
-
-      // Add placeholder immediately
-      const userMessage: Message = { role: 'user', content: 'Processing audio...', timestamp: new Date() };
-      setMessagesByConversation((prev) => ({
-        ...prev,
-        [conversationId]: [...(prev[conversationId] ?? []), userMessage],
-      }));
-
-      // Send audio to backend
-      const walletAddress = account?.address || walletIdentity;
-      const response = await agentsClient.chatAudio(
-        audioBlob,
-        userId || '',
-        conversationId,
-        walletAddress,
-        getAuthOptions()
-      );
+      const result = await agentsClient.transcribeAudio(audioBlob, getAuthOptions());
 
       if (!isMountedRef.current) return;
 
-      // Build messages
-      const transcribedUserMessage: Message = {
-        role: 'user',
-        content: response.transcription || 'Voice message',
-        timestamp: new Date(),
-      };
+      const text = (result.text || '').trim();
+      if (!text) return; // empty transcription — silently return
 
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: autoFormatAssistantMarkdown(response.message || 'I was unable to process that request.'),
-        timestamp: new Date(),
-        agentName: response.agent_name ?? null,
-        metadata: response.metadata ?? undefined,
-      };
-
-      // Handle intents
-      if (response.metadata?.event === 'swap_intent_ready') {
-        getSwapQuote(response.metadata as Record<string, unknown>);
-      }
-
-      // Update messages in single operation
-      setMessagesByConversation((prev) => {
-        const prevMessages = prev[conversationId] ?? [];
-        const withoutPlaceholder = prevMessages.slice(0, -1);
-        const nextMessages = [...withoutPlaceholder, transcribedUserMessage, assistantMessage];
-        saveMessagesToCache(userId ?? '__anonymous__', conversationId, nextMessages);
-        return { ...prev, [conversationId]: nextMessages };
-      });
-
+      setInputMessage(text);
+      requestAnimationFrame(() => inputRef.current?.focus());
     } catch (error) {
-      console.error('[AUDIO] Error sending audio:', error);
-      const fallbackMessage: Message = {
-        role: 'assistant',
-        content: 'Sorry, I could not process your audio message. Please try again.',
-        timestamp: new Date(),
-      };
-
-      if (isMountedRef.current && activeConversationId) {
-        setMessagesByConversation((prev) => {
-          const prevMessages = prev[activeConversationId] ?? [];
-          return {
-            ...prev,
-            [activeConversationId]: [...prevMessages, fallbackMessage],
-          };
-        });
-      }
+      console.error('[AUDIO] Error transcribing audio:', error);
     } finally {
       if (isMountedRef.current) {
-        setIsSending(false);
-        setIsSendingAudio(false);
+        setIsTranscribing(false);
       }
     }
   };
@@ -1488,16 +1463,31 @@ export default function ChatPage() {
                                   </div>
                                 </div>
                                 <button
-                                  onClick={sendAudioMessage}
-                                  disabled={isSendingAudio}
+                                  onClick={transcribeAndDraft}
+                                  disabled={isTranscribing}
                                   className="p-2.5 md:p-3 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
-                                  aria-label="Send audio"
+                                  aria-label="Transcribe audio"
                                 >
-                                  {isSendingAudio ? (
+                                  {isTranscribing ? (
                                     <Loader2 className="w-5 h-5 animate-spin" />
                                   ) : (
                                     <ArrowUp className="w-5 h-5" />
                                   )}
+                                </button>
+                              </>
+                            ) : isTranscribing ? (
+                              // Transcribing UI
+                              <>
+                                <div className="flex-1 min-w-0 flex items-center gap-2 md:gap-3 pl-3">
+                                  <Loader2 className="w-4 h-4 text-cyan-400 animate-spin shrink-0" />
+                                  <span className="text-sm text-zinc-400">Transcribing...</span>
+                                </div>
+                                <button
+                                  onClick={() => setIsTranscribing(false)}
+                                  className="p-2 md:p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors shrink-0"
+                                  aria-label="Cancel transcription"
+                                >
+                                  <X className="w-5 h-5" />
                                 </button>
                               </>
                             ) : (
@@ -1507,6 +1497,7 @@ export default function ChatPage() {
                                   <Search className="w-5 h-5 md:w-6 md:h-6" />
                                 </div>
                                 <input
+                                  ref={inputRef}
                                   type="text"
                                   value={inputMessage}
                                   onChange={(e) => setInputMessage(e.target.value)}
@@ -1923,6 +1914,29 @@ export default function ChatPage() {
                                       </div>
                                     );
                                   })()}
+
+                                  {/* Copy button */}
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(message.content).then(() => {
+                                        setCopiedMessageIndex(index);
+                                        setTimeout(() => setCopiedMessageIndex(null), 2000);
+                                      });
+                                    }}
+                                    className="flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors mt-1 w-fit"
+                                  >
+                                    {copiedMessageIndex === index ? (
+                                      <>
+                                        <Check className="w-3.5 h-3.5 text-cyan-400" />
+                                        <span className="text-cyan-400">Copied</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3.5 h-3.5" />
+                                        <span>Copy</span>
+                                      </>
+                                    )}
+                                  </button>
                                 </div>
                               </div>
                             )}
@@ -1931,20 +1945,60 @@ export default function ChatPage() {
 
                         {isSending && (
                           <div className="flex gap-4 max-w-[90%]">
-                            <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 animate-pulse overflow-hidden p-1">
+                            <div className={cn(
+                              "w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 overflow-hidden p-1",
+                              !displayedTokens && "animate-pulse"
+                            )}>
                               <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
                             </div>
-                            <div className="flex items-center gap-1 pt-3">
-                              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.3s]" />
-                              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.15s]" />
-                              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce" />
+                            <div className="flex-1 min-w-0">
+                              {/* Thought process steps */}
+                              {isStreaming && streamThoughts.length > 0 && !displayedTokens && (
+                                <ThoughtProcess thoughts={streamThoughts} isStreaming={isStreaming} />
+                              )}
+
+                              {/* Streaming tokens — typewriter effect */}
+                              {displayedTokens ? (
+                                <div className="space-y-2">
+                                  {/* Collapsed thought steps */}
+                                  {streamThoughts.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                      {streamThoughts.slice(-3).map((step) => (
+                                        <span
+                                          key={step.id}
+                                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-500/10 text-[10px] text-cyan-400/70 border border-cyan-500/10"
+                                        >
+                                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-500/40" />
+                                          {step.label}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <div className="text-zinc-100 text-base leading-relaxed">
+                                    <MarkdownMessage text={autoFormatAssistantMarkdown(displayedTokens)} />
+                                    {/* Block cursor on its own line while writing */}
+                                    {(isStreaming || typewriterRevealing) && (
+                                      <div className="mt-2">
+                                        <span className="inline-block w-[3px] h-5 bg-cyan-400 rounded-[1px] animate-[cursor-blink_1s_step-end_infinite]" />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                /* Initial bounce dots when no thoughts yet */
+                                !streamThoughts.length && (
+                                  <div className="flex items-center gap-1 pt-3">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.3s]" />
+                                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.15s]" />
+                                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce" />
+                                  </div>
+                                )
+                              )}
                             </div>
                           </div>
                         )}
                         {/* Keyboard spacer - ensures content is visible above keyboard */}
                         {isKeyboardOpen && <div style={{ height: keyboardHeight > 0 ? keyboardHeight : 0 }} />}
-                        {/* Spacer for fixed input bar */}
-                        {hasMessages && <div className="h-24" />}
                         <div ref={messagesEndRef} />
                       </div>
                     </div>
@@ -2016,16 +2070,31 @@ export default function ChatPage() {
                                 </div>
                               </div>
                               <button
-                                onClick={sendAudioMessage}
-                                disabled={isSendingAudio}
+                                onClick={transcribeAndDraft}
+                                disabled={isTranscribing}
                                 className="p-2.5 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
-                                aria-label="Send audio"
+                                aria-label="Transcribe audio"
                               >
-                                {isSendingAudio ? (
+                                {isTranscribing ? (
                                   <Loader2 className="w-5 h-5 animate-spin" />
                                 ) : (
                                   <ArrowUp className="w-5 h-5" />
                                 )}
+                              </button>
+                            </>
+                          ) : isTranscribing ? (
+                            // Transcribing UI
+                            <>
+                              <div className="flex-1 min-w-0 flex items-center gap-2 pl-2">
+                                <Loader2 className="w-4 h-4 text-cyan-400 animate-spin shrink-0" />
+                                <span className="text-sm text-zinc-400">Transcribing...</span>
+                              </div>
+                              <button
+                                onClick={() => setIsTranscribing(false)}
+                                className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors shrink-0"
+                                aria-label="Cancel transcription"
+                              >
+                                <X className="w-5 h-5" />
                               </button>
                             </>
                           ) : (
@@ -2039,6 +2108,7 @@ export default function ChatPage() {
                                 <Sparkles className="w-5 h-5" />
                               </button>
                               <input
+                                ref={inputRef}
                                 type="text"
                                 value={inputMessage}
                                 onChange={(e) => setInputMessage(e.target.value)}
