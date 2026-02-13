@@ -22,6 +22,10 @@ export interface ChatResponse {
   transcription?: string | null;
 }
 
+export interface TranscribeResponse {
+  text: string;
+}
+
 export interface ChatOptions {
   jwt?: string;
   headers?: Record<string, string>;
@@ -445,6 +449,56 @@ export class AgentsClient {
     return data.messages;
   }
 
+  /**
+   * Start a streaming chat session via SSE.
+   *
+   * Returns the raw `Response` so the caller can consume the
+   * `ReadableStream` with a custom reader (see `useAgentStream`).
+   */
+  async chatStream(req: ChatRequest, opts: ChatOptions = {}): Promise<Response> {
+    this.ensureConfigured();
+
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      ...(opts.headers ?? {}),
+    };
+    if (opts.jwt) headers['authorization'] = `Bearer ${opts.jwt}`;
+
+    const body: Record<string, unknown> = {
+      message: {
+        role: req.message.role ?? 'user',
+        content: req.message.content,
+      },
+    };
+    if (req.user_id) body.user_id = req.user_id;
+    if (req.conversation_id) body.conversation_id = req.conversation_id;
+    if (req.chain_id) body.chain_id = req.chain_id;
+    if (req.wallet_address) body.wallet_address = req.wallet_address;
+    if (req.metadata) body.metadata = req.metadata;
+
+    this.logDebug('chatStream:start', {
+      conversationId: req.conversation_id,
+      hasUserId: Boolean(req.user_id),
+    });
+
+    const requestUrl = `${this.baseUrl}/chat/stream`;
+    const res = await fetch(requestUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      // No abort controller timeout — streaming can take a while
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      this.logDebug('chatStream:error', { status: res.status, response: text });
+      throw new Error(`Agents stream failed: ${res.status} ${text}`);
+    }
+
+    this.logDebug('chatStream:connected', { conversationId: req.conversation_id });
+    return res;
+  }
+
   async chatAudio(
     audioFile: Blob,
     userId: string,
@@ -510,5 +564,49 @@ export class AgentsClient {
     };
 
     return final;
+  }
+
+  async transcribeAudio(audioFile: Blob, opts: ChatOptions = {}): Promise<TranscribeResponse> {
+    this.ensureConfigured();
+
+    const formData = new FormData();
+
+    const mimeToExt: Record<string, string> = {
+      'audio/webm': 'webm',
+      'audio/mp3': 'mp3',
+      'audio/mpeg': 'mp3',
+      'audio/wav': 'wav',
+      'audio/ogg': 'ogg',
+      'audio/flac': 'flac',
+      'audio/mp4': 'm4a',
+      'audio/aac': 'aac',
+    };
+    const ext = mimeToExt[audioFile.type] || 'webm';
+    const filename = `recording.${ext}`;
+
+    formData.append('audio', audioFile, filename);
+
+    const headers: Record<string, string> = {};
+    if (opts.jwt) headers['authorization'] = `Bearer ${opts.jwt}`;
+
+    const requestUrl = `${this.baseUrl}/transcribe`;
+    this.logDebug('transcribeAudio:start', { fileSize: audioFile.size, mimeType: audioFile.type });
+
+    const res = await this.fetchWithTimeout(requestUrl, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      this.logDebug('transcribeAudio:error', { status: res.status, response: text });
+      throw new Error(`Agents transcribe failed: ${res.status} ${text}`);
+    }
+
+    this.logDebug('transcribeAudio:success');
+
+    const data = await res.json();
+    return { text: data?.text || '' };
   }
 }
