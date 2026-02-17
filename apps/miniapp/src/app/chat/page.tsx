@@ -386,6 +386,8 @@ export default function ChatPage() {
   const [swapQuote, setSwapQuote] = useState<QuoteResponse | null>(null);
   const [swapLoading, setSwapLoading] = useState(false);
   const [swapError, setSwapError] = useState<string | null>(null);
+  const [swapInsufficientBalance, setSwapInsufficientBalance] = useState(false);
+  const [swapSellBalance, setSwapSellBalance] = useState<string | null>(null);
 
   // SwapWidget modal state
   const [showSwapWidget, setShowSwapWidget] = useState(false);
@@ -1032,9 +1034,10 @@ export default function ChatPage() {
         metadata: streamResult.metadata ?? undefined,
       };
 
-      // Auto-fetch quote if it's a swap intent
+      // Auto-fetch quote and check balance if it's a swap intent
       if (streamResult.metadata?.event === 'swap_intent_ready') {
         getSwapQuote(streamResult.metadata as Record<string, unknown>);
+        checkSwapBalance(streamResult.metadata as Record<string, unknown>);
       }
 
       setMessagesByConversation((prev) => {
@@ -1368,6 +1371,61 @@ export default function ChatPage() {
     }
   }, [account?.address, walletIdentity]);
 
+  // Check if user has enough balance for the swap (runs alongside getSwapQuote)
+  const checkSwapBalance = useCallback(async (metadata: Record<string, unknown>) => {
+    setSwapInsufficientBalance(false);
+    setSwapSellBalance(null);
+
+    if (!client || !account?.address) return;
+
+    const { amount, from_network, from_token } = metadata;
+    if (!amount || !from_network || !from_token) return;
+
+    const fromNetworkObj = getNetworkByName(from_network as string);
+    if (!fromNetworkObj) return;
+
+    const fromTokenObj = getTokenBySymbol(from_token as string, fromNetworkObj.chainId);
+    if (!fromTokenObj) return;
+
+    try {
+      const { defineChain, getContract } = await import("thirdweb");
+      const { eth_getBalance, getRpcClient } = await import("thirdweb/rpc");
+      const { getBalance } = await import("thirdweb/extensions/erc20");
+
+      const tokenAddress = fromTokenObj.address?.toLowerCase();
+      const isNativeToken = !tokenAddress ||
+        tokenAddress === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' ||
+        tokenAddress === '0x0000000000000000000000000000000000000000' ||
+        tokenAddress === 'native';
+
+      let balance: bigint;
+      let decimals = fromTokenObj.decimals || 18;
+
+      if (isNativeToken) {
+        const rpcRequest = getRpcClient({ client, chain: defineChain(fromNetworkObj.chainId) });
+        balance = await eth_getBalance(rpcRequest, { address: account.address });
+      } else {
+        const tokenContract = getContract({
+          client,
+          chain: defineChain(fromNetworkObj.chainId),
+          address: fromTokenObj.address,
+        });
+        const balanceResult = await getBalance({ contract: tokenContract, address: account.address });
+        balance = balanceResult.value;
+        decimals = balanceResult.decimals;
+      }
+
+      const formattedBalance = formatAmountHuman(balance, decimals, 6);
+      setSwapSellBalance(formattedBalance);
+
+      const userBalance = parseFloat(formattedBalance);
+      const swapAmount = parseFloat(String(amount));
+      setSwapInsufficientBalance(userBalance < swapAmount);
+    } catch (error) {
+      console.error('[Chat] Error checking swap balance:', error);
+    }
+  }, [client, account?.address]);
+
   return (
     <ProtectedRoute>
       <TransactionSettingsProvider>
@@ -1588,9 +1646,12 @@ export default function ChatPage() {
                                     const fromIcon = getTokenIcon(fromToken);
                                     const toIcon = getTokenIcon(toToken);
                                     const poweredBy = getSwapPoweredBy(fromNetwork, toNetwork);
+                                    const toNetworkObj = getNetworkByName(toNetwork);
+                                    const toTokenObj = toNetworkObj ? getTokenBySymbol(toToken, toNetworkObj.chainId) : null;
+                                    const toDecimals = toTokenObj?.decimals ?? 18;
 
                                     return (
-                                      <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                      <div className="mt-3 sm:mt-4 w-full max-w-[588px] sm:max-w-2xl">
                                         {/* Swap Card */}
                                         <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
                                           {/* Gradient Glow */}
@@ -1649,7 +1710,7 @@ export default function ChatPage() {
                                                   {swapLoading ? '...' : swapQuote?.quote ? (
                                                     swapQuote.quote.sourceNetwork ?
                                                       Number(swapQuote.quote.estimatedReceiveAmount).toFixed(4) :
-                                                      formatAmountHuman(BigInt(swapQuote.quote.toAmount || swapQuote.quote.estimatedReceiveAmount || 0), 18)
+                                                      formatAmountHuman(BigInt(swapQuote.quote.toAmount || swapQuote.quote.estimatedReceiveAmount || 0), toDecimals)
                                                   ) : '~'}
                                                 </span>
                                                 <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
@@ -1669,6 +1730,23 @@ export default function ChatPage() {
                                             {swapError && !swapLoading && (
                                               <div className="p-2 sm:p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl">
                                                 <p className="text-[10px] sm:text-xs text-red-300">{swapError}</p>
+                                              </div>
+                                            )}
+
+                                            {/* Insufficient Balance Warning */}
+                                            {swapInsufficientBalance && !swapLoading && (
+                                              <div className="bg-red-500/10 border border-red-500/40 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                                <div className="flex items-start gap-2">
+                                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400 flex-shrink-0 mt-0.5">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                  </svg>
+                                                  <div>
+                                                    <p className="text-xs font-semibold text-red-400 mb-0.5">Insufficient Balance</p>
+                                                    <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-relaxed">
+                                                      You have {swapSellBalance ?? '0'} {fromToken} but trying to swap {String(message.metadata?.amount)} {fromToken}
+                                                    </p>
+                                                  </div>
+                                                </div>
                                               </div>
                                             )}
 
