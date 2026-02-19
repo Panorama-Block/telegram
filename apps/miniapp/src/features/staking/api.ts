@@ -3,6 +3,10 @@
 import { useMemo } from 'react';
 import { useActiveAccount, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { defineChain } from 'thirdweb';
+import { parseAmountToWei } from '@/features/swap/utils';
+import { safeExecuteTransactionV2 } from '@/shared/utils/transactionUtilsV2';
+import { fetchWithAuth } from '@/shared/lib/fetchWithAuth';
+import type { TransactionData } from '@/shared/types/transaction';
 
 type SwitchChainFn = (chain: ReturnType<typeof defineChain>) => Promise<void>;
 
@@ -37,13 +41,7 @@ export interface StakingTransaction {
   token: string;
   status: 'pending' | 'completed' | 'failed';
   timestamp: string;
-  transactionData?: {
-    to: string;
-    data: string;
-    value: string;
-    gasLimit: string;
-    chainId: number;
-  };
+  transactionData?: TransactionData;
   // For multi-step transactions (like unstake which requires approval first)
   requiresFollowUp?: boolean;
   followUpAction?: 'unstake';
@@ -118,10 +116,11 @@ class StakingApiClient {
   constructor(account: any, switchChain?: SwitchChainFn) {
     this.switchChain = switchChain || null;
 
-    // Priority: Use environment variable or fallback to localhost
+    // Use env var for direct access (SSR/tests), otherwise use Next.js rewrite proxy.
     const direct = process.env.NEXT_PUBLIC_STAKING_API_URL || process.env.VITE_STAKING_API_URL;
+    const isBrowser = typeof window !== 'undefined';
 
-    if (direct && direct.length > 0) {
+    if (!isBrowser && direct && direct.length > 0) {
       this.baseUrl = direct.replace(/\/+$/, '');
     } else {
       this.baseUrl = '/api/staking';
@@ -131,14 +130,7 @@ class StakingApiClient {
   }
 
   private toWei(amount: string, decimals: number = 18): string {
-    const num = parseFloat(amount);
-    if (isNaN(num)) return '0';
-    // Use BigInt for precise conversion to avoid floating point errors
-    const factor = BigInt(10 ** decimals);
-    const wholePart = Math.floor(num);
-    const decimalPart = num - wholePart;
-    const weiValue = BigInt(wholePart) * factor + BigInt(Math.floor(decimalPart * (10 ** decimals)));
-    return weiValue.toString();
+    return parseAmountToWei(amount, decimals).toString();
   }
 
   private getAddressFromToken(): string | null {
@@ -474,8 +466,23 @@ class StakingApiClient {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`Claim failed: ${errorText}`);
+        let message = 'Unknown error';
+        try {
+          const json = await response.json();
+          if (json && typeof json === 'object') {
+            message =
+              (json as any).error ||
+              (json as any).message ||
+              JSON.stringify(json);
+          }
+        } catch {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          message = errorText || 'Unknown error';
+        }
+        if (/internal server error/i.test(message)) {
+          message = 'Claim could not be prepared right now. Refresh withdrawal status and try again.';
+        }
+        throw new Error(`Claim failed: ${message}`);
       }
 
       const result = await response.json();
@@ -521,7 +528,7 @@ class StakingApiClient {
     }
 
     try {
-      // Note: Backend expects amount in ETH (not wei), it handles conversion internally
+      const amountWei = this.toWei(amount);
       const message = `Stake ${amount} ETH\nTimestamp: ${Date.now()}`;
       const authData = await this.getAuthData(message);
 
@@ -530,18 +537,18 @@ class StakingApiClient {
       console.log('[STAKING] Sending stake request:', {
         url: `${this.baseUrl}/api/lido/stake`,
         userAddress,
-        amount
+        amount: amountWei
       });
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-      const response = await fetch(`${this.baseUrl}/api/lido/stake`, {
+      const response = await fetchWithAuth(`${this.baseUrl}/api/lido/stake`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           userAddress,
-          amount,
+          amount: amountWei,
           authData
         }),
         signal: controller.signal
@@ -598,7 +605,7 @@ class StakingApiClient {
     }
 
     try {
-      // Note: Backend expects amount in ETH (not wei), it handles conversion internally
+      const amountWei = this.toWei(amount);
       const message = `Unstake ${amount} stETH\nTimestamp: ${Date.now()}`;
       const authData = await this.getAuthData(message);
 
@@ -607,18 +614,18 @@ class StakingApiClient {
       console.log('[STAKING] Sending unstake request:', {
         url: `${this.baseUrl}/api/lido/unstake`,
         userAddress,
-        amount
+        amount: amountWei
       });
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-      const response = await fetch(`${this.baseUrl}/api/lido/unstake`, {
+      const response = await fetchWithAuth(`${this.baseUrl}/api/lido/unstake`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           userAddress,
-          amount,
+          amount: amountWei,
           authData
         }),
         signal: controller.signal
@@ -688,13 +695,16 @@ class StakingApiClient {
         throw new Error('This transaction must be executed on Ethereum Mainnet (chainId 1). Please switch network in the app and try again.');
       }
 
-      // Attempt to switch chain if possible (avoid silent wallet errors)
-      if (this.switchChain) {
-        try {
-          await this.switchChain(defineChain(1));
-        } catch (e) {
-          console.warn('[STAKING] Failed to switch chain automatically:', e);
-        }
+      // Trust-first UX: never trigger chain switch popups automatically.
+      // If we can detect the current chain and it's not Ethereum mainnet, fail fast with a clear message.
+      const ethereum = typeof window !== 'undefined' ? (window as any).ethereum : null;
+      const currentChainHex = typeof ethereum?.chainId === 'string' ? ethereum.chainId : null;
+      const currentChainId =
+        currentChainHex && /^0x[0-9a-fA-F]+$/.test(currentChainHex)
+          ? Number.parseInt(currentChainHex, 16)
+          : null;
+      if (currentChainId != null && currentChainId !== expectedChainId) {
+        throw new Error(`Wrong network (chainId ${currentChainId}). Switch to Ethereum Mainnet (chainId 1) and try again.`);
       }
 
       // Extract transaction data
@@ -802,59 +812,120 @@ class StakingApiClient {
       console.log('Sending transaction to thirdweb...');
       console.log('Account address:', this.account.address);
       console.log('Account type:', typeof this.account);
-      
-      try {
-        // Execute transaction using thirdweb
-        const tx = await this.account.sendTransaction(formattedTxData);
-        console.log('Transaction sent, waiting for receipt...', tx);
-        
-        // Check if we got a transaction hash
-        if (tx && tx.transactionHash) {
-          console.log('✅ Transaction hash received:', tx.transactionHash);
-          console.log('Transaction submitted successfully!');
-          console.log('You can check the transaction status on a block explorer.');
-          
-          return tx.transactionHash;
-        } else if (tx && typeof tx === 'string') {
-          // Sometimes thirdweb returns just the hash as a string
-          console.log('✅ Transaction hash received (string):', tx);
-          return tx;
-        } else {
-          console.error('❌ No transaction hash in response:', tx);
-          throw new Error('No transaction hash received from thirdweb');
+
+      const extractTxHash = (value: unknown): string | null => {
+        if (!value) return null;
+        if (typeof value === 'string') {
+          return /^0x[a-fA-F0-9]{64}$/.test(value) ? value : null;
         }
-      } catch (txError) {
-        const code = (txError as any)?.code;
-        const message =
-          (txError as any)?.message ||
-          (txError as any)?.reason ||
-          (txError as any)?.shortMessage ||
-          (() => {
-            try {
-              return JSON.stringify(txError);
-            } catch {
-              return 'Unknown error';
-            }
-          })();
+        const candidate = value as any;
+        const maybeStrings = [
+          candidate?.transactionHash,
+          candidate?.hash,
+          candidate?.receipt?.transactionHash,
+          candidate?.result?.transactionHash,
+          candidate?.txHash,
+        ];
+        for (const s of maybeStrings) {
+          if (typeof s === 'string' && /^0x[a-fA-F0-9]{64}$/.test(s)) return s;
+        }
+        return null;
+      };
 
-        console.error('❌ Thirdweb transaction error:', txError);
-        console.error('Error details:', { message, code, data: (txError as any)?.data });
+      const result = await safeExecuteTransactionV2(async () => {
+        const sent = await this.account.sendTransaction(formattedTxData);
+        const hash = extractTxHash(sent);
+        if (!hash) {
+          console.error('❌ No transaction hash in response:', sent);
+          throw new Error('No transaction hash received from wallet.');
+        }
+        return { transactionHash: hash };
+      });
 
-        if (code === 4001 || /user rejected|user denied|rejected/i.test(message)) {
+      if (!result.success || !result.transactionHash) {
+        const message = result.error || 'Transaction failed';
+        if (/\"code\"\s*:\s*4001|user rejected|user denied|rejected/i.test(message)) {
           throw new Error('Transaction rejected in wallet.');
+        }
+        if (/likely to fail|couldn'?t be completed|canceled to save/i.test(message)) {
+          throw new Error('Wallet blocked this transaction because it is likely to fail. Review amount/method and try again.');
         }
         if (/insufficient funds|insufficient balance|gas/i.test(message)) {
           throw new Error('Insufficient balance for gas or amount.');
         }
-        if (/chain|network/i.test(message)) {
+        if (/wrong network|chain|network/i.test(message)) {
           throw new Error('Wrong network. Please switch to Ethereum Mainnet.');
         }
-
-        throw new Error(message || 'Transaction failed');
+        throw new Error(message);
       }
+
+      console.log('✅ Transaction hash received:', result.transactionHash);
+      return result.transactionHash;
     } catch (error) {
-      console.error('Error executing transaction:', error);
-      throw new Error(`Transaction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const describeUnknown = (err: unknown): string => {
+        if (err instanceof Error) return err.message || 'Unknown error';
+        if (typeof err === 'string') return err;
+        if (err && typeof err === 'object') {
+          const anyErr = err as any;
+          const message =
+            anyErr?.shortMessage ||
+            anyErr?.message ||
+            anyErr?.error?.message ||
+            anyErr?.error ||
+            anyErr?.reason;
+          if (typeof message === 'string' && message.trim().length > 0) return message;
+          try {
+            const json = JSON.stringify(anyErr);
+            if (json && json !== '{}' && json !== '[]') return json;
+          } catch {}
+          try {
+            const props = Object.getOwnPropertyNames(anyErr);
+            if (props.length) {
+              const out: Record<string, unknown> = {};
+              for (const p of props) out[p] = anyErr[p];
+              return JSON.stringify(out);
+            }
+          } catch {
+            return String(anyErr);
+          }
+        }
+        return 'Unknown error';
+      };
+
+      if (error instanceof Error) {
+        const msg = error.message || 'Transaction failed';
+        const code = (error as any)?.code;
+        if (code === 4001 || /user rejected|user denied|rejected/i.test(msg)) {
+          throw new Error('Transaction rejected in wallet.');
+        }
+        if (/likely to fail|couldn'?t be completed|canceled to save/i.test(msg)) {
+          throw new Error('Wallet blocked this transaction because it is likely to fail. Review amount/method and try again.');
+        }
+        if (/insufficient funds|insufficient balance|gas/i.test(msg)) {
+          throw new Error('Insufficient balance for gas or amount.');
+        }
+        if (/wrong network|chain|network/i.test(msg)) {
+          throw new Error('Wrong network. Please switch to Ethereum Mainnet.');
+        }
+        console.error('Error executing transaction:', error);
+        throw error;
+      }
+
+      const msg = describeUnknown(error);
+      if (/\"code\"\s*:\s*4001|user rejected|user denied|rejected/i.test(msg)) {
+        throw new Error('Transaction rejected in wallet.');
+      }
+      if (/likely to fail|couldn'?t be completed|canceled to save/i.test(msg)) {
+        throw new Error('Wallet blocked this transaction because it is likely to fail. Review amount/method and try again.');
+      }
+      if (/insufficient funds|insufficient balance|gas/i.test(msg)) {
+        throw new Error('Insufficient balance for gas or amount.');
+      }
+      if (/wrong network|chain|network/i.test(msg)) {
+        throw new Error('Wrong network. Please switch to Ethereum Mainnet.');
+      }
+      console.error('Error executing transaction:', { message: msg, raw: error });
+      throw new Error(`Transaction failed: ${msg}`);
     }
   }
 

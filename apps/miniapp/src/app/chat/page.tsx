@@ -2102,6 +2102,102 @@ export default function ChatPage() {
                                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.3s]" />
                                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.15s]" />
                                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce" />
+
+                                );
+                              })()}
+
+                              {message.metadata?.event === 'staking_intent_ready' && (() => {
+                                const token = String(message.metadata?.token || 'ETH');
+                                const amount = Number(message.metadata?.amount || 0);
+                                const tokenIcon = getTokenIcon(token);
+                                const stTokenIcon = getTokenIcon(`st${token}`) || getTokenIcon('stETH');
+
+                                return (
+                                  <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                    {/* Staking Card */}
+                                    <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                      {/* Gradient Glow */}
+                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-blue-500/10 blur-[40px] pointer-events-none" />
+
+                                      {/* Header */}
+                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                        <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
+                                        <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
+                                      </div>
+
+                                      {/* Content */}
+                                      <div className="relative z-10 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
+                                        {/* Stake Input */}
+                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
+                                          </div>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="text-lg sm:text-xl font-medium text-white truncate">
+                                              {String(message.metadata?.amount || '0')}
+                                            </span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                              {tokenIcon ? (
+                                                <img src={tokenIcon} alt={token} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                              ) : (
+                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
+                                                  {token[0]}
+                                                </div>
+                                              )}
+                                              <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Arrow */}
+                                        <div className="flex justify-center -my-0.5 sm:-my-1">
+                                          <div className="bg-[#0A0A0A] border border-white/10 p-1 sm:p-1.5 rounded-lg">
+                                            <ArrowDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400" />
+                                          </div>
+                                        </div>
+
+                                        {/* Receive Output */}
+                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You Receive</span>
+                                          </div>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="text-lg sm:text-xl font-medium text-white truncate">
+                                              --
+                                            </span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                              {stTokenIcon ? (
+                                                <img src={stTokenIcon} alt={`st${token}`} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                              ) : (
+                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-[7px] sm:text-[8px] text-white font-bold">
+                                                  st
+                                                </div>
+                                              )}
+                                              <span className="text-xs sm:text-sm font-medium text-white">st{token}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Action Button */}
+                                        <button
+                                          onClick={async () => {
+                                            // Auto-switch to Ethereum Mainnet before opening staking widget
+                                            await autoSwitchNetwork('ethereum');
+                                            setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
+                                            setShowStakingWidget(true);
+                                          }}
+                                          className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                        >
+                                          Review Staking
+                                        </button>
+                                      </div>
+
+                                      {/* Footer */}
+                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                        <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                        <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Lido</span>
+                                      </div>
+                                    </div>
                                   </div>
                                 )
                               )}
@@ -2293,18 +2389,18 @@ export default function ChatPage() {
 
           {/* Lending Modal */}
           <AnimatePresence>
-            {lendingModalOpen && (
-              <Lending
-                onClose={() => {
-                  setLendingModalOpen(false);
-                  setCurrentLendingMetadata(null);
-                }}
-                initialAmount={currentLendingMetadata?.amount as string | undefined}
-                initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
-                initialAction={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
-              />
-            )}
-          </AnimatePresence>
+	            {lendingModalOpen && (
+	              <Lending
+	                onClose={() => {
+	                  setLendingModalOpen(false);
+	                  setCurrentLendingMetadata(null);
+	                }}
+	                initialAmount={currentLendingMetadata?.amount as string | undefined}
+	                initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
+	                initialMode={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
+	              />
+	            )}
+	          </AnimatePresence>
 
           {/* SwapWidget Modal */}
           <AnimatePresence>
@@ -2331,7 +2427,11 @@ export default function ChatPage() {
                   setShowStakingWidget(false);
                   setCurrentStakingMetadata(null);
                 }}
-                initialAmount={currentStakingMetadata?.amount as string | undefined}
+                initialAmount={
+                  typeof currentStakingMetadata?.amount === 'string' || typeof currentStakingMetadata?.amount === 'number'
+                    ? currentStakingMetadata.amount
+                    : undefined
+                }
               />
             )}
           </AnimatePresence>

@@ -181,6 +181,16 @@ async function getJson<T>(path: string): Promise<T> {
 
 export const swapApi = {
   quote(body: QuoteRequest) {
+    // Runtime guardrails: prevent the common "wei passed as token" bug from silently producing nonsense quotes.
+    try {
+      const amount = String(body.amount ?? '').trim();
+      if (body.unit === 'wei' && amount.includes('.')) {
+        console.warn('[swapApi.quote] unit=wei but amount contains decimals. Did you mean unit=token?', body);
+      }
+      if (body.unit === 'token' && /^\d+$/.test(amount) && amount.length > 12) {
+        console.warn('[swapApi.quote] unit=token but amount looks like wei (long integer). Did you mean unit=wei?', body);
+      }
+    } catch {}
     // baseUrl() already resolves to ".../swap" (or "/swap" on same origin)
     return postJson<QuoteResponse>('/quote', body);
   },

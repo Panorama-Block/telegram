@@ -87,6 +87,48 @@ export interface TransactionResult {
   error?: string;
 }
 
+function describeAnyError(err: unknown): string {
+  if (!err) return 'Unknown error';
+  if (err instanceof Error) {
+    const base = err.message || 'Unknown error';
+    const cause = (err as any)?.cause;
+    if (cause instanceof Error && cause.message) return `${base} (cause: ${cause.message})`;
+    if (typeof cause === 'string' && cause.trim().length > 0) return `${base} (cause: ${cause})`;
+    return base;
+  }
+  if (typeof err === 'string') return err;
+  if (typeof err === 'object') {
+    const anyErr = err as any;
+    const message =
+      anyErr?.shortMessage ||
+      anyErr?.message ||
+      anyErr?.error?.message ||
+      anyErr?.error ||
+      anyErr?.reason ||
+      anyErr?.data?.message ||
+      anyErr?.response?.data?.message;
+    if (typeof message === 'string' && message.trim().length > 0) return message;
+
+    // JSON.stringify(Error) often yields "{}", so fall back to property introspection.
+    try {
+      const json = JSON.stringify(anyErr);
+      if (json && json !== '{}' && json !== '[]') return json;
+    } catch {}
+
+    try {
+      const props = Object.getOwnPropertyNames(anyErr);
+      if (props.length) {
+        const out: Record<string, unknown> = {};
+        for (const p of props) out[p] = anyErr[p];
+        return JSON.stringify(out);
+      }
+    } catch {}
+
+    return String(anyErr);
+  }
+  return String(err);
+}
+
 /**
  * Get the current nonce for an address on a specific chain
  * Uses "pending" to get the next nonce including pending transactions
@@ -165,16 +207,28 @@ export async function safeExecuteTransactionV2(
       transactionHash: result.transactionHash,
     };
   } catch (error: any) {
+    const message = describeAnyError(error);
     console.error('Transaction error caught:', {
-      message: error.message,
-      name: error.name,
-      stack: error.stack,
-      error: error
+      message,
+      name: (error as any)?.name,
+      code: (error as any)?.code,
+      stack: (error as any)?.stack,
+      error,
     });
 
+    // Some wallet/providers throw ABI/serialization errors *after* broadcasting the tx.
+    // Trust-first UX: if we can extract a tx hash, treat it as submitted and let the UI track confirmations.
+    const extractedHash = extractHashFromError(error);
+    if (extractedHash && extractedHash !== `0x${'0'.repeat(64)}`) {
+      console.warn('⚠️ Transaction threw but hash was found; treating as submitted:', extractedHash);
+      return {
+        success: true,
+        transactionHash: extractedHash,
+      };
+    }
+
     // Check if this is a chain/undefined error (common with direct transaction submission)
-    if (error.message?.includes("Cannot read properties of undefined") &&
-        error.message?.includes("'id'")) {
+    if (message.includes("Cannot read properties of undefined") && message.includes("'id'")) {
       console.error('⚠️ Chain undefined error - this is a thirdweb configuration issue');
       return {
         success: false,
@@ -185,7 +239,7 @@ export async function safeExecuteTransactionV2(
     // Check if this is an ABI error (often happens with Uniswap Smart Router)
     if (isABIErrorSignatureNotFound(error)) {
       console.warn('⚠️ ABI error detected - This is common with Uniswap V3 Router');
-      console.warn('Error details:', error.message);
+      console.warn('Error details:', message);
 
       // Try to extract hash from the error
       const hash = extractHashFromError(error);
@@ -207,8 +261,7 @@ export async function safeExecuteTransactionV2(
 
       // If we can't extract hash, this might be a real failure
       // Let's check if the error contains any indication of success
-      if (error.message?.includes('transaction') &&
-          (error.message?.includes('sent') || error.message?.includes('submitted'))) {
+      if (message.includes('transaction') && (message.includes('sent') || message.includes('submitted'))) {
         console.warn('Error suggests transaction was sent but ABI decoding failed');
         return {
           success: false,
@@ -226,13 +279,13 @@ export async function safeExecuteTransactionV2(
     // For other errors, return the error
     return {
       success: false,
-      error: error.message || 'Transaction failed',
+      error: message || 'Transaction failed',
     };
   }
 }
 
 function isABIErrorSignatureNotFound(error: any): boolean {
-  const message = error?.message || '';
+  const message = describeAnyError(error);
   return (
     message.includes('AbiErrorSignatureNotFoundError') ||
     message.includes('Encoded error signature') ||
@@ -243,30 +296,61 @@ function isABIErrorSignatureNotFound(error: any): boolean {
 }
 
 function extractHashFromError(error: any): string | null {
-  // Try to find any 64-character hex string starting with 0x
   const hashRegex = /0x[a-fA-F0-9]{64}/g;
-  const message = error?.message || '';
-  const matches = message.match(hashRegex);
-  
-  if (matches && matches.length > 0) {
-    // Return the first valid hash found
-    return matches[0];
-  }
-  
-  // Try to find in error properties
-  const searchProps = ['transactionHash', 'hash', 'txHash', 'tx', 'result'];
-  for (const prop of searchProps) {
-    const value = error?.[prop];
-    if (typeof value === 'string' && hashRegex.test(value)) {
-      return value;
+
+  const deepFind = (val: unknown, seen = new Set<any>()): string | null => {
+    if (!val) return null;
+    if (typeof val === 'string') {
+      const m = val.match(hashRegex);
+      return m && m[0] ? m[0] : null;
     }
-    if (value?.hash && typeof value.hash === 'string' && hashRegex.test(value.hash)) {
-      return value.hash;
+    if (typeof val !== 'object') return null;
+    if (seen.has(val)) return null;
+    seen.add(val);
+
+    const anyVal = val as any;
+    // Common nesting patterns
+    const direct = [
+      anyVal?.transactionHash,
+      anyVal?.hash,
+      anyVal?.txHash,
+      anyVal?.tx?.hash,
+      anyVal?.tx?.transactionHash,
+      anyVal?.result?.hash,
+      anyVal?.result?.transactionHash,
+      anyVal?.receipt?.transactionHash,
+      anyVal?.data?.transactionHash,
+      anyVal?.cause,
+    ];
+    for (const d of direct) {
+      const found = deepFind(d, seen);
+      if (found) return found;
     }
-    if (value?.transactionHash && typeof value.transactionHash === 'string' && hashRegex.test(value.transactionHash)) {
-      return value.transactionHash;
-    }
-  }
-  
-  return null;
+
+    // Explore own properties (including non-enumerable when available)
+    try {
+      for (const key of Object.getOwnPropertyNames(anyVal)) {
+        const found = deepFind(anyVal[key], seen);
+        if (found) return found;
+      }
+    } catch {}
+
+    // Explore enumerable values as a fallback
+    try {
+      for (const v of Object.values(anyVal)) {
+        const found = deepFind(v, seen);
+        if (found) return found;
+      }
+    } catch {}
+
+    return null;
+  };
+
+  // 1) Look in message-like fields first
+  const msg = String(error?.shortMessage || error?.message || '');
+  const matches = msg.match(hashRegex);
+  if (matches && matches.length > 0) return matches[0];
+
+  // 2) Deep search error object
+  return deepFind(error);
 }

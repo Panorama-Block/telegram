@@ -2,6 +2,31 @@ import type { NextConfig } from "next";
 import { config as loadEnv } from "dotenv";
 loadEnv();
 
+function normalizeDevServiceBase(raw: string | undefined, devFallback: string, isDev: boolean): string {
+  const trimmed = (raw || "").trim().replace(/\/+$/, "");
+  if (!isDev) return trimmed;
+  if (!trimmed) return devFallback;
+
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("localhost") || lower.includes("127.0.0.1")) return trimmed;
+
+  // In local dev we run services in Docker and access them via host-mapped ports (localhost).
+  // If someone accidentally configures docker-internal hostnames, the proxy will hang/timeout.
+  const dockerInternalHosts = [
+    "auth_service",
+    "lido_service",
+    "lending_service",
+    "liquid_swap_service",
+    "bridge_service",
+    "engine_postgres",
+    "engine",
+    "redis",
+  ];
+
+  if (dockerInternalHosts.some((h) => lower.includes(h))) return devFallback;
+  return trimmed;
+}
+
 const nextConfig: NextConfig = {
   // o app vive sob /miniapp
   basePath: "/miniapp",
@@ -33,20 +58,31 @@ const nextConfig: NextConfig = {
   },
 
   async rewrites() {
-    // Sempre use a variável de ambiente VITE_LENDING_API_BASE
-    // Se não estiver definida, tenta usar o gateway
-    const lendingBase = process.env.VITE_LENDING_API_BASE ||
-                       process.env.NEXT_PUBLIC_LENDING_API_URL ||
-                       (process.env.PUBLIC_GATEWAY_URL ? process.env.PUBLIC_GATEWAY_URL.replace(/\/+$/, '') : '');
+    const isDev = process.env.NODE_ENV !== "production";
 
-    const stakingBase = process.env.VITE_STAKING_API_URL ||
-                       process.env.NEXT_PUBLIC_STAKING_API_URL ||
-                       '';
+    // Prefer host-mapped localhost ports during local dev (Docker service names are not reachable from the browser/Next proxy).
+    const lendingBaseRaw = isDev
+      ? (process.env.VITE_LENDING_API_BASE || process.env.NEXT_PUBLIC_LENDING_API_URL || "")
+      : (
+          process.env.VITE_LENDING_API_BASE ||
+          process.env.NEXT_PUBLIC_LENDING_API_URL ||
+          (process.env.PUBLIC_GATEWAY_URL ? process.env.PUBLIC_GATEWAY_URL.replace(/\/+$/, "") : "") ||
+          ""
+        );
+    const lendingBase = normalizeDevServiceBase(lendingBaseRaw, "http://localhost:3006", isDev);
 
-    const swapBase = process.env.VITE_SWAP_API_BASE ||
-                     process.env.NEXT_PUBLIC_SWAP_API_BASE ||
-                     process.env.SWAP_API_BASE ||
-                     '';
+    const stakingBaseRaw =
+      process.env.VITE_STAKING_API_URL ||
+      process.env.NEXT_PUBLIC_STAKING_API_URL ||
+      "";
+    const stakingBase = normalizeDevServiceBase(stakingBaseRaw, "http://localhost:3004", isDev);
+
+    const swapBaseRaw =
+      process.env.VITE_SWAP_API_BASE ||
+      process.env.NEXT_PUBLIC_SWAP_API_BASE ||
+      process.env.SWAP_API_BASE ||
+      "";
+    const swapBase = normalizeDevServiceBase(swapBaseRaw, "http://localhost:3002", isDev);
 
     const rewrites = [];
 
@@ -71,6 +107,12 @@ const nextConfig: NextConfig = {
         destination: `${lendingBase}/:path*`,
         basePath: false,
       });
+      // Some environments still hit the basePath-prefixed version; keep both.
+      rewrites.push({
+        source: "/miniapp/api/lending/:path*",
+        destination: `${lendingBase}/:path*`,
+        basePath: false,
+      });
     }
 
     if (!stakingBase) {
@@ -80,6 +122,11 @@ const nextConfig: NextConfig = {
       console.log('[Next.js] Staking API proxy configured:', stakingBase);
       rewrites.push({
         source: "/api/staking/:path*",
+        destination: `${stakingBase}/:path*`,
+        basePath: false,
+      });
+      rewrites.push({
+        source: "/miniapp/api/staking/:path*",
         destination: `${stakingBase}/:path*`,
         basePath: false,
       });
@@ -94,6 +141,11 @@ const nextConfig: NextConfig = {
       console.log('[Next.js] Swap API proxy configured:', swapWithPath);
       rewrites.push({
         source: "/api/swap/:path*",
+        destination: `${swapWithPath}/:path*`,
+        basePath: false,
+      });
+      rewrites.push({
+        source: "/miniapp/api/swap/:path*",
         destination: `${swapWithPath}/:path*`,
         basePath: false,
       });

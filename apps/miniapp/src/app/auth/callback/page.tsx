@@ -6,6 +6,7 @@ import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import { persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 import '@/shared/ui/loader.css';
 
 function decodeAuthResult(value: string) {
@@ -130,6 +131,7 @@ export default function AuthCallbackPage() {
         localStorage.setItem('authToken', authToken);
         localStorage.setItem('authPayload', JSON.stringify(payload));
         localStorage.setItem('authSignature', signature);
+        persistAuthWalletBinding({ activeWallet: wallet, account });
 
         const isTelegram = (window as any).Telegram?.WebApp;
         const bot = process.env.VITE_TELEGRAM_BOT_USERNAME || '';

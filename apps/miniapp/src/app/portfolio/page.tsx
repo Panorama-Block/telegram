@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from "framer-motion";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NotificationCenter } from "@/components/NotificationCenter";
@@ -19,6 +19,7 @@ import {
   ArrowRightLeft,
   Calendar,
   Clock,
+  Landmark,
   Droplets,
 } from "lucide-react";
 import Link from "next/link";
@@ -26,7 +27,9 @@ import { cn } from "@/lib/utils";
 
 import { usePortfolioData } from "@/features/portfolio/usePortfolioData";
 import { useSmartWalletPortfolio } from "@/features/portfolio/useSmartWalletPortfolio";
+import { useStakingApi, type WithdrawalRequest } from "@/features/staking/api";
 import { useStakingData } from "@/features/staking/useStakingData";
+import { useLendingData } from "@/features/lending/useLendingData";
 import { SmartWalletCard, SmartWalletIndicator } from "@/features/portfolio/SmartWalletCard";
 import { CreateSmartWalletModal } from "@/features/portfolio/CreateSmartWalletModal";
 import { DeleteWalletModal } from "@/features/portfolio/DeleteWalletModal";
@@ -36,6 +39,7 @@ import { deleteSmartAccount, deleteStrategy, toggleStrategy, DCAStrategy } from 
 import { useActiveAccount } from "thirdweb/react";
 import { shortenAddress } from "thirdweb/utils";
 import { useTransactionHistory } from "@/features/gateway";
+import { formatAmountHuman } from "@/features/swap/utils";
 
 type ViewMode = 'main' | 'smart';
 type TabMode = 'history' | 'assets';
@@ -43,6 +47,35 @@ type TabMode = 'history' | 'assets';
 function formatAPY(apy: number | null | undefined): string {
   if (apy == null || !Number.isFinite(apy)) return '--';
   return `${apy.toFixed(4)}%`;
+}
+
+function safeParseBigInt(value: string | null | undefined): bigint | null {
+  if (!value) return null;
+  if (!/^\d+$/.test(value)) return null;
+  try {
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
+function formatWei(wei: string | null | undefined, decimals = 18): string {
+  const parsed = safeParseBigInt(wei);
+  if (parsed == null) return '--';
+  const human = formatAmountHuman(parsed, decimals, 6);
+  return human === '0' ? '0.00' : human;
+}
+
+function formatLastUpdated(tsMs: number | null | undefined): string {
+  if (!tsMs || tsMs <= 0) return '--';
+  const delta = Date.now() - tsMs;
+  if (delta < 15_000) return 'just now';
+  const mins = Math.floor(delta / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 export default function PortfolioPage() {
@@ -87,11 +120,59 @@ export default function PortfolioPage() {
   const [expandedStrategy, setExpandedStrategy] = useState<string | null>(null);
   const [strategyActionLoading, setStrategyActionLoading] = useState<string | null>(null);
 
-  const { tokens: stakingTokens } = useStakingData();
+  const stakingApi = useStakingApi();
+  const {
+    tokens: stakingTokens,
+    userPosition: stakingPosition,
+    loading: stakingLoading,
+    error: stakingError,
+    refresh: refreshStaking,
+    lastFetchTime: stakingLastFetchTime,
+  } = useStakingData();
+  const {
+    userPosition: lendingPosition,
+    loading: lendingLoading,
+    error: lendingError,
+    fetchPosition: refreshLendingPosition,
+    lastFetchTime: lendingLastFetchTime,
+  } = useLendingData();
+
+  const [stakingWithdrawals, setStakingWithdrawals] = useState<WithdrawalRequest[]>([]);
+  const [stakingWithdrawalsLoading, setStakingWithdrawalsLoading] = useState(false);
+  const [stakingWithdrawalsError, setStakingWithdrawalsError] = useState<string | null>(null);
+  const [stakingWithdrawalsLastFetchTime, setStakingWithdrawalsLastFetchTime] = useState<number>(0);
+
+  const refreshStakingWithdrawals = useCallback(async (force = false) => {
+    const now = Date.now();
+    const MIN_INTERVAL = 2 * 60 * 1000;
+    if (!force && stakingWithdrawalsLastFetchTime > 0 && (now - stakingWithdrawalsLastFetchTime) < MIN_INTERVAL) {
+      return;
+    }
+
+    setStakingWithdrawalsLoading(true);
+    setStakingWithdrawalsError(null);
+    try {
+      const w = await stakingApi.getWithdrawals();
+      setStakingWithdrawals(w);
+      setStakingWithdrawalsLastFetchTime(now);
+    } catch (e) {
+      setStakingWithdrawalsError(e instanceof Error ? e.message : 'Failed to load withdrawals');
+    } finally {
+      setStakingWithdrawalsLoading(false);
+    }
+  }, [stakingApi, stakingWithdrawalsLastFetchTime]);
+
   const lidoApy = useMemo(() => {
     const eth = stakingTokens.find((t) => t.symbol === 'ETH') || stakingTokens.find((t) => t.symbol === 'stETH');
     return eth?.stakingAPY ?? null;
   }, [stakingTokens]);
+
+  // Portfolio view wants positions (not just token list); fetch lending + staking withdrawals in the background.
+  useEffect(() => {
+    if (viewMode !== 'main') return;
+    refreshStakingWithdrawals();
+    void refreshLendingPosition();
+  }, [refreshLendingPosition, refreshStakingWithdrawals, viewMode]);
 
   // Determine which data to show based on view mode
   const isSmartWalletView = viewMode === 'smart' && hasSmartWallet;
@@ -191,6 +272,56 @@ export default function PortfolioPage() {
     };
     return tokenMap[address] || address.slice(0, 6) + '...';
   };
+
+  const stakingClaimable = useMemo(() => {
+    const claimable = stakingWithdrawals.filter((w) => w.isFinalized && !w.isClaimed);
+    const amountWei = claimable.reduce((acc, w) => {
+      const v = safeParseBigInt(w.amountOfStETHWei);
+      return v != null ? acc + v : acc;
+    }, 0n);
+    return { count: claimable.length, amountWei: amountWei.toString() };
+  }, [stakingWithdrawals]);
+
+  const stakingPending = useMemo(() => {
+    const pending = stakingWithdrawals.filter((w) => !w.isFinalized && !w.isClaimed);
+    const amountWei = pending.reduce((acc, w) => {
+      const v = safeParseBigInt(w.amountOfStETHWei);
+      return v != null ? acc + v : acc;
+    }, 0n);
+    return { count: pending.length, amountWei: amountWei.toString() };
+  }, [stakingWithdrawals]);
+
+  const stakingLastUpdated = useMemo(() => {
+    return Math.max(stakingLastFetchTime || 0, stakingWithdrawalsLastFetchTime || 0);
+  }, [stakingLastFetchTime, stakingWithdrawalsLastFetchTime]);
+
+  const lendingSuppliedRows = useMemo(() => {
+    const rows = lendingPosition?.positions || [];
+    return rows
+      .filter((r) => safeParseBigInt(r.suppliedWei) && BigInt(r.suppliedWei) > 0n)
+      .map((r) => ({
+        symbol: r.underlyingSymbol,
+        amount: formatAmountHuman(BigInt(r.suppliedWei), r.underlyingDecimals, 4),
+      }));
+  }, [lendingPosition?.positions]);
+
+  const lendingBorrowedRows = useMemo(() => {
+    const rows = lendingPosition?.positions || [];
+    return rows
+      .filter((r) => safeParseBigInt(r.borrowedWei) && BigInt(r.borrowedWei) > 0n)
+      .map((r) => ({
+        symbol: r.underlyingSymbol,
+        amount: formatAmountHuman(BigInt(r.borrowedWei), r.underlyingDecimals, 4),
+      }));
+  }, [lendingPosition?.positions]);
+
+  const lendingHealthLabel = useMemo(() => {
+    const liq = lendingPosition?.liquidity;
+    if (!liq) return { text: '--', tone: 'zinc' as const };
+    const shortfall = safeParseBigInt(liq.shortfall) || 0n;
+    if (shortfall > 0n) return { text: 'Shortfall', tone: 'red' as const };
+    return liq.isHealthy ? { text: 'Healthy', tone: 'green' as const } : { text: 'At risk', tone: 'yellow' as const };
+  }, [lendingPosition?.liquidity]);
 
   return (
     <ProtectedRoute>
@@ -344,7 +475,158 @@ export default function PortfolioPage() {
               onSelectAccount={selectAccount}
             />
           </motion.div>
-        </div>
+	        </div>
+
+	        {/* Positions (Staking + Lending) */}
+	        {!isSmartWalletView && (
+	          <motion.div
+	            initial={{ opacity: 0, y: 20 }}
+	            animate={{ opacity: 1, y: 0 }}
+	            transition={{ delay: 0.23 }}
+	            className="mb-12"
+	          >
+	            <div className="flex items-center justify-between gap-2 mb-4">
+	              <h3 className="text-lg font-medium text-white">Positions</h3>
+	              <div className="text-xs text-zinc-500">Last updated: {formatLastUpdated(Math.max(stakingLastUpdated, lendingLastFetchTime || 0))}</div>
+	            </div>
+	            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+	              {/* Staking position */}
+	              <GlassCard className="p-5 bg-[#0A0A0A]/60">
+	                <div className="flex items-start justify-between gap-3">
+	                  <div className="flex items-center gap-3 min-w-0">
+	                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
+	                      <Droplets className="w-4 h-4" />
+	                    </div>
+	                    <div className="min-w-0">
+	                      <div className="text-white font-medium truncate">Staking position</div>
+	                      <div className="text-xs text-zinc-500">Lido on Ethereum · APY {formatAPY(lidoApy)}</div>
+	                    </div>
+	                  </div>
+	                  <button
+	                    onClick={() => {
+	                      refreshStaking();
+	                      refreshStakingWithdrawals(true);
+	                    }}
+	                    className="text-xs text-zinc-400 hover:text-white transition-colors"
+	                  >
+	                    Refresh
+	                  </button>
+	                </div>
+
+	                <div className="mt-4 grid grid-cols-2 gap-3">
+	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">stETH</div>
+	                    <div className="text-sm font-mono text-white">{formatWei(stakingPosition?.stETHBalance)}</div>
+	                  </div>
+	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">wstETH</div>
+	                    <div className="text-sm font-mono text-white">{formatWei(stakingPosition?.wstETHBalance)}</div>
+	                  </div>
+	                </div>
+
+	                <div className="mt-3 grid grid-cols-2 gap-3">
+	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Claimable</div>
+	                    <div className="text-sm text-white font-mono">{formatWei(stakingClaimable.amountWei)}</div>
+	                    <div className="text-[11px] text-zinc-500 mt-1">{stakingClaimable.count} request{stakingClaimable.count === 1 ? '' : 's'}</div>
+	                  </div>
+	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Pending</div>
+	                    <div className="text-sm text-white font-mono">{formatWei(stakingPending.amountWei)}</div>
+	                    <div className="text-[11px] text-zinc-500 mt-1">{stakingPending.count} request{stakingPending.count === 1 ? '' : 's'}</div>
+	                  </div>
+	                </div>
+
+	                {(stakingLoading || stakingWithdrawalsLoading) && (
+	                  <div className="mt-3 text-xs text-zinc-500">Loading…</div>
+	                )}
+	                {(stakingError || stakingWithdrawalsError) && (
+	                  <div className="mt-3 text-xs text-red-400">
+	                    {stakingError || stakingWithdrawalsError}
+	                  </div>
+	                )}
+
+	                <div className="mt-4 flex items-center justify-between">
+	                  <div className="text-xs text-zinc-500">Source: protocol adapters</div>
+	                  <Link
+	                    href="/staking"
+	                    className="text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
+	                  >
+	                    Manage
+	                  </Link>
+	                </div>
+	              </GlassCard>
+
+	              {/* Lending position */}
+	              <GlassCard className="p-5 bg-[#0A0A0A]/60">
+	                <div className="flex items-start justify-between gap-3">
+	                  <div className="flex items-center gap-3 min-w-0">
+	                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+	                      <Landmark className="w-4 h-4" />
+	                    </div>
+	                    <div className="min-w-0">
+	                      <div className="text-white font-medium truncate">Lending position</div>
+	                      <div className="text-xs text-zinc-500">Benqi on Avalanche</div>
+	                    </div>
+	                  </div>
+	                  <button
+	                    onClick={() => void refreshLendingPosition()}
+	                    className="text-xs text-zinc-400 hover:text-white transition-colors"
+	                  >
+	                    Refresh
+	                  </button>
+	                </div>
+
+	                <div className="mt-4 grid grid-cols-2 gap-3">
+	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Supplied</div>
+	                    <div className="text-sm text-white font-mono">
+	                      {lendingSuppliedRows.length === 0 ? '0' : lendingSuppliedRows.slice(0, 2).map((r) => `${r.amount} ${r.symbol}`).join(', ')}
+	                      {lendingSuppliedRows.length > 2 ? ` +${lendingSuppliedRows.length - 2}` : ''}
+	                    </div>
+	                  </div>
+	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Borrowed</div>
+	                    <div className="text-sm text-white font-mono">
+	                      {lendingBorrowedRows.length === 0 ? '0' : lendingBorrowedRows.slice(0, 2).map((r) => `${r.amount} ${r.symbol}`).join(', ')}
+	                      {lendingBorrowedRows.length > 2 ? ` +${lendingBorrowedRows.length - 2}` : ''}
+	                    </div>
+	                  </div>
+	                </div>
+
+	                <div className="mt-3 flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10">
+	                  <div className="text-[10px] text-zinc-500 uppercase">Account health</div>
+	                  <div className={cn(
+	                    "text-xs font-medium",
+	                    lendingHealthLabel.tone === 'green' && "text-emerald-400",
+	                    lendingHealthLabel.tone === 'yellow' && "text-yellow-400",
+	                    lendingHealthLabel.tone === 'red' && "text-red-400",
+	                    lendingHealthLabel.tone === 'zinc' && "text-zinc-400",
+	                  )}>
+	                    {lendingHealthLabel.text}
+	                  </div>
+	                </div>
+
+	                {lendingLoading && (
+	                  <div className="mt-3 text-xs text-zinc-500">Loading…</div>
+	                )}
+	                {lendingError && (
+	                  <div className="mt-3 text-xs text-red-400">{lendingError}</div>
+	                )}
+
+	                <div className="mt-4 flex items-center justify-between">
+	                  <div className="text-xs text-zinc-500">Source: on-chain reads</div>
+	                  <Link
+	                    href="/lending"
+	                    className="text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
+	                  >
+	                    Manage
+	                  </Link>
+	                </div>
+	              </GlassCard>
+	            </div>
+	          </motion.div>
+	        )}
 
         {/* DCA Strategies Section (only when viewing Smart Wallet) */}
         {isSmartWalletView && strategies.length > 0 && (
@@ -599,6 +881,9 @@ export default function PortfolioPage() {
             >
               Assets
             </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-white">Wallet Balances</h2>
           </div>
 
           {/* Tab Content */}

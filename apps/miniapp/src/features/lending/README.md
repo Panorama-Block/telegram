@@ -2,16 +2,15 @@
 
 ## Overview
 
-The Lending Service API Client provides a comprehensive interface for interacting with DeFi lending protocols, specifically Benqi on Avalanche. It handles token management, position tracking, transaction preparation, and execution for lending operations.
+The Lending Service API Client provides an interface for interacting with DeFi lending protocols (v1: **Benqi on Avalanche**). It handles market discovery, position reads, transaction preparation, and wallet execution.
 
 ## Features
 
-- **Token Management**: Fetch available lending tokens with real-time APY data
-- **Position Tracking**: Monitor user lending positions and health factors
-- **Transaction Preparation**: Prepare supply, withdraw, borrow, and repay transactions
-- **Smart Wallet Integration**: Full support for smart wallet authentication and signing
-- **Caching**: Intelligent caching to prevent API overuse and improve performance
-- **Error Handling**: Robust error handling with fallback mechanisms
+- **Market Discovery**: Fetch Benqi markets with underlying token metadata + APY
+- **Position Reads**: Load normalized per-asset supplied/borrowed positions
+- **Transaction Preparation**: Prepare supply/withdraw/borrow/repay transactions
+- **JWT + Thirdweb Integration**: Uses existing Panorama JWT for backend auth; uses Thirdweb wallet for signing/execution
+- **Caching (non-quote)**: Caches markets response to reduce API overuse (no quote persistence)
 - **Validation Fee Transparency**: Clear display of validation contract fees (10% fee, 90% net amount)
 
 ## Validation Fee System
@@ -59,7 +58,7 @@ This information is shown in a highlighted box before executing any transaction,
 1. **LendingApiClient**: Main service class handling all API interactions
 2. **Type Definitions**: Comprehensive TypeScript interfaces for type safety
 3. **Authentication**: JWT-based authentication with smart wallet signing
-4. **Caching Layer**: 5-minute cache for token data to prevent rate limiting
+4. **Caching Layer**: 5-minute cache for markets data to prevent rate limiting
 
 ### Data Flow
 
@@ -68,6 +67,17 @@ Frontend → LendingApiClient → Backend API → Blockchain
     ↓              ↓              ↓
 Smart Wallet → JWT Auth → Benqi Protocol
 ```
+
+## Endpoint Contract (v1)
+
+The Telegram MiniApp uses **normalized** lending endpoints exposed by `lending-service`:
+
+- `GET /benqi/markets`
+  - Returns markets with `qTokenAddress` + underlying metadata (`underlyingAddress`, `underlyingDecimals`, `underlyingSymbol`) and `supplyApyBps/borrowApyBps`.
+- `GET /benqi/account/:address/positions`
+  - Returns per-asset position rows: `suppliedWei`, `borrowedWei`, `collateralEnabled`, plus metadata.
+
+Important: **prepare endpoints expect `qTokenAddress`**, not the underlying token address.
 
 ## API Reference
 
@@ -81,8 +91,8 @@ Fetches available lending tokens with current market data.
 - Array of `LendingToken` objects with APY, liquidity, and collateral data
 
 **Features:**
-- 5-minute intelligent caching
-- Fallback data on API failure
+- 5-minute caching (markets)
+- Uses cached markets on transient API failures
 - Automatic retry with timeout protection
 
 **Example:**
@@ -109,52 +119,56 @@ if (position) {
 
 ### Transaction Methods
 
-#### `prepareSupply(tokenAddress: string, amount: string): Promise<any>`
+#### `prepareSupply(qTokenAddress: string, amount: string, decimals?: number): Promise<any>`
 
 Prepares a supply transaction for depositing tokens into the lending protocol.
 
 **Parameters:**
-- `tokenAddress`: Contract address of the token to supply
-- `amount`: Amount to supply (in token units)
+- `qTokenAddress`: Benqi market address (qToken) to supply into
+- `amount`: Amount to supply (token units, human-readable)
+- `decimals` (optional): Token decimals used to convert `amount` → wei base units (defaults to 18)
 
 **Returns:**
 - Transaction data ready for execution
 
 **Note:** A 10% validation fee is applied, so only 90% of the amount will be supplied to the protocol.
 
-#### `prepareWithdraw(tokenAddress: string, amount: string): Promise<any>`
+#### `prepareWithdraw(qTokenAddress: string, amount: string, decimals?: number): Promise<any>`
 
 Prepares a withdrawal transaction for removing supplied tokens.
 
 **Parameters:**
-- `tokenAddress`: Contract address of the token to withdraw
-- `amount`: Amount to withdraw (in token units)
+- `qTokenAddress`: Benqi market address (qToken) to withdraw from
+- `amount`: Amount to withdraw (token units, human-readable)
+- `decimals` (optional): Token decimals used to convert `amount` → wei base units (defaults to 18)
 
 **Note:** A 10% validation fee is applied, so only 90% of the amount will be withdrawn.
 
-#### `prepareBorrow(tokenAddress: string, amount: string): Promise<any>`
+#### `prepareBorrow(qTokenAddress: string, amount: string, decimals?: number): Promise<any>`
 
 Prepares a borrow transaction for taking out a loan against collateral.
 
 **Parameters:**
-- `tokenAddress`: Contract address of the token to borrow
-- `amount`: Amount to borrow (in token units)
+- `qTokenAddress`: Benqi market address (qToken) to borrow from
+- `amount`: Amount to borrow (token units, human-readable)
+- `decimals` (optional): Token decimals used to convert `amount` → wei base units (defaults to 18)
 
 **Note:** A 10% validation fee is applied, so only 90% of the amount will be borrowed.
 
-#### `prepareRepay(tokenAddress: string, amount: string): Promise<any>`
+#### `prepareRepay(qTokenAddress: string, amount: string, decimals?: number): Promise<any>`
 
 Prepares a repay transaction for paying back borrowed tokens.
 
 **Parameters:**
-- `tokenAddress`: Contract address of the token to repay
-- `amount`: Amount to repay (in token units)
+- `qTokenAddress`: Benqi market address (qToken) to repay into
+- `amount`: Amount to repay (token units, human-readable)
+- `decimals` (optional): Token decimals used to convert `amount` → wei base units (defaults to 18)
 
 **Note:** A 10% validation fee is applied, so only 90% of the amount will be used for repayment.
 
 ### Execution Method
 
-#### `executeTransaction(txData: any): Promise<boolean>`
+#### `executeTransaction(txData: any): Promise<string>`
 
 Executes a prepared transaction on the blockchain using the connected wallet.
 
@@ -162,7 +176,7 @@ Executes a prepared transaction on the blockchain using the connected wallet.
 - `txData`: Transaction data from prepare methods
 
 **Returns:**
-- `true` if transaction is submitted successfully
+- Transaction hash (`0x...`) if the transaction is submitted successfully
 - Throws error if transaction fails
 
 **Features:**
@@ -170,17 +184,21 @@ Executes a prepared transaction on the blockchain using the connected wallet.
 - MetaMask integration
 - Transaction validation
 
+**Important:**
+- This method returns once the transaction is **submitted** (broadcast).
+- UI should poll for the receipt and show `pending → confirmed/failed` (trust-first UX).
+
 ### Utility Methods
 
-#### `calculateTax(amount: string): Promise<ValidationResponse>`
+#### `calculateTax(amount: string, decimals?: number): Promise<ValidationResponse>`
 
 Calculates tax/fees for a given amount.
 
-#### `getSupplyQuote(tokenAddress: string, amount: string): Promise<any>`
+#### `getSupplyQuote(tokenAddress: string, amount: string, decimals?: number): Promise<any>`
 
 Gets detailed quote for supply operation including fees and rates.
 
-#### `getBorrowQuote(tokenAddress: string, amount: string): Promise<any>`
+#### `getBorrowQuote(tokenAddress: string, amount: string, decimals?: number): Promise<any>`
 
 Gets detailed quote for borrow operation including fees and rates.
 
@@ -228,12 +246,10 @@ interface LendingPosition {
 
 ## Authentication
 
-The client uses JWT-based authentication with smart wallet signing:
+The client supports two auth modes (v1):
 
-1. **Message Generation**: Creates timestamped messages for each operation
-2. **Smart Wallet Signing**: Uses connected wallet to sign messages
-3. **JWT Token**: Backend validates signature and returns JWT token
-4. **Automatic Renewal**: Handles token refresh automatically
+1. **JWT session (preferred)**: sends `Authorization: Bearer <authToken>` to backend.
+2. **Wallet-signature mode (legacy)**: if no JWT exists, signs a message via the connected wallet for endpoints that still require signature verification.
 
 ### Message Format
 
@@ -249,7 +265,7 @@ The client implements comprehensive error handling:
 - **Network Errors**: Automatic retry with exponential backoff
 - **API Errors**: Detailed error messages with status codes
 - **Validation Errors**: Input validation with helpful messages
-- **Fallback Data**: Uses cached data when API is unavailable
+- **Cached Markets Only**: Uses recently cached markets data when available; otherwise fails (trust-first, no mocked tokens)
 
 ## Usage Examples
 
