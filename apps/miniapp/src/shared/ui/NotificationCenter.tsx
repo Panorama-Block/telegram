@@ -80,10 +80,16 @@ export function NotificationCenter() {
     notifications,
     unreadCount,
     loading,
+    refresh,
     markRead,
     markAllRead,
     dismiss,
-  } = useNotifications({ userId, autoRefresh: true, refreshInterval: 30000 });
+  } = useNotifications({ userId, autoRefresh: true, refreshInterval: open ? 8000 : 30000 });
+
+  // Refresh immediately when dropdown opens
+  useEffect(() => {
+    if (open && userId) refresh();
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close dropdown on outside click
   useEffect(() => {
