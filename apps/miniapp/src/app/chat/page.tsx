@@ -24,7 +24,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { swapApi } from '@/features/swap/api';
 import { bridgeApi } from '@/features/swap/bridgeApi';
 import { Lending } from '@/components/Lending';
-import { normalizeToApi, formatAmountHuman } from '@/features/swap/utils';
+import { normalizeToApi, formatAmountHuman, toFixedFloor } from '@/features/swap/utils';
 import { networks, Token, TON_CHAIN_ID } from '@/features/swap/tokens';
 import { useActiveAccount, useActiveWallet } from 'thirdweb/react';
 import { useLogout } from '@/shared/hooks/useLogout';
@@ -391,7 +391,7 @@ export default function ChatPage() {
 
   // SwapWidget modal state
   const [showSwapWidget, setShowSwapWidget] = useState(false);
-  const [swapWidgetTokens, setSwapWidgetTokens] = useState<{ from: any; to: any; amount?: string } | null>(null);
+  const [swapWidgetTokens, setSwapWidgetTokens] = useState<{ from: any; to: any; amount?: string; quote?: any; viewState?: 'input' | 'routing' | 'details' | 'confirm' } | null>(null);
 
   // Lending states
   const [lendingModalOpen, setLendingModalOpen] = useState(false);
@@ -825,11 +825,7 @@ export default function ChatPage() {
             }));
             setConversations(fallbackConversations);
 
-            const storedConversationId =
-              typeof window !== 'undefined' ? localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY) : null;
-            const targetConversationId = storedConversationId && cachedIds.includes(storedConversationId)
-              ? storedConversationId
-              : cachedIds[0];
+            const targetConversationId = cachedIds[0];
 
             if (targetConversationId) {
               setMessagesByConversation((prev) => ({
@@ -850,38 +846,26 @@ export default function ChatPage() {
           return;
         }
 
-        // Decide which conversation to open:
-        // 1) Previously active (stored locally) if it still exists
-        // 2) First conversation returned by the backend
-        // 3) If none exist, create a fresh one
+        // Always start with a fresh conversation on platform entry
         let targetConversationId: string | null = null;
-        const storedConversationId =
-          typeof window !== 'undefined' ? localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY) : null;
 
-        if (fetchedConversations.length > 0) {
-          if (storedConversationId && fetchedConversations.some(c => c.id === storedConversationId)) {
-            targetConversationId = storedConversationId;
-            debug('bootstrap:restoreStoredConversation', { targetConversationId });
-          } else {
-            targetConversationId = fetchedConversations[0].id;
-            debug('bootstrap:useFirstConversation', { targetConversationId });
+        try {
+          targetConversationId = await agentsClient.createConversation(userId, authOpts);
+          if (targetConversationId) {
+            fetchedConversations = [{ id: targetConversationId, title: 'New Chat' }, ...fetchedConversations];
           }
-        } else {
-          try {
-            targetConversationId = await agentsClient.createConversation(userId, authOpts);
-            if (targetConversationId) {
-              fetchedConversations = [{ id: targetConversationId, title: 'New Chat' }];
-            }
-            debug('bootstrap:createConversation', { targetConversationId });
-          } catch (error) {
-            console.error('Error creating initial conversation:', error);
-            debug('bootstrap:createConversation:error', {
-              error: error instanceof Error ? error.message : String(error),
-            });
-            if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
-              setInitializationError('We could not start a conversation. Please try again.');
-            }
-            // Keep targetConversationId as null to avoid setting active conversation
+          debug('bootstrap:createNewConversation', { targetConversationId });
+        } catch (error) {
+          console.error('Error creating new conversation:', error);
+          debug('bootstrap:createConversation:error', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // Fall back to first existing conversation if creation fails
+          if (fetchedConversations.length > 0) {
+            targetConversationId = fetchedConversations[0].id;
+            debug('bootstrap:fallbackToFirstConversation', { targetConversationId });
+          } else if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
+            setInitializationError('We could not start a conversation. Please try again.');
           }
         }
 
@@ -1633,7 +1617,7 @@ export default function ChatPage() {
                                 <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,211,238,0.3)] overflow-hidden p-1">
                                   <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
                                 </div>
-                                <div className="space-y-4">
+                                <div className="space-y-4 min-w-0 flex-1">
                                   <div className="text-zinc-100 text-base leading-relaxed">
                                     <MarkdownMessage text={message.content} />
                                   </div>
@@ -1709,7 +1693,7 @@ export default function ChatPage() {
                                                 <span className="text-lg sm:text-xl font-medium text-white truncate">
                                                   {swapLoading ? '...' : swapQuote?.quote ? (
                                                     swapQuote.quote.sourceNetwork ?
-                                                      Number(swapQuote.quote.estimatedReceiveAmount).toFixed(4) :
+                                                      toFixedFloor(Number(swapQuote.quote.estimatedReceiveAmount), 4) :
                                                       formatAmountHuman(BigInt(swapQuote.quote.toAmount || swapQuote.quote.estimatedReceiveAmount || 0), toDecimals)
                                                   ) : '~'}
                                                 </span>
@@ -1757,7 +1741,11 @@ export default function ChatPage() {
                                                 if (tokens && tokens.from) {
                                                   // Auto-switch network before opening SwapWidget
                                                   await autoSwitchNetwork(tokens.from.network);
-                                                  setSwapWidgetTokens(tokens);
+                                                  setSwapWidgetTokens({
+                                                    ...tokens,
+                                                    quote: swapQuote?.quote || null,
+                                                    viewState: 'routing',
+                                                  });
                                                   setShowSwapWidget(true);
                                                 }
                                               }}
@@ -1954,7 +1942,7 @@ export default function ChatPage() {
                                               </div>
                                               <div className="flex items-center justify-between gap-2">
                                                 <span className="text-lg sm:text-xl font-medium text-white truncate">
-                                                  ~{(amount * 0.998).toFixed(4)}
+                                                  ~{toFixedFloor(amount * 0.998, 4)}
                                                 </span>
                                                 <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
                                                   {stTokenIcon ? (
@@ -2256,6 +2244,8 @@ export default function ChatPage() {
                 initialFromToken={swapWidgetTokens.from}
                 initialToToken={swapWidgetTokens.to}
                 initialAmount={swapWidgetTokens.amount}
+                initialQuote={swapWidgetTokens.quote}
+                initialViewState={swapWidgetTokens.viewState}
               />
             )}
           </AnimatePresence>

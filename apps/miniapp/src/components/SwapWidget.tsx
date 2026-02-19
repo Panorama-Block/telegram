@@ -26,7 +26,8 @@ import {
   formatAmountHuman,
   parseAmountToWei,
   getTokenDecimals,
-  isNative
+  isNative,
+  toFixedFloor
 } from "@/features/swap/utils";
 import { useActiveAccount, ConnectButton, useSwitchActiveWalletChain } from "thirdweb/react";
 import { Bridge, prepareTransaction, sendTransaction, sendAndConfirmTransaction, createThirdwebClient, defineChain } from "thirdweb";
@@ -42,6 +43,8 @@ interface SwapWidgetProps {
   initialFromToken?: any;
   initialToToken?: any;
   initialAmount?: string;
+  initialQuote?: any;
+  initialViewState?: ViewState;
 }
 
 type ViewState = 'input' | 'routing' | 'details' | 'confirm';
@@ -217,7 +220,7 @@ const verifyMinimumAmountWithLimits = async ({
   return { ok: true };
 };
 
-export function SwapWidget({ onClose, initialFromToken, initialToToken, initialAmount }: SwapWidgetProps) {
+export function SwapWidget({ onClose, initialFromToken, initialToToken, initialAmount, initialQuote, initialViewState }: SwapWidgetProps) {
   const account = useActiveAccount();
   const switchChain = useSwitchActiveWalletChain();
   const clientId = THIRDWEB_CLIENT_ID;
@@ -225,7 +228,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   const [tonConnectUI] = useTonConnectUI();
   const wallets = useMemo(() => (clientId ? [inAppWallet({ auth: { options: ['telegram'], mode: 'popup' } })] : []), [client])
 
-  const [viewState, setViewState] = useState<ViewState>('input');
+  const [viewState, setViewState] = useState<ViewState>(initialViewState || 'input');
   const [showTokenList, setShowTokenList] = useState(false);
   const [tosAccepted, setTosAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
@@ -239,7 +242,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   const [initialBalanceSet, setInitialBalanceSet] = useState(false);
 
   // Quote State
-  const [quote, setQuote] = useState<any>(null);
+  const [quote, setQuote] = useState<any>(initialQuote || null);
   const [quoting, setQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const quoteRequestRef = useRef(0);
@@ -255,6 +258,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
   // Balance State
   const [sellTokenBalance, setSellTokenBalance] = useState<string | null>(null);
+  const [sellTokenBalanceRaw, setSellTokenBalanceRaw] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
 
   // Transaction Tracking State
@@ -312,10 +316,13 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   }, [initialFromToken, initialToToken]);
 
   // Reset when sell token changes - set default to "0.0" until balance is fetched
+  // Skip reset when opened directly in routing/confirm view (chat→swap flow)
   useEffect(() => {
+    if (viewState !== 'input') return;
     setInitialBalanceSet(false);
     setAmount("0.0");
     setSellTokenBalance(null);
+    setSellTokenBalanceRaw(null);
   }, [sellToken.address, sellToken.network]);
 
   // Fetch sell token balance
@@ -378,7 +385,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         if (cancelled) return;
 
         const formattedBalance = formatAmountHuman(balance, decimals, 6);
+        const fullPrecisionBalance = formatAmountHuman(balance, decimals, decimals);
         setSellTokenBalance(formattedBalance);
+        setSellTokenBalanceRaw(fullPrecisionBalance);
 
         const canAutoFill = !amount || amount === "" || amount === "0.0";
         if (canAutoFill) {
@@ -390,6 +399,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         console.error("[SwapWidget] Error fetching balance:", error);
         if (!cancelled) {
           setSellTokenBalance("0");
+          setSellTokenBalanceRaw("0");
           const canAutoFill = !amount || amount === "" || amount === "0.0";
           if (canAutoFill) {
             setAmount("0.0");
@@ -466,18 +476,21 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     return amountNum > balance;
   }, [sellTokenBalance, amount]);
 
-  // Set max balance handler
+  // Set max balance handler — use full-precision balance to avoid rounding up
   const handleSetMax = () => {
     if (!sellTokenBalance || loadingBalance) return;
-    // Remove formatting (commas) and set as amount
-    const rawBalance = sellTokenBalance.replace(/,/g, '');
-    if (rawBalance && parseFloat(rawBalance) > 0) {
-      setAmount(rawBalance);
+    const exactBalance = (sellTokenBalanceRaw || sellTokenBalance).replace(/,/g, '');
+    if (exactBalance && parseFloat(exactBalance) > 0) {
+      setAmount(exactBalance);
     }
   };
 
   // Quote Logic
   useEffect(() => {
+    // Don't clear/re-fetch quote while in routing or confirm view (chat→swap flow)
+    // The quote was already obtained before opening the widget
+    if (viewState !== 'input' && quote) return;
+
     const requestId = ++quoteRequestRef.current;
 
     if (!canQuote) {
@@ -1127,7 +1140,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     if (!quote) return "0.00";
     // Handle Bridge Quote (Float)
     if (quote.sourceNetwork && quote.estimatedReceiveAmount) {
-      return Number(quote.estimatedReceiveAmount).toFixed(8);
+      return toFixedFloor(Number(quote.estimatedReceiveAmount), 8);
     }
 
     try {
@@ -1338,7 +1351,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                             Receive {buyToken.network === 'TON' ? 'TON' : 'ETH'} for gas
                             {quote?.refuelAmount && (
                               <span className="text-green-400 ml-1">
-                                (+{Number(quote.refuelAmount).toFixed(4)})
+                                (+{toFixedFloor(Number(quote.refuelAmount), 4)})
                               </span>
                             )}
                           </span>
@@ -1443,7 +1456,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                           <div className="flex justify-between">
                             <span className="text-zinc-500">Refuel (Gas)</span>
                             <span className="text-green-400 font-mono">
-                              +{Number(quote.refuelAmount).toFixed(4)} {buyToken.network === 'TON' ? 'TON' : 'ETH'}
+                              +{toFixedFloor(Number(quote.refuelAmount), 4)} {buyToken.network === 'TON' ? 'TON' : 'ETH'}
                             </span>
                           </div>
                         )}
