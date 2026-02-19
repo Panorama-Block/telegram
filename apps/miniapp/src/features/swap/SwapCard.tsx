@@ -33,7 +33,7 @@ import {
   parseAmountToWei,
 } from './utils';
 import { swapApi, SwapApiError } from './api';
-import type { PreparedTx } from './types';
+import type { PreparedTx, QuoteRequest } from './types';
 
 function ArrowUpDownIcon({ size = 18 }: { size?: number }) {
   return (
@@ -518,9 +518,9 @@ export function SwapCard() {
           fromToken: normalizeToApi(fromToken),
           toToken: normalizeToApi(toToken),
           amount: amount.trim(),
-          unit: 'token',
+          unit: 'token' as const,
           smartAccountAddress,
-        };
+        } satisfies QuoteRequest;
         const res = await swapApi.quote(body);
         if (quoteRequestRef.current !== requestId) {
           return;

@@ -1848,7 +1848,7 @@ export default function ChatPage() {
                                           </div>
                                           <div className="flex items-center justify-between gap-2">
                                             <span className="text-lg sm:text-xl font-medium text-white truncate">
-                                              ~{(amount * 0.998).toFixed(4)}
+                                              --
                                             </span>
                                             <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
                                               {stTokenIcon ? (
@@ -2046,18 +2046,18 @@ export default function ChatPage() {
 
           {/* Lending Modal */}
           <AnimatePresence>
-            {lendingModalOpen && (
-              <Lending
-                onClose={() => {
-                  setLendingModalOpen(false);
-                  setCurrentLendingMetadata(null);
-                }}
-                initialAmount={currentLendingMetadata?.amount as string | undefined}
-                initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
-                initialAction={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
-              />
-            )}
-          </AnimatePresence>
+	            {lendingModalOpen && (
+	              <Lending
+	                onClose={() => {
+	                  setLendingModalOpen(false);
+	                  setCurrentLendingMetadata(null);
+	                }}
+	                initialAmount={currentLendingMetadata?.amount as string | undefined}
+	                initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
+	                initialMode={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
+	              />
+	            )}
+	          </AnimatePresence>
 
           {/* SwapWidget Modal */}
           <AnimatePresence>
@@ -2082,7 +2082,11 @@ export default function ChatPage() {
                   setShowStakingWidget(false);
                   setCurrentStakingMetadata(null);
                 }}
-                initialAmount={currentStakingMetadata?.amount as string | undefined}
+                initialAmount={
+                  typeof currentStakingMetadata?.amount === 'string' || typeof currentStakingMetadata?.amount === 'number'
+                    ? currentStakingMetadata.amount
+                    : undefined
+                }
               />
             )}
           </AnimatePresence>

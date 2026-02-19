@@ -52,8 +52,6 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
 
   // Modal states
   const [showSwap, setShowSwap] = useState(false);
-  const [showLending, setShowLending] = useState(false);
-  const [showStaking, setShowStaking] = useState(false);
   const [showDCA, setShowDCA] = useState(false);
 
   const address = account?.address;
@@ -105,7 +103,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     {
       id: 'lending',
       label: 'Lending',
-      isModal: true,
+      href: '/lending',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3" />
@@ -115,7 +113,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     {
       id: 'staking',
       label: 'Liquid Staking',
-      isModal: true,
+      href: '/staking',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z" />
@@ -138,8 +136,6 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   const isActive = (item: NavItem) => {
     if (item.isModal) {
       if (item.id === 'swap') return showSwap;
-      if (item.id === 'lending') return showLending;
-      if (item.id === 'staking') return showStaking;
       if (item.id === 'dca') return showDCA;
       return false;
     }
@@ -178,14 +174,10 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     if (item.isModal) {
       // Close all modals first
       setShowSwap(false);
-      setShowLending(false);
-      setShowStaking(false);
       setShowDCA(false);
 
       // Open the selected modal
       if (item.id === 'swap') setShowSwap(true);
-      if (item.id === 'lending') setShowLending(true);
-      if (item.id === 'staking') setShowStaking(true);
       if (item.id === 'dca') setShowDCA(true);
     } else if (item.id === 'chat') {
       handleNewChat();
@@ -476,8 +468,6 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       {/* Widget Modals */}
       <AnimatePresence>
         {showSwap && <SwapWidget onClose={() => setShowSwap(false)} />}
-        {showLending && <Lending onClose={() => setShowLending(false)} />}
-        {showStaking && <Staking onClose={() => setShowStaking(false)} />}
         {showDCA && <DCA onClose={() => setShowDCA(false)} />}
       </AnimatePresence>
     </div>

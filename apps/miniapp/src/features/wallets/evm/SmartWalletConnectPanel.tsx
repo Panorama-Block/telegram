@@ -5,6 +5,7 @@ import { signLoginPayload } from 'thirdweb/auth';
 import { Card, Button } from '@/shared/ui';
 import { THIRDWEB_CLIENT_ID } from '../../../shared/config/thirdweb';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
+import { clearAuthWalletBinding, persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 
 
 function WalletIcon({ size = 20, style }: { size?: number; style?: React.CSSProperties }) {
@@ -210,6 +211,7 @@ export function SmartWalletConnectPanel() {
 
       // 5. Save token to localStorage
       localStorage.setItem('authToken', authToken);
+      persistAuthWalletBinding({ activeWallet: wallet, account });
       setIsAuthenticated(true);
       setJwtToken(authToken);
       setAuthMessage('Authenticated successfully!');
@@ -309,6 +311,7 @@ export function SmartWalletConnectPanel() {
               localStorage.removeItem('authToken');
               localStorage.removeItem('authPayload');
               localStorage.removeItem('authSignature');
+              clearAuthWalletBinding();
             }}
             style={{ padding: '8px 16px', fontSize: 14 }}
           >

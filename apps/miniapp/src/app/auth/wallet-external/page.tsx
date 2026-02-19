@@ -6,6 +6,7 @@ import { createThirdwebClient } from 'thirdweb';
 import { createWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import { persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 
 export default function WalletExternalPage() {
   const search = useSearchParams();
@@ -86,6 +87,7 @@ export default function WalletExternalPage() {
         }
         const { token } = await verifyResponse.json();
         localStorage.setItem('authToken', token);
+        persistAuthWalletBinding({ walletId, address: accountAddress });
 
         // Create a session so Telegram can resume the flow
         if (bot) {

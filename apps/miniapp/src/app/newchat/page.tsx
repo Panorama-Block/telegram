@@ -14,6 +14,7 @@ import '@/shared/ui/loader.css';
 import { TonConnectButton, useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 import { isTelegramWebApp, detectTelegram } from '@/lib/isTelegram';
 import { useLogout } from '@/shared/hooks/useLogout';
+import { clearAuthWalletBinding, persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 
 export default function NewChatPage() {
   const router = useRouter();
@@ -239,6 +240,7 @@ export default function NewChatPage() {
         localStorage.setItem('authPayload', JSON.stringify({ address: currentAddress, chain: 'ton' }));
         localStorage.setItem('authSignature', signature);
         localStorage.setItem('authToken', authToken);
+        clearAuthWalletBinding();
 
         setIsAuthenticated(true);
         setStatusMessage('Success! Redirecting to chat...');
@@ -353,6 +355,7 @@ export default function NewChatPage() {
       localStorage.setItem('authPayload', JSON.stringify(payload));
       localStorage.setItem('authSignature', signature);
       localStorage.setItem('authToken', authToken);
+      persistAuthWalletBinding({ activeWallet, account });
 
       setIsAuthenticated(true);
       setStatusMessage('Success! Redirecting to chat...');

@@ -5,26 +5,38 @@
  * for the Lending Service module.
  */
 
-export const VALIDATION_FEE = {
-  /** Validation fee rate (10% = 0.1) */
+/** Default validation fee (updated dynamically via GET /validation/info) */
+export let VALIDATION_FEE = {
+  /** Validation fee rate (e.g. 10% = 0.1) */
   RATE: 0.1,
-  
-  /** Net amount rate after fee (90% = 0.9) */
+
+  /** Net amount rate after fee (e.g. 90% = 0.9) */
   NET_RATE: 0.9,
-  
+
   /** Validation fee percentage for display */
   PERCENTAGE: 10,
-  
+
   /** Net amount percentage for display */
   NET_PERCENTAGE: 90,
-} as const;
+};
+
+/** Update VALIDATION_FEE from backend taxRate (integer 0-100) */
+export function updateValidationFee(taxRate: number): void {
+  const clamped = Math.max(0, Math.min(100, taxRate));
+  VALIDATION_FEE = {
+    RATE: clamped / 100,
+    NET_RATE: 1 - clamped / 100,
+    PERCENTAGE: clamped,
+    NET_PERCENTAGE: 100 - clamped,
+  };
+}
 
 export const LENDING_CONFIG = {
   /** Cache duration in milliseconds (5 minutes) */
   CACHE_DURATION: 5 * 60 * 1000,
   
-  /** Request timeout in milliseconds (10 seconds) */
-  REQUEST_TIMEOUT: 10 * 1000,
+  /** Request timeout in milliseconds (30 seconds) */
+  REQUEST_TIMEOUT: 30 * 1000,
   
   /** Default chain ID (Avalanche C-Chain) */
   DEFAULT_CHAIN_ID: 43114,
@@ -43,12 +55,15 @@ export const LENDING_CONFIG = {
 } as const;
 
 export const API_ENDPOINTS = {
-  /** Get available lending tokens */
-  TOKENS: '/dex/tokens',
-  
-  /** Get user lending position */
-  POSITION: '/lending/position',
-  
+  /** Get Benqi markets (qToken + underlying) */
+  TOKENS: '/benqi/markets',
+
+  /** Get user Benqi account info/positions */
+  POSITION: '/benqi/account',
+
+  /** Get validation contract info (taxRate, owner, balance) */
+  VALIDATION_INFO: '/validation/info',
+
   /** Calculate tax/fees */
   CALCULATE_TAX: '/validation/calculate',
   
@@ -69,6 +84,12 @@ export const API_ENDPOINTS = {
   
   /** Get borrow quote */
   BORROW_QUOTE: '/benqi-validation/getValidationAndBorrowQuote',
+
+  /** Get lending transaction history */
+  HISTORY: '/benqi/account',
+
+  /** Get daily position snapshots */
+  SNAPSHOTS: '/benqi/account',
 } as const;
 
 // Token icons from CoinGecko
@@ -90,8 +111,11 @@ export const TOKEN_ICONS: Record<string, string> = {
 
   // Avalanche
   'AVAX': 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png',
+  'iAVAX': 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png',
   'WAVAX': 'https://assets.coingecko.com/coins/images/15075/small/wrapped-avax.png',
+  'sAVAX': 'https://assets.coingecko.com/coins/images/23517/small/sAVAX_logo.png',
   'JOE': 'https://assets.coingecko.com/coins/images/17569/small/traderjoe.png',
+  'QI': 'https://assets.coingecko.com/coins/images/18177/small/Qi.png',
 
   // DeFi protocols
   'AAVE': 'https://assets.coingecko.com/coins/images/12645/small/aave-token-round.png',
@@ -120,36 +144,17 @@ export const TOKEN_ICONS: Record<string, string> = {
   'DOT': 'https://assets.coingecko.com/coins/images/12171/small/polkadot.png',
   'PEPE': 'https://assets.coingecko.com/coins/images/29850/small/pepe-token.jpeg',
   'CRV': 'https://assets.coingecko.com/coins/images/12124/small/Curve.png',
+  // Common Avalanche bridged/native aliases
+  'WBTC.e': 'https://assets.coingecko.com/coins/images/7598/small/wrapped_bitcoin_wbtc.png',
+  'WETH.e': 'https://assets.coingecko.com/coins/images/2518/small/weth.png',
+  'USDT.e': 'https://assets.coingecko.com/coins/images/325/small/Tether.png',
+  'USDC.e': 'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
+  'DAI.e': 'https://assets.coingecko.com/coins/images/9956/small/Badge_Dai.png',
+  'LINK.e': 'https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png',
+  'USDt': 'https://assets.coingecko.com/coins/images/325/small/Tether.png',
+  'AUSD': 'https://assets.coingecko.com/coins/images/38923/small/ausd_200x200.png',
+  'EURC': 'https://assets.coingecko.com/coins/images/26045/small/eurc.png',
 };
-
-export const FALLBACK_TOKENS = [
-  {
-    symbol: 'AVAX',
-    address: '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7',
-    icon: TOKEN_ICONS['AVAX'],
-    decimals: 18,
-    supplyAPY: 3.5,
-    borrowAPY: 5.2,
-    totalSupply: '0',
-    totalBorrowed: '0',
-    availableLiquidity: '0',
-    collateralFactor: 0.8,
-    isCollateral: true
-  },
-  {
-    symbol: 'USDC',
-    address: '0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664',
-    icon: TOKEN_ICONS['USDC'],
-    decimals: 6,
-    supplyAPY: 2.8,
-    borrowAPY: 4.5,
-    totalSupply: '0',
-    totalBorrowed: '0',
-    availableLiquidity: '0',
-    collateralFactor: 0.9,
-    isCollateral: true
-  }
-] as const;
 
 export const ERROR_MESSAGES = {
   ACCOUNT_NOT_CONNECTED: 'Account not connected',
@@ -235,7 +240,6 @@ export const CHAIN_IDS = {
 
 export type LendingConfigType = typeof LENDING_CONFIG;
 export type ApiEndpointsType = typeof API_ENDPOINTS;
-export type FallbackTokensType = typeof FALLBACK_TOKENS;
 export type ErrorMessagesType = typeof ERROR_MESSAGES;
 export type SuccessMessagesType = typeof SUCCESS_MESSAGES;
 export type ValidationRulesType = typeof VALIDATION_RULES;
