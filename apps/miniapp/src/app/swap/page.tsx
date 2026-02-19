@@ -7,7 +7,7 @@ import UniswapIcon from '../../../public/icons/uniswap.svg';
 import AvalancheIcon from '../../../public/icons/Avalanche_Blockchain_Logo.svg';
 import { networks, Token } from '@/features/swap/tokens';
 import { swapApi, SwapApiError } from '@/features/swap/api';
-import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl } from '@/features/swap/utils';
+import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl, toFixedFloor } from '@/features/swap/utils';
 import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
 import { useActiveAccount, PayEmbed, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
@@ -222,6 +222,7 @@ export default function SwapPage() {
 
   // Balance states
   const [sellTokenBalance, setSellTokenBalance] = useState<string | null>(null);
+  const [sellTokenBalanceRaw, setSellTokenBalanceRaw] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
 
   // Quote and swap states
@@ -259,6 +260,7 @@ export default function SwapPage() {
   useEffect(() => {
     setSellAmount('0.0');
     setSellTokenBalance(null);
+    setSellTokenBalanceRaw(null);
   }, [sellToken.address, fromChainId]);
 
   // Fetch sell token balance
@@ -310,9 +312,11 @@ export default function SwapPage() {
 
         if (cancelled) return;
 
-        // Format balance
+        // Format balance — display with 6 decimals, keep full precision for max
         const formattedBalance = formatAmountHuman(balance, decimals, 6);
+        const fullPrecisionBalance = formatAmountHuman(balance, decimals, decimals);
         setSellTokenBalance(formattedBalance);
+        setSellTokenBalanceRaw(fullPrecisionBalance);
 
         // Set initial amount to balance or "0.0" if zero (only if amount can be auto-filled)
         const canAutoFill = !sellAmount || sellAmount === '' || sellAmount === '0.0';
@@ -324,6 +328,7 @@ export default function SwapPage() {
         console.error("[SwapPage] Error fetching balance:", error);
         if (!cancelled) {
           setSellTokenBalance("0");
+          setSellTokenBalanceRaw("0");
           const canAutoFill = !sellAmount || sellAmount === '' || sellAmount === '0.0';
           if (canAutoFill) {
             setSellAmount('0.0');
@@ -341,12 +346,12 @@ export default function SwapPage() {
     };
   }, [client, effectiveAddress, sellToken, fromChainId]);
 
-  // Set max balance handler
+  // Set max balance handler — use full-precision balance to avoid rounding up
   const handleSetMax = () => {
     if (!sellTokenBalance || loadingBalance) return;
-    const rawBalance = sellTokenBalance.replace(/,/g, '');
-    if (rawBalance && parseFloat(rawBalance) > 0) {
-      setSellAmount(rawBalance);
+    const exactBalance = (sellTokenBalanceRaw || sellTokenBalance).replace(/,/g, '');
+    if (exactBalance && parseFloat(exactBalance) > 0) {
+      setSellAmount(exactBalance);
     }
   };
 
@@ -1101,7 +1106,7 @@ export default function SwapPage() {
                       <div className="flex items-center justify-between text-[11px] sm:text-xs">
                         <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
                         <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
-                          {(parseFloat(buyAmount || '0') * 0.99).toFixed(6)} {buyToken?.symbol || ''}
+                          {toFixedFloor(parseFloat(buyAmount || '0') * 0.99, 6)} {buyToken?.symbol || ''}
                         </span>
                       </div>
                     </div>
@@ -1231,7 +1236,7 @@ export default function SwapPage() {
                     <div className="flex justify-between gap-2">
                       <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
                       <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
-                        {(parseFloat(buyAmount || '0') * 0.99).toFixed(6)} {buyToken?.symbol || ''}
+                        {toFixedFloor(parseFloat(buyAmount || '0') * 0.99, 6)} {buyToken?.symbol || ''}
                       </span>
                     </div>
                   </div>

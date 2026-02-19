@@ -117,15 +117,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(`${CONVERSATION_LIST_KEY}:${userId}`, JSON.stringify(conversationsFromBackend.map(c => c.id)));
       } catch { }
 
-      // Set active conversation if none selected
-      if (!activeConversationId && mappedConversations.length > 0) {
-        const storedId = localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY);
-        if (storedId && conversationsFromBackend.some(c => c.id === storedId)) {
-          setActiveConversationId(storedId);
-        } else {
-          setActiveConversationId(conversationsFromBackend[0].id);
-        }
-      }
+      // Do not auto-select a previous conversation here.
+      // The chat page bootstrap always creates a fresh conversation on entry.
     } catch (err) {
       console.error('Error fetching conversations:', err);
       console.info('[CHAT TRACE][ChatContext] refresh:error', {
