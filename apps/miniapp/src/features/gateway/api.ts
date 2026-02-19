@@ -12,9 +12,11 @@ import type { GatewayError, PaginatedResponse } from './types';
 const DEFAULT_TENANT_ID = 'panorama';
 
 function getGatewayUrl(): string {
+  // Browser: sempre usa o proxy Next.js (/api/gateway) para evitar CORS
+  if (typeof window !== 'undefined') return '/api/gateway';
+  // Server-side (SSR): chama o gateway diretamente (sem restrição CORS)
   const url = process.env.NEXT_PUBLIC_GATEWAY_URL as string | undefined;
   if (url && url.length > 0) return url.replace(/\/+$/, '');
-  // Fallback para desenvolvimento local
   return 'http://localhost:8080';
 }
 
