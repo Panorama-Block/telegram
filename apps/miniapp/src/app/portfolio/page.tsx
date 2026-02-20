@@ -968,37 +968,39 @@ export default function PortfolioPage() {
                 {currentAssets.map((asset) => (
                   <div
                     key={`${asset.network}-${asset.symbol}-${asset.address}`}
-                    className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors"
+                    className="px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors"
                   >
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10 flex-shrink-0">
-                      {asset.icon ? (
-                        <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
-                      ) : (
-                        asset.symbol[0]
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm text-white font-medium">{asset.symbol}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-500">{asset.network}</span>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10 flex-shrink-0">
+                        {asset.icon ? (
+                          <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
+                        ) : (
+                          asset.symbol[0]
+                        )}
                       </div>
-                      <span className="text-xs text-zinc-500 font-mono">{asset.balance}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm text-white font-medium">{asset.symbol}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-500">{asset.network}</span>
+                        </div>
+                        <span className="text-xs text-zinc-500 font-mono">{asset.balance}</span>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-sm text-white font-mono">{asset.value}</div>
+                        <div className="text-[10px] text-zinc-600 font-mono">{asset.price}</div>
+                      </div>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="text-sm text-white font-mono">{asset.value}</div>
-                      <div className="text-[10px] text-zinc-600 font-mono">{asset.price}</div>
+                    {/* Protocol badge */}
+                    <div className="flex items-center gap-1 mt-0.5 pl-11">
+                      {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3 text-zinc-600" />}
+                      {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-500/70" />}
+                      {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400/70" />}
+                      <span className="text-[10px] text-zinc-600">
+                        {asset.protocol}
+                        {asset.protocol === 'Lido' && <span> · {formatAPY(lidoApy)}</span>}
+                      </span>
                     </div>
                   </div>
-                {/* Protocol badge */}
-                <div className="flex items-center gap-1 mt-0.5 pl-11">
-                  {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3 text-zinc-600" />}
-                  {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-500/70" />}
-                  {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400/70" />}
-                  <span className="text-[10px] text-zinc-600">
-                    {asset.protocol}
-                    {asset.protocol === 'Lido' && <span> · {formatAPY(lidoApy)}</span>}
-                  </span>
-                </div>
                 ))}
               </div>
 
