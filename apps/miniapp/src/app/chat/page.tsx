@@ -45,6 +45,17 @@ import { resolveChatIdentity } from '@/shared/lib/chatIdentity';
 import { useAgentStream } from '@/shared/hooks/useAgentStream';
 import { useTypewriter } from '@/shared/hooks/useTypewriter';
 import { ThoughtProcess } from '@/components/chat/ThoughtProcess';
+import {
+  buildOpenWidgetQueryKey,
+  deriveLendingFlowFromAction,
+  deriveLendingModeFromAction,
+  parseLendingFlow,
+  parseLendingMode,
+  parseLendingQueryMetadata,
+  parseStakingMode,
+  parseStakingQueryMetadata,
+  resolveOpenWidgetTarget,
+} from './openWidgetQuery';
 
 
 interface Message {
@@ -261,43 +272,6 @@ async function autoSwitchNetwork(networkName: string): Promise<boolean> {
     }
     return false;
   }
-}
-
-function parseLendingMode(value: unknown): 'supply' | 'borrow' | undefined {
-  if (typeof value !== 'string') return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'supply' || normalized === 'borrow') return normalized;
-  return undefined;
-}
-
-function parseLendingFlow(value: unknown): 'open' | 'close' | undefined {
-  if (typeof value !== 'string') return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'open' || normalized === 'close') return normalized;
-  return undefined;
-}
-
-function parseStakingMode(value: unknown): 'stake' | 'unstake' | undefined {
-  if (typeof value !== 'string') return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'stake' || normalized === 'unstake') return normalized;
-  return undefined;
-}
-
-function deriveLendingModeFromAction(action: unknown): 'supply' | 'borrow' | undefined {
-  if (typeof action !== 'string') return undefined;
-  const normalized = action.trim().toLowerCase();
-  if (normalized === 'supply' || normalized === 'withdraw') return 'supply';
-  if (normalized === 'borrow' || normalized === 'repay') return 'borrow';
-  return undefined;
-}
-
-function deriveLendingFlowFromAction(action: unknown): 'open' | 'close' | undefined {
-  if (typeof action !== 'string') return undefined;
-  const normalized = action.trim().toLowerCase();
-  if (normalized === 'supply' || normalized === 'borrow') return 'open';
-  if (normalized === 'withdraw' || normalized === 'repay') return 'close';
-  return undefined;
 }
 
 function normalizeContent(content: unknown): string {
@@ -1216,8 +1190,7 @@ export default function ChatPage() {
 
   // Handle ?open=lending|staking query parameter to auto-open widgets in chat.
   const openParamRaw = searchParams.get('open');
-  const openParam = typeof openParamRaw === 'string' ? openParamRaw.toLowerCase() : null;
-  const openWidgetTarget = openParam === 'lending' || openParam === 'staking' ? openParam : null;
+  const openWidgetTarget = resolveOpenWidgetTarget(openParamRaw);
   const openWidgetHandledRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -1228,8 +1201,7 @@ export default function ChatPage() {
 
     if (initializing) return;
 
-    const querySignature = searchParams.toString();
-    const currentKey = `${openWidgetTarget}:${querySignature}`;
+    const currentKey = buildOpenWidgetQueryKey(openWidgetTarget, searchParams);
     if (openWidgetHandledRef.current === currentKey) return;
     openWidgetHandledRef.current = currentKey;
 
@@ -1240,31 +1212,13 @@ export default function ChatPage() {
         await autoSwitchNetwork('avalanche');
         if (cancelled) return;
 
-        const amount = searchParams.get('amount');
-        const asset = searchParams.get('asset');
-        const mode = parseLendingMode(searchParams.get('mode'));
-        const flow = parseLendingFlow(searchParams.get('flow'));
-
-        const metadata: Record<string, unknown> = {};
-        if (amount) metadata.amount = amount;
-        if (asset) metadata.asset = asset;
-        if (mode) metadata.mode = mode;
-        if (flow) metadata.flow = flow;
-
-        setCurrentLendingMetadata(Object.keys(metadata).length > 0 ? metadata : null);
+        setCurrentLendingMetadata(parseLendingQueryMetadata(searchParams));
         setLendingModalOpen(true);
       } else if (openWidgetTarget === 'staking') {
         await autoSwitchNetwork('ethereum');
         if (cancelled) return;
 
-        const amount = searchParams.get('amount');
-        const mode = parseStakingMode(searchParams.get('mode'));
-
-        const metadata: Record<string, unknown> = {};
-        if (amount) metadata.amount = amount;
-        if (mode) metadata.mode = mode;
-
-        setCurrentStakingMetadata(Object.keys(metadata).length > 0 ? metadata : null);
+        setCurrentStakingMetadata(parseStakingQueryMetadata(searchParams));
         setShowStakingWidget(true);
       }
 
@@ -2207,13 +2161,13 @@ export default function ChatPage() {
                                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.3s]" />
                                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce [animation-delay:-0.15s]" />
                                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-400/50 animate-bounce" />
+                                  </div>
+                                )
+                              )}
 
-                                );
-                              })()}
-
-                              {message.metadata?.event === 'staking_intent_ready' && (() => {
-                                const token = String(message.metadata?.token || 'ETH');
-                                const amount = Number(message.metadata?.amount || 0);
+                              {activeMessages.at(-1)?.metadata?.event === 'staking_intent_ready' && (() => {
+                                const token = String(activeMessages.at(-1)?.metadata?.token || 'ETH');
+                                const amount = Number(activeMessages.at(-1)?.metadata?.amount || 0);
                                 const tokenIcon = getTokenIcon(token);
                                 const stTokenIcon = getTokenIcon(`st${token}`) || getTokenIcon('stETH');
 
@@ -2239,7 +2193,7 @@ export default function ChatPage() {
                                           </div>
                                           <div className="flex items-center justify-between gap-2">
                                             <span className="text-lg sm:text-xl font-medium text-white truncate">
-                                              {String(message.metadata?.amount || '0')}
+                                              {String(activeMessages.at(-1)?.metadata?.amount || '0')}
                                             </span>
                                             <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
                                               {tokenIcon ? (
@@ -2288,7 +2242,7 @@ export default function ChatPage() {
                                           onClick={async () => {
                                             // Auto-switch to Ethereum Mainnet before opening staking widget
                                             await autoSwitchNetwork('ethereum');
-                                            setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
+                                            setCurrentStakingMetadata(activeMessages.at(-1)?.metadata as Record<string, unknown>);
                                             setShowStakingWidget(true);
                                           }}
                                           className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
@@ -2305,7 +2259,7 @@ export default function ChatPage() {
                                     </div>
                                   </div>
                                 )
-                              )}
+                              })()}
                             </div>
                           </div>
                         )}

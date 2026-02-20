@@ -27,6 +27,13 @@ import { waitForEvmReceipt } from "@/shared/utils/evmReceipt";
 import { useRateLimitCountdown, parseRetryAfter } from "@/shared/hooks/useRateLimitCountdown";
 import { mapError } from "@/shared/lib/errorMapper";
 import { useActiveAccount } from "thirdweb/react";
+import {
+  canRetryLendingTx,
+  getLendingStepStatusClass,
+  getLendingStepStatusLabel,
+  type LendingTxStage,
+  type LendingTxStepStage,
+} from "@/components/lending/lendingTxState";
 
 // Feature flags
 import { FEATURE_FLAGS, FEATURE_METADATA } from "@/config/features";
@@ -34,14 +41,12 @@ import { FEATURE_FLAGS, FEATURE_METADATA } from "@/config/features";
 type ViewState = 'input' | 'review' | 'status';
 type Mode = 'supply' | 'borrow';
 type Flow = 'open' | 'close'; // open=supply/borrow, close=withdraw/repay
-type TxStage = 'idle' | 'awaiting_wallet' | 'pending' | 'confirmed' | 'failed' | 'timeout';
 type LendingActionType = 'supply' | 'withdraw' | 'borrow' | 'repay';
-type TxStepStage = 'queued' | 'awaiting_wallet' | 'pending' | 'confirmed' | 'failed' | 'timeout';
 
 type TxStep = {
   id: string;
   label: string;
-  stage: TxStepStage;
+  stage: LendingTxStepStage;
   txHash: string | null;
 };
 
@@ -118,7 +123,7 @@ export function Lending({
   const [walletBalanceWei, setWalletBalanceWei] = useState<bigint | null>(null);
   const [walletBalanceHuman, setWalletBalanceHuman] = useState<string | null>(null);
 
-  const [txStage, setTxStage] = useState<TxStage>('idle');
+  const [txStage, setTxStage] = useState<LendingTxStage>('idle');
   const [txError, setTxError] = useState<string | null>(null);
   const [txWarning, setTxWarning] = useState<string | null>(null);
   const [txHashes, setTxHashes] = useState<string[]>([]);
@@ -585,23 +590,6 @@ export function Lending({
     return txHashes[txHashes.length - 1];
   }, [txHashes, txSteps]);
 
-  const stepStatusLabel = (stage: TxStepStage): string => {
-    if (stage === 'awaiting_wallet') return 'Confirm in wallet';
-    if (stage === 'pending') return 'Pending';
-    if (stage === 'confirmed') return 'Confirmed';
-    if (stage === 'timeout') return 'Submitted';
-    if (stage === 'failed') return 'Failed';
-    return 'Queued';
-  };
-
-  const stepStatusClass = (stage: TxStepStage): string => {
-    if (stage === 'confirmed') return 'text-emerald-400';
-    if (stage === 'timeout') return 'text-amber-300';
-    if (stage === 'failed') return 'text-red-300';
-    if (stage === 'pending' || stage === 'awaiting_wallet') return 'text-cyan-300';
-    return 'text-zinc-500';
-  };
-
   const card = (
     <GlassCard className="w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 max-h-[78vh] md:max-h-[85vh] md:h-auto md:min-h-[540px] flex flex-col rounded-2xl border pb-safe overflow-y-auto">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-32 bg-primary/10 blur-[60px] pointer-events-none" />
@@ -1002,8 +990,8 @@ export function Lending({
                       <div className="text-xs text-white">
                         {index + 1}. {step.label}
                       </div>
-                      <div className={cn("text-[11px] font-medium", stepStatusClass(step.stage))}>
-                        {stepStatusLabel(step.stage)}
+                      <div className={cn("text-[11px] font-medium", getLendingStepStatusClass(step.stage))}>
+                        {getLendingStepStatusLabel(step.stage)}
                       </div>
                     </div>
                     {step.txHash && (
@@ -1027,7 +1015,7 @@ export function Lending({
                 {txStage === 'confirmed' ? 'Done' : 'Close'}
               </NeonButton>
 
-              {(txStage === 'failed' || txStage === 'timeout') && (
+              {canRetryLendingTx(txStage) && (
                 <button
                   onClick={() => {
                     setViewState('review');

@@ -28,6 +28,12 @@ import { THIRDWEB_CLIENT_ID } from "@/shared/config/thirdweb";
 import { waitForEvmReceipt } from "@/shared/utils/evmReceipt";
 import { useRateLimitCountdown, parseRetryAfter } from "@/shared/hooks/useRateLimitCountdown";
 import { mapError } from "@/shared/lib/errorMapper";
+import {
+  canRetryStakingTx,
+  getStakingStatusTitle,
+  shouldShowQueueCompletionHint,
+  type StakingTxStage,
+} from "@/components/staking/stakingTxState";
 
 // Feature flags
 import { FEATURE_FLAGS, FEATURE_METADATA } from "@/config/features";
@@ -230,7 +236,7 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
   const [txHash, setTxHash] = useState<string | null>(null);
   const [txHashes, setTxHashes] = useState<string[]>([]);
   const [txSummary, setTxSummary] = useState<string | null>(null);
-  const [txStage, setTxStage] = useState<'idle' | 'awaiting_wallet' | 'pending' | 'confirmed' | 'failed' | 'timeout'>('idle');
+  const [txStage, setTxStage] = useState<StakingTxStage>('idle');
   const [txStep, setTxStep] = useState<{ current: number; total: number; label: string } | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [swapQuote, setSwapQuote] = useState<QuoteResponse['quote'] | null>(null);
@@ -1656,17 +1662,7 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
 
               {/* Title */}
               <h2 className="text-xl sm:text-2xl font-display font-bold text-white mb-2">
-                {txStage === 'awaiting_wallet'
-                  ? 'Confirm in wallet'
-                  : txStage === 'pending'
-                    ? 'Pending confirmation'
-                    : txStage === 'confirmed'
-                      ? (mode === 'unstake' && unstakeMethod === 'queue' ? 'Request submitted' : 'Confirmed')
-                      : txStage === 'timeout'
-                        ? 'Submitted'
-                        : txStage === 'failed'
-                          ? 'Transaction failed'
-                          : 'Transaction'}
+                {getStakingStatusTitle(txStage, mode, unstakeMethod)}
               </h2>
 
               {txStage === 'timeout' && (
@@ -1675,7 +1671,7 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
                 </p>
               )}
 
-              {txStage === 'confirmed' && mode === 'unstake' && unstakeMethod === 'queue' && (
+              {shouldShowQueueCompletionHint(txStage, mode, unstakeMethod) && (
                 <p className="text-xs text-zinc-400 text-center mb-3">
                   Your withdrawal request is now in the Lido queue. This typically takes 1–5 days. You can claim your ETH once it&apos;s finalized.
                 </p>
@@ -1744,7 +1740,7 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
                   {txStage === 'confirmed' ? 'Done' : 'Close'}
                 </NeonButton>
 
-                {(txStage === 'failed' || txStage === 'timeout') && (
+                {canRetryStakingTx(txStage) && (
                   <button
                     onClick={() => {
                       setViewState('review');
