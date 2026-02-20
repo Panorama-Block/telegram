@@ -1,16 +1,5 @@
-'use client';
-
-import React from 'react';
-import { useRouter } from 'next/navigation';
-import { Staking } from '@/components/Staking';
+import { redirect } from 'next/navigation';
 
 export default function StakingPage() {
-  const router = useRouter();
-
-  return (
-    <div className="min-h-[100dvh] bg-[#050606] text-pano-text-primary">
-      <Staking variant="panel" onClose={() => router.back()} />
-    </div>
-  );
+  redirect('/chat?open=staking');
 }
-
