@@ -29,6 +29,7 @@ export interface StreamDoneEvent {
   nodes: string[];
   metadata: Record<string, unknown>;
   response: string;
+  response_mode?: 'fast' | 'reasoning';
   costs: { total_usd: number };
 }
 
@@ -90,6 +91,7 @@ export function useAgentStream() {
       conversationId: string;
       walletAddress?: string;
       jwt?: string;
+      responseMode?: 'fast' | 'reasoning';
     }) => {
       // Reset state for new message
       setState({
@@ -120,6 +122,7 @@ export function useAgentStream() {
               source: 'miniapp-chat',
               sent_at: new Date().toISOString(),
             },
+            response_mode: params.responseMode ?? 'fast',
           },
           opts,
         );

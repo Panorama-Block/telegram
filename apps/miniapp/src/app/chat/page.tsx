@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp, Plus, MessageSquare, Loader2, Mic, Square, X, Copy, Check } from 'lucide-react';
+import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp, Plus, MessageSquare, Loader2, Mic, Square, X, Copy, Check, Zap, Brain } from 'lucide-react';
 
 // Window.ethereum type declaration
 declare global {
@@ -415,6 +415,9 @@ export default function ChatPage() {
   } = useAudioRecorder();
   const [isTranscribing, setIsTranscribing] = useState(false);
 
+  // Response mode (fast vs reasoning)
+  const [responseMode, setResponseMode] = useState<'fast' | 'reasoning'>('fast');
+
   // Streaming agent state
   const {
     thoughts: streamThoughts,
@@ -488,6 +491,18 @@ export default function ChatPage() {
   });
   const walletIdentity = resolvedIdentity.walletAddress;
   const userId = resolvedIdentity.userId;
+
+  // Persist response mode preference per user
+  useEffect(() => {
+    if (!userId) return;
+    const saved = localStorage.getItem(`chat:responseMode:${userId}`);
+    if (saved === 'fast' || saved === 'reasoning') setResponseMode(saved);
+  }, [userId]);
+
+  const toggleResponseMode = useCallback((mode: 'fast' | 'reasoning') => {
+    setResponseMode(mode);
+    if (userId) localStorage.setItem(`chat:responseMode:${userId}`, mode);
+  }, [userId]);
 
   // Filter out disclaimer messages from the backend
   const DISCLAIMER_TEXT = 'This highly experimental chatbot is not intended for making important decisions';
@@ -1013,6 +1028,7 @@ export default function ChatPage() {
       conversationId,
       walletAddress: walletAddress || undefined,
       jwt: authToken,
+      responseMode,
     });
   };
 
@@ -1492,9 +1508,37 @@ export default function ChatPage() {
                           </p>
                         </div>
 
+                        {/* Response Mode Toggle */}
+                        <div className="flex items-center gap-1 mb-2 px-1 max-w-2xl mx-auto w-full">
+                          <button
+                            onClick={() => toggleResponseMode('fast')}
+                            className={cn(
+                              'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200',
+                              responseMode === 'fast'
+                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                                : 'bg-white/5 text-zinc-500 border border-transparent hover:text-zinc-300'
+                            )}
+                          >
+                            <Zap className="w-3 h-3" />
+                            Fast
+                          </button>
+                          <button
+                            onClick={() => toggleResponseMode('reasoning')}
+                            className={cn(
+                              'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200',
+                              responseMode === 'reasoning'
+                                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                                : 'bg-white/5 text-zinc-500 border border-transparent hover:text-zinc-300'
+                            )}
+                          >
+                            <Brain className="w-3 h-3" />
+                            Reasoning
+                          </button>
+                        </div>
+
                         {/* Main Input Area */}
-                        <div className="relative group max-w-2xl mx-auto w-full my-8 overflow-hidden">
-                          <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
+                        <div className="relative group max-w-2xl mx-auto w-full my-4 overflow-hidden">
+                          <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500 pointer-events-none" />
                           <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 md:gap-3 shadow-2xl transition-all duration-300 overflow-hidden">
                             {isRecording ? (
                               // Recording UI
@@ -2121,7 +2165,35 @@ export default function ChatPage() {
                           )}
                         </AnimatePresence>
 
-                        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
+                        {/* Response Mode Toggle */}
+                        <div className="relative z-10 flex items-center gap-1 mb-1.5 px-1">
+                          <button
+                            onClick={() => toggleResponseMode('fast')}
+                            className={cn(
+                              'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200',
+                              responseMode === 'fast'
+                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                                : 'bg-white/5 text-zinc-500 border border-transparent hover:text-zinc-300'
+                            )}
+                          >
+                            <Zap className="w-3 h-3" />
+                            Fast
+                          </button>
+                          <button
+                            onClick={() => toggleResponseMode('reasoning')}
+                            className={cn(
+                              'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200',
+                              responseMode === 'reasoning'
+                                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                                : 'bg-white/5 text-zinc-500 border border-transparent hover:text-zinc-300'
+                            )}
+                          >
+                            <Brain className="w-3 h-3" />
+                            Reasoning
+                          </button>
+                        </div>
+
+                        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500 pointer-events-none" />
                         <div className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 shadow-2xl overflow-hidden">
                           {isRecording ? (
                             // Recording UI
