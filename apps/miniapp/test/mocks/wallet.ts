@@ -1,0 +1,10 @@
+export const walletAddresses = {
+  authenticated: '0x1111111111111111111111111111111111111111',
+  connected: '0x1111111111111111111111111111111111111111',
+  mismatch: '0x2222222222222222222222222222222222222222',
+};
+
+export const chainIds = {
+  ethereum: 1,
+  avalanche: 43114,
+};

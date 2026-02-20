@@ -1,0 +1,28 @@
+{
+  "status": 200,
+  "msg": "success",
+  "data": {
+    "accountAddress": "0x1111111111111111111111111111111111111111",
+    "liquidity": {
+      "errorCode": "0",
+      "liquidity": "1200000000000000000",
+      "shortfall": "0",
+      "isHealthy": true
+    },
+    "positions": [
+      {
+        "qTokenAddress": "0x5C0401e81Bc07Ca70fAD469b451682c0d747Ef1c",
+        "qTokenSymbol": "qiAVAX",
+        "underlyingAddress": "native",
+        "underlyingSymbol": "AVAX",
+        "underlyingDecimals": 18,
+        "qTokenDecimals": 8,
+        "qTokenBalanceWei": "10000000",
+        "suppliedWei": "187000000000000000",
+        "borrowedWei": "0",
+        "collateralEnabled": true
+      }
+    ],
+    "updatedAt": 1739980800000
+  }
+}
