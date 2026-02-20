@@ -533,7 +533,7 @@ export default function PortfolioPage() {
 	                <div className="mt-4 flex items-center justify-between">
 	                  <div className="text-xs text-zinc-500">Source: protocol adapters</div>
 	                  <Link
-	                    href="/staking"
+	                    href="/chat?open=staking"
 	                    className="text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
 	                  >
 	                    Manage
@@ -601,7 +601,7 @@ export default function PortfolioPage() {
 	                <div className="mt-4 flex items-center justify-between">
 	                  <div className="text-xs text-zinc-500">Source: on-chain reads</div>
 	                  <Link
-	                    href="/lending"
+	                    href="/chat?open=lending"
 	                    className="text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
 	                  >
 	                    Manage

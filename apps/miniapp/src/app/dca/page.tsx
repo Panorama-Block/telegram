@@ -1255,7 +1255,7 @@ export default function DCAPage() {
                           <button
                             onClick={() => {
                               setExploreDropdownOpen(false);
-                              router.push('/lending');
+                              router.push('/chat?open=lending');
                             }}
                             className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
                           >
@@ -1267,7 +1267,7 @@ export default function DCAPage() {
                           <button
                             onClick={() => {
                               setExploreDropdownOpen(false);
-                              router.push('/staking');
+                              router.push('/chat?open=staking');
                             }}
                             className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
                           >

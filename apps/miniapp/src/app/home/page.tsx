@@ -166,7 +166,7 @@ export default function HomePage() {
             </button>
 
             <button
-              onClick={() => router.push('/lending')}
+              onClick={() => router.push('/chat?open=lending')}
               className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-4 transition-all text-center group"
             >
               <h3 className="text-white group-hover:text-cyan-100 font-medium mb-2">Lending</h3>
