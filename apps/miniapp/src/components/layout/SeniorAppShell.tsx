@@ -156,7 +156,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     {
       id: 'lending',
       label: 'Lending',
-      href: '/lending',
+      href: '/chat?open=lending',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3" />
@@ -166,7 +166,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     {
       id: 'staking',
       label: 'Liquid Staking',
-      href: '/staking',
+      href: '/chat?open=staking',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z" />

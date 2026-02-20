@@ -11,8 +11,8 @@ import logo from '../../../public/panorama_block.svg'
 const NAV_LINKS = [
   { label: 'Home', href: '/chat' },
   { label: 'Swap', href: '/swap' },
-  { label: 'Lending', href: '/lending', disabled: true, comingSoon: true },
-  { label: 'Staking', href: '/staking', disabled: true, comingSoon: true },
+  { label: 'Lending', href: '/chat?open=lending', comingSoon: true },
+  { label: 'Staking', href: '/chat?open=staking', comingSoon: true },
   { label: 'DCA', href: '/dca' },
   { label: 'Docs', href: 'https://docs.panoramablock.com', external: true }
 ]
