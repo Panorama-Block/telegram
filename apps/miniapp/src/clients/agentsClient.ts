@@ -10,6 +10,7 @@ export interface ChatRequest {
   chain_id?: string;
   wallet_address?: string;
   metadata?: Record<string, unknown>;
+  response_mode?: 'fast' | 'reasoning';
 }
 
 export interface ChatResponse {
@@ -251,6 +252,7 @@ export class AgentsClient {
     if (req.chain_id) body.chain_id = req.chain_id;
     if (req.wallet_address) body.wallet_address = req.wallet_address;
     if (req.metadata) body.metadata = req.metadata;
+    if (req.response_mode) body.response_mode = req.response_mode;
     this.logDebug('chat:request', {
       conversationId: req.conversation_id,
       hasUserId: Boolean(req.user_id),
@@ -475,6 +477,7 @@ export class AgentsClient {
     if (req.chain_id) body.chain_id = req.chain_id;
     if (req.wallet_address) body.wallet_address = req.wallet_address;
     if (req.metadata) body.metadata = req.metadata;
+    if (req.response_mode) body.response_mode = req.response_mode;
 
     this.logDebug('chatStream:start', {
       conversationId: req.conversation_id,
