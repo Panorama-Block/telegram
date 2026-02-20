@@ -259,6 +259,43 @@ async function autoSwitchNetwork(networkName: string): Promise<boolean> {
   }
 }
 
+function parseLendingMode(value: unknown): 'supply' | 'borrow' | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'supply' || normalized === 'borrow') return normalized;
+  return undefined;
+}
+
+function parseLendingFlow(value: unknown): 'open' | 'close' | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'open' || normalized === 'close') return normalized;
+  return undefined;
+}
+
+function parseStakingMode(value: unknown): 'stake' | 'unstake' | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'stake' || normalized === 'unstake') return normalized;
+  return undefined;
+}
+
+function deriveLendingModeFromAction(action: unknown): 'supply' | 'borrow' | undefined {
+  if (typeof action !== 'string') return undefined;
+  const normalized = action.trim().toLowerCase();
+  if (normalized === 'supply' || normalized === 'withdraw') return 'supply';
+  if (normalized === 'borrow' || normalized === 'repay') return 'borrow';
+  return undefined;
+}
+
+function deriveLendingFlowFromAction(action: unknown): 'open' | 'close' | undefined {
+  if (typeof action !== 'string') return undefined;
+  const normalized = action.trim().toLowerCase();
+  if (normalized === 'supply' || normalized === 'borrow') return 'open';
+  if (normalized === 'withdraw' || normalized === 'repay') return 'close';
+  return undefined;
+}
+
 function normalizeContent(content: unknown): string {
   if (!content) return '';
   if (typeof content === 'string') return content;
@@ -1231,11 +1268,79 @@ export default function ChatPage() {
     debug('conversation:select', { conversationId });
   };
 
+  // Handle ?open=lending|staking query parameter to auto-open widgets in chat.
+  const openParamRaw = searchParams.get('open');
+  const openParam = typeof openParamRaw === 'string' ? openParamRaw.toLowerCase() : null;
+  const openWidgetTarget = openParam === 'lending' || openParam === 'staking' ? openParam : null;
+  const openWidgetHandledRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!openWidgetTarget) {
+      openWidgetHandledRef.current = null;
+      return;
+    }
+
+    if (initializing) return;
+
+    const querySignature = searchParams.toString();
+    const currentKey = `${openWidgetTarget}:${querySignature}`;
+    if (openWidgetHandledRef.current === currentKey) return;
+    openWidgetHandledRef.current = currentKey;
+
+    let cancelled = false;
+
+    const openWidgetFromQuery = async () => {
+      if (openWidgetTarget === 'lending') {
+        await autoSwitchNetwork('avalanche');
+        if (cancelled) return;
+
+        const amount = searchParams.get('amount');
+        const asset = searchParams.get('asset');
+        const mode = parseLendingMode(searchParams.get('mode'));
+        const flow = parseLendingFlow(searchParams.get('flow'));
+
+        const metadata: Record<string, unknown> = {};
+        if (amount) metadata.amount = amount;
+        if (asset) metadata.asset = asset;
+        if (mode) metadata.mode = mode;
+        if (flow) metadata.flow = flow;
+
+        setCurrentLendingMetadata(Object.keys(metadata).length > 0 ? metadata : null);
+        setLendingModalOpen(true);
+      } else if (openWidgetTarget === 'staking') {
+        await autoSwitchNetwork('ethereum');
+        if (cancelled) return;
+
+        const amount = searchParams.get('amount');
+        const mode = parseStakingMode(searchParams.get('mode'));
+
+        const metadata: Record<string, unknown> = {};
+        if (amount) metadata.amount = amount;
+        if (mode) metadata.mode = mode;
+
+        setCurrentStakingMetadata(Object.keys(metadata).length > 0 ? metadata : null);
+        setShowStakingWidget(true);
+      }
+
+      if (!cancelled) {
+        router.replace('/chat', { scroll: false });
+      }
+    };
+
+    void openWidgetFromQuery();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [openWidgetTarget, initializing, searchParams, router]);
+
   // Handle ?new=true query parameter to show new chat welcome screen
   const newChatRequested = searchParams.get('new') === 'true';
   const newChatTriggeredRef = useRef(false);
 
   useEffect(() => {
+    if (openWidgetTarget) return;
+
     if (newChatRequested && !initializing && userId && !newChatTriggeredRef.current) {
       console.log('[CHAT] Setting pending new chat from URL param...');
       newChatTriggeredRef.current = true;
@@ -1249,7 +1354,7 @@ export default function ChatPage() {
       newChatTriggeredRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newChatRequested, initializing, userId]);
+  }, [newChatRequested, initializing, userId, openWidgetTarget]);
 
   // Listen for custom event from sidebar "+" button
   useEffect(() => {
@@ -2045,16 +2150,30 @@ export default function ChatPage() {
         </SeniorAppShell>
 
           {/* Lending Modal */}
-          <AnimatePresence>
+	          <AnimatePresence>
 	            {lendingModalOpen && (
 	              <Lending
 	                onClose={() => {
 	                  setLendingModalOpen(false);
 	                  setCurrentLendingMetadata(null);
 	                }}
-	                initialAmount={currentLendingMetadata?.amount as string | undefined}
-	                initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
-	                initialMode={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
+	                initialAmount={
+	                  typeof currentLendingMetadata?.amount === 'string' || typeof currentLendingMetadata?.amount === 'number'
+	                    ? currentLendingMetadata.amount
+	                    : undefined
+	                }
+	                initialAsset={
+	                  (typeof currentLendingMetadata?.asset === 'string' ? currentLendingMetadata.asset : undefined) ||
+	                  (typeof currentLendingMetadata?.token === 'string' ? currentLendingMetadata.token : undefined)
+	                }
+	                initialMode={
+	                  parseLendingMode(currentLendingMetadata?.mode) ??
+	                  deriveLendingModeFromAction(currentLendingMetadata?.action)
+	                }
+	                initialFlow={
+	                  parseLendingFlow(currentLendingMetadata?.flow) ??
+	                  deriveLendingFlowFromAction(currentLendingMetadata?.action)
+	                }
 	              />
 	            )}
 	          </AnimatePresence>
@@ -2076,20 +2195,24 @@ export default function ChatPage() {
 
           {/* Staking Modal */}
           <AnimatePresence>
-            {showStakingWidget && (
-              <Staking
-                onClose={() => {
-                  setShowStakingWidget(false);
-                  setCurrentStakingMetadata(null);
-                }}
-                initialAmount={
-                  typeof currentStakingMetadata?.amount === 'string' || typeof currentStakingMetadata?.amount === 'number'
-                    ? currentStakingMetadata.amount
-                    : undefined
-                }
-              />
-            )}
-          </AnimatePresence>
+	            {showStakingWidget && (
+	              <Staking
+	                onClose={() => {
+	                  setShowStakingWidget(false);
+	                  setCurrentStakingMetadata(null);
+	                }}
+	                initialAmount={
+	                  typeof currentStakingMetadata?.amount === 'string' || typeof currentStakingMetadata?.amount === 'number'
+	                    ? currentStakingMetadata.amount
+	                    : undefined
+	                }
+	                initialMode={
+	                  parseStakingMode(currentStakingMetadata?.mode) ??
+	                  parseStakingMode(currentStakingMetadata?.action)
+	                }
+	              />
+	            )}
+	          </AnimatePresence>
         </>
       </TransactionSettingsProvider>
     </ProtectedRoute>
