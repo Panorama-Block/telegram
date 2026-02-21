@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp, Plus, MessageSquare, Loader2, Mic, Square, X, Copy, Check, Zap, Brain } from 'lucide-react';
+import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp, Plus, MessageSquare, Loader2, Mic, Square, X, Copy, Check, Zap, Brain, ChevronDown } from 'lucide-react';
 
 // Window.ethereum type declaration
 declare global {
@@ -363,7 +363,7 @@ export default function ChatPage() {
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
 
   // Keyboard handling for mobile
@@ -403,6 +403,9 @@ export default function ChatPage() {
 
   // Trending prompts state
   const [showTrendingPrompts, setShowTrendingPrompts] = useState(false);
+  const [showWelcomeQuickPrompts, setShowWelcomeQuickPrompts] = useState(false);
+  const welcomeQuickPromptsRef = useRef<HTMLDivElement>(null);
+  const [promptBarNearMax, setPromptBarNearMax] = useState(false);
 
   // Audio recording
   const {
@@ -417,6 +420,8 @@ export default function ChatPage() {
 
   // Response mode (fast vs reasoning)
   const [responseMode, setResponseMode] = useState<'fast' | 'reasoning'>('fast');
+  const [showModeDropdown, setShowModeDropdown] = useState(false);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
 
   // Streaming agent state
   const {
@@ -501,8 +506,33 @@ export default function ChatPage() {
 
   const toggleResponseMode = useCallback((mode: 'fast' | 'reasoning') => {
     setResponseMode(mode);
+    setShowModeDropdown(false);
     if (userId) localStorage.setItem(`chat:responseMode:${userId}`, mode);
   }, [userId]);
+
+  // Close mode dropdown on outside click
+  useEffect(() => {
+    if (!showModeDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
+        setShowModeDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showModeDropdown]);
+
+  // Close welcome quick prompts dropdown on outside click
+  useEffect(() => {
+    if (!showWelcomeQuickPrompts) return;
+    const handler = (e: MouseEvent) => {
+      if (welcomeQuickPromptsRef.current && !welcomeQuickPromptsRef.current.contains(e.target as Node)) {
+        setShowWelcomeQuickPrompts(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showWelcomeQuickPrompts]);
 
   // Filter out disclaimer messages from the backend
   const DISCLAIMER_TEXT = 'This highly experimental chatbot is not intended for making important decisions';
@@ -994,6 +1024,9 @@ export default function ChatPage() {
       });
 
     setInputMessage('');
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
     setIsSending(true);
     streamConversationRef.current = conversationId;
 
@@ -1084,12 +1117,34 @@ export default function ChatPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamDone, streamError, typewriterRevealing]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
   };
+
+  const autoResizeTextarea = useCallback((el: HTMLTextAreaElement) => {
+    // 1. Snapshot current rendered height
+    const currentH = el.offsetHeight;
+    // 2. Measure natural content height (no transition, height auto)
+    el.style.transition = 'none';
+    el.style.height = 'auto';
+    const maxH = Math.floor(window.innerHeight * 0.4);
+    const targetH = Math.min(el.scrollHeight, maxH);
+    // 3. Pin back to the old height so the browser has a start point
+    el.style.height = `${currentH}px`;
+    // 4. Force reflow so the pinned height is committed
+    void el.offsetHeight;
+    // 5. Enable transition: fast when growing (typing), smooth when shrinking (deleting)
+    const growing = targetH > currentH;
+    el.style.transition = growing
+      ? 'height 0.08s ease-out'
+      : 'height 0.3s cubic-bezier(0.4,0,0.2,1)';
+    el.style.height = `${targetH}px`;
+    // 6. Track whether textarea is near max height (90% threshold)
+    setPromptBarNearMax(targetH >= maxH * 0.9);
+  }, []);
 
   // Format recording time as MM:SS
   const formatRecordingTime = (seconds: number) => {
@@ -1475,58 +1530,58 @@ export default function ChatPage() {
                       Loading conversation...
                     </div>
                   ) : !hasMessages || pendingNewChat ? (
-                    <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
+                    <div className="flex-1 flex flex-col justify-center items-center w-full pb-safe pb-6 md:pb-4 px-6 overflow-hidden">
                       <motion.div
                         initial={{ y: 20, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         transition={{ duration: 0.8, ease: "easeOut" }}
                         className="w-full max-w-3xl text-center flex flex-col items-center"
                       >
-                        {/* Title & Subtitle */}
-                        <div className="space-y-2 md:space-y-4 relative mb-8">
-                          <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
-                            Hello, {displayName}.
-                          </h1>
-                          <p className="text-xl text-zinc-400 font-light">
-                            Zico is ready to navigate the chain.
-                          </p>
-                        </div>
-
-                        {/* Response Mode Toggle */}
-                        <div className="flex items-center gap-1 mb-2 px-1 max-w-2xl mx-auto w-full">
-                          <button
-                            onClick={() => toggleResponseMode('fast')}
-                            className={cn(
-                              'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200',
-                              responseMode === 'fast'
-                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                                : 'bg-white/5 text-zinc-500 border border-transparent hover:text-zinc-300'
+                        {/* Title & Subtitle — collapses to single line above prompt bar when typing */}
+                        <motion.div
+                          layout
+                          transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+                          className="relative shrink-0 mb-6"
+                        >
+                          <AnimatePresence mode="wait" initial={false}>
+                            {inputMessage.trim() ? (
+                              <motion.p
+                                key="collapsed"
+                                initial={{ opacity: 0, filter: 'blur(4px)' }}
+                                animate={{ opacity: 0.5, filter: 'blur(0px)' }}
+                                exit={{ opacity: 0, filter: 'blur(4px)' }}
+                                transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                                className="text-sm text-zinc-500 font-light whitespace-nowrap"
+                              >
+                                Hello, {displayName}. Zico is ready to navigate the chain.
+                              </motion.p>
+                            ) : (
+                              <motion.div
+                                key="expanded"
+                                initial={{ opacity: 0, filter: 'blur(4px)' }}
+                                animate={{ opacity: 1, filter: 'blur(0px)' }}
+                                exit={{ opacity: 0, filter: 'blur(4px)' }}
+                                transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                                className="space-y-2 md:space-y-4"
+                              >
+                                <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
+                                  Hello, {displayName}.
+                                </h1>
+                                <p className="text-xl text-zinc-400 font-light">
+                                  Zico is ready to navigate the chain.
+                                </p>
+                              </motion.div>
                             )}
-                          >
-                            <Zap className="w-3 h-3" />
-                            Fast
-                          </button>
-                          <button
-                            onClick={() => toggleResponseMode('reasoning')}
-                            className={cn(
-                              'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200',
-                              responseMode === 'reasoning'
-                                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
-                                : 'bg-white/5 text-zinc-500 border border-transparent hover:text-zinc-300'
-                            )}
-                          >
-                            <Brain className="w-3 h-3" />
-                            Reasoning
-                          </button>
-                        </div>
+                          </AnimatePresence>
+                        </motion.div>
 
                         {/* Main Input Area */}
-                        <div className="relative group max-w-2xl mx-auto w-full my-4 overflow-hidden">
-                          <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500 pointer-events-none" />
-                          <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 md:gap-3 shadow-2xl transition-all duration-300 overflow-hidden">
+                        <div className="relative group max-w-2xl mx-auto w-full">
+                          <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-cyan-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500 pointer-events-none" />
+                          <div data-prompt-bar className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex flex-col shadow-2xl">
                             {isRecording ? (
                               // Recording UI
-                              <>
+                              <div className="flex items-center gap-1.5 md:gap-3">
                                 <button
                                   onClick={cancelRecording}
                                   className="p-2 md:p-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors shrink-0"
@@ -1560,10 +1615,10 @@ export default function ChatPage() {
                                     <ArrowUp className="w-5 h-5" />
                                   )}
                                 </button>
-                              </>
+                              </div>
                             ) : isTranscribing ? (
                               // Transcribing UI
-                              <>
+                              <div className="flex items-center gap-1.5 md:gap-3">
                                 <div className="flex-1 min-w-0 flex items-center gap-2 md:gap-3 pl-3">
                                   <Loader2 className="w-4 h-4 text-cyan-400 animate-spin shrink-0" />
                                   <span className="text-sm text-zinc-400">Transcribing...</span>
@@ -1575,40 +1630,150 @@ export default function ChatPage() {
                                 >
                                   <X className="w-5 h-5" />
                                 </button>
-                              </>
+                              </div>
                             ) : (
-                              // Normal input UI
+                              // Normal input UI — two rows
                               <>
-                                <div className="pl-2 md:pl-4 text-zinc-400 shrink-0">
-                                  <Search className="w-5 h-5 md:w-6 md:h-6" />
-                                </div>
-                                <input
-                                  ref={inputRef}
-                                  type="text"
-                                  value={inputMessage}
-                                  onChange={(e) => setInputMessage(e.target.value)}
-                                  onKeyPress={handleKeyPress}
-                                  placeholder="Ask Zico anything..."
-                                  disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
-                                  className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[44px]"
-                                />
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    onClick={startRecording}
+                                <div className="flex items-start gap-1.5 md:gap-3">
+                                  <textarea
+                                    ref={inputRef}
+                                    rows={1}
+                                    value={inputMessage}
+                                    onChange={(e) => {
+                                      setInputMessage(e.target.value);
+                                      autoResizeTextarea(e.target);
+                                    }}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="Ask Zico anything..."
                                     disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
-                                    className="p-2 md:p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                                    aria-label="Record audio"
-                                  >
-                                    <Mic className="w-5 h-5" />
-                                  </button>
-                                  <button
-                                    onClick={() => sendMessage()}
-                                    disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing || !inputMessage.trim()}
-                                    className="p-2.5 md:p-3 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
-                                    aria-label="Send message"
-                                  >
-                                    <ArrowUp className="w-5 h-5" />
-                                  </button>
+                                    className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[40px] max-h-[40vh] pl-2 md:pl-3 py-2 resize-none overflow-y-auto"
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between px-1 pt-1 shrink-0">
+                                  <div className="flex items-center gap-1">
+                                    {/* Mode selector dropdown */}
+                                    <div className="relative" ref={modeDropdownRef}>
+                                      <button
+                                        onClick={() => setShowModeDropdown(!showModeDropdown)}
+                                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-all"
+                                      >
+                                        {responseMode === 'fast' ? <Zap className="w-3.5 h-3.5 text-cyan-400" /> : <Brain className="w-3.5 h-3.5 text-cyan-400" />}
+                                        <span>{responseMode === 'fast' ? 'Fast' : 'Reasoning'}</span>
+                                        <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', showModeDropdown && 'rotate-180')} />
+                                      </button>
+
+                                      <AnimatePresence>
+                                        {showModeDropdown && (
+                                          <motion.div
+                                            initial={{ opacity: 0, y: 4 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: 4 }}
+                                            transition={{ duration: 0.15 }}
+                                            className="absolute bottom-full left-0 mb-2 w-72 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
+                                          >
+                                            <button
+                                              onClick={() => toggleResponseMode('fast')}
+                                              className={cn(
+                                                'w-full text-left px-4 py-3 flex items-start gap-3 transition-colors',
+                                                responseMode === 'fast' ? 'bg-cyan-500/10' : 'hover:bg-white/5'
+                                              )}
+                                            >
+                                              <Zap className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-sm font-medium text-white">Fast</span>
+                                                  {responseMode === 'fast' && <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                                                </div>
+                                                <p className="text-xs text-zinc-500 mt-0.5">Quick answers on tokens, prices, swaps, and simple actions</p>
+                                              </div>
+                                            </button>
+                                            <div className="h-px bg-white/5" />
+                                            <button
+                                              onClick={() => toggleResponseMode('reasoning')}
+                                              className={cn(
+                                                'w-full text-left px-4 py-3 flex items-start gap-3 transition-colors',
+                                                responseMode === 'reasoning' ? 'bg-cyan-500/10' : 'hover:bg-white/5'
+                                              )}
+                                            >
+                                              <Brain className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-sm font-medium text-white">Reasoning</span>
+                                                  {responseMode === 'reasoning' && <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                                                </div>
+                                                <p className="text-xs text-zinc-500 mt-0.5">Portfolio analysis, DCA strategies, risk assessment, and complex decisions</p>
+                                              </div>
+                                            </button>
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+                                    </div>
+                                    {/* Quick prompts dropdown — only visible when suggestion cards are hidden */}
+                                    {(inputMessage.trim() || promptBarNearMax) && (
+                                    <div className="relative" ref={welcomeQuickPromptsRef}>
+                                      <button
+                                        onClick={() => setShowWelcomeQuickPrompts(!showWelcomeQuickPrompts)}
+                                        className={cn(
+                                          "p-1.5 transition-colors shrink-0 rounded-lg hover:bg-white/5",
+                                          showWelcomeQuickPrompts ? "text-cyan-400" : "text-cyan-400 hover:text-cyan-300"
+                                        )}
+                                        title="Quick prompts"
+                                      >
+                                        <Sparkles className="w-4 h-4" />
+                                      </button>
+
+                                      <AnimatePresence>
+                                        {showWelcomeQuickPrompts && (
+                                          <motion.div
+                                            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                                            transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                                            className="absolute bottom-full left-0 mb-2 w-72 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
+                                          >
+                                            <div className="text-xs text-zinc-500 px-3 py-2 uppercase tracking-wider">Quick Prompts</div>
+                                            <div className="space-y-0.5 pb-1">
+                                              {trendingPrompts.map((prompt, index) => (
+                                                <button
+                                                  key={index}
+                                                  onClick={() => {
+                                                    sendMessage(prompt.text);
+                                                    setShowWelcomeQuickPrompts(false);
+                                                  }}
+                                                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors group/prompt"
+                                                >
+                                                  <span className="text-zinc-500 group-hover/prompt:text-cyan-400 transition-colors">{prompt.icon}</span>
+                                                  <span>{prompt.text}</span>
+                                                </button>
+                                              ))}
+                                            </div>
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+                                    </div>
+                                    )}
+                                  </div>
+
+                                  {/* Action button */}
+                                  {inputMessage.trim() ? (
+                                    <button
+                                      onClick={() => sendMessage()}
+                                      disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
+                                      className="p-2 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                      aria-label="Send message"
+                                    >
+                                      <ArrowUp className="w-5 h-5" />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={startRecording}
+                                      disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
+                                      className="p-2 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                      aria-label="Record audio"
+                                    >
+                                      <Mic className="w-5 h-5" />
+                                    </button>
+                                  )}
                                 </div>
                               </>
                             )}
@@ -1618,28 +1783,41 @@ export default function ChatPage() {
                           )}
                         </div>
 
-                        {/* Suggestions Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
-                          {[
-                            { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
-                            { label: 'Swap 50 USDC to SOL on Solana', prompt: 'Swap 50 USDC to SOL on Solana' },
-                            { label: 'What are the top trending tokens?', prompt: 'What are the top trending tokens today?' },
-                            { label: 'Market analysis of Bitcoin', prompt: 'Give me a market analysis of Bitcoin' },
-                          ].map((item) => (
-                            <motion.button
-                              key={item.label}
-                              onClick={() => sendMessage(item.prompt)}
-                              disabled={isSending || (!activeConversationId && !pendingNewChat)}
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="w-full text-left"
+                        {/* Suggestions Grid — hides when typing or prompt bar near max height */}
+                        <AnimatePresence>
+                          {!inputMessage.trim() && !promptBarNearMax && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 12, scale: 0.96 }}
+                              transition={{
+                                enter: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
+                                exit: { duration: 0.5, ease: [0.4, 0, 0.2, 1] },
+                                duration: 0.5,
+                                ease: [0.4, 0, 0.2, 1],
+                              }}
+                              className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full max-w-2xl mt-6 shrink-0 overflow-hidden"
                             >
-                              <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 min-h-[48px] flex items-center text-sm text-zinc-300 hover:text-white active:text-white hover:bg-white/10 active:bg-white/15 transition-colors">
-                                {item.label}
-                              </div>
-                            </motion.button>
-                          ))}
-                        </div>
+                              {[
+                                { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
+                                { label: 'Swap 50 USDC to SOL on Solana', prompt: 'Swap 50 USDC to SOL on Solana' },
+                                { label: 'What are the top trending tokens?', prompt: 'What are the top trending tokens today?' },
+                                { label: 'Market analysis of Bitcoin', prompt: 'Give me a market analysis of Bitcoin' },
+                              ].map((item) => (
+                                <motion.button
+                                  key={item.label}
+                                  onClick={() => sendMessage(item.prompt)}
+                                  disabled={isSending || (!activeConversationId && !pendingNewChat)}
+                                  className="w-full text-left"
+                                >
+                                  <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 min-h-[48px] flex items-center text-sm text-zinc-300 hover:text-white active:text-white hover:bg-white/10 active:bg-white/15 transition-colors">
+                                    {item.label}
+                                  </div>
+                                </motion.button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </motion.div>
                     </div>
                   ) : (
@@ -2153,39 +2331,11 @@ export default function ChatPage() {
                           )}
                         </AnimatePresence>
 
-                        {/* Response Mode Toggle */}
-                        <div className="relative z-10 flex items-center gap-1 mb-1.5 px-1">
-                          <button
-                            onClick={() => toggleResponseMode('fast')}
-                            className={cn(
-                              'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200',
-                              responseMode === 'fast'
-                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                                : 'bg-white/5 text-zinc-500 border border-transparent hover:text-zinc-300'
-                            )}
-                          >
-                            <Zap className="w-3 h-3" />
-                            Fast
-                          </button>
-                          <button
-                            onClick={() => toggleResponseMode('reasoning')}
-                            className={cn(
-                              'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200',
-                              responseMode === 'reasoning'
-                                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
-                                : 'bg-white/5 text-zinc-500 border border-transparent hover:text-zinc-300'
-                            )}
-                          >
-                            <Brain className="w-3 h-3" />
-                            Reasoning
-                          </button>
-                        </div>
-
-                        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500 pointer-events-none" />
-                        <div className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 shadow-2xl overflow-hidden">
+                        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-cyan-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500 pointer-events-none" />
+                        <div data-prompt-bar className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex flex-col shadow-2xl overflow-hidden">
                           {isRecording ? (
                             // Recording UI
-                            <>
+                            <div className="flex items-center gap-1.5">
                               <button
                                 onClick={cancelRecording}
                                 className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors shrink-0"
@@ -2219,10 +2369,10 @@ export default function ChatPage() {
                                   <ArrowUp className="w-5 h-5" />
                                 )}
                               </button>
-                            </>
+                            </div>
                           ) : isTranscribing ? (
                             // Transcribing UI
-                            <>
+                            <div className="flex items-center gap-1.5">
                               <div className="flex-1 min-w-0 flex items-center gap-2 pl-2">
                                 <Loader2 className="w-4 h-4 text-cyan-400 animate-spin shrink-0" />
                                 <span className="text-sm text-zinc-400">Transcribing...</span>
@@ -2234,45 +2384,117 @@ export default function ChatPage() {
                               >
                                 <X className="w-5 h-5" />
                               </button>
-                            </>
+                            </div>
                           ) : (
-                            // Normal input UI
+                            // Normal input UI — two rows
                             <>
-                              <button
-                                onClick={() => setShowTrendingPrompts(!showTrendingPrompts)}
-                                className="pl-1 text-zinc-400 hover:text-cyan-400 transition-colors shrink-0"
-                                title="Trending prompts"
-                              >
-                                <Sparkles className="w-5 h-5" />
-                              </button>
-                              <input
-                                ref={inputRef}
-                                type="text"
-                                value={inputMessage}
-                                onChange={(e) => setInputMessage(e.target.value)}
-                                onKeyPress={handleKeyPress}
-                                onFocus={() => setShowTrendingPrompts(false)}
-                                placeholder="Send a message..."
-                                disabled={isSending || !activeConversationId || initializing}
-                                className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[44px]"
-                                autoFocus
-                              />
-                              <button
-                                onClick={startRecording}
-                                disabled={isSending || !activeConversationId || initializing}
-                                className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
-                                aria-label="Record audio"
-                              >
-                                <Mic className="w-5 h-5" />
-                              </button>
-                              <button
-                                onClick={() => sendMessage()}
-                                disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                                className="p-2.5 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
-                                aria-label="Send message"
-                              >
-                                <ArrowUp className="w-5 h-5" />
-                              </button>
+                              <div className="flex items-start gap-1.5">
+                                <textarea
+                                  ref={inputRef}
+                                  rows={1}
+                                  value={inputMessage}
+                                  onChange={(e) => {
+                                    setInputMessage(e.target.value);
+                                    autoResizeTextarea(e.target);
+                                  }}
+                                  onKeyDown={handleKeyDown}
+                                  onFocus={() => setShowTrendingPrompts(false)}
+                                  placeholder="Send a message..."
+                                  disabled={isSending || !activeConversationId || initializing}
+                                  className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[40px] max-h-[40vh] pl-2 py-2 resize-none overflow-y-auto"
+                                  autoFocus
+                                />
+                              </div>
+                              <div className="flex items-center justify-between px-1 pt-1">
+                                <div className="flex items-center gap-1">
+                                  {/* Mode selector dropdown */}
+                                  <div className="relative" ref={modeDropdownRef}>
+                                    <button
+                                      onClick={() => setShowModeDropdown(!showModeDropdown)}
+                                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-all"
+                                    >
+                                    {responseMode === 'fast' ? <Zap className="w-3.5 h-3.5 text-cyan-400" /> : <Brain className="w-3.5 h-3.5 text-cyan-400" />}
+                                    <span>{responseMode === 'fast' ? 'Fast' : 'Reasoning'}</span>
+                                    <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', showModeDropdown && 'rotate-180')} />
+                                  </button>
+
+                                  <AnimatePresence>
+                                    {showModeDropdown && (
+                                      <motion.div
+                                        initial={{ opacity: 0, y: 4 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: 4 }}
+                                        transition={{ duration: 0.15 }}
+                                        className="absolute bottom-full left-0 mb-2 w-72 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
+                                      >
+                                        <button
+                                          onClick={() => toggleResponseMode('fast')}
+                                          className={cn(
+                                            'w-full text-left px-4 py-3 flex items-start gap-3 transition-colors',
+                                            responseMode === 'fast' ? 'bg-cyan-500/10' : 'hover:bg-white/5'
+                                          )}
+                                        >
+                                          <Zap className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-sm font-medium text-white">Fast</span>
+                                              {responseMode === 'fast' && <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                                            </div>
+                                            <p className="text-xs text-zinc-500 mt-0.5">Quick answers on tokens, prices, swaps, and simple actions</p>
+                                          </div>
+                                        </button>
+                                        <div className="h-px bg-white/5" />
+                                        <button
+                                          onClick={() => toggleResponseMode('reasoning')}
+                                          className={cn(
+                                            'w-full text-left px-4 py-3 flex items-start gap-3 transition-colors',
+                                            responseMode === 'reasoning' ? 'bg-cyan-500/10' : 'hover:bg-white/5'
+                                          )}
+                                        >
+                                          <Brain className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-sm font-medium text-white">Reasoning</span>
+                                              {responseMode === 'reasoning' && <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                                            </div>
+                                            <p className="text-xs text-zinc-500 mt-0.5">Portfolio analysis, DCA strategies, risk assessment, and complex decisions</p>
+                                          </div>
+                                        </button>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                  </div>
+                                  {/* Trending prompts */}
+                                  <button
+                                    onClick={() => setShowTrendingPrompts(!showTrendingPrompts)}
+                                    className="p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors shrink-0 rounded-lg hover:bg-white/5"
+                                    title="Trending prompts"
+                                  >
+                                    <Sparkles className="w-4 h-4" />
+                                  </button>
+                                </div>
+
+                                {/* Action button */}
+                                {inputMessage.trim() ? (
+                                  <button
+                                    onClick={() => sendMessage()}
+                                    disabled={isSending || !activeConversationId || initializing}
+                                    className="p-2 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                    aria-label="Send message"
+                                  >
+                                    <ArrowUp className="w-5 h-5" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={startRecording}
+                                    disabled={isSending || !activeConversationId || initializing}
+                                    className="p-2 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                    aria-label="Record audio"
+                                  >
+                                    <Mic className="w-5 h-5" />
+                                  </button>
+                                )}
+                              </div>
                             </>
                           )}
                         </div>

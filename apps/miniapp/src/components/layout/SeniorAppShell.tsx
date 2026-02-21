@@ -9,6 +9,7 @@ import { cn } from '@/shared/lib/utils';
 import { useActiveAccount } from 'thirdweb/react';
 import { useLogout } from '@/shared/hooks/useLogout';
 import { useChat } from '@/shared/contexts/ChatContext';
+import { Trash2 } from 'lucide-react';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 
 // Widget Modals
@@ -87,6 +88,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     activeConversationId,
     isLoading: isLoadingConversations,
     createConversation,
+    deleteConversation,
     setActiveConversationId,
     isCreatingConversation
   } = useChat();
@@ -402,23 +404,37 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
 
                                   const isActiveConv = activeConversationId === conversationId;
                                   return (
-                                    <button
+                                    <div
                                       key={conversationId}
-                                      onClick={() => handleSelectConversation(conversationId)}
                                       className={cn(
-                                        'w-full text-left px-4 py-2 rounded-lg text-xs transition-all truncate',
+                                        'group/chat w-full flex items-center rounded-lg text-xs transition-all',
                                         isActiveConv
                                           ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
                                           : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
                                       )}
                                     >
-                                      <div className="flex items-center gap-2">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 opacity-60">
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                                        </svg>
-                                        <span className="truncate">{resolveConversationTitle(conversationId, conversation.title)}</span>
-                                      </div>
-                                    </button>
+                                      <button
+                                        onClick={() => handleSelectConversation(conversationId)}
+                                        className="flex-1 text-left px-4 py-2 truncate"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 opacity-60">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                          </svg>
+                                          <span className="truncate">{resolveConversationTitle(conversationId, conversation.title)}</span>
+                                        </div>
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          deleteConversation(conversationId);
+                                        }}
+                                        className="shrink-0 p-1.5 mr-1.5 rounded-md opacity-0 group-hover/chat:opacity-100 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                        aria-label="Delete conversation"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
                                   );
                                 })
                               )}

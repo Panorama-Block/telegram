@@ -612,4 +612,26 @@ export class AgentsClient {
     const data = await res.json();
     return { text: data?.text || '' };
   }
+
+  async deleteConversation(userId: string, conversationId: string, opts: ChatOptions = {}): Promise<void> {
+    this.ensureConfigured();
+    const headers = this.buildHeaders(opts);
+
+    const params = new URLSearchParams();
+    params.set('user_id', userId);
+
+    const url = `${this.baseUrl}/chat/conversations/${conversationId}?${params.toString()}`;
+    const res = await this.fetchWithTimeout(url, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      this.logDebug('deleteConversation:error', { status: res.status, userId, conversationId, response: text });
+      throw new Error(`Agents delete conversation failed: ${res.status} ${text}`);
+    }
+
+    this.logDebug('deleteConversation:success', { userId, conversationId });
+  }
 }
