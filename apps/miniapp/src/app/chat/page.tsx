@@ -2332,7 +2332,7 @@ export default function ChatPage() {
                         </AnimatePresence>
 
                         <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-cyan-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500 pointer-events-none" />
-                        <div data-prompt-bar className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex flex-col shadow-2xl overflow-hidden">
+                        <div data-prompt-bar className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex flex-col shadow-2xl">
                           {isRecording ? (
                             // Recording UI
                             <div className="flex items-center gap-1.5">
