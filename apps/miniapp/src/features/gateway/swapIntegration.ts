@@ -102,6 +102,9 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
   const tenantId = getTenantId();
   const chain = params.chain || getChainFromChainId(params.fromChainId);
 
+  // Normalize userId to lowercase so it matches queries from resolveChatIdentity (safeLower)
+  params = { ...params, userId: params.userId.toLowerCase(), walletAddress: params.walletAddress.toLowerCase() };
+
   // 1. Garante que o User existe (Wallet tem FK para User)
   try {
     await gatewayApi.list('users', {

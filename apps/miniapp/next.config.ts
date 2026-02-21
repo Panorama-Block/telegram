@@ -45,6 +45,17 @@ const nextConfig: NextConfig = {
 
     const rewrites = [];
 
+    // Gateway proxy — evita CORS ao chamar o DB Gateway direto do browser
+    const gatewayBase = (
+      process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8080'
+    ).replace(/\/+$/, '');
+    console.log('[Next.js] Gateway proxy configured:', gatewayBase);
+    rewrites.push({
+      source: '/api/gateway/:path*',
+      destination: `${gatewayBase}/:path*`,
+      basePath: false,
+    });
+
     if (!lendingBase) {
       console.warn('[Next.js] Lending API base URL not configured, proxy will not work');
       console.warn('[Next.js] Please set VITE_LENDING_API_BASE or NEXT_PUBLIC_LENDING_API_URL in .env');
