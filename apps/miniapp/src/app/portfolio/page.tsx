@@ -21,6 +21,7 @@ import {
   Clock,
   Landmark,
   Droplets,
+  ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,21 @@ import { formatAmountHuman } from "@/features/swap/utils";
 
 type ViewMode = 'main' | 'smart';
 type TabMode = 'history' | 'assets';
+
+function getExplorerUrl(chainId: number, hash: string): string {
+  const explorers: Record<number, string> = {
+    1: 'https://etherscan.io/tx',
+    43114: 'https://snowtrace.io/tx',
+    137: 'https://polygonscan.com/tx',
+    56: 'https://bscscan.com/tx',
+    42161: 'https://arbiscan.io/tx',
+    10: 'https://optimistic.etherscan.io/tx',
+    8453: 'https://basescan.org/tx',
+    59144: 'https://lineascan.build/tx',
+  };
+  const base = explorers[chainId] ?? `https://blockscan.com/tx`;
+  return `${base}/${hash}`;
+}
 
 function formatAPY(apy: number | null | undefined): string {
   if (apy == null || !Number.isFinite(apy)) return '--';
@@ -902,7 +918,12 @@ export default function PortfolioPage() {
               )}
 
               <div className="space-y-1">
-                {transactions.map((tx) => (
+                {transactions.map((tx) => {
+                  const primaryHash = tx.txHashes?.[0];
+                  const explorerUrl = primaryHash
+                    ? getExplorerUrl(primaryHash.chainId, primaryHash.hash)
+                    : null;
+                  return (
                   <div
                     key={tx.id}
                     className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors"
@@ -927,16 +948,30 @@ export default function PortfolioPage() {
                         {new Date(tx.createdAt).toLocaleDateString()}
                       </div>
                     </div>
-                    <div className={cn(
-                      "px-2 py-0.5 rounded-full text-[10px] font-medium",
-                      tx.status === 'confirmed' ? "bg-emerald-500/10 text-emerald-400" :
-                      tx.status === 'failed' ? "bg-red-500/10 text-red-400" :
-                      "bg-yellow-500/10 text-yellow-400"
-                    )}>
-                      {tx.status}
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        "px-2 py-0.5 rounded-full text-[10px] font-medium",
+                        tx.status === 'confirmed' ? "bg-emerald-500/10 text-emerald-400" :
+                        tx.status === 'failed' ? "bg-red-500/10 text-red-400" :
+                        "bg-yellow-500/10 text-yellow-400"
+                      )}>
+                        {tx.status}
+                      </div>
+                      {explorerUrl && (
+                        <a
+                          href={explorerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {hasMoreTx && transactions.length > 0 && (
