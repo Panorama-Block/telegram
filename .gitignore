@@ -10,4 +10,3 @@ pnpm-lock.yaml
 /env.local
 .env
 env
-package-lock.json
