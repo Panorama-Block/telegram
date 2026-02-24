@@ -25,6 +25,12 @@ const baseToken = {
   isCollateral: true,
 };
 
+vi.mock('@/config/features', () => ({
+  FEATURE_FLAGS: { LENDING_ENABLED: true },
+  FEATURE_METADATA: { lending: { name: 'Lending Service', description: '' } },
+  isFeatureEnabled: () => true,
+}));
+
 vi.mock('framer-motion', async () => await import('../../../test/mocks/framerMotion'));
 
 vi.mock('@/components/TokenSelectionModal', () => ({
