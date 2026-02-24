@@ -104,7 +104,7 @@ export default function PortfolioPage() {
     loadMore: loadMoreTx,
     hasMore: hasMoreTx,
   } = useTransactionHistory({
-    userId: account?.address || '',
+    userId: account?.address?.toLowerCase() || '',
     limit: 10,
   });
 
