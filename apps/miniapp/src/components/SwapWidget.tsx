@@ -389,22 +389,22 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         setSellTokenBalance(formattedBalance);
         setSellTokenBalanceRaw(fullPrecisionBalance);
 
-        const canAutoFill = !amount || amount === "" || amount === "0.0";
-        if (canAutoFill) {
-          const balanceValue = parseFloat(formattedBalance);
-          setAmount(balanceValue > 0 ? formattedBalance : "0.0");
-          setInitialBalanceSet(true);
-        }
+        const balanceValue = parseFloat(formattedBalance);
+        setAmount(prev => {
+          const canAutoFill = !prev || prev === "" || prev === "0.0";
+          return canAutoFill ? (balanceValue > 0 ? formattedBalance : "0.0") : prev;
+        });
+        setInitialBalanceSet(true);
       } catch (error) {
         console.error("[SwapWidget] Error fetching balance:", error);
         if (!cancelled) {
-          setSellTokenBalance("0");
-          setSellTokenBalanceRaw("0");
-          const canAutoFill = !amount || amount === "" || amount === "0.0";
-          if (canAutoFill) {
-            setAmount("0.0");
-            setInitialBalanceSet(true);
-          }
+          setSellTokenBalance(null);
+          setSellTokenBalanceRaw(null);
+          setAmount(prev => {
+            const canAutoFill = !prev || prev === "" || prev === "0.0";
+            return canAutoFill ? "0.0" : prev;
+          });
+          setInitialBalanceSet(true);
         }
       } finally {
         if (!cancelled) setLoadingBalance(false);
@@ -416,7 +416,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     return () => {
       cancelled = true;
     };
-  }, [client, account?.address, sellToken]);
+  }, [client, account?.address, sellToken.address, sellToken.network]);
 
   // Network switching is handled automatically during swap execution via ThirdWeb SDK
   // This avoids opening external wallet popups for in-app wallet users (Google, email login)

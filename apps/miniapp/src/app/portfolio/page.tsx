@@ -966,10 +966,8 @@ export default function PortfolioPage() {
 
               <div className="space-y-1">
                 {currentAssets.map((asset) => (
-                  <div
-                    key={`${asset.network}-${asset.symbol}-${asset.address}`}
-                    className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors"
-                  >
+                  <div key={`${asset.network}-${asset.symbol}-${asset.address}`}>
+                  <div className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors">
                     <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10 flex-shrink-0">
                       {asset.icon ? (
                         <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
@@ -989,17 +987,18 @@ export default function PortfolioPage() {
                       <div className="text-[10px] text-zinc-600 font-mono">{asset.price}</div>
                     </div>
                   </div>
-                {/* Protocol badge */}
-                <div className="flex items-center gap-1 mt-0.5 pl-11">
-                  {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3 text-zinc-600" />}
-                  {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-500/70" />}
-                  {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400/70" />}
-                  <span className="text-[10px] text-zinc-600">
-                    {asset.protocol}
-                    {asset.protocol === 'Lido' && <span> · {formatAPY(lidoApy)}</span>}
-                  </span>
-                </div>
-                ))}
+                  {/* Protocol badge */}
+                  <div className="flex items-center gap-1 mt-0.5 pl-11">
+                    {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3 text-zinc-600" />}
+                    {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-500/70" />}
+                    {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400/70" />}
+                    <span className="text-[10px] text-zinc-600">
+                      {asset.protocol}
+                      {asset.protocol === 'Lido' && <span> · {formatAPY(lidoApy)}</span>}
+                    </span>
+                  </div>
+                  </div>
+                  ))}
               </div>
 
           {/* Desktop Table View */}
