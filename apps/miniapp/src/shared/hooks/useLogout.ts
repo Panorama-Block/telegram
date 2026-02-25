@@ -77,6 +77,8 @@ export function useLogout() {
           'authToken',
           'authPayload',
           'authSignature',
+          'authWalletId',
+          'authWalletAddress',
           'telegram_user',
           'userAddress',
         ];

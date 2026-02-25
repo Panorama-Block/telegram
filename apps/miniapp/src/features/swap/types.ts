@@ -64,7 +64,9 @@ export type QuoteRequest = {
   toChainId: number;
   fromToken: string; // "native" or ERC-20 address
   toToken: string;   // "native" or ERC-20 address
-  amount: string;    // token units (human-readable decimal string)
+  amount: string;    // token units (human-readable decimal string) OR wei (see unit)
+  // IMPORTANT: Always send unit explicitly to avoid double-conversion bugs.
+  unit: 'token' | 'wei';
   smartAccountAddress?: string | null;
 };
 

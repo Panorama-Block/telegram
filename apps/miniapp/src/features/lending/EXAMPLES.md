@@ -66,7 +66,10 @@ function ValidationFeeDisplay({ amount, tokenSymbol }: { amount: string; tokenSy
 ### Integration Example with Fee Display
 
 ```typescript
-const handleSupply = async (tokenAddress: string, amount: string) => {
+// IMPORTANT:
+// - Use the underlying token (symbol/decimals) for display + wallet balance checks
+// - Use the Benqi market address (qTokenAddress) for prepare* calls
+const handleSupply = async (qTokenAddress: string, amount: string) => {
   try {
     // Calculate and display validation fee before transaction
     const totalAmount = parseFloat(amount);
@@ -88,10 +91,10 @@ const handleSupply = async (tokenAddress: string, amount: string) => {
     setLoading(true);
     setError(null);
     
-    const txData = await lendingApi.prepareSupply(tokenAddress, amount);
-    const success = await lendingApi.executeTransaction(txData.data.supply);
+    const txData = await lendingApi.prepareSupply(qTokenAddress, amount);
+    const txHash = await lendingApi.executeTransaction(txData.data.supply);
     
-    if (success) {
+    if (txHash) {
       alert(`Supply successful! ${netAmount.toFixed(8)} ${tokenSymbol} supplied.`);
       loadData();
     }
@@ -136,15 +139,15 @@ export function LendingDashboard() {
     }
   };
 
-  const handleSupply = async (tokenAddress: string, amount: string) => {
+  const handleSupply = async (qTokenAddress: string, amount: string) => {
     try {
       setLoading(true);
       setError(null);
       
-      const txData = await lendingApi.prepareSupply(tokenAddress, amount);
-      const success = await lendingApi.executeTransaction(txData.data.supply);
+      const txData = await lendingApi.prepareSupply(qTokenAddress, amount);
+      const txHash = await lendingApi.executeTransaction(txData.data.supply);
       
-      if (success) {
+      if (txHash) {
         alert('Supply successful!');
         loadData(); // Refresh data
       }
@@ -155,15 +158,15 @@ export function LendingDashboard() {
     }
   };
 
-  const handleWithdraw = async (tokenAddress: string, amount: string) => {
+  const handleWithdraw = async (qTokenAddress: string, amount: string) => {
     try {
       setLoading(true);
       setError(null);
       
-      const txData = await lendingApi.prepareWithdraw(tokenAddress, amount);
-      const success = await lendingApi.executeTransaction(txData.data.withdraw);
+      const txData = await lendingApi.prepareWithdraw(qTokenAddress, amount);
+      const txHash = await lendingApi.executeTransaction(txData.data.withdraw);
       
-      if (success) {
+      if (txHash) {
         alert('Withdraw successful!');
         loadData();
       }
@@ -198,11 +201,11 @@ export function LendingDashboard() {
           <p>Borrow APY: {token.borrowAPY}%</p>
           <p>Available: {token.availableLiquidity}</p>
           
-          <button onClick={() => handleSupply(token.address, '1.0')}>
+          <button onClick={() => handleSupply(token.qTokenAddress, '1.0')}>
             Supply 1.0 {token.symbol}
           </button>
           
-          <button onClick={() => handleWithdraw(token.address, '0.5')}>
+          <button onClick={() => handleWithdraw(token.qTokenAddress, '0.5')}>
             Withdraw 0.5 {token.symbol}
           </button>
         </div>
@@ -217,12 +220,12 @@ export function LendingDashboard() {
 ### 1. Error Recovery with Retry
 
 ```typescript
-async function robustSupply(tokenAddress: string, amount: string, maxRetries = 3) {
+async function robustSupply(qTokenAddress: string, amount: string, maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const txData = await lendingApi.prepareSupply(tokenAddress, amount);
-      const success = await lendingApi.executeTransaction(txData.data.supply);
-      return success;
+      const txData = await lendingApi.prepareSupply(qTokenAddress, amount);
+      const txHash = await lendingApi.executeTransaction(txData.data.supply);
+      return txHash;
     } catch (error) {
       console.warn(`Attempt ${attempt} failed:`, error.message);
       
@@ -240,13 +243,13 @@ async function robustSupply(tokenAddress: string, amount: string, maxRetries = 3
 ### 2. Batch Operations
 
 ```typescript
-async function batchSupply(operations: Array<{tokenAddress: string, amount: string}>) {
+async function batchSupply(operations: Array<{qTokenAddress: string, amount: string}>) {
   const results = [];
   
   for (const operation of operations) {
     try {
-      const txData = await lendingApi.prepareSupply(operation.tokenAddress, operation.amount);
-      const success = await lendingApi.executeTransaction(txData.data.supply);
+      const txData = await lendingApi.prepareSupply(operation.qTokenAddress, operation.amount);
+      const txHash = await lendingApi.executeTransaction(txData.data.supply);
       results.push({ success: true, operation });
     } catch (error) {
       results.push({ success: false, operation, error: error.message });
@@ -258,8 +261,8 @@ async function batchSupply(operations: Array<{tokenAddress: string, amount: stri
 
 // Usage
 const operations = [
-  { tokenAddress: '0x...', amount: '100' },
-  { tokenAddress: '0x...', amount: '50' }
+  { qTokenAddress: '0x...', amount: '100' },
+  { qTokenAddress: '0x...', amount: '50' }
 ];
 
 const results = await batchSupply(operations);
@@ -454,8 +457,10 @@ describe('Lending Integration', () => {
     // Mock API failure
     global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
     
-    const tokens = await client.getTokens();
-    expect(Array.isArray(tokens)).toBe(true); // Should return fallback data
+    // Trust-first behavior:
+    // - If a recent markets cache exists, getTokens() returns the cached markets.
+    // - Otherwise, it throws (no mocked/fallback tokens).
+    await expect(client.getTokens()).rejects.toThrow();
   });
 });
 ```

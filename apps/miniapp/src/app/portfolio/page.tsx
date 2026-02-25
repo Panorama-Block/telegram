@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from "framer-motion";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NotificationCenter } from "@/components/NotificationCenter";
@@ -19,12 +19,18 @@ import {
   ArrowRightLeft,
   Calendar,
   Clock,
+  Landmark,
+  Droplets,
+  ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 import { usePortfolioData } from "@/features/portfolio/usePortfolioData";
 import { useSmartWalletPortfolio } from "@/features/portfolio/useSmartWalletPortfolio";
+import { useStakingApi, type WithdrawalRequest } from "@/features/staking/api";
+import { useStakingData } from "@/features/staking/useStakingData";
+import { useLendingData } from "@/features/lending/useLendingData";
 import { SmartWalletCard, SmartWalletIndicator } from "@/features/portfolio/SmartWalletCard";
 import { CreateSmartWalletModal } from "@/features/portfolio/CreateSmartWalletModal";
 import { DeleteWalletModal } from "@/features/portfolio/DeleteWalletModal";
@@ -34,9 +40,59 @@ import { deleteSmartAccount, deleteStrategy, toggleStrategy, DCAStrategy } from 
 import { useActiveAccount } from "thirdweb/react";
 import { shortenAddress } from "thirdweb/utils";
 import { useTransactionHistory } from "@/features/gateway";
+import { formatAmountHuman } from "@/features/swap/utils";
 
 type ViewMode = 'main' | 'smart';
 type TabMode = 'history' | 'assets';
+
+function getExplorerUrl(chainId: number, hash: string): string {
+  const explorers: Record<number, string> = {
+    1: 'https://etherscan.io/tx',
+    43114: 'https://snowtrace.io/tx',
+    137: 'https://polygonscan.com/tx',
+    56: 'https://bscscan.com/tx',
+    42161: 'https://arbiscan.io/tx',
+    10: 'https://optimistic.etherscan.io/tx',
+    8453: 'https://basescan.org/tx',
+    59144: 'https://lineascan.build/tx',
+  };
+  const base = explorers[chainId] ?? `https://blockscan.com/tx`;
+  return `${base}/${hash}`;
+}
+
+function formatAPY(apy: number | null | undefined): string {
+  if (apy == null || !Number.isFinite(apy)) return '--';
+  return `${apy.toFixed(4)}%`;
+}
+
+function safeParseBigInt(value: string | null | undefined): bigint | null {
+  if (!value) return null;
+  if (!/^\d+$/.test(value)) return null;
+  try {
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
+function formatWei(wei: string | null | undefined, decimals = 18): string {
+  const parsed = safeParseBigInt(wei);
+  if (parsed == null) return '--';
+  const human = formatAmountHuman(parsed, decimals, 6);
+  return human === '0' ? '0.00' : human;
+}
+
+function formatLastUpdated(tsMs: number | null | undefined): string {
+  if (!tsMs || tsMs <= 0) return '--';
+  const delta = Date.now() - tsMs;
+  if (delta < 15_000) return 'just now';
+  const mins = Math.floor(delta / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 export default function PortfolioPage() {
   const account = useActiveAccount();
@@ -64,7 +120,7 @@ export default function PortfolioPage() {
     loadMore: loadMoreTx,
     hasMore: hasMoreTx,
   } = useTransactionHistory({
-    userId: account?.address || '',
+    userId: account?.address?.toLowerCase() || '',
     limit: 10,
   });
 
@@ -79,6 +135,60 @@ export default function PortfolioPage() {
   // DCA Strategy management
   const [expandedStrategy, setExpandedStrategy] = useState<string | null>(null);
   const [strategyActionLoading, setStrategyActionLoading] = useState<string | null>(null);
+
+  const stakingApi = useStakingApi();
+  const {
+    tokens: stakingTokens,
+    userPosition: stakingPosition,
+    loading: stakingLoading,
+    error: stakingError,
+    refresh: refreshStaking,
+    lastFetchTime: stakingLastFetchTime,
+  } = useStakingData();
+  const {
+    userPosition: lendingPosition,
+    loading: lendingLoading,
+    error: lendingError,
+    fetchPosition: refreshLendingPosition,
+    lastFetchTime: lendingLastFetchTime,
+  } = useLendingData();
+
+  const [stakingWithdrawals, setStakingWithdrawals] = useState<WithdrawalRequest[]>([]);
+  const [stakingWithdrawalsLoading, setStakingWithdrawalsLoading] = useState(false);
+  const [stakingWithdrawalsError, setStakingWithdrawalsError] = useState<string | null>(null);
+  const [stakingWithdrawalsLastFetchTime, setStakingWithdrawalsLastFetchTime] = useState<number>(0);
+
+  const refreshStakingWithdrawals = useCallback(async (force = false) => {
+    const now = Date.now();
+    const MIN_INTERVAL = 2 * 60 * 1000;
+    if (!force && stakingWithdrawalsLastFetchTime > 0 && (now - stakingWithdrawalsLastFetchTime) < MIN_INTERVAL) {
+      return;
+    }
+
+    setStakingWithdrawalsLoading(true);
+    setStakingWithdrawalsError(null);
+    try {
+      const w = await stakingApi.getWithdrawals();
+      setStakingWithdrawals(w);
+      setStakingWithdrawalsLastFetchTime(now);
+    } catch (e) {
+      setStakingWithdrawalsError(e instanceof Error ? e.message : 'Failed to load withdrawals');
+    } finally {
+      setStakingWithdrawalsLoading(false);
+    }
+  }, [stakingApi, stakingWithdrawalsLastFetchTime]);
+
+  const lidoApy = useMemo(() => {
+    const eth = stakingTokens.find((t) => t.symbol === 'ETH') || stakingTokens.find((t) => t.symbol === 'stETH');
+    return eth?.stakingAPY ?? null;
+  }, [stakingTokens]);
+
+  // Portfolio view wants positions (not just token list); fetch lending + staking withdrawals in the background.
+  useEffect(() => {
+    if (viewMode !== 'main') return;
+    refreshStakingWithdrawals();
+    void refreshLendingPosition();
+  }, [refreshLendingPosition, refreshStakingWithdrawals, viewMode]);
 
   // Determine which data to show based on view mode
   const isSmartWalletView = viewMode === 'smart' && hasSmartWallet;
@@ -178,6 +288,56 @@ export default function PortfolioPage() {
     };
     return tokenMap[address] || address.slice(0, 6) + '...';
   };
+
+  const stakingClaimable = useMemo(() => {
+    const claimable = stakingWithdrawals.filter((w) => w.isFinalized && !w.isClaimed);
+    const amountWei = claimable.reduce((acc, w) => {
+      const v = safeParseBigInt(w.amountOfStETHWei);
+      return v != null ? acc + v : acc;
+    }, 0n);
+    return { count: claimable.length, amountWei: amountWei.toString() };
+  }, [stakingWithdrawals]);
+
+  const stakingPending = useMemo(() => {
+    const pending = stakingWithdrawals.filter((w) => !w.isFinalized && !w.isClaimed);
+    const amountWei = pending.reduce((acc, w) => {
+      const v = safeParseBigInt(w.amountOfStETHWei);
+      return v != null ? acc + v : acc;
+    }, 0n);
+    return { count: pending.length, amountWei: amountWei.toString() };
+  }, [stakingWithdrawals]);
+
+  const stakingLastUpdated = useMemo(() => {
+    return Math.max(stakingLastFetchTime || 0, stakingWithdrawalsLastFetchTime || 0);
+  }, [stakingLastFetchTime, stakingWithdrawalsLastFetchTime]);
+
+  const lendingSuppliedRows = useMemo(() => {
+    const rows = lendingPosition?.positions || [];
+    return rows
+      .filter((r) => safeParseBigInt(r.suppliedWei) && BigInt(r.suppliedWei) > 0n)
+      .map((r) => ({
+        symbol: r.underlyingSymbol,
+        amount: formatAmountHuman(BigInt(r.suppliedWei), r.underlyingDecimals, 4),
+      }));
+  }, [lendingPosition?.positions]);
+
+  const lendingBorrowedRows = useMemo(() => {
+    const rows = lendingPosition?.positions || [];
+    return rows
+      .filter((r) => safeParseBigInt(r.borrowedWei) && BigInt(r.borrowedWei) > 0n)
+      .map((r) => ({
+        symbol: r.underlyingSymbol,
+        amount: formatAmountHuman(BigInt(r.borrowedWei), r.underlyingDecimals, 4),
+      }));
+  }, [lendingPosition?.positions]);
+
+  const lendingHealthLabel = useMemo(() => {
+    const liq = lendingPosition?.liquidity;
+    if (!liq) return { text: '--', tone: 'zinc' as const };
+    const shortfall = safeParseBigInt(liq.shortfall) || 0n;
+    if (shortfall > 0n) return { text: 'Shortfall', tone: 'red' as const };
+    return liq.isHealthy ? { text: 'Healthy', tone: 'green' as const } : { text: 'At risk', tone: 'yellow' as const };
+  }, [lendingPosition?.liquidity]);
 
   return (
     <ProtectedRoute>
@@ -331,7 +491,158 @@ export default function PortfolioPage() {
               onSelectAccount={selectAccount}
             />
           </motion.div>
-        </div>
+	        </div>
+
+	        {/* Positions (Staking + Lending) */}
+	        {!isSmartWalletView && (
+	          <motion.div
+	            initial={{ opacity: 0, y: 20 }}
+	            animate={{ opacity: 1, y: 0 }}
+	            transition={{ delay: 0.23 }}
+	            className="mb-12"
+	          >
+	            <div className="flex items-center justify-between gap-2 mb-4">
+	              <h3 className="text-lg font-medium text-white">Positions</h3>
+	              <div className="text-xs text-zinc-500">Last updated: {formatLastUpdated(Math.max(stakingLastUpdated, lendingLastFetchTime || 0))}</div>
+	            </div>
+	            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+	              {/* Staking position */}
+	              <GlassCard className="p-5 bg-[#0A0A0A]/60">
+	                <div className="flex items-start justify-between gap-3">
+	                  <div className="flex items-center gap-3 min-w-0">
+	                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
+	                      <Droplets className="w-4 h-4" />
+	                    </div>
+	                    <div className="min-w-0">
+	                      <div className="text-white font-medium truncate">Staking position</div>
+	                      <div className="text-xs text-zinc-500">Lido on Ethereum · APY {formatAPY(lidoApy)}</div>
+	                    </div>
+	                  </div>
+	                  <button
+	                    onClick={() => {
+	                      refreshStaking();
+	                      refreshStakingWithdrawals(true);
+	                    }}
+	                    className="text-xs text-zinc-400 hover:text-white transition-colors"
+	                  >
+	                    Refresh
+	                  </button>
+	                </div>
+
+	                <div className="mt-4 grid grid-cols-2 gap-3">
+	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">stETH</div>
+	                    <div className="text-sm font-mono text-white">{formatWei(stakingPosition?.stETHBalance)}</div>
+	                  </div>
+	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">wstETH</div>
+	                    <div className="text-sm font-mono text-white">{formatWei(stakingPosition?.wstETHBalance)}</div>
+	                  </div>
+	                </div>
+
+	                <div className="mt-3 grid grid-cols-2 gap-3">
+	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Claimable</div>
+	                    <div className="text-sm text-white font-mono">{formatWei(stakingClaimable.amountWei)}</div>
+	                    <div className="text-[11px] text-zinc-500 mt-1">{stakingClaimable.count} request{stakingClaimable.count === 1 ? '' : 's'}</div>
+	                  </div>
+	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Pending</div>
+	                    <div className="text-sm text-white font-mono">{formatWei(stakingPending.amountWei)}</div>
+	                    <div className="text-[11px] text-zinc-500 mt-1">{stakingPending.count} request{stakingPending.count === 1 ? '' : 's'}</div>
+	                  </div>
+	                </div>
+
+	                {(stakingLoading || stakingWithdrawalsLoading) && (
+	                  <div className="mt-3 text-xs text-zinc-500">Loading…</div>
+	                )}
+	                {(stakingError || stakingWithdrawalsError) && (
+	                  <div className="mt-3 text-xs text-red-400">
+	                    {stakingError || stakingWithdrawalsError}
+	                  </div>
+	                )}
+
+	                <div className="mt-4 flex items-center justify-between">
+	                  <div className="text-xs text-zinc-500">Source: protocol adapters</div>
+	                  <Link
+	                    href="/chat?open=staking"
+	                    className="text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
+	                  >
+	                    Manage
+	                  </Link>
+	                </div>
+	              </GlassCard>
+
+	              {/* Lending position */}
+	              <GlassCard className="p-5 bg-[#0A0A0A]/60">
+	                <div className="flex items-start justify-between gap-3">
+	                  <div className="flex items-center gap-3 min-w-0">
+	                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+	                      <Landmark className="w-4 h-4" />
+	                    </div>
+	                    <div className="min-w-0">
+	                      <div className="text-white font-medium truncate">Lending position</div>
+	                      <div className="text-xs text-zinc-500">Benqi on Avalanche</div>
+	                    </div>
+	                  </div>
+	                  <button
+	                    onClick={() => void refreshLendingPosition()}
+	                    className="text-xs text-zinc-400 hover:text-white transition-colors"
+	                  >
+	                    Refresh
+	                  </button>
+	                </div>
+
+	                <div className="mt-4 grid grid-cols-2 gap-3">
+	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Supplied</div>
+	                    <div className="text-sm text-white font-mono">
+	                      {lendingSuppliedRows.length === 0 ? '0' : lendingSuppliedRows.slice(0, 2).map((r) => `${r.amount} ${r.symbol}`).join(', ')}
+	                      {lendingSuppliedRows.length > 2 ? ` +${lendingSuppliedRows.length - 2}` : ''}
+	                    </div>
+	                  </div>
+	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Borrowed</div>
+	                    <div className="text-sm text-white font-mono">
+	                      {lendingBorrowedRows.length === 0 ? '0' : lendingBorrowedRows.slice(0, 2).map((r) => `${r.amount} ${r.symbol}`).join(', ')}
+	                      {lendingBorrowedRows.length > 2 ? ` +${lendingBorrowedRows.length - 2}` : ''}
+	                    </div>
+	                  </div>
+	                </div>
+
+	                <div className="mt-3 flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10">
+	                  <div className="text-[10px] text-zinc-500 uppercase">Account health</div>
+	                  <div className={cn(
+	                    "text-xs font-medium",
+	                    lendingHealthLabel.tone === 'green' && "text-emerald-400",
+	                    lendingHealthLabel.tone === 'yellow' && "text-yellow-400",
+	                    lendingHealthLabel.tone === 'red' && "text-red-400",
+	                    lendingHealthLabel.tone === 'zinc' && "text-zinc-400",
+	                  )}>
+	                    {lendingHealthLabel.text}
+	                  </div>
+	                </div>
+
+	                {lendingLoading && (
+	                  <div className="mt-3 text-xs text-zinc-500">Loading…</div>
+	                )}
+	                {lendingError && (
+	                  <div className="mt-3 text-xs text-red-400">{lendingError}</div>
+	                )}
+
+	                <div className="mt-4 flex items-center justify-between">
+	                  <div className="text-xs text-zinc-500">Source: on-chain reads</div>
+	                  <Link
+	                    href="/chat?open=lending"
+	                    className="text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
+	                  >
+	                    Manage
+	                  </Link>
+	                </div>
+	              </GlassCard>
+	            </div>
+	          </motion.div>
+	        )}
 
         {/* DCA Strategies Section (only when viewing Smart Wallet) */}
         {isSmartWalletView && strategies.length > 0 && (
@@ -587,6 +898,9 @@ export default function PortfolioPage() {
               Assets
             </button>
           </div>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-white">Wallet Balances</h2>
+          </div>
 
           {/* Tab Content */}
           {activeTab === 'history' && (
@@ -604,7 +918,12 @@ export default function PortfolioPage() {
               )}
 
               <div className="space-y-1">
-                {transactions.map((tx) => (
+                {transactions.map((tx) => {
+                  const primaryHash = tx.txHashes?.[0];
+                  const explorerUrl = primaryHash
+                    ? getExplorerUrl(primaryHash.chainId, primaryHash.hash)
+                    : null;
+                  return (
                   <div
                     key={tx.id}
                     className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors"
@@ -629,16 +948,30 @@ export default function PortfolioPage() {
                         {new Date(tx.createdAt).toLocaleDateString()}
                       </div>
                     </div>
-                    <div className={cn(
-                      "px-2 py-0.5 rounded-full text-[10px] font-medium",
-                      tx.status === 'confirmed' ? "bg-emerald-500/10 text-emerald-400" :
-                      tx.status === 'failed' ? "bg-red-500/10 text-red-400" :
-                      "bg-yellow-500/10 text-yellow-400"
-                    )}>
-                      {tx.status}
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        "px-2 py-0.5 rounded-full text-[10px] font-medium",
+                        tx.status === 'confirmed' ? "bg-emerald-500/10 text-emerald-400" :
+                        tx.status === 'failed' ? "bg-red-500/10 text-red-400" :
+                        "bg-yellow-500/10 text-yellow-400"
+                      )}>
+                        {tx.status}
+                      </div>
+                      {explorerUrl && (
+                        <a
+                          href={explorerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {hasMoreTx && transactions.length > 0 && (
@@ -668,10 +1001,8 @@ export default function PortfolioPage() {
 
               <div className="space-y-1">
                 {currentAssets.map((asset) => (
-                  <div
-                    key={`${asset.network}-${asset.symbol}-${asset.address}`}
-                    className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors"
-                  >
+                  <div key={`${asset.network}-${asset.symbol}-${asset.address}`}>
+                  <div className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors">
                     <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10 flex-shrink-0">
                       {asset.icon ? (
                         <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
@@ -691,8 +1022,79 @@ export default function PortfolioPage() {
                       <div className="text-[10px] text-zinc-600 font-mono">{asset.price}</div>
                     </div>
                   </div>
-                ))}
+                  {/* Protocol badge */}
+                  <div className="flex items-center gap-1 mt-0.5 pl-11">
+                    {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3 text-zinc-600" />}
+                    {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-500/70" />}
+                    {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400/70" />}
+                    <span className="text-[10px] text-zinc-600">
+                      {asset.protocol}
+                      {asset.protocol === 'Lido' && <span> · {formatAPY(lidoApy)}</span>}
+                    </span>
+                  </div>
+                  </div>
+                  ))}
               </div>
+
+          {/* Desktop Table View */}
+          <GlassCard className="overflow-hidden bg-[#0A0A0A]/60 hidden md:block mt-4">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/5 text-xs text-zinc-500 uppercase tracking-wider">
+                    <th className="p-4 font-medium">Asset</th>
+                    <th className="p-4 font-medium">Protocol</th>
+                    <th className="p-4 font-medium">Balance</th>
+                    <th className="p-4 font-medium">Value</th>
+                    <th className="p-4 font-medium">Price</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {currentAssets.map((asset) => (
+                    <tr key={`desktop-${asset.network}-${asset.symbol}-${asset.address}`} className="group hover:bg-white/5 transition-colors">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-inner",
+                            "bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10"
+                          )}>
+                            {asset.icon ? (
+                              <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
+                            ) : (
+                              asset.symbol[0]
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-medium text-white">{asset.name}</div>
+                            <div className="flex items-center gap-1.5">
+                               <span className="text-xs text-zinc-500">{asset.symbol}</span>
+                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-400 border border-white/5">{asset.network}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4 text-zinc-400 text-sm">
+                        <div className="flex items-center gap-2">
+                          {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3" />}
+                          {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-400" />}
+                          {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400" />}
+                          <span>
+                            {asset.protocol}
+                            {asset.protocol === 'Lido' && (
+                              <span className="text-zinc-500"> · {formatAPY(lidoApy)}</span>
+                            )}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-4 text-zinc-300 font-mono text-sm">{asset.balance}</td>
+                      <td className="p-4 text-white font-mono font-medium text-sm">{asset.value}</td>
+                      <td className="p-4 text-zinc-500 font-mono text-sm">{asset.price}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </GlassCard>
             </div>
           )}
         </motion.div>

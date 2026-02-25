@@ -14,6 +14,7 @@ import '@/shared/ui/loader.css';
 import { TonConnectButton, useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 import { isTelegramWebApp, detectTelegram } from '@/lib/isTelegram';
 import { useLogout } from '@/shared/hooks/useLogout';
+import { clearAuthWalletBinding, persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 
 export default function NewChatPage() {
   const router = useRouter();
@@ -230,6 +231,45 @@ export default function NewChatPage() {
         }
         setStatusMessage('Please connect your TON wallet to sign the proof...');
         return; // End of TON flow when proof is missing
+
+        setStatusMessage('Verifying TON signature...');
+
+        const verifyResponse = await fetch(`${authApiBase}/auth/ton/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            address: currentAddress,
+            payload: proofPayload,
+            signature,
+            publicKey,
+            timestamp: signedTimestamp,
+            domain,
+            payloadMeta: { type: 'text', text: proofPayload }
+          })
+        });
+
+        if (!verifyResponse.ok) {
+          const errText = await verifyResponse.text();
+          throw new Error(`TON Verification failed: ${errText}`);
+        }
+
+        const verifyResult = await verifyResponse.json();
+        const { token: authToken } = verifyResult;
+
+        setStatusMessage('Saving session...');
+        localStorage.setItem('authPayload', JSON.stringify({ address: currentAddress, chain: 'ton' }));
+        localStorage.setItem('authSignature', signature);
+        localStorage.setItem('authToken', authToken);
+        clearAuthWalletBinding();
+
+        setIsAuthenticated(true);
+        setStatusMessage('Success! Redirecting to chat...');
+
+        setTimeout(() => {
+          router.push('/chat');
+        }, 500);
+
+        return; // End of TON flow
       }
 
       // --- EVM Authentication Flow (Thirdweb) ---
@@ -335,6 +375,7 @@ export default function NewChatPage() {
       localStorage.setItem('authPayload', JSON.stringify(payload));
       localStorage.setItem('authSignature', signature);
       localStorage.setItem('authToken', authToken);
+      persistAuthWalletBinding({ activeWallet, account });
 
       setIsAuthenticated(true);
       setStatusMessage('Success! Redirecting to chat...');

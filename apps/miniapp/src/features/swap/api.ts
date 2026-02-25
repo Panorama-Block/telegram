@@ -39,12 +39,21 @@ export class SwapApiError extends Error {
 const UNKNOWN_ERROR = 'Swap API error';
 
 function baseUrl(): string {
-  const direct = process.env.VITE_SWAP_API_BASE as string | undefined;
-  if (direct && direct.length > 0) return direct.replace(/\/+$/, '');
+  const direct = (
+    (process.env.VITE_SWAP_API_BASE as string | undefined) ||
+    (process.env.NEXT_PUBLIC_SWAP_API_BASE as string | undefined) ||
+    (process.env.SWAP_API_BASE as string | undefined)
+  );
+  if (direct && direct.length > 0) {
+    const trimmed = direct.replace(/\/+$/, '');
+    // Support envs pointing either at the service root (http://localhost:3002)
+    // or already at the mounted swap path (http://localhost:3002/swap).
+    return trimmed.endsWith('/swap') ? trimmed : `${trimmed}/swap`;
+  }
   const gw = process.env.VITE_GATEWAY_BASE as string | undefined;
   if (gw && gw.length > 0) return `${gw.replace(/\/+$/, '')}/swap`;
-  // fallback to same-origin /swap
-  return '/swap';
+  // fallback to same-origin proxy (Next rewrites -> swap service)
+  return '/api/swap';
 }
 
 function isUserFacingErrorPayload(body: unknown): body is UserFacingErrorResponse {
@@ -172,13 +181,24 @@ async function getJson<T>(path: string): Promise<T> {
 
 export const swapApi = {
   quote(body: QuoteRequest) {
-    return postJson<QuoteResponse>('/swap/quote', body);
+    // Runtime guardrails: prevent the common "wei passed as token" bug from silently producing nonsense quotes.
+    try {
+      const amount = String(body.amount ?? '').trim();
+      if (body.unit === 'wei' && amount.includes('.')) {
+        console.warn('[swapApi.quote] unit=wei but amount contains decimals. Did you mean unit=token?', body);
+      }
+      if (body.unit === 'token' && /^\d+$/.test(amount) && amount.length > 12) {
+        console.warn('[swapApi.quote] unit=token but amount looks like wei (long integer). Did you mean unit=wei?', body);
+      }
+    } catch {}
+    // baseUrl() already resolves to ".../swap" (or "/swap" on same origin)
+    return postJson<QuoteResponse>('/quote', body);
   },
   prepare(body: PrepareRequest) {
-    return postJson<PrepareResponse>('/swap/tx', body);
+    return postJson<PrepareResponse>('/tx', body);
   },
   status(hash: string, chainId: number) {
     const qs = new URLSearchParams({ chainId: String(chainId) }).toString();
-    return getJson<StatusResponse>(`/swap/status/${hash}?${qs}`);
+    return getJson<StatusResponse>(`/status/${hash}?${qs}`);
   },
 };

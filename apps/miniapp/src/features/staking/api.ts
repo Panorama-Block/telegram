@@ -3,6 +3,10 @@
 import { useMemo } from 'react';
 import { useActiveAccount, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { defineChain } from 'thirdweb';
+import { parseAmountToWei } from '@/features/swap/utils';
+import { safeExecuteTransactionV2 } from '@/shared/utils/transactionUtilsV2';
+import { fetchWithAuth } from '@/shared/lib/fetchWithAuth';
+import type { TransactionData } from '@/shared/types/transaction';
 
 type SwitchChainFn = (chain: ReturnType<typeof defineChain>) => Promise<void>;
 
@@ -11,9 +15,8 @@ export interface StakingToken {
   address: string;
   icon?: string;
   decimals: number;
-  stakingAPY: number;
-  totalStaked: string;
-  totalRewards: string;
+  stakingAPY: number | null;
+  totalStaked: string | null; // wei string
   minimumStake: string;
   lockPeriod: number; // in days
   isActive: boolean;
@@ -25,8 +28,7 @@ export interface StakingPosition {
   stakedAmount: string;
   stETHBalance: string;
   wstETHBalance: string;
-  rewards: string;
-  apy: number;
+  apy: number | null;
   timestamp: string;
   status: 'active' | 'inactive';
 }
@@ -34,29 +36,54 @@ export interface StakingPosition {
 export interface StakingTransaction {
   id: string;
   userAddress: string;
-  type: 'stake' | 'unstake' | 'unstake_approval' | 'claim';
+  type: 'stake' | 'unstake' | 'unstake_approval' | 'claim_rewards' | 'withdrawal_claim';
   amount: string;
   token: string;
   status: 'pending' | 'completed' | 'failed';
   timestamp: string;
-  transactionData?: {
-    to: string;
-    data: string;
-    value: string;
-    gasLimit: string;
-    chainId: number;
-  };
+  transactionData?: TransactionData;
   // For multi-step transactions (like unstake which requires approval first)
   requiresFollowUp?: boolean;
   followUpAction?: 'unstake';
 }
 
+export interface WithdrawalRequest {
+  requestId: string;
+  amountOfStETHWei: string;
+  amountOfSharesWei: string;
+  owner: string;
+  timestamp: number;
+  isFinalized: boolean;
+  isClaimed: boolean;
+}
+
+export interface PortfolioAsset {
+  chainId: number;
+  tokenSymbol: string;
+  tokenAddress: string;
+  balanceWei: string;
+  updatedAt: string;
+}
+
+export interface PortfolioMetricDaily {
+  chainId: number;
+  date: string; // YYYY-MM-DD
+  stethBalanceWei: string;
+  wstethBalanceWei: string;
+  totalStakedWei: string;
+  apyBps: number | null;
+  updatedAt: string;
+}
+
+export interface PortfolioResponse {
+  userAddress: string;
+  assets: PortfolioAsset[];
+  dailyMetrics: PortfolioMetricDaily[];
+}
+
 export interface ProtocolInfo {
-  totalStaked: string;
-  totalRewards: string;
-  currentAPY: number;
-  stETHPrice: string;
-  wstETHPrice: string;
+  totalStaked: string; // wei string
+  currentAPY: number | null;
   lastUpdate: string;
 }
 
@@ -89,10 +116,11 @@ class StakingApiClient {
   constructor(account: any, switchChain?: SwitchChainFn) {
     this.switchChain = switchChain || null;
 
-    // Priority: Use environment variable or fallback to localhost
+    // Use env var for direct access (SSR/tests), otherwise use Next.js rewrite proxy.
     const direct = process.env.NEXT_PUBLIC_STAKING_API_URL || process.env.VITE_STAKING_API_URL;
+    const isBrowser = typeof window !== 'undefined';
 
-    if (direct && direct.length > 0) {
+    if (!isBrowser && direct && direct.length > 0) {
       this.baseUrl = direct.replace(/\/+$/, '');
     } else {
       this.baseUrl = '/api/staking';
@@ -102,14 +130,7 @@ class StakingApiClient {
   }
 
   private toWei(amount: string, decimals: number = 18): string {
-    const num = parseFloat(amount);
-    if (isNaN(num)) return '0';
-    // Use BigInt for precise conversion to avoid floating point errors
-    const factor = BigInt(10 ** decimals);
-    const wholePart = Math.floor(num);
-    const decimalPart = num - wholePart;
-    const weiValue = BigInt(wholePart) * factor + BigInt(Math.floor(decimalPart * (10 ** decimals)));
-    return weiValue.toString();
+    return parseAmountToWei(amount, decimals).toString();
   }
 
   private getAddressFromToken(): string | null {
@@ -184,164 +205,128 @@ class StakingApiClient {
   }
 
   async getTokens(): Promise<StakingToken[]> {
-    try {
-      // Get Lido protocol data from their API
-      const lidoData = await this.fetchLidoProtocolData();
+    // Token list is static (Lido contracts on Ethereum Mainnet); protocol fields come from backend/Lido API.
+    const lidoData = await this.fetchLidoProtocolData();
 
-      return [
-        {
-          symbol: 'ETH',
-          address: '0x0000000000000000000000000000000000000000',
-          decimals: 18,
-          stakingAPY: lidoData.apy || 4.2,
-          totalStaked: lidoData.totalStaked || '0',
-          totalRewards: lidoData.totalRewards || '0',
-          minimumStake: '1000000000000000000', // 1 ETH in wei
-          lockPeriod: 0,
-          isActive: true,
-        },
-        {
-          symbol: 'stETH',
-          address: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84',
-          decimals: 18,
-          stakingAPY: lidoData.apy || 4.2,
-          totalStaked: lidoData.totalStaked || '0',
-          totalRewards: lidoData.totalRewards || '0',
-          minimumStake: '1000000000000000', // 0.001 ETH in wei
-          lockPeriod: 0,
-          isActive: true,
-        },
-        {
-          symbol: 'wstETH',
-          address: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0',
-          decimals: 18,
-          stakingAPY: lidoData.apy || 4.2,
-          totalStaked: lidoData.totalStaked || '0',
-          totalRewards: lidoData.totalRewards || '0',
-          minimumStake: '1000000000000000', // 0.001 ETH in wei
-          lockPeriod: 0,
-          isActive: true,
-        }
-      ];
-    } catch (error) {
-      console.error('Error fetching staking tokens, using fallback data:', error);
-      // Return fallback data instead of throwing error
-      return [
-        {
-          symbol: 'ETH',
-          address: '0x0000000000000000000000000000000000000000',
-          decimals: 18,
-          stakingAPY: 4.2,
-          totalStaked: '0',
-          totalRewards: '0',
-          minimumStake: '1000000000000000000',
-          lockPeriod: 0,
-          isActive: true,
-        },
-        {
-          symbol: 'stETH',
-          address: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84',
-          decimals: 18,
-          stakingAPY: 4.2,
-          totalStaked: '0',
-          totalRewards: '0',
-          minimumStake: '1000000000000000',
-          lockPeriod: 0,
-          isActive: true,
-        }
-      ];
-    }
+    return [
+      {
+        symbol: 'ETH',
+        address: '0x0000000000000000000000000000000000000000',
+        decimals: 18,
+        stakingAPY: lidoData.apy,
+        totalStaked: lidoData.totalStakedWei,
+        minimumStake: '1000000000000000000', // 1 ETH in wei
+        lockPeriod: 0,
+        isActive: true,
+      },
+      {
+        symbol: 'stETH',
+        address: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84',
+        decimals: 18,
+        stakingAPY: lidoData.apy,
+        totalStaked: lidoData.totalStakedWei,
+        minimumStake: '1000000000000000', // 0.001 ETH in wei
+        lockPeriod: 0,
+        isActive: true,
+      },
+      {
+        symbol: 'wstETH',
+        address: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0',
+        decimals: 18,
+        stakingAPY: lidoData.apy,
+        totalStaked: lidoData.totalStakedWei,
+        minimumStake: '1000000000000000', // 0.001 ETH in wei
+        lockPeriod: 0,
+        isActive: true,
+      }
+    ];
   }
 
-  private async fetchLidoProtocolData(): Promise<any> {
+  private async fetchLidoProtocolData(): Promise<{ apy: number | null; totalStakedWei: string | null }> {
     // Check if we have valid cached data
     const now = Date.now();
     if (this.lidoDataCache && (now - this.lidoDataCacheTime) < this.CACHE_DURATION) {
-      console.log('Using cached Lido data');
       return this.lidoDataCache;
     }
 
+    const parseApy = (value: unknown): number | null => {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (typeof value === 'string') {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
+    };
+
+    // Prefer our backend when available (already normalized)
     try {
-      console.log('Fetching fresh Lido protocol data...');
-      
-      // Try to get Lido protocol data from their API with timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-      
-      const response = await fetch('https://stake.lido.fi/api/stats', {
-        signal: controller.signal
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const backendResp = await fetch(`${this.baseUrl}/api/lido/protocol/info`, {
+        signal: controller.signal,
       });
-      
+
       clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      const result = {
-        apy: data.apr || 4.2,
-        totalStaked: data.totalStaked || '0',
-        totalRewards: data.totalRewards || '0'
-      };
-      
-      // Cache the result
-      this.lidoDataCache = result;
-      this.lidoDataCacheTime = now;
-      
-      return result;
-    } catch (error) {
-      console.error('Error fetching Lido protocol data:', error);
-      
-      // If we have cached data, use it even if expired
-      if (this.lidoDataCache) {
-        console.log('Using expired cached data due to API error');
-        return this.lidoDataCache;
-      }
-      
-      // Try alternative API endpoint with timeout
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-        
-        const altResponse = await fetch('https://api.lido.fi/v1/protocol/staking/apr/last', {
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (altResponse.ok) {
-          const altData = await altResponse.json();
+
+      if (backendResp.ok) {
+        const backendJson = await backendResp.json();
+        if (backendJson?.success && backendJson?.data) {
           const result = {
-            apy: altData.apr || 4.2,
-            totalStaked: '0',
-            totalRewards: '0'
+            apy: parseApy(backendJson.data.currentAPY),
+            totalStakedWei: typeof backendJson.data.totalStaked === 'string' ? backendJson.data.totalStaked : null,
           };
-          
-          // Cache the result
+
           this.lidoDataCache = result;
           this.lidoDataCacheTime = now;
-          
           return result;
         }
-      } catch (altError) {
-        console.error('Error fetching alternative Lido data:', altError);
       }
-      
-      // Return fallback data
-      const fallbackData = {
-        apy: 4.2,
-        totalStaked: '0',
-        totalRewards: '0'
-      };
-      
-      // Cache fallback data to prevent repeated failures
-      this.lidoDataCache = fallbackData;
-      this.lidoDataCacheTime = now;
-      
-      return fallbackData;
+    } catch (backendError) {
+      console.warn('[STAKING] Backend protocol info unavailable, falling back to Lido API:', backendError);
     }
+
+    // Fallback: Lido public endpoints (APR only)
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch('https://stake.lido.fi/api/stats', { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = await response.json();
+        const result = { apy: parseApy(data?.apr), totalStakedWei: null };
+        this.lidoDataCache = result;
+        this.lidoDataCacheTime = now;
+        return result;
+      }
+    } catch (error) {
+      console.warn('[STAKING] Failed to fetch APR from stake.lido.fi:', error);
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const response = await fetch('https://api.lido.fi/v1/protocol/staking/apr/last', { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = await response.json();
+        const result = { apy: parseApy(data?.apr), totalStakedWei: null };
+        this.lidoDataCache = result;
+        this.lidoDataCacheTime = now;
+        return result;
+      }
+    } catch (error) {
+      console.warn('[STAKING] Failed to fetch APR from api.lido.fi:', error);
+    }
+
+    const empty = { apy: null, totalStakedWei: null };
+    this.lidoDataCache = empty;
+    this.lidoDataCacheTime = now;
+    return empty;
   }
 
   async getUserPosition(): Promise<StakingPosition | null> {
@@ -376,6 +361,160 @@ class StakingApiClient {
     }
   }
 
+  async getHistory(limit = 50): Promise<StakingTransaction[]> {
+    const userAddress = this.account?.address || this.getAddressFromToken();
+    if (!userAddress) return [];
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const headers = this.getAuthHeaders();
+      const response = await fetch(`${this.baseUrl}/api/lido/history/${userAddress}?limit=${limit}`, {
+        method: 'GET',
+        headers,
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      if (!response.ok) return [];
+
+      const result = await response.json();
+      return result.success ? (result.data as StakingTransaction[]) : [];
+    } catch (error) {
+      console.error('[STAKING] Error fetching history:', error);
+      return [];
+    }
+  }
+
+  async getPortfolio(days = 30): Promise<PortfolioResponse | null> {
+    const userAddress = this.account?.address || this.getAddressFromToken();
+    if (!userAddress) return null;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      const headers = this.getAuthHeaders();
+      const response = await fetch(`${this.baseUrl}/api/lido/portfolio/${userAddress}?days=${days}`, {
+        method: 'GET',
+        headers,
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      if (!response.ok) return null;
+
+      const result = await response.json();
+      return result.success ? (result.data as PortfolioResponse) : null;
+    } catch (error) {
+      console.error('[STAKING] Error fetching portfolio:', error);
+      return null;
+    }
+  }
+
+  async getWithdrawals(): Promise<WithdrawalRequest[]> {
+    const userAddress = this.account?.address || this.getAddressFromToken();
+    if (!userAddress) return [];
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      const headers = this.getAuthHeaders();
+      const response = await fetch(`${this.baseUrl}/api/lido/withdrawals/${userAddress}`, {
+        method: 'GET',
+        headers,
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      if (!response.ok) return [];
+
+      const result = await response.json();
+      return result.success ? (result.data as WithdrawalRequest[]) : [];
+    } catch (error) {
+      console.error('[STAKING] Error fetching withdrawals:', error);
+      return [];
+    }
+  }
+
+  async claimWithdrawals(requestIds: string[]): Promise<StakingTransaction> {
+    const userAddress = this.account?.address || this.getAddressFromToken();
+    if (!userAddress) {
+      throw new Error('Please connect your wallet or authenticate first.');
+    }
+    if (!requestIds?.length) {
+      throw new Error('No withdrawal requestIds provided');
+    }
+
+    try {
+      const headers = this.getAuthHeaders();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const response = await fetch(`${this.baseUrl}/api/lido/withdrawals/claim`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          userAddress,
+          requestIds,
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        let message = 'Unknown error';
+        try {
+          const json = await response.json();
+          if (json && typeof json === 'object') {
+            message =
+              (json as any).error ||
+              (json as any).message ||
+              JSON.stringify(json);
+          }
+        } catch {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          message = errorText || 'Unknown error';
+        }
+        if (/internal server error/i.test(message)) {
+          message = 'Claim could not be prepared right now. Refresh withdrawal status and try again.';
+        }
+        throw new Error(`Claim failed: ${message}`);
+      }
+
+      const result = await response.json();
+      if (result.success) return result.data as StakingTransaction;
+      throw new Error(result.message || 'Claim failed');
+    } catch (error) {
+      console.error('[STAKING] Error claiming withdrawals:', error);
+      throw error instanceof Error ? error : new Error('Claim failed');
+    }
+  }
+
+  async submitTransactionHash(id: string, transactionHash: string): Promise<void> {
+    const userAddress = this.account?.address || this.getAddressFromToken();
+    if (!userAddress) return;
+
+    try {
+      const headers = this.getAuthHeaders();
+      const response = await fetch(`${this.baseUrl}/api/lido/transaction/submit`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ id, userAddress, transactionHash }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.warn('[STAKING] Failed to submit tx hash:', response.status, errorText);
+      }
+    } catch (error) {
+      console.warn('[STAKING] submitTransactionHash error:', error);
+    }
+  }
+
   async stake(amount: string): Promise<StakingTransaction> {
     const userAddress = this.account?.address || this.getAddressFromToken();
     if (!userAddress) {
@@ -389,7 +528,7 @@ class StakingApiClient {
     }
 
     try {
-      // Note: Backend expects amount in ETH (not wei), it handles conversion internally
+      const amountWei = this.toWei(amount);
       const message = `Stake ${amount} ETH\nTimestamp: ${Date.now()}`;
       const authData = await this.getAuthData(message);
 
@@ -398,18 +537,18 @@ class StakingApiClient {
       console.log('[STAKING] Sending stake request:', {
         url: `${this.baseUrl}/api/lido/stake`,
         userAddress,
-        amount
+        amount: amountWei
       });
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-      const response = await fetch(`${this.baseUrl}/api/lido/stake`, {
+      const response = await fetchWithAuth(`${this.baseUrl}/api/lido/stake`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           userAddress,
-          amount,
+          amount: amountWei,
           authData
         }),
         signal: controller.signal
@@ -466,7 +605,7 @@ class StakingApiClient {
     }
 
     try {
-      // Note: Backend expects amount in ETH (not wei), it handles conversion internally
+      const amountWei = this.toWei(amount);
       const message = `Unstake ${amount} stETH\nTimestamp: ${Date.now()}`;
       const authData = await this.getAuthData(message);
 
@@ -475,18 +614,18 @@ class StakingApiClient {
       console.log('[STAKING] Sending unstake request:', {
         url: `${this.baseUrl}/api/lido/unstake`,
         userAddress,
-        amount
+        amount: amountWei
       });
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-      const response = await fetch(`${this.baseUrl}/api/lido/unstake`, {
+      const response = await fetchWithAuth(`${this.baseUrl}/api/lido/unstake`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           userAddress,
-          amount,
+          amount: amountWei,
           authData
         }),
         signal: controller.signal
@@ -533,11 +672,16 @@ class StakingApiClient {
   async executeTransaction(txData: any): Promise<string> {
     try {
       if (!this.account) {
-        throw new Error('Account not connected. Please connect your wallet first.');
+        throw new Error('Wallet session not available. Please ensure your wallet is connected in the app.');
       }
 
       if (!this.account.sendTransaction) {
-        throw new Error('Account does not support sendTransaction. Please ensure your wallet is properly connected.');
+        throw new Error('Wallet does not support sendTransaction. Please reconnect your wallet.');
+      }
+
+      const jwtAddress = this.getAddressFromToken();
+      if (jwtAddress && this.account.address && jwtAddress.toLowerCase() !== this.account.address.toLowerCase()) {
+        throw new Error(`Connected wallet (${this.account.address}) does not match authenticated address (${jwtAddress}).`);
       }
 
       console.log('Raw transaction data received:', txData);
@@ -548,32 +692,19 @@ class StakingApiClient {
       console.log('Expected chainId for transaction:', expectedChainId);
 
       if (expectedChainId !== 1) {
-        console.warn('⚠️ Transaction data has unexpected chainId:', expectedChainId);
-        console.warn('Lido staking should be on Ethereum mainnet (chainId 1)');
+        throw new Error('This transaction must be executed on Ethereum Mainnet (chainId 1). Please switch network in the app and try again.');
       }
 
-      // IMPORTANT: Switch to Ethereum Mainnet before sending transaction
-      // Use native MetaMask API for reliable chain switching
+      // Trust-first UX: never trigger chain switch popups automatically.
+      // If we can detect the current chain and it's not Ethereum mainnet, fail fast with a clear message.
       const ethereum = typeof window !== 'undefined' ? (window as any).ethereum : null;
-      if (ethereum) {
-        const chainIdHex = '0x1'; // Ethereum Mainnet
-        try {
-          console.log(`[STAKING] Switching to Ethereum Mainnet (chainId: 1) before transaction...`);
-          await ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: chainIdHex }],
-          });
-          console.log(`[STAKING] Successfully switched to Ethereum Mainnet`);
-          // Wait a moment for the switch to take effect
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } catch (switchError: any) {
-          console.error('[STAKING] Failed to switch chain:', switchError);
-          if (switchError?.code === 4001) {
-            // User rejected the switch
-            throw new Error('You must switch to Ethereum Mainnet to complete this transaction');
-          }
-          // For other errors, try to continue - user might already be on the right chain
-        }
+      const currentChainHex = typeof ethereum?.chainId === 'string' ? ethereum.chainId : null;
+      const currentChainId =
+        currentChainHex && /^0x[0-9a-fA-F]+$/.test(currentChainHex)
+          ? Number.parseInt(currentChainHex, 16)
+          : null;
+      if (currentChainId != null && currentChainId !== expectedChainId) {
+        throw new Error(`Wrong network (chainId ${currentChainId}). Switch to Ethereum Mainnet (chainId 1) and try again.`);
       }
 
       // Extract transaction data
@@ -600,7 +731,7 @@ class StakingApiClient {
       }
       
       // Ensure data is valid hex
-      if (!data || !/^0x[a-fA-F0-9]+$/.test(data)) {
+      if (!data || !/^0x([a-fA-F0-9]{2})*$/.test(data)) {
         throw new Error(`Invalid data: ${data}`);
       }
 
@@ -681,39 +812,120 @@ class StakingApiClient {
       console.log('Sending transaction to thirdweb...');
       console.log('Account address:', this.account.address);
       console.log('Account type:', typeof this.account);
-      
-      try {
-        // Execute transaction using thirdweb
-        const tx = await this.account.sendTransaction(formattedTxData);
-        console.log('Transaction sent, waiting for receipt...', tx);
-        
-        // Check if we got a transaction hash
-        if (tx && tx.transactionHash) {
-          console.log('✅ Transaction hash received:', tx.transactionHash);
-          console.log('Transaction submitted successfully!');
-          console.log('You can check the transaction status on a block explorer.');
-          
-          return tx.transactionHash;
-        } else if (tx && typeof tx === 'string') {
-          // Sometimes thirdweb returns just the hash as a string
-          console.log('✅ Transaction hash received (string):', tx);
-          return tx;
-        } else {
-          console.error('❌ No transaction hash in response:', tx);
-          throw new Error('No transaction hash received from thirdweb');
+
+      const extractTxHash = (value: unknown): string | null => {
+        if (!value) return null;
+        if (typeof value === 'string') {
+          return /^0x[a-fA-F0-9]{64}$/.test(value) ? value : null;
         }
-      } catch (txError) {
-        console.error('❌ Thirdweb transaction error:', txError);
-        console.error('Error details:', {
-          message: txError instanceof Error ? txError.message : 'Unknown error',
-          code: (txError as any)?.code,
-          data: (txError as any)?.data
-        });
-        throw txError;
+        const candidate = value as any;
+        const maybeStrings = [
+          candidate?.transactionHash,
+          candidate?.hash,
+          candidate?.receipt?.transactionHash,
+          candidate?.result?.transactionHash,
+          candidate?.txHash,
+        ];
+        for (const s of maybeStrings) {
+          if (typeof s === 'string' && /^0x[a-fA-F0-9]{64}$/.test(s)) return s;
+        }
+        return null;
+      };
+
+      const result = await safeExecuteTransactionV2(async () => {
+        const sent = await this.account.sendTransaction(formattedTxData);
+        const hash = extractTxHash(sent);
+        if (!hash) {
+          console.error('❌ No transaction hash in response:', sent);
+          throw new Error('No transaction hash received from wallet.');
+        }
+        return { transactionHash: hash };
+      });
+
+      if (!result.success || !result.transactionHash) {
+        const message = result.error || 'Transaction failed';
+        if (/\"code\"\s*:\s*4001|user rejected|user denied|rejected/i.test(message)) {
+          throw new Error('Transaction rejected in wallet.');
+        }
+        if (/likely to fail|couldn'?t be completed|canceled to save/i.test(message)) {
+          throw new Error('Wallet blocked this transaction because it is likely to fail. Review amount/method and try again.');
+        }
+        if (/insufficient funds|insufficient balance|gas/i.test(message)) {
+          throw new Error('Insufficient balance for gas or amount.');
+        }
+        if (/wrong network|chain|network/i.test(message)) {
+          throw new Error('Wrong network. Please switch to Ethereum Mainnet.');
+        }
+        throw new Error(message);
       }
+
+      console.log('✅ Transaction hash received:', result.transactionHash);
+      return result.transactionHash;
     } catch (error) {
-      console.error('Error executing transaction:', error);
-      throw new Error(`Transaction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const describeUnknown = (err: unknown): string => {
+        if (err instanceof Error) return err.message || 'Unknown error';
+        if (typeof err === 'string') return err;
+        if (err && typeof err === 'object') {
+          const anyErr = err as any;
+          const message =
+            anyErr?.shortMessage ||
+            anyErr?.message ||
+            anyErr?.error?.message ||
+            anyErr?.error ||
+            anyErr?.reason;
+          if (typeof message === 'string' && message.trim().length > 0) return message;
+          try {
+            const json = JSON.stringify(anyErr);
+            if (json && json !== '{}' && json !== '[]') return json;
+          } catch {}
+          try {
+            const props = Object.getOwnPropertyNames(anyErr);
+            if (props.length) {
+              const out: Record<string, unknown> = {};
+              for (const p of props) out[p] = anyErr[p];
+              return JSON.stringify(out);
+            }
+          } catch {
+            return String(anyErr);
+          }
+        }
+        return 'Unknown error';
+      };
+
+      if (error instanceof Error) {
+        const msg = error.message || 'Transaction failed';
+        const code = (error as any)?.code;
+        if (code === 4001 || /user rejected|user denied|rejected/i.test(msg)) {
+          throw new Error('Transaction rejected in wallet.');
+        }
+        if (/likely to fail|couldn'?t be completed|canceled to save/i.test(msg)) {
+          throw new Error('Wallet blocked this transaction because it is likely to fail. Review amount/method and try again.');
+        }
+        if (/insufficient funds|insufficient balance|gas/i.test(msg)) {
+          throw new Error('Insufficient balance for gas or amount.');
+        }
+        if (/wrong network|chain|network/i.test(msg)) {
+          throw new Error('Wrong network. Please switch to Ethereum Mainnet.');
+        }
+        console.error('Error executing transaction:', error);
+        throw error;
+      }
+
+      const msg = describeUnknown(error);
+      if (/\"code\"\s*:\s*4001|user rejected|user denied|rejected/i.test(msg)) {
+        throw new Error('Transaction rejected in wallet.');
+      }
+      if (/likely to fail|couldn'?t be completed|canceled to save/i.test(msg)) {
+        throw new Error('Wallet blocked this transaction because it is likely to fail. Review amount/method and try again.');
+      }
+      if (/insufficient funds|insufficient balance|gas/i.test(msg)) {
+        throw new Error('Insufficient balance for gas or amount.');
+      }
+      if (/wrong network|chain|network/i.test(msg)) {
+        throw new Error('Wrong network. Please switch to Ethereum Mainnet.');
+      }
+      console.error('Error executing transaction:', { message: msg, raw: error });
+      throw new Error(`Transaction failed: ${msg}`);
     }
   }
 

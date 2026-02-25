@@ -1,27 +1,39 @@
 /**
  * Lending Service Type Definitions
- * 
+ *
  * This file contains all TypeScript interfaces and types used by the Lending Service.
  * It provides type safety and better developer experience when working with the API.
  */
 
+export type { TransactionData } from '@/shared/types/transaction';
+
 export interface LendingToken {
-  /** Token symbol (e.g., "AVAX", "USDC") */
+  /** Underlying token symbol (e.g., "AVAX", "USDC") */
   symbol: string;
   
-  /** Contract address of the token */
+  /**
+   * Underlying token address.
+   * - ERC20: 0x...
+   * - Native: "native"
+   */
   address: string;
+
+  /** Benqi market (qToken) address used for all protocol actions */
+  qTokenAddress: string;
+
+  /** Benqi market (qToken) symbol (e.g., "qUSDC") */
+  qTokenSymbol: string;
   
   /** Optional URL for token icon */
   icon?: string;
   
-  /** Number of decimal places for the token */
+  /** Number of decimal places for the underlying token */
   decimals: number;
   
-  /** Annual Percentage Yield for supplying this token */
+  /** Annual Percentage Yield for supplying this token (percent, e.g., 5.23) */
   supplyAPY: number;
   
-  /** Annual Percentage Yield for borrowing this token */
+  /** Annual Percentage Yield for borrowing this token (percent, e.g., 7.10) */
   borrowAPY: number;
   
   /** Total amount supplied across all users */
@@ -61,6 +73,44 @@ export interface LendingPosition {
   
   /** Threshold below which position can be liquidated */
   liquidationThreshold: number;
+}
+
+/**
+ * Normalized Benqi account liquidity (raw base units).
+ * Returned by lending-service `/benqi/account/:address/positions`.
+ */
+export interface LendingAccountLiquidity {
+  accountAddress: string;
+  liquidity: string;
+  shortfall: string;
+  isHealthy: boolean;
+}
+
+/**
+ * Normalized Benqi per-asset position row (raw base units).
+ * Returned by lending-service `/benqi/account/:address/positions`.
+ */
+export interface LendingAccountPositionRow {
+  chainId: number;
+  protocol: string;
+  qTokenAddress: string;
+  qTokenSymbol: string;
+  underlyingAddress: string;
+  underlyingSymbol: string;
+  underlyingDecimals: number;
+  qTokenDecimals?: number;
+  qTokenBalanceWei?: string;
+  suppliedWei: string;
+  borrowedWei: string;
+  collateralEnabled: boolean;
+}
+
+export interface LendingAccountPositionsResponse {
+  accountAddress: string;
+  liquidity: LendingAccountLiquidity;
+  positions: LendingAccountPositionRow[];
+  updatedAt: number;
+  warnings?: string[];
 }
 
 export interface LendingAction {
@@ -138,25 +188,7 @@ export interface SwapResponse {
   };
 }
 
-export interface TransactionData {
-  /** Recipient address */
-  to: string;
-  
-  /** Transaction value in wei */
-  value: string;
-  
-  /** Transaction data (encoded function call) */
-  data: string;
-  
-  /** Gas limit */
-  gasLimit: string;
-  
-  /** Gas price in wei (optional) */
-  gasPrice?: string;
-  
-  /** Chain ID */
-  chainId: number;
-}
+// TransactionData is re-exported from @/shared/types/transaction above
 
 export interface AuthData {
   /** User wallet address */
