@@ -6,6 +6,8 @@ import { mockReplace } from '../../../../test/mocks/nextNavigation';
 
 const searchParamsState = { value: '' };
 const switchEthereumChainMock = vi.fn();
+const refreshConversationsMock = vi.fn();
+const setSidebarActiveConversationIdMock = vi.fn();
 
 vi.mock('next/navigation', async () => {
   const { mockUsePathname, mockUseRouter, mockUseSearchParams } = await import('../../../../test/mocks/nextNavigation');
@@ -79,6 +81,13 @@ vi.mock('@/shared/contexts/AuthContext', () => ({
   }),
 }));
 
+vi.mock('@/shared/contexts/ChatContext', () => ({
+  useChat: () => ({
+    refreshConversations: refreshConversationsMock,
+    setActiveConversationId: setSidebarActiveConversationIdMock,
+  }),
+}));
+
 vi.mock('@/shared/hooks/useLogout', () => ({
   useLogout: () => ({ logout: vi.fn() }),
 }));
@@ -96,6 +105,8 @@ describe('ChatPage open-widget orchestration', () => {
   beforeEach(() => {
     searchParamsState.value = '';
     switchEthereumChainMock.mockReset();
+    refreshConversationsMock.mockReset();
+    setSidebarActiveConversationIdMock.mockReset();
     mockReplace.mockReset();
 
     Object.defineProperty(window, 'ethereum', {
@@ -118,6 +129,7 @@ describe('ChatPage open-widget orchestration', () => {
     render(<ChatPage />);
 
     expect(await screen.findByTestId('lending-modal')).toBeInTheDocument();
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(switchEthereumChainMock).toHaveBeenCalledTimes(1);
@@ -130,6 +142,7 @@ describe('ChatPage open-widget orchestration', () => {
     render(<ChatPage />);
 
     expect(await screen.findByTestId('staking-modal')).toBeInTheDocument();
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith('/chat', { scroll: false });

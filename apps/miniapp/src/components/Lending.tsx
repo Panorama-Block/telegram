@@ -27,6 +27,7 @@ import { waitForEvmReceipt } from "@/shared/utils/evmReceipt";
 import { useRateLimitCountdown, parseRetryAfter } from "@/shared/hooks/useRateLimitCountdown";
 import { mapError } from "@/shared/lib/errorMapper";
 import { useActiveAccount } from "thirdweb/react";
+import { startSwapTracking, type SwapTracker } from "@/features/gateway";
 import {
   canRetryLendingTx,
   getLendingStepStatusClass,
@@ -34,9 +35,6 @@ import {
   type LendingTxStage,
   type LendingTxStepStage,
 } from "@/components/lending/lendingTxState";
-
-// Feature flags
-import { FEATURE_FLAGS, FEATURE_METADATA } from "@/config/features";
 
 type ViewState = 'input' | 'review' | 'status';
 type Mode = 'supply' | 'borrow';
@@ -48,6 +46,9 @@ type TxStep = {
   label: string;
   stage: LendingTxStepStage;
   txHash: string | null;
+  to?: string | null;
+  data?: string | null;
+  chainId?: number;
 };
 
 interface LendingProps {
@@ -136,6 +137,8 @@ export function Lending({
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const isMountedRef = useRef(true);
+  const timeoutSyncHashRef = useRef<string | null>(null);
+  const txActionInFlightRef = useRef(false);
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -424,6 +427,8 @@ export function Lending({
       setTxError('Connect an EVM wallet to continue.');
       return;
     }
+    if (txActionInFlightRef.current) return;
+    txActionInFlightRef.current = true;
 
     setTxError(null);
     setTxWarning(null);
@@ -431,10 +436,53 @@ export function Lending({
     setTxHashes([]);
     setViewState('status');
 
+    let tracker: SwapTracker | null = null;
     try {
       const decimals = activeMarket.decimals ?? 18;
       const qTokenAddress = activeMarket.qTokenAddress;
       const opAmount = amount;
+      const normalizedAddress = account.address?.toLowerCase();
+      const action = activeAction;
+
+      const zeroAddress = "0x0000000000000000000000000000000000000000";
+      const underlyingAsset = {
+        address: activeMarket.address || zeroAddress,
+        symbol: activeMarket.symbol || 'TOKEN',
+        decimals,
+      };
+      const qTokenAsset = {
+        address: activeMarket.qTokenAddress || zeroAddress,
+        symbol: activeMarket.qTokenSymbol || `q${activeMarket.symbol || 'TOKEN'}`,
+        decimals: 8,
+      };
+      const fromAsset =
+        action === 'withdraw' || action === 'borrow'
+          ? qTokenAsset
+          : underlyingAsset;
+      const toAsset =
+        action === 'withdraw' || action === 'borrow'
+          ? underlyingAsset
+          : qTokenAsset;
+
+      if (normalizedAddress) {
+        try {
+          tracker = await startSwapTracking({
+            userId: normalizedAddress,
+            walletAddress: normalizedAddress,
+            chain: 'avalanche',
+            action,
+            fromChainId: 43114,
+            toChainId: 43114,
+            fromAsset,
+            toAsset,
+            fromAmount: opAmount,
+            toAmount: previewHuman || opAmount,
+            provider: 'benqi',
+          });
+        } catch (trackingError) {
+          console.warn('[LENDING] Gateway tracking unavailable (continuing without history sync):', trackingError);
+        }
+      }
 
       const prepared = await (async () => {
         if (mode === 'supply' && flow === 'open') return await lendingApi.prepareSupply(qTokenAddress, opAmount, decimals);
@@ -471,6 +519,9 @@ export function Lending({
           label,
           stage: 'queued',
           txHash: null,
+          to: txs[index]?.to ?? null,
+          data: txs[index]?.data ?? null,
+          chainId: txs[index]?.chainId ?? 43114,
         }))
       );
 
@@ -488,11 +539,42 @@ export function Lending({
           setTxStage('awaiting_wallet');
           markStep(index, { stage: 'awaiting_wallet' });
 
-          const hash = await lendingApi.executeTransaction(tx);
+          const executionResult =
+            typeof (lendingApi as any).executeTransactionWithStatus === 'function'
+              ? await (lendingApi as any).executeTransactionWithStatus(tx)
+              : {
+                  transactionHash: await lendingApi.executeTransaction(tx),
+                  confirmed: false,
+                };
+
+          const hash = executionResult.transactionHash;
+          const confirmedByWalletSync = executionResult.confirmed === true;
           submittedHash = hash;
           setTxHashes((prev) => [...prev, hash]);
-          setTxStage('pending');
-          markStep(index, { stage: 'pending', txHash: hash });
+          setTxStage(confirmedByWalletSync ? 'confirmed' : 'pending');
+          markStep(index, { stage: confirmedByWalletSync ? 'confirmed' : 'pending', txHash: hash });
+
+          if (tracker) {
+            try {
+              const type =
+                typeof tx?.data === 'string' && tx.data.startsWith('0x095ea7b3')
+                  ? 'approval'
+                  : index === stepLabels.length - 1
+                    ? 'lend'
+                    : 'other';
+              await tracker.addTxHash(hash, 43114, type);
+              if (index === 0) {
+                await tracker.markSubmitted();
+                await tracker.markPending();
+              }
+            } catch (trackingError) {
+              console.warn('[LENDING] Failed to update gateway tx hash:', trackingError);
+            }
+          }
+
+          if (confirmedByWalletSync) {
+            return { hash, outcome: 'confirmed' };
+          }
 
           const receipt = await waitForReceipt(hash, {
             to: tx?.to,
@@ -543,26 +625,160 @@ export function Lending({
           setTxWarning(
             `${label} transaction was submitted, but confirmation is still pending on-chain. Wait a moment, then use Try again or Refresh.${extraHint}`
           );
+          if (tracker) {
+            try {
+              await tracker.markPending();
+            } catch (trackingError) {
+              console.warn('[LENDING] Failed to mark gateway transaction as pending:', trackingError);
+            }
+          }
           break;
         }
       }
 
       if (!hasTimeout) {
         setTxStage('confirmed');
+        if (tracker) {
+          try {
+            await tracker.markConfirmed(previewHuman || opAmount);
+          } catch (trackingError) {
+            console.warn('[LENDING] Failed to mark gateway transaction as confirmed:', trackingError);
+          }
+        }
         void fetchPosition();
         // Refresh history so the new tx shows up
         lendingApi.getTransactionHistory(10).then(setTxHistory).catch(() => {});
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Transaction failed';
-      const is429 = /429|rate.?limit/i.test(message);
+      const rawMessage = e instanceof Error ? e.message : 'Transaction failed';
+      const is429 = /429|rate.?limit/i.test(rawMessage);
       if (is429) {
         rateLimit.trigger(parseRetryAfter(e));
       }
-      setTxError(mapError(e, message));
+      const mappedMessage = mapError(e, rawMessage);
+      if (tracker) {
+        try {
+          const isPendingLike = /submitted|pending|timeout/i.test(rawMessage);
+          if (isPendingLike) {
+            await tracker.markPending();
+          } else {
+            await tracker.markFailed('LENDING_TX_FAILED', mappedMessage);
+          }
+        } catch (trackingError) {
+          console.warn('[LENDING] Failed to mark gateway transaction failure:', trackingError);
+        }
+      }
+      setTxError(mappedMessage);
       setTxStage('failed');
+    } finally {
+      txActionInFlightRef.current = false;
     }
-  }, [account, actionLabel, activeMarket, amount, canReview, fetchPosition, flow, lendingApi, mode, rateLimit, waitForReceipt]);
+  }, [account, actionLabel, activeAction, activeMarket, amount, canReview, fetchPosition, flow, lendingApi, mode, previewHuman, rateLimit, waitForReceipt]);
+
+  useEffect(() => {
+    if (txStage !== 'timeout') {
+      timeoutSyncHashRef.current = null;
+      return;
+    }
+
+    let timeoutStepIndex = -1;
+    for (let index = txSteps.length - 1; index >= 0; index--) {
+      if (txSteps[index]?.stage === 'timeout' && txSteps[index]?.txHash) {
+        timeoutStepIndex = index;
+        break;
+      }
+    }
+
+    const timeoutStep = timeoutStepIndex >= 0 ? txSteps[timeoutStepIndex] : null;
+    const candidateHash = timeoutStep?.txHash || txHashes[txHashes.length - 1] || null;
+    if (!candidateHash) return;
+    if (timeoutSyncHashRef.current === candidateHash) return;
+    timeoutSyncHashRef.current = candidateHash;
+
+    let cancelled = false;
+
+    const syncTimeoutState = async () => {
+      try {
+        const receipt = await waitForEvmReceipt({
+          clientId: THIRDWEB_CLIENT_ID,
+          chainId: timeoutStep?.chainId ?? 43114,
+          txHash: candidateHash,
+          timeoutMs: 45 * 60_000,
+          pollIntervalMs: 4_000,
+          shouldContinue: () => isMountedRef.current && !cancelled && txStage === 'timeout',
+          tracking: {
+            fromAddress: account?.address,
+            to: timeoutStep?.to ?? null,
+            data: timeoutStep?.data ?? null,
+          },
+        });
+
+        if (cancelled || !isMountedRef.current) return;
+
+        const resolvedHash =
+          typeof receipt.txHash === 'string' && /^0x[a-fA-F0-9]{64}$/.test(receipt.txHash)
+            ? receipt.txHash
+            : candidateHash;
+
+        if (resolvedHash !== candidateHash) {
+          setTxHashes((prev) => prev.map((hash) => (hash === candidateHash ? resolvedHash : hash)));
+          setTxSteps((prev) =>
+            prev.map((step) => (step.txHash === candidateHash ? { ...step, txHash: resolvedHash } : step)),
+          );
+        }
+
+        if (receipt.outcome === 'confirmed') {
+          if (timeoutStepIndex >= 0) {
+            setTxSteps((prev) =>
+              prev.map((step, index) =>
+                index === timeoutStepIndex
+                  ? {
+                      ...step,
+                      txHash: resolvedHash,
+                      stage: 'confirmed',
+                    }
+                  : step,
+              ),
+            );
+          }
+
+          const hasQueuedSteps = timeoutStepIndex >= 0
+            ? txSteps.some((step, index) => index > timeoutStepIndex && step.stage === 'queued')
+            : false;
+
+          if (hasQueuedSteps) {
+            setTxWarning('Validation confirmed on-chain. Click Try again to send the remaining step.');
+            return;
+          }
+
+          setTxWarning(null);
+          setTxError(null);
+          setTxStage('confirmed');
+          void fetchPosition();
+          lendingApi.getTransactionHistory(10).then(setTxHistory).catch(() => {});
+          return;
+        }
+
+        if (receipt.outcome === 'reverted') {
+          if (timeoutStepIndex >= 0) {
+            setTxSteps((prev) =>
+              prev.map((step, index) => (index === timeoutStepIndex ? { ...step, stage: 'failed' } : step)),
+            );
+          }
+          setTxError('Transaction reverted on-chain after submission.');
+          setTxStage('failed');
+        }
+      } catch (error) {
+        console.warn('[LENDING] Timeout sync watcher failed:', error);
+      }
+    };
+
+    void syncTimeoutState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [account?.address, fetchPosition, lendingApi, txHashes, txStage, txSteps]);
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
   const modalVariants = {
@@ -1059,81 +1275,6 @@ export function Lending({
       <div className="w-full max-w-[520px] mx-auto p-4">
         {card}
       </div>
-    );
-  }
-
-  // Coming Soon State
-  if (!FEATURE_FLAGS.LENDING_ENABLED) {
-    const metadata = FEATURE_METADATA.lending;
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      >
-        <motion.div
-          variants={modalVariants}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-[340px] md:max-w-[400px]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <GlassCard className="w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 flex flex-col rounded-2xl border">
-            {/* Header */}
-            <div className="px-4 py-3 flex items-center justify-between relative z-10 border-b border-white/5">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
-                  <Landmark className="w-4 h-4 text-cyan-400" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-white">Lending</h2>
-                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Coming Soon</p>
-                </div>
-              </div>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
-              >
-                <X className="w-4 h-4 text-zinc-400" />
-              </button>
-            </div>
-
-            {/* Coming Soon Content - Compact */}
-            <div className="px-4 py-5 text-center">
-              <div className="mb-4 flex justify-center">
-                <div className="relative">
-                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center">
-                    <Clock className="w-7 h-7 text-cyan-400" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 mb-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                <span className="text-cyan-400 text-xs font-medium">Coming Soon</span>
-              </div>
-
-              <h3 className="text-lg font-bold text-white mb-1.5">{metadata?.name || 'Lending Service'}</h3>
-              <p className="text-zinc-400 text-xs leading-relaxed mb-3">{metadata?.description || 'This feature is under development.'}</p>
-
-              {metadata?.expectedLaunch && (
-                <p className="text-zinc-500 text-[10px]">Expected: {metadata.expectedLaunch}</p>
-              )}
-            </div>
-
-            {/* Footer - Only Go to Chat */}
-            <div className="px-4 py-3 border-t border-white/5">
-              <NeonButton onClick={onClose} className="w-full text-sm py-2.5">
-                Go to Chat
-              </NeonButton>
-            </div>
-          </GlassCard>
-        </motion.div>
-      </motion.div>
     );
   }
 

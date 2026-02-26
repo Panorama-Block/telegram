@@ -28,6 +28,7 @@ import { THIRDWEB_CLIENT_ID } from "@/shared/config/thirdweb";
 import { waitForEvmReceipt } from "@/shared/utils/evmReceipt";
 import { useRateLimitCountdown, parseRetryAfter } from "@/shared/hooks/useRateLimitCountdown";
 import { mapError } from "@/shared/lib/errorMapper";
+import { startSwapTracking, type SwapTracker } from "@/features/gateway";
 import {
   canRetryStakingTx,
   getStakingStatusTitle,
@@ -35,12 +36,11 @@ import {
   type StakingTxStage,
 } from "@/components/staking/stakingTxState";
 
-// Feature flags
-import { FEATURE_FLAGS, FEATURE_METADATA } from "@/config/features";
-
 // Token icons from CoinGecko
 const ETH_ICON = 'https://assets.coingecko.com/coins/images/279/small/ethereum.png';
 const STETH_ICON = 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png';
+const ETH_NATIVE_ADDRESS = '0x0000000000000000000000000000000000000000';
+const STETH_ADDRESS = '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84';
 
 interface StakingProps {
   onClose: () => void;
@@ -218,6 +218,35 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function flattenPreparedTransactions(prepared: any): PreparedTx[] {
+  if (!prepared) return [];
+
+  const fromSteps: PreparedTx[] = Array.isArray(prepared.steps)
+    ? prepared.steps.flatMap((step: any) => (Array.isArray(step?.transactions) ? step.transactions : []))
+    : [];
+
+  const rawTransactions: PreparedTx[] =
+    fromSteps.length > 0
+      ? fromSteps
+      : Array.isArray(prepared.transactions)
+        ? prepared.transactions
+        : [];
+
+  const seen = new Set<string>();
+  const deduped: PreparedTx[] = [];
+  for (const tx of rawTransactions) {
+    if (!tx?.to || !tx?.data) continue;
+    const chainId = Number((tx as any)?.chainId || 1);
+    const value = String((tx as any)?.value ?? '0');
+    const key = `${chainId}|${String(tx.to).toLowerCase()}|${String(tx.data).toLowerCase()}|${value}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(tx);
+  }
+
+  return deduped;
+}
+
 export function Staking({ onClose, initialAmount, initialMode = 'stake', variant = 'modal' }: StakingProps) {
   const account = useActiveAccount();
   const stakingApi = useStakingApi();
@@ -255,6 +284,8 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
   const rateLimit = useRateLimitCountdown();
 
   const isMountedRef = useRef(true);
+  const timeoutSyncHashRef = useRef<string | null>(null);
+  const txActionInFlightRef = useRef(false);
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
@@ -560,13 +591,53 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
     }
   }, [stakingApi]);
 
+  const startGatewayTracker = useCallback(async (params: {
+    action: 'stake' | 'unstake' | 'claim';
+    fromAmount: string;
+    toAmount: string;
+    protocol: string;
+  }): Promise<SwapTracker | null> => {
+    const walletAddress = account?.address?.toLowerCase();
+    if (!walletAddress) return null;
+    try {
+      return await startSwapTracking({
+        userId: walletAddress,
+        walletAddress,
+        chain: 'ethereum',
+        action: params.action,
+        fromChainId: 1,
+        toChainId: 1,
+        fromAsset: {
+          address: params.action === 'stake' ? ETH_NATIVE_ADDRESS : STETH_ADDRESS,
+          symbol: params.action === 'stake' ? 'ETH' : 'stETH',
+          decimals: 18,
+        },
+        toAsset: {
+          address: params.action === 'stake' ? STETH_ADDRESS : ETH_NATIVE_ADDRESS,
+          symbol: params.action === 'stake' ? 'stETH' : 'ETH',
+          decimals: 18,
+        },
+        fromAmount: params.fromAmount,
+        toAmount: params.toAmount,
+        provider: params.protocol,
+      });
+    } catch (trackingError) {
+      console.warn('[STAKING] Gateway tracking unavailable (continuing without history sync):', trackingError);
+      return null;
+    }
+  }, [account?.address]);
+
   useEffect(() => {
     if (viewState === 'input') {
       resetTxUi();
     }
   }, [resetTxUi, viewState, mode, stakeMethod, unstakeMethod]);
 
-  const waitForReceipt = useCallback(async (hash: string, chainId: number) => {
+  const waitForReceipt = useCallback(async (
+    hash: string,
+    chainId: number,
+    tracking?: { to?: string | null; data?: string | null },
+  ) => {
     return await waitForEvmReceipt({
       clientId: THIRDWEB_CLIENT_ID,
       chainId,
@@ -574,8 +645,13 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
       timeoutMs: 5 * 60_000,
       pollIntervalMs: 2_500,
       shouldContinue: () => isMountedRef.current,
+      tracking: {
+        fromAddress: account?.address,
+        to: tracking?.to,
+        data: tracking?.data,
+      },
     });
-  }, []);
+  }, [account?.address]);
 
   const estimateGasCostWei = useCallback(async (gasLimitLike: string | number | bigint | null | undefined, chainId: number) => {
     const gasLimit = toBigInt(gasLimitLike);
@@ -612,12 +688,21 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
       setTxStage('awaiting_wallet');
     });
 
-    const hash = await stakingApi.executeTransaction(tx);
+    const executionResult =
+      typeof (stakingApi as any).executeTransactionWithStatus === 'function'
+        ? await (stakingApi as any).executeTransactionWithStatus(tx)
+        : {
+            transactionHash: await stakingApi.executeTransaction(tx),
+            confirmed: false,
+          };
+
+    const hash = executionResult.transactionHash;
+    const confirmedByWalletSync = executionResult.confirmed === true;
 
     safeSet(() => {
       setTxHash(hash);
       setTxHashes((prev) => [...prev, hash]);
-      setTxStage('pending');
+      setTxStage(confirmedByWalletSync ? 'confirmed' : 'pending');
     });
 
     if (onSubmitted) {
@@ -628,7 +713,14 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
       }
     }
 
-    const receipt = await waitForReceipt(hash, chainId);
+    if (confirmedByWalletSync) {
+      return { hash, outcome: 'confirmed' };
+    }
+
+    const receipt = await waitForReceipt(hash, chainId, {
+      to: (tx as any)?.to ?? null,
+      data: (tx as any)?.data ?? null,
+    });
     const resolvedHash =
       typeof receipt.txHash === 'string' && /^0x[a-fA-F0-9]{64}$/.test(receipt.txHash)
         ? receipt.txHash
@@ -659,16 +751,103 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
     return { hash: resolvedHash, outcome: 'confirmed' };
   }, [safeSet, stakingApi, waitForReceipt]);
 
+  useEffect(() => {
+    if (txStage !== 'timeout') {
+      timeoutSyncHashRef.current = null;
+      return;
+    }
+
+    const latestHash = txHashes[txHashes.length - 1] || txHash;
+    if (!latestHash) return;
+    if (timeoutSyncHashRef.current === latestHash) return;
+    timeoutSyncHashRef.current = latestHash;
+
+    let cancelled = false;
+
+    const syncTimeoutState = async () => {
+      try {
+        const receipt = await waitForEvmReceipt({
+          clientId: THIRDWEB_CLIENT_ID,
+          chainId: 1,
+          txHash: latestHash,
+          timeoutMs: 45 * 60_000,
+          pollIntervalMs: 4_000,
+          shouldContinue: () => isMountedRef.current && !cancelled && txStage === 'timeout',
+          tracking: {
+            fromAddress: account?.address,
+          },
+        });
+
+        if (cancelled || !isMountedRef.current) return;
+
+        const resolvedHash =
+          typeof receipt.txHash === 'string' && /^0x[a-fA-F0-9]{64}$/.test(receipt.txHash)
+            ? receipt.txHash
+            : latestHash;
+
+        if (resolvedHash !== latestHash) {
+          safeSet(() => {
+            setTxHashes((prev) => prev.map((hash) => (hash === latestHash ? resolvedHash : hash)));
+            setTxHash((prev) => (prev === latestHash ? resolvedHash : prev));
+          });
+        }
+
+        if (receipt.outcome === 'confirmed') {
+          const hasQueuedStep = !!txStep && txStep.current < txStep.total;
+          if (hasQueuedStep) {
+            safeSet(() => {
+              setTxWarning('Step confirmed on-chain. Click Try again to continue with the remaining step.');
+            });
+            return;
+          }
+
+          safeSet(() => {
+            setTxWarning(null);
+            setStakingError(null);
+            setTxStage('confirmed');
+          });
+          await refreshAll();
+          return;
+        }
+
+        if (receipt.outcome === 'reverted') {
+          safeSet(() => {
+            setTxStage('failed');
+            setStakingError('Transaction reverted on-chain after submission.');
+          });
+        }
+      } catch (error) {
+        console.warn('[STAKING] Timeout sync watcher failed:', error);
+      }
+    };
+
+    void syncTimeoutState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [account?.address, refreshAll, safeSet, txHash, txHashes, txStage, txStep]);
+
   // Handle staking action - calls the real Lido staking API
   const handleStake = async () => {
+    if (txActionInFlightRef.current) return;
+    txActionInFlightRef.current = true;
     setIsStaking(true);
     resetTxUi();
 
     let submittedAny = false;
+    let tracker: SwapTracker | null = null;
     try {
       if (addressMismatch) {
         throw new Error(`Connected wallet does not match session address (${jwtAddress}). Please connect the correct wallet.`);
       }
+
+      tracker = await startGatewayTracker({
+        action: 'stake',
+        fromAmount: stakeAmount,
+        toAmount: stakeReceiveAmount || stakeAmount,
+        protocol: stakeMethod === 'swap' ? (activeSwapQuote?.provider || 'market') : 'lido',
+      });
 
       if (stakeMethod === 'swap') {
         if (!account?.address) throw new Error('Wallet session not available.');
@@ -696,19 +875,7 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
           provider: activeSwapQuote?.provider,
         });
 
-        const flattenPrepared = (prepared: any): PreparedTx[] => {
-          const out: PreparedTx[] = [];
-          if (!prepared) return out;
-          if (Array.isArray(prepared.transactions)) out.push(...prepared.transactions);
-          if (Array.isArray(prepared.steps)) {
-            for (const s of prepared.steps) {
-              if (Array.isArray(s.transactions)) out.push(...s.transactions);
-            }
-          }
-          return out;
-        };
-
-        const seq = flattenPrepared(prep.prepared);
+        const seq = flattenPreparedTransactions(prep.prepared);
         if (!seq.length) throw new Error('No transactions returned by swap prepare');
 
         const gasEstimate = estimateTotalGasWei(seq) ?? GAS_BUFFER_WEI;
@@ -722,13 +889,31 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
           const result = await executeAndConfirm(
             t,
             { current: i + 1, total: seq.length, label: isApprovalTx(t) ? 'Approval' : 'Swap' },
-            () => {
+            async (h) => {
               submittedAny = true;
+              if (tracker) {
+                try {
+                  await tracker.addTxHash(h, 1, isApprovalTx(t) ? 'approval' : 'swap');
+                  if (i === 0) {
+                    await tracker.markSubmitted();
+                    await tracker.markPending();
+                  }
+                } catch (trackingError) {
+                  console.warn('[STAKING] Failed to update gateway tx hash:', trackingError);
+                }
+              }
             }
           );
           lastHash = result.hash;
         }
         if (!lastHash) throw new Error('Swap failed: no tx hash');
+        if (tracker) {
+          try {
+            await tracker.markConfirmed(stakeReceiveAmount || stakeAmount);
+          } catch (trackingError) {
+            console.warn('[STAKING] Failed to mark gateway transaction as confirmed:', trackingError);
+          }
+        }
         await refreshAll();
         return;
       }
@@ -761,10 +946,26 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
           submittedAny = true;
           const warn = await submitHashSafely(stakeTx.id, h);
           if (warn) safeSet(() => setTxWarning(warn));
+          if (tracker) {
+            try {
+              await tracker.addTxHash(h, 1, 'stake');
+              await tracker.markSubmitted();
+              await tracker.markPending();
+            } catch (trackingError) {
+              console.warn('[STAKING] Failed to update gateway tx hash:', trackingError);
+            }
+          }
         }
       );
 
       console.log('[STAKING] Transaction submitted! Hash:', result.hash);
+      if (tracker) {
+        try {
+          await tracker.markConfirmed(stakeReceiveAmount || stakeAmount);
+        } catch (trackingError) {
+          console.warn('[STAKING] Failed to mark gateway transaction as confirmed:', trackingError);
+        }
+      }
       await refreshAll();
     } catch (error) {
       console.error('[STAKING] Error:', error);
@@ -774,25 +975,41 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
         rateLimit.trigger(parseRetryAfter(error));
       }
       const message = mapError(error, rawMessage);
-      if (/submitted but not confirmed|pending/i.test(rawMessage)) {
+      const isPendingLike = /submitted but not confirmed|pending/i.test(rawMessage);
+      if (isPendingLike) {
         safeSet(() => setTxStage('timeout'));
       } else {
         safeSet(() => setTxStage('failed'));
       }
       setStakingError(message);
+      if (tracker) {
+        try {
+          if (isPendingLike && submittedAny) {
+            await tracker.markPending();
+          } else {
+            await tracker.markFailed('STAKING_TX_FAILED', message);
+          }
+        } catch (trackingError) {
+          console.warn('[STAKING] Failed to mark gateway transaction failure:', trackingError);
+        }
+      }
       if (!submittedAny) {
         setViewState('review');
       }
     } finally {
       setIsStaking(false);
+      txActionInFlightRef.current = false;
     }
   };
 
   const handleUnstake = useCallback(async () => {
+    if (txActionInFlightRef.current) return;
+    txActionInFlightRef.current = true;
     setIsStaking(true);
     resetTxUi();
 
     let submittedAny = false;
+    let tracker: SwapTracker | null = null;
 
     try {
       if (addressMismatch) {
@@ -801,6 +1018,13 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
       if (!unstakeAmount || Number(unstakeAmount) <= 0) {
         throw new Error('Enter a valid unstake amount.');
       }
+
+      tracker = await startGatewayTracker({
+        action: 'unstake',
+        fromAmount: unstakeAmount,
+        toAmount: unstakeReceiveAmount || unstakeAmount,
+        protocol: unstakeMethod === 'instant' ? (activeSwapQuote?.provider || 'market') : 'lido',
+      });
 
       if (unstakeMethod === 'instant') {
         if (!account?.address) throw new Error('Wallet session not available.');
@@ -831,19 +1055,7 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
           provider: activeSwapQuote?.provider,
         });
 
-        const flattenPrepared = (prepared: any): PreparedTx[] => {
-          const out: PreparedTx[] = [];
-          if (!prepared) return out;
-          if (Array.isArray(prepared.transactions)) out.push(...prepared.transactions);
-          if (Array.isArray(prepared.steps)) {
-            for (const s of prepared.steps) {
-              if (Array.isArray(s.transactions)) out.push(...s.transactions);
-            }
-          }
-          return out;
-        };
-
-        const seq = flattenPrepared(prep.prepared);
+        const seq = flattenPreparedTransactions(prep.prepared);
         if (!seq.length) throw new Error('No transactions returned by swap prepare');
 
         const gasEstimate = estimateTotalGasWei(seq) ?? GAS_BUFFER_WEI;
@@ -858,13 +1070,31 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
           const result = await executeAndConfirm(
             t,
             { current: i + 1, total: seq.length, label: isApprovalTx(t) ? 'Approval' : 'Swap' },
-            () => {
+            async (h) => {
               submittedAny = true;
+              if (tracker) {
+                try {
+                  await tracker.addTxHash(h, 1, isApprovalTx(t) ? 'approval' : 'swap');
+                  if (i === 0) {
+                    await tracker.markSubmitted();
+                    await tracker.markPending();
+                  }
+                } catch (trackingError) {
+                  console.warn('[UNSTAKE] Failed to update gateway tx hash:', trackingError);
+                }
+              }
             }
           );
           lastHash = result.hash;
         }
         if (!lastHash) throw new Error('Swap failed: no tx hash');
+        if (tracker) {
+          try {
+            await tracker.markConfirmed(unstakeReceiveAmount || unstakeAmount);
+          } catch (trackingError) {
+            console.warn('[UNSTAKE] Failed to mark gateway transaction as confirmed:', trackingError);
+          }
+        }
         await refreshAll();
         return;
       }
@@ -895,6 +1125,15 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
           submittedAny = true;
           const warn = await submitHashSafely(firstTx.id, h);
           if (warn) safeSet(() => setTxWarning(warn));
+          if (tracker) {
+            try {
+              await tracker.addTxHash(h, 1, firstTx.type === 'unstake_approval' ? 'approval' : 'stake');
+              await tracker.markSubmitted();
+              await tracker.markPending();
+            } catch (trackingError) {
+              console.warn('[UNSTAKE] Failed to update gateway tx hash:', trackingError);
+            }
+          }
         }
       );
 
@@ -945,14 +1184,35 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
             submittedAny = true;
             const warn = await submitHashSafely(secondTx.id, h);
             if (warn) safeSet(() => setTxWarning(warn));
+            if (tracker) {
+              try {
+                await tracker.addTxHash(h, 1, 'stake');
+              } catch (trackingError) {
+                console.warn('[UNSTAKE] Failed to update gateway tx hash:', trackingError);
+              }
+            }
           }
         );
+        if (tracker) {
+          try {
+            await tracker.markConfirmed(unstakeReceiveAmount || unstakeAmount);
+          } catch (trackingError) {
+            console.warn('[UNSTAKE] Failed to mark gateway transaction as confirmed:', trackingError);
+          }
+        }
         await refreshAll();
         return;
       }
 
       // Direct unstake request (allowance already OK)
       setTxHash(firstResult.hash);
+      if (tracker) {
+        try {
+          await tracker.markConfirmed(unstakeReceiveAmount || unstakeAmount);
+        } catch (trackingError) {
+          console.warn('[UNSTAKE] Failed to mark gateway transaction as confirmed:', trackingError);
+        }
+      }
       await refreshAll();
     } catch (error) {
       console.error('[UNSTAKE] Error:', error);
@@ -981,11 +1241,23 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
           setStakingError(message);
         }
       }
+      if (tracker) {
+        try {
+          if (softPendingState && submittedAny) {
+            await tracker.markPending();
+          } else {
+            await tracker.markFailed('UNSTAKE_TX_FAILED', message);
+          }
+        } catch (trackingError) {
+          console.warn('[UNSTAKE] Failed to mark gateway transaction failure:', trackingError);
+        }
+      }
       if (!submittedAny) {
         setViewState('review');
       }
     } finally {
       setIsStaking(false);
+      txActionInFlightRef.current = false;
     }
   }, [
     account?.address,
@@ -999,7 +1271,9 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
     stEthBalanceHuman,
     stEthBalanceWei,
     submitHashSafely,
+    startGatewayTracker,
     unstakeAmount,
+    unstakeReceiveAmount,
     unstakeMethod,
     executeAndConfirm,
     isApprovalTx,
@@ -1015,13 +1289,27 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
 
   const handleClaimAll = useCallback(async () => {
     if (!claimableRequestIds.length) return;
+    if (txActionInFlightRef.current) return;
+    txActionInFlightRef.current = true;
     setIsStaking(true);
     resetTxUi();
     let submittedAny = false;
+    let tracker: SwapTracker | null = null;
     try {
       if (addressMismatch) {
         throw new Error(`Connected wallet does not match session address (${jwtAddress}). Please connect the correct wallet.`);
       }
+      const claimableAmountWei = withdrawals
+        .filter((w) => w.isFinalized && !w.isClaimed)
+        .reduce((acc, w) => acc + (safeParseBigInt(w.amountOfStETHWei) ?? 0n), 0n);
+      const claimableAmountHuman = formatAmountHuman(claimableAmountWei, 18, 6);
+      tracker = await startGatewayTracker({
+        action: 'claim',
+        fromAmount: claimableAmountHuman || '0',
+        toAmount: claimableAmountHuman || '0',
+        protocol: 'lido',
+      });
+
       const tx = await stakingApi.claimWithdrawals(claimableRequestIds);
       if (!tx?.transactionData) throw new Error('No claim transaction data received');
       const gasEstimate = await estimateGasCostWei((tx.transactionData as any)?.gasLimit, 1) ?? GAS_BUFFER_WEI;
@@ -1040,24 +1328,53 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
           submittedAny = true;
           const warn = await submitHashSafely(tx.id, h);
           if (warn) safeSet(() => setTxWarning(warn));
+          if (tracker) {
+            try {
+              await tracker.addTxHash(h, 1, 'stake');
+              await tracker.markSubmitted();
+              await tracker.markPending();
+            } catch (trackingError) {
+              console.warn('[CLAIM] Failed to update gateway tx hash:', trackingError);
+            }
+          }
         }
       );
+      if (tracker) {
+        try {
+          await tracker.markConfirmed(claimableAmountHuman || undefined);
+        } catch (trackingError) {
+          console.warn('[CLAIM] Failed to mark gateway transaction as confirmed:', trackingError);
+        }
+      }
       await refreshAll();
     } catch (e) {
       const message = e instanceof Error ? (e.message || 'Claim failed.') : 'Claim failed.';
-      if (/submitted but not confirmed|pending/i.test(message)) {
+      const isPendingLike = /submitted but not confirmed|pending/i.test(message);
+      if (isPendingLike) {
         safeSet(() => setTxStage('timeout'));
       } else {
         safeSet(() => setTxStage('failed'));
       }
       setStakingError(message);
+      if (tracker) {
+        try {
+          if (isPendingLike && submittedAny) {
+            await tracker.markPending();
+          } else {
+            await tracker.markFailed('CLAIM_TX_FAILED', message);
+          }
+        } catch (trackingError) {
+          console.warn('[CLAIM] Failed to mark gateway transaction failure:', trackingError);
+        }
+      }
       if (!submittedAny) {
         setViewState('input');
       }
     } finally {
       setIsStaking(false);
+      txActionInFlightRef.current = false;
     }
-  }, [addressMismatch, claimableRequestIds, ethBalanceHuman, ethBalanceWei, estimateGasCostWei, executeAndConfirm, jwtAddress, refreshAll, resetTxUi, safeSet, stakingApi, submitHashSafely]);
+  }, [addressMismatch, claimableRequestIds, ethBalanceHuman, ethBalanceWei, estimateGasCostWei, executeAndConfirm, jwtAddress, refreshAll, resetTxUi, safeSet, stakingApi, startGatewayTracker, submitHashSafely, withdrawals]);
 
   // Responsive variants
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
@@ -1067,81 +1384,6 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
     animate: isMobile ? { y: 0, opacity: 1 } : { scale: 1, opacity: 1 },
     exit: isMobile ? { y: "100%", opacity: 0 } : { scale: 0.95, opacity: 0 },
   };
-
-  // Coming Soon State
-  if (!FEATURE_FLAGS.STAKING_ENABLED) {
-    const metadata = FEATURE_METADATA.staking;
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      >
-        <motion.div
-          variants={modalVariants}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-[340px] md:max-w-[400px]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <GlassCard className="w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 flex flex-col rounded-2xl border">
-            {/* Header */}
-            <div className="px-4 py-3 flex items-center justify-between relative z-10 border-b border-white/5">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
-                  <Droplets className="w-4 h-4 text-cyan-400" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-white">Liquid Staking</h2>
-                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Coming Soon</p>
-                </div>
-              </div>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
-              >
-                <X className="w-4 h-4 text-zinc-400" />
-              </button>
-            </div>
-
-            {/* Coming Soon Content - Compact */}
-            <div className="px-4 py-5 text-center">
-              <div className="mb-4 flex justify-center">
-                <div className="relative">
-                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center">
-                    <Clock className="w-7 h-7 text-cyan-400" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 mb-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                <span className="text-cyan-400 text-xs font-medium">Coming Soon</span>
-              </div>
-
-              <h3 className="text-lg font-bold text-white mb-1.5">{metadata?.name || 'Liquid Staking'}</h3>
-              <p className="text-zinc-400 text-xs leading-relaxed mb-3">{metadata?.description || 'This feature is under development.'}</p>
-
-              {metadata?.expectedLaunch && (
-                <p className="text-zinc-500 text-[10px]">Expected: {metadata.expectedLaunch}</p>
-              )}
-            </div>
-
-            {/* Footer - Only Go to Chat */}
-            <div className="px-4 py-3 border-t border-white/5">
-              <NeonButton onClick={onClose} className="w-full text-sm py-2.5">
-                Go to Chat
-              </NeonButton>
-            </div>
-          </GlassCard>
-        </motion.div>
-      </motion.div>
-    );
-  }
 
   const card = (
     <GlassCard

@@ -84,6 +84,28 @@ function extractErrorMessage(parsed: unknown): string {
   return 'Gateway API error';
 }
 
+const TRANSIENT_GATEWAY_STATUS = new Set([500, 502, 503, 504]);
+
+export function isGatewayUnavailableError(error: unknown): boolean {
+  if (error instanceof GatewayApiError) {
+    if (typeof error.status !== 'number') return true;
+    if (error.status >= 500) return true;
+    return TRANSIENT_GATEWAY_STATUS.has(error.status);
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('network request failed') ||
+      message.includes('failed to fetch') ||
+      message.includes('aggregateerror') ||
+      message.includes('econnrefused')
+    );
+  }
+
+  return false;
+}
+
 // ----------------------------------------------------------------------------
 // HTTP Methods
 // ----------------------------------------------------------------------------

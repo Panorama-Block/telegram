@@ -1,17 +1,10 @@
 /**
  * Feature flags configuration
  *
- * Controls which features are enabled/disabled in the application.
- * Set a feature to `false` to show "Coming Soon" overlay and block navigation.
+ * Controls optional features that are still intentionally gated in the UI.
  */
 
 export const FEATURE_FLAGS = {
-  /** Lending service - Benqi on Avalanche */
-  LENDING_ENABLED: false,
-
-  /** Liquid Staking service - Lido on Ethereum */
-  STAKING_ENABLED: false,
-
   /** Token Swap service */
   SWAP_ENABLED: true,
 

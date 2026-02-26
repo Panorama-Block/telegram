@@ -38,7 +38,7 @@ import WithdrawModal from "@/features/dca/WithdrawModal";
 import { deleteSmartAccount, deleteStrategy, toggleStrategy, DCAStrategy } from "@/features/dca/api";
 import { useActiveAccount } from "thirdweb/react";
 import { shortenAddress } from "thirdweb/utils";
-import { useTransactionHistory } from "@/features/gateway";
+import { isGatewayUnavailableError, useTransactionHistory } from "@/features/gateway";
 import { formatAmountHuman } from "@/features/swap/utils";
 
 type ViewMode = 'main' | 'smart';
@@ -104,12 +104,13 @@ export default function PortfolioPage() {
     loadMore: loadMoreTx,
     hasMore: hasMoreTx,
   } = useTransactionHistory({
-    userId: account?.address || '',
+    userId: account?.address?.toLowerCase() || '',
     limit: 10,
   });
+  const isGatewayHistoryUnavailable = isGatewayUnavailableError(txError);
 
   const [viewMode, setViewMode] = useState<ViewMode>('main');
-  const [activeTab, setActiveTab] = useState<TabMode>('history');
+  const [activeTab, setActiveTab] = useState<TabMode>('assets');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -860,17 +861,6 @@ export default function PortfolioPage() {
           {/* Tab Switcher */}
           <div className="flex gap-1 mb-4 bg-white/5 rounded-xl p-1 w-fit">
             <button
-              onClick={() => setActiveTab('history')}
-              className={cn(
-                "px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                activeTab === 'history'
-                  ? "bg-white/10 text-white"
-                  : "text-zinc-500 hover:text-zinc-300"
-              )}
-            >
-              History
-            </button>
-            <button
               onClick={() => setActiveTab('assets')}
               className={cn(
                 "px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
@@ -880,6 +870,17 @@ export default function PortfolioPage() {
               )}
             >
               Assets
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={cn(
+                "px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                activeTab === 'history'
+                  ? "bg-white/10 text-white"
+                  : "text-zinc-500 hover:text-zinc-300"
+              )}
+            >
+              History
             </button>
           </div>
           <div className="flex items-center justify-between">
@@ -897,7 +898,11 @@ export default function PortfolioPage() {
 
               {!txLoading && transactions.length === 0 && (
                 <div className="py-8 text-center text-zinc-600 text-sm">
-                  {txError ? <span className="text-red-400/70">{txError.message}</span> : 'No activity yet.'}
+                  {isGatewayHistoryUnavailable
+                    ? 'History unavailable (gateway offline).'
+                    : txError
+                      ? <span className="text-red-400/70">{txError.message}</span>
+                      : 'No activity yet.'}
                 </div>
               )}
 
@@ -1004,65 +1009,6 @@ export default function PortfolioPage() {
                 ))}
               </div>
 
-          {/* Desktop Table View */}
-          <GlassCard className="overflow-hidden bg-[#0A0A0A]/60 hidden md:block mt-4">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-white/5 text-xs text-zinc-500 uppercase tracking-wider">
-                    <th className="p-4 font-medium">Asset</th>
-                    <th className="p-4 font-medium">Protocol</th>
-                    <th className="p-4 font-medium">Balance</th>
-                    <th className="p-4 font-medium">Value</th>
-                    <th className="p-4 font-medium">Price</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {currentAssets.map((asset) => (
-                    <tr key={`desktop-${asset.network}-${asset.symbol}-${asset.address}`} className="group hover:bg-white/5 transition-colors">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-inner",
-                            "bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10"
-                          )}>
-                            {asset.icon ? (
-                              <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
-                            ) : (
-                              asset.symbol[0]
-                            )}
-                          </div>
-                          <div>
-                            <div className="font-medium text-white">{asset.name}</div>
-                            <div className="flex items-center gap-1.5">
-                               <span className="text-xs text-zinc-500">{asset.symbol}</span>
-                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-400 border border-white/5">{asset.network}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4 text-zinc-400 text-sm">
-                        <div className="flex items-center gap-2">
-                          {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3" />}
-                          {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-400" />}
-                          {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400" />}
-                          <span>
-                            {asset.protocol}
-                            {asset.protocol === 'Lido' && (
-                              <span className="text-zinc-500"> · {formatAPY(lidoApy)}</span>
-                            )}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="p-4 text-zinc-300 font-mono text-sm">{asset.balance}</td>
-                      <td className="p-4 text-white font-mono font-medium text-sm">{asset.value}</td>
-                      <td className="p-4 text-zinc-500 font-mono text-sm">{asset.price}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </GlassCard>
             </div>
           )}
         </motion.div>

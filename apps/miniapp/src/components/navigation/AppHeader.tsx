@@ -11,8 +11,8 @@ import logo from '../../../public/panorama_block.svg'
 const NAV_LINKS = [
   { label: 'Home', href: '/chat' },
   { label: 'Swap', href: '/swap' },
-  { label: 'Lending', href: '/chat?open=lending', comingSoon: true },
-  { label: 'Staking', href: '/chat?open=staking', comingSoon: true },
+  { label: 'Lending', href: '/chat?open=lending' },
+  { label: 'Staking', href: '/chat?open=staking' },
   { label: 'DCA', href: '/dca' },
   { label: 'Docs', href: 'https://docs.panoramablock.com', external: true }
 ]
@@ -39,8 +39,7 @@ export function AppHeader({ className, onMenuClick, showMenuButton = true }: App
     ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
     : null
 
-  const handleNav = (href: string, external?: boolean, disabled?: boolean) => {
-    if (disabled) return
+  const handleNav = (href: string, external?: boolean) => {
     if (external) {
       window.open(href, '_blank')
       return
@@ -87,23 +86,14 @@ export function AppHeader({ className, onMenuClick, showMenuButton = true }: App
           {NAV_LINKS.map((link) => (
             <button
               key={link.href}
-              onClick={() => handleNav(link.href, link.external, link.disabled)}
-              disabled={link.disabled}
+              onClick={() => handleNav(link.href, link.external)}
               className={cn(
                 'px-2 py-1 text-pano-text-secondary hover:text-pano-text-primary transition-colors relative',
-                isActive(link.href) && !link.disabled && 'text-pano-text-primary',
-                link.disabled && 'opacity-50 cursor-not-allowed hover:text-pano-text-secondary'
+                isActive(link.href) && 'text-pano-text-primary'
               )}
             >
-              <span className="flex items-center gap-1.5">
-                {link.label}
-                {link.comingSoon && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 font-medium">
-                    Soon
-                  </span>
-                )}
-              </span>
-              {isActive(link.href) && !link.disabled && (
+              {link.label}
+              {isActive(link.href) && (
                 <span className="absolute left-1/2 -bottom-1 h-[2px] w-6 -translate-x-1/2 bg-pano-text-primary rounded-full" />
               )}
             </button>

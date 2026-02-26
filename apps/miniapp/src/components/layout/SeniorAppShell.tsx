@@ -17,9 +17,6 @@ import { Lending } from '@/components/Lending';
 import { Staking } from '@/components/Staking';
 import { DCA } from '@/components/DCA';
 
-// Feature flags
-import { FEATURE_FLAGS } from '@/config/features';
-
 type NavItem = {
   id: string;
   label: string;
@@ -27,7 +24,6 @@ type NavItem = {
   icon: React.ReactNode;
   isModal?: boolean;
   disabled?: boolean;
-  comingSoon?: boolean;
 };
 
 interface SeniorAppShellProps {
