@@ -39,7 +39,7 @@ import WithdrawModal from "@/features/dca/WithdrawModal";
 import { deleteSmartAccount, deleteStrategy, toggleStrategy, DCAStrategy } from "@/features/dca/api";
 import { useActiveAccount } from "thirdweb/react";
 import { shortenAddress } from "thirdweb/utils";
-import { useTransactionHistory } from "@/features/gateway";
+import { isGatewayUnavailableError, useTransactionHistory } from "@/features/gateway";
 import { formatAmountHuman } from "@/features/swap/utils";
 
 type ViewMode = 'main' | 'smart';
@@ -123,9 +123,10 @@ export default function PortfolioPage() {
     userId: account?.address?.toLowerCase() || '',
     limit: 10,
   });
+  const isGatewayHistoryUnavailable = isGatewayUnavailableError(txError);
 
   const [viewMode, setViewMode] = useState<ViewMode>('main');
-  const [activeTab, setActiveTab] = useState<TabMode>('history');
+  const [activeTab, setActiveTab] = useState<TabMode>('assets');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -876,17 +877,6 @@ export default function PortfolioPage() {
           {/* Tab Switcher */}
           <div className="flex gap-1 mb-4 bg-white/5 rounded-xl p-1 w-fit">
             <button
-              onClick={() => setActiveTab('history')}
-              className={cn(
-                "px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                activeTab === 'history'
-                  ? "bg-white/10 text-white"
-                  : "text-zinc-500 hover:text-zinc-300"
-              )}
-            >
-              History
-            </button>
-            <button
               onClick={() => setActiveTab('assets')}
               className={cn(
                 "px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
@@ -896,6 +886,17 @@ export default function PortfolioPage() {
               )}
             >
               Assets
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={cn(
+                "px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                activeTab === 'history'
+                  ? "bg-white/10 text-white"
+                  : "text-zinc-500 hover:text-zinc-300"
+              )}
+            >
+              History
             </button>
           </div>
           <div className="flex items-center justify-between">
@@ -913,7 +914,11 @@ export default function PortfolioPage() {
 
               {!txLoading && transactions.length === 0 && (
                 <div className="py-8 text-center text-zinc-600 text-sm">
-                  {txError ? <span className="text-red-400/70">{txError.message}</span> : 'No activity yet.'}
+                  {isGatewayHistoryUnavailable
+                    ? 'History unavailable (gateway offline).'
+                    : txError
+                      ? <span className="text-red-400/70">{txError.message}</span>
+                      : 'No activity yet.'}
                 </div>
               )}
 

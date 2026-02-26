@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { walletApi, getWalletTypeFromChain, getChainFromChainId } from './walletApi';
 import { transactionApi } from './transactionApi';
 import { notificationApi } from './notificationApi';
+import { isGatewayUnavailableError } from './api';
 import type {
   Wallet,
   Transaction,
@@ -21,6 +22,7 @@ import type {
 // ----------------------------------------------------------------------------
 
 const DEFAULT_TENANT_ID = 'panorama';
+const GATEWAY_UNAVAILABLE_COOLDOWN_MS = 2 * 60 * 1000;
 
 function getTenantId(): string {
   if (typeof window === 'undefined') return DEFAULT_TENANT_ID;
@@ -140,9 +142,14 @@ export function useTransactionHistory({
   const [error, setError] = useState<Error | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [skip, setSkip] = useState(0);
+  const unavailableUntilRef = useRef(0);
 
   const refresh = useCallback(async () => {
     if (!userId) return;
+    if (unavailableUntilRef.current > Date.now()) {
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(true);
@@ -155,7 +162,16 @@ export function useTransactionHistory({
       setSkip(result.data.length);
       setHasMore(result.data.length >= limit);
       setError(null);
+      unavailableUntilRef.current = 0;
     } catch (err) {
+      if (isGatewayUnavailableError(err)) {
+        unavailableUntilRef.current = Date.now() + GATEWAY_UNAVAILABLE_COOLDOWN_MS;
+        setTransactions([]);
+        setSkip(0);
+        setHasMore(false);
+        setError(null);
+        return;
+      }
       setError(err instanceof Error ? err : new Error('Failed to load transactions'));
     } finally {
       setLoading(false);
@@ -164,6 +180,7 @@ export function useTransactionHistory({
 
   const loadMore = useCallback(async () => {
     if (!userId || !hasMore || loading) return;
+    if (unavailableUntilRef.current > Date.now()) return;
 
     try {
       setLoading(true);
@@ -175,7 +192,14 @@ export function useTransactionHistory({
       setTransactions((prev) => [...prev, ...result.data]);
       setSkip((prev) => prev + result.data.length);
       setHasMore(result.data.length >= limit);
+      unavailableUntilRef.current = 0;
     } catch (err) {
+      if (isGatewayUnavailableError(err)) {
+        unavailableUntilRef.current = Date.now() + GATEWAY_UNAVAILABLE_COOLDOWN_MS;
+        setHasMore(false);
+        setError(null);
+        return;
+      }
       setError(err instanceof Error ? err : new Error('Failed to load more transactions'));
     } finally {
       setLoading(false);
@@ -382,18 +406,29 @@ export function useNotifications({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const unavailableUntilRef = useRef(0);
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   const refresh = useCallback(async () => {
     if (!userId) return;
+    if (unavailableUntilRef.current > Date.now()) {
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(true);
       const result = await notificationApi.list(userId, { take: 50 });
       setNotifications(result.data);
       setError(null);
+      unavailableUntilRef.current = 0;
     } catch (err) {
+      if (isGatewayUnavailableError(err)) {
+        unavailableUntilRef.current = Date.now() + GATEWAY_UNAVAILABLE_COOLDOWN_MS;
+        setError(null);
+        return;
+      }
       setError(err instanceof Error ? err : new Error('Failed to load notifications'));
     } finally {
       setLoading(false);

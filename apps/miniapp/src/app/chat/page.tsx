@@ -39,7 +39,6 @@ import { Droplets } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { useAudioRecorder } from '@/shared/hooks/useAudioRecorder';
 import { useKeyboardHeight } from '@/shared/hooks/useKeyboardHeight';
-import { FEATURE_FLAGS } from '@/config/features';
 import { useWalletIdentity } from '@/shared/contexts/WalletIdentityContext';
 import { resolveChatIdentity } from '@/shared/lib/chatIdentity';
 import { useAgentStream } from '@/shared/hooks/useAgentStream';
@@ -2054,30 +2053,6 @@ export default function ChatPage() {
                                     const action = String(message.metadata?.action || 'Supply');
                                     const tokenIcon = getTokenIcon(token);
 
-                                    // Coming Soon state
-                                    if (!FEATURE_FLAGS.LENDING_ENABLED) {
-                                      return (
-                                        <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
-                                          <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
-                                            <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
-                                              <Landmark className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
-                                              <span className="text-xs sm:text-sm font-semibold text-white">Lending</span>
-                                              <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-cyan-500/30">
-                                                COMING SOON
-                                              </span>
-                                            </div>
-                                            <div className="relative z-10 p-4 sm:p-5 text-center">
-                                              <p className="text-zinc-400 text-xs sm:text-sm mb-3">
-                                                Lending feature is coming soon. Stay tuned!
-                                              </p>
-                                              <p className="text-zinc-500 text-[10px]">Expected: Q1 2026</p>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    }
-
                                     return (
                                       <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
                                         {/* Lending Card */}
@@ -2148,30 +2123,6 @@ export default function ChatPage() {
                                     const amount = Number(message.metadata?.amount || 0);
                                     const tokenIcon = getTokenIcon(token);
                                     const stTokenIcon = getTokenIcon(`st${token}`) || getTokenIcon('stETH');
-
-                                    // Coming Soon state
-                                    if (!FEATURE_FLAGS.STAKING_ENABLED) {
-                                      return (
-                                        <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
-                                          <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
-                                            <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
-                                              <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
-                                              <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
-                                              <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-cyan-500/30">
-                                                COMING SOON
-                                              </span>
-                                            </div>
-                                            <div className="relative z-10 p-4 sm:p-5 text-center">
-                                              <p className="text-zinc-400 text-xs sm:text-sm mb-3">
-                                                Liquid Staking feature is coming soon. Stay tuned!
-                                              </p>
-                                              <p className="text-zinc-500 text-[10px]">Expected: Q1 2026</p>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    }
 
                                     return (
                                       <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">

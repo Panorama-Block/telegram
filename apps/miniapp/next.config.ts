@@ -27,6 +27,22 @@ function normalizeDevServiceBase(raw: string | undefined, devFallback: string, i
   return trimmed;
 }
 
+function normalizeLendingDevBase(raw: string | undefined, isDev: boolean): string {
+  const normalized = normalizeDevServiceBase(raw, "http://localhost:3007", isDev);
+  if (!isDev) return normalized;
+
+  const remapped = normalized.replace(
+    /^((?:https?:\/\/)(?:localhost|127\.0\.0\.1)):3006(?=\/|$)/i,
+    "$1:3007",
+  );
+
+  if (remapped !== normalized) {
+    console.warn("[Next.js] Lending API URL points to localhost:3006 (container port). Remapping to host port 3007.");
+  }
+
+  return remapped;
+}
+
 const nextConfig: NextConfig = {
   // o app vive sob /miniapp
   basePath: "/miniapp",
@@ -62,14 +78,22 @@ const nextConfig: NextConfig = {
 
     // Prefer host-mapped localhost ports during local dev (Docker service names are not reachable from the browser/Next proxy).
     const lendingBaseRaw = isDev
-      ? (process.env.VITE_LENDING_API_BASE || process.env.NEXT_PUBLIC_LENDING_API_URL || "")
+      ? (
+          process.env.LENDING_SERVICE_URL ||
+          process.env.VITE_LENDING_API_BASE ||
+          process.env.NEXT_PUBLIC_LENDING_API_URL ||
+          ""
+        )
       : (
+          process.env.LENDING_SERVICE_URL ||
           process.env.VITE_LENDING_API_BASE ||
           process.env.NEXT_PUBLIC_LENDING_API_URL ||
           (process.env.PUBLIC_GATEWAY_URL ? process.env.PUBLIC_GATEWAY_URL.replace(/\/+$/, "") : "") ||
           ""
         );
-    const lendingBase = normalizeDevServiceBase(lendingBaseRaw, "http://localhost:3006", isDev);
+    // Local Docker mapping for lending-service is host 3007 -> container 3006.
+    // If 3006 is used here, the miniapp can end up proxying to itself and return 404 on /benqi/*.
+    const lendingBase = normalizeLendingDevBase(lendingBaseRaw, isDev);
 
     const stakingBaseRaw =
       process.env.VITE_STAKING_API_URL ||
@@ -167,7 +191,16 @@ const nextConfig: NextConfig = {
     VITE_SWAP_API_BASE: process.env.SWAP_API_BASE || "",
     VITE_AUTH_API_BASE: process.env.AUTH_API_BASE || "",
     VITE_LENDING_API_BASE: process.env.VITE_LENDING_API_BASE || "",
-    VITE_THIRDWEB_CLIENT_ID: process.env.THIRDWEB_CLIENT_ID || "",
+    VITE_THIRDWEB_CLIENT_ID:
+      process.env.VITE_THIRDWEB_CLIENT_ID ||
+      process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID ||
+      process.env.THIRDWEB_CLIENT_ID ||
+      "",
+    NEXT_PUBLIC_THIRDWEB_CLIENT_ID:
+      process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID ||
+      process.env.VITE_THIRDWEB_CLIENT_ID ||
+      process.env.THIRDWEB_CLIENT_ID ||
+      "",
     VITE_WALLETCONNECT_PROJECT_ID: process.env.WALLETCONNECT_PROJECT_ID || "",
     VITE_EVM_CHAIN_ID: process.env.DEFAULT_CHAIN_ID || "8453",
     VITE_AI_API_URL: process.env.AI_API_URL || "",

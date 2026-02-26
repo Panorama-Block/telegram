@@ -8,6 +8,14 @@ const prepareSupplyMock = vi.fn();
 const executeTransactionMock = vi.fn();
 const getTransactionHistoryMock = vi.fn();
 const fetchPositionMock = vi.fn();
+const startSwapTrackingMock = vi.fn();
+const trackerAddHashMock = vi.fn();
+const trackerAddTxHashMock = vi.fn();
+const trackerMarkSubmittedMock = vi.fn();
+const trackerMarkPendingMock = vi.fn();
+const trackerMarkConfirmedMock = vi.fn();
+const trackerMarkFailedMock = vi.fn();
+const trackerGetTransactionMock = vi.fn();
 
 const baseToken = {
   symbol: 'AVAX',
@@ -73,6 +81,10 @@ vi.mock('@/features/lending/api', () => ({
   }),
 }));
 
+vi.mock('@/features/gateway', () => ({
+  startSwapTracking: (...args: unknown[]) => startSwapTrackingMock(...args),
+}));
+
 describe('Lending component flow', () => {
   beforeEach(() => {
     prepareSupplyMock.mockReset();
@@ -80,6 +92,31 @@ describe('Lending component flow', () => {
     waitForEvmReceiptMock.mockReset();
     getTransactionHistoryMock.mockReset();
     fetchPositionMock.mockReset();
+    trackerAddHashMock.mockReset();
+    trackerAddTxHashMock.mockReset();
+    trackerMarkSubmittedMock.mockReset();
+    trackerMarkPendingMock.mockReset();
+    trackerMarkConfirmedMock.mockReset();
+    trackerMarkFailedMock.mockReset();
+    trackerGetTransactionMock.mockReset();
+    trackerAddTxHashMock.mockResolvedValue(undefined);
+    trackerMarkSubmittedMock.mockResolvedValue(undefined);
+    trackerMarkPendingMock.mockResolvedValue(undefined);
+    trackerMarkConfirmedMock.mockResolvedValue(undefined);
+    trackerMarkFailedMock.mockResolvedValue(undefined);
+    trackerGetTransactionMock.mockResolvedValue({ id: 'tx_gateway_1' });
+    startSwapTrackingMock.mockReset();
+    startSwapTrackingMock.mockResolvedValue({
+      transactionId: 'tx_gateway_1',
+      walletId: 'wallet_gateway_1',
+      addHash: trackerAddHashMock,
+      addTxHash: trackerAddTxHashMock,
+      markSubmitted: trackerMarkSubmittedMock,
+      markPending: trackerMarkPendingMock,
+      markConfirmed: trackerMarkConfirmedMock,
+      markFailed: trackerMarkFailedMock,
+      getTransaction: trackerGetTransactionMock,
+    });
   });
 
   test('transitions input -> review -> confirmed status', async () => {
@@ -102,6 +139,7 @@ describe('Lending component flow', () => {
     getTransactionHistoryMock.mockResolvedValue([]);
 
     render(<Lending onClose={vi.fn()} initialAmount="1" />);
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
 
     const supplyButtons = await screen.findAllByRole('button', { name: 'Supply' });
     fireEvent.click(supplyButtons[supplyButtons.length - 1]);
@@ -114,5 +152,14 @@ describe('Lending component flow', () => {
       expect(screen.getByText('Position will refresh automatically.')).toBeInTheDocument();
       expect(fetchPositionMock).toHaveBeenCalled();
     });
+
+    expect(startSwapTrackingMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'supply',
+        fromChainId: 43114,
+        toChainId: 43114,
+      }),
+    );
+    expect(trackerMarkConfirmedMock).toHaveBeenCalled();
   });
 });

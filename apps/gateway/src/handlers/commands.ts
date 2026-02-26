@@ -10,6 +10,10 @@ export function registerCommandHandlers(bot: Bot) {
     
     // Simple message with miniapp button
     const baseUrl = env.PUBLIC_WEBAPP_URL;
+    if (!baseUrl) {
+      await ctx.reply('MiniApp URL not configured.');
+      return;
+    }
     const url = new URL(baseUrl);
     url.searchParams.set('telegram_user_id', String(fromId));
     url.searchParams.set('tma', '1');
