@@ -16,6 +16,12 @@ const trackerMarkConfirmedMock = vi.fn();
 const trackerMarkFailedMock = vi.fn();
 const trackerGetTransactionMock = vi.fn();
 
+vi.mock('@/config/features', () => ({
+  FEATURE_FLAGS: { STAKING_ENABLED: true },
+  FEATURE_METADATA: { staking: { name: 'Liquid Staking', description: '' } },
+  isFeatureEnabled: () => true,
+}));
+
 vi.mock('framer-motion', async () => await import('../../../test/mocks/framerMotion'));
 
 vi.mock('thirdweb/react', () => ({

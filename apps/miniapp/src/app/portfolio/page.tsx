@@ -21,6 +21,7 @@ import {
   Clock,
   Landmark,
   Droplets,
+  ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,21 @@ import { formatAmountHuman } from "@/features/swap/utils";
 
 type ViewMode = 'main' | 'smart';
 type TabMode = 'history' | 'assets';
+
+function getExplorerUrl(chainId: number, hash: string): string {
+  const explorers: Record<number, string> = {
+    1: 'https://etherscan.io/tx',
+    43114: 'https://snowtrace.io/tx',
+    137: 'https://polygonscan.com/tx',
+    56: 'https://bscscan.com/tx',
+    42161: 'https://arbiscan.io/tx',
+    10: 'https://optimistic.etherscan.io/tx',
+    8453: 'https://basescan.org/tx',
+    59144: 'https://lineascan.build/tx',
+  };
+  const base = explorers[chainId] ?? `https://blockscan.com/tx`;
+  return `${base}/${hash}`;
+}
 
 function formatAPY(apy: number | null | undefined): string {
   if (apy == null || !Number.isFinite(apy)) return '--';
@@ -907,7 +923,12 @@ export default function PortfolioPage() {
               )}
 
               <div className="space-y-1">
-                {transactions.map((tx) => (
+                {transactions.map((tx) => {
+                  const primaryHash = tx.txHashes?.[0];
+                  const explorerUrl = primaryHash
+                    ? getExplorerUrl(primaryHash.chainId, primaryHash.hash)
+                    : null;
+                  return (
                   <div
                     key={tx.id}
                     className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors"
@@ -932,16 +953,30 @@ export default function PortfolioPage() {
                         {new Date(tx.createdAt).toLocaleDateString()}
                       </div>
                     </div>
-                    <div className={cn(
-                      "px-2 py-0.5 rounded-full text-[10px] font-medium",
-                      tx.status === 'confirmed' ? "bg-emerald-500/10 text-emerald-400" :
-                      tx.status === 'failed' ? "bg-red-500/10 text-red-400" :
-                      "bg-yellow-500/10 text-yellow-400"
-                    )}>
-                      {tx.status}
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        "px-2 py-0.5 rounded-full text-[10px] font-medium",
+                        tx.status === 'confirmed' ? "bg-emerald-500/10 text-emerald-400" :
+                        tx.status === 'failed' ? "bg-red-500/10 text-red-400" :
+                        "bg-yellow-500/10 text-yellow-400"
+                      )}>
+                        {tx.status}
+                      </div>
+                      {explorerUrl && (
+                        <a
+                          href={explorerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {hasMoreTx && transactions.length > 0 && (
@@ -971,44 +1006,100 @@ export default function PortfolioPage() {
 
               <div className="space-y-1">
                 {currentAssets.map((asset) => (
-                  <div
-                    key={`${asset.network}-${asset.symbol}-${asset.address}`}
-                    className="px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10 flex-shrink-0">
-                        {asset.icon ? (
-                          <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
-                        ) : (
-                          asset.symbol[0]
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm text-white font-medium">{asset.symbol}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-500">{asset.network}</span>
-                        </div>
-                        <span className="text-xs text-zinc-500 font-mono">{asset.balance}</span>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="text-sm text-white font-mono">{asset.value}</div>
-                        <div className="text-[10px] text-zinc-600 font-mono">{asset.price}</div>
-                      </div>
+                  <div key={`${asset.network}-${asset.symbol}-${asset.address}`}>
+                  <div className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10 flex-shrink-0">
+                      {asset.icon ? (
+                        <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        asset.symbol[0]
+                      )}
                     </div>
-                    {/* Protocol badge */}
-                    <div className="flex items-center gap-1 mt-0.5 pl-11">
-                      {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3 text-zinc-600" />}
-                      {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-500/70" />}
-                      {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400/70" />}
-                      <span className="text-[10px] text-zinc-600">
-                        {asset.protocol}
-                        {asset.protocol === 'Lido' && <span> · {formatAPY(lidoApy)}</span>}
-                      </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm text-white font-medium">{asset.symbol}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-500">{asset.network}</span>
+                      </div>
+                      <span className="text-xs text-zinc-500 font-mono">{asset.balance}</span>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm text-white font-mono">{asset.value}</div>
+                      <div className="text-[10px] text-zinc-600 font-mono">{asset.price}</div>
                     </div>
                   </div>
-                ))}
+                  {/* Protocol badge */}
+                  <div className="flex items-center gap-1 mt-0.5 pl-11">
+                    {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3 text-zinc-600" />}
+                    {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-500/70" />}
+                    {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400/70" />}
+                    <span className="text-[10px] text-zinc-600">
+                      {asset.protocol}
+                      {asset.protocol === 'Lido' && <span> · {formatAPY(lidoApy)}</span>}
+                    </span>
+                  </div>
+                  </div>
+                  ))}
               </div>
 
+          {/* Desktop Table View */}
+          <GlassCard className="overflow-hidden bg-[#0A0A0A]/60 hidden md:block mt-4">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/5 text-xs text-zinc-500 uppercase tracking-wider">
+                    <th className="p-4 font-medium">Asset</th>
+                    <th className="p-4 font-medium">Protocol</th>
+                    <th className="p-4 font-medium">Balance</th>
+                    <th className="p-4 font-medium">Value</th>
+                    <th className="p-4 font-medium">Price</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {currentAssets.map((asset) => (
+                    <tr key={`desktop-${asset.network}-${asset.symbol}-${asset.address}`} className="group hover:bg-white/5 transition-colors">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-inner",
+                            "bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10"
+                          )}>
+                            {asset.icon ? (
+                              <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
+                            ) : (
+                              asset.symbol[0]
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-medium text-white">{asset.name}</div>
+                            <div className="flex items-center gap-1.5">
+                               <span className="text-xs text-zinc-500">{asset.symbol}</span>
+                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-400 border border-white/5">{asset.network}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4 text-zinc-400 text-sm">
+                        <div className="flex items-center gap-2">
+                          {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3" />}
+                          {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-400" />}
+                          {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400" />}
+                          <span>
+                            {asset.protocol}
+                            {asset.protocol === 'Lido' && (
+                              <span className="text-zinc-500"> · {formatAPY(lidoApy)}</span>
+                            )}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-4 text-zinc-300 font-mono text-sm">{asset.balance}</td>
+                      <td className="p-4 text-white font-mono font-medium text-sm">{asset.value}</td>
+                      <td className="p-4 text-zinc-500 font-mono text-sm">{asset.price}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </GlassCard>
             </div>
           )}
         </motion.div>

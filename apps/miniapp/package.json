@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3010",
     "build": "next build",
     "postbuild": "node scripts/patch-loadable-chunks.mjs",
     "patch:chunks": "node scripts/patch-loadable-chunks.mjs",
