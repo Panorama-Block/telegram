@@ -7,6 +7,14 @@ const waitForEvmReceiptMock = vi.fn();
 const stakeMock = vi.fn();
 const executeTransactionMock = vi.fn();
 const getWithdrawalsMock = vi.fn();
+const startSwapTrackingMock = vi.fn();
+const trackerAddHashMock = vi.fn();
+const trackerAddTxHashMock = vi.fn();
+const trackerMarkSubmittedMock = vi.fn();
+const trackerMarkPendingMock = vi.fn();
+const trackerMarkConfirmedMock = vi.fn();
+const trackerMarkFailedMock = vi.fn();
+const trackerGetTransactionMock = vi.fn();
 
 vi.mock('@/config/features', () => ({
   FEATURE_FLAGS: { STAKING_ENABLED: true },
@@ -68,6 +76,10 @@ vi.mock('@/features/staking/api', () => ({
   }),
 }));
 
+vi.mock('@/features/gateway', () => ({
+  startSwapTracking: (...args: unknown[]) => startSwapTrackingMock(...args),
+}));
+
 describe('Staking component flow', () => {
   beforeEach(() => {
     stakeMock.mockReset();
@@ -75,6 +87,31 @@ describe('Staking component flow', () => {
     waitForEvmReceiptMock.mockReset();
     getWithdrawalsMock.mockReset();
     getWithdrawalsMock.mockResolvedValue([]);
+    trackerAddHashMock.mockReset();
+    trackerAddTxHashMock.mockReset();
+    trackerMarkSubmittedMock.mockReset();
+    trackerMarkPendingMock.mockReset();
+    trackerMarkConfirmedMock.mockReset();
+    trackerMarkFailedMock.mockReset();
+    trackerGetTransactionMock.mockReset();
+    trackerAddTxHashMock.mockResolvedValue(undefined);
+    trackerMarkSubmittedMock.mockResolvedValue(undefined);
+    trackerMarkPendingMock.mockResolvedValue(undefined);
+    trackerMarkConfirmedMock.mockResolvedValue(undefined);
+    trackerMarkFailedMock.mockResolvedValue(undefined);
+    trackerGetTransactionMock.mockResolvedValue({ id: 'tx_gateway_1' });
+    startSwapTrackingMock.mockReset();
+    startSwapTrackingMock.mockResolvedValue({
+      transactionId: 'tx_gateway_1',
+      walletId: 'wallet_gateway_1',
+      addHash: trackerAddHashMock,
+      addTxHash: trackerAddTxHashMock,
+      markSubmitted: trackerMarkSubmittedMock,
+      markPending: trackerMarkPendingMock,
+      markConfirmed: trackerMarkConfirmedMock,
+      markFailed: trackerMarkFailedMock,
+      getTransaction: trackerGetTransactionMock,
+    });
   });
 
   test('runs stake mint flow and reaches confirmed status', async () => {
@@ -97,6 +134,7 @@ describe('Staking component flow', () => {
     });
 
     render(<Staking onClose={vi.fn()} initialAmount="0.01" initialMode="stake" />);
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole('button', { name: /^Stake$/ }));
     fireEvent.click(await screen.findByRole('button', { name: /Confirm stake/i }));
@@ -105,6 +143,15 @@ describe('Staking component flow', () => {
       expect(screen.getByText('Confirmed')).toBeInTheDocument();
       expect(screen.getByText('Stake 0.01 ETH')).toBeInTheDocument();
     });
+
+    expect(startSwapTrackingMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'stake',
+        fromChainId: 1,
+        toChainId: 1,
+      }),
+    );
+    expect(trackerMarkConfirmedMock).toHaveBeenCalled();
   });
 
   test('shows network error from transaction execution', async () => {
@@ -128,5 +175,12 @@ describe('Staking component flow', () => {
     await waitFor(() => {
       expect(screen.getByText(/Wrong network/i)).toBeInTheDocument();
     });
+
+    expect(startSwapTrackingMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'stake',
+      }),
+    );
+    expect(trackerMarkFailedMock).toHaveBeenCalled();
   });
 });

@@ -9,8 +9,10 @@ import { transactionApi } from './transactionApi';
 import { notificationApi } from './notificationApi';
 import type {
   Transaction,
+  TransactionAction,
   CreateTransactionInput,
   TxHash,
+  TxHashType,
   Wallet,
 } from './types';
 
@@ -39,7 +41,7 @@ export interface SwapParams {
   userId: string;
   walletAddress: string;
   chain: string;
-  action?: 'swap' | 'bridge' | 'stake' | 'unstake';
+  action?: TransactionAction;
   conversationId?: string;
 
   // From - simplified
@@ -75,6 +77,53 @@ export interface SwapTracker {
   markConfirmed: (toAmountDisplay?: string) => Promise<void>;
   markFailed: (errorCode?: string, errorMessage?: string) => Promise<void>;
   getTransaction: () => Promise<Transaction>;
+}
+
+function getActionLabel(action: TransactionAction): string {
+  switch (action) {
+    case 'bridge':
+      return 'Bridge';
+    case 'stake':
+      return 'Stake';
+    case 'unstake':
+      return 'Unstake';
+    case 'supply':
+      return 'Supply';
+    case 'withdraw':
+      return 'Withdraw';
+    case 'borrow':
+      return 'Borrow';
+    case 'repay':
+      return 'Repay';
+    case 'claim':
+      return 'Claim';
+    case 'approve':
+      return 'Approval';
+    case 'swap':
+    default:
+      return 'Swap';
+  }
+}
+
+function getDefaultTxHashType(action: TransactionAction, isBridge: boolean): TxHashType {
+  if (isBridge) return 'bridge';
+  switch (action) {
+    case 'swap':
+      return 'swap';
+    case 'stake':
+    case 'unstake':
+    case 'claim':
+      return 'stake';
+    case 'supply':
+    case 'withdraw':
+    case 'borrow':
+    case 'repay':
+      return 'lend';
+    case 'approve':
+      return 'approval';
+    default:
+      return 'other';
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -135,7 +184,8 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
 
   // 2. Determina se é swap ou bridge
   const isBridge = params.action === 'bridge' || params.fromChainId !== params.toChainId;
-  const action = params.action || (isBridge ? 'bridge' : 'swap');
+  const action: TransactionAction = params.action || (isBridge ? 'bridge' : 'swap');
+  const actionLabel = getActionLabel(action);
 
   // 3. Convert display amounts to raw
   const fromAmountRaw = parseAmountToRaw(params.fromAmount, params.fromAsset.decimals);
@@ -197,7 +247,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
       pendingHashes.push({
         hash,
         chainId,
-        type: type || (isBridge ? 'bridge' : 'swap'),
+        type: type || getDefaultTxHashType(action, isBridge),
       });
     },
 
@@ -206,7 +256,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
       await transactionApi.addTxHash(transaction.id, {
         hash,
         chainId,
-        type: type || (isBridge ? 'bridge' : 'swap'),
+        type: type || getDefaultTxHashType(action, isBridge),
         status: 'pending',
       });
     },
@@ -247,7 +297,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
           params.userId,
           transaction.id,
           {
-            action: isBridge ? 'Bridge' : 'Swap',
+            action: actionLabel,
             fromSymbol: params.fromAsset.symbol,
             toSymbol: params.toAsset.symbol,
             amount: params.fromAmount,
@@ -272,7 +322,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
           params.userId,
           transaction.id,
           {
-            action: isBridge ? 'Bridge' : 'Swap',
+            action: actionLabel,
             errorMessage,
           },
           tenantId

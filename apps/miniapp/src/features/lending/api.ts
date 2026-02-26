@@ -16,6 +16,10 @@ import { fetchWithAuth } from '@/shared/lib/fetchWithAuth';
 import { getAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 
 type SwitchChainFn = (chain: ReturnType<typeof defineChain>) => Promise<void>;
+export interface TransactionExecutionStatus {
+  transactionHash: string;
+  confirmed: boolean;
+}
 
 type SharedTokensState = {
   tokens: LendingToken[] | null;
@@ -25,6 +29,7 @@ type SharedTokensState = {
 };
 
 const sharedTokensStateByBaseUrl = new Map<string, SharedTokensState>();
+const inFlightLendingExecutionByKey = new Map<string, Promise<TransactionExecutionStatus>>();
 
 function getSharedTokensState(baseUrl: string): SharedTokensState {
   const existing = sharedTokensStateByBaseUrl.get(baseUrl);
@@ -37,6 +42,36 @@ function getSharedTokensState(baseUrl: string): SharedTokensState {
   };
   sharedTokensStateByBaseUrl.set(baseUrl, created);
   return created;
+}
+
+function normalizeExecutionHex(value: unknown): string {
+  if (typeof value === 'bigint') return `0x${value.toString(16)}`;
+  if (typeof value === 'number') return `0x${BigInt(Math.trunc(value)).toString(16)}`;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return '0x0';
+    if (trimmed.startsWith('0x')) return trimmed.toLowerCase();
+    try {
+      return `0x${BigInt(trimmed).toString(16)}`;
+    } catch {
+      return trimmed.toLowerCase();
+    }
+  }
+  return '0x0';
+}
+
+function buildLendingExecutionKey(input: {
+  chainId: number;
+  to: string;
+  data: string;
+  value: unknown;
+}): string {
+  return [
+    input.chainId,
+    input.to.toLowerCase(),
+    input.data.toLowerCase(),
+    normalizeExecutionHex(input.value),
+  ].join('|');
 }
 
 function extractRetryAfterSeconds(response: Response): number | null {
@@ -170,6 +205,172 @@ class LendingApiClient {
 
     if (Number.isFinite(this.activeChainId)) {
       return Number(this.activeChainId);
+    }
+
+    return null;
+  }
+
+  private getPreferredInjectedProviderId(): string {
+    const id =
+      this.activeWallet?.id ||
+      this.activeWallet?.walletId ||
+      this.account?.walletId ||
+      this.account?.wallet?.id ||
+      '';
+    return typeof id === 'string' ? id.toLowerCase() : '';
+  }
+
+  private providerMatchesPreferredWallet(provider: any, preferredWalletId: string): boolean {
+    if (!preferredWalletId) return false;
+    if (preferredWalletId.includes('metamask')) return !!provider?.isMetaMask;
+    if (preferredWalletId.includes('phantom')) return !!provider?.isPhantom;
+    if (preferredWalletId.includes('coinbase')) return !!provider?.isCoinbaseWallet;
+    if (preferredWalletId.includes('rabby')) return !!provider?.isRabby;
+    return false;
+  }
+
+  private async resolveInjectedProvider(address?: string): Promise<any | null> {
+    const ethereum = typeof window !== 'undefined' ? (window as any)?.ethereum : null;
+    if (!ethereum) return null;
+
+    const candidates = Array.isArray(ethereum?.providers) && ethereum.providers.length > 0
+      ? ethereum.providers
+      : [ethereum];
+
+    const normalizedAddress = typeof address === 'string' ? address.toLowerCase() : '';
+    const preferredWalletId = this.getPreferredInjectedProviderId();
+
+    if (normalizedAddress) {
+      const selectedAddressMatch = candidates.find((provider: any) => {
+        const selected = typeof provider?.selectedAddress === 'string' ? provider.selectedAddress.toLowerCase() : null;
+        return selected === normalizedAddress;
+      });
+      if (selectedAddressMatch) return selectedAddressMatch;
+    }
+
+    if (normalizedAddress) {
+      for (const provider of candidates) {
+        if (typeof provider?.request !== 'function') continue;
+        try {
+          const accounts = await provider.request({ method: 'eth_accounts' });
+          if (Array.isArray(accounts) && accounts.some((item) => typeof item === 'string' && item.toLowerCase() === normalizedAddress)) {
+            return provider;
+          }
+        } catch {}
+      }
+    }
+
+    const preferredProvider = candidates.find((provider: any) =>
+      this.providerMatchesPreferredWallet(provider, preferredWalletId),
+    );
+    if (preferredProvider) return preferredProvider;
+
+    return candidates[0] ?? null;
+  }
+
+  private isUnsupportedProviderRequest(error: unknown): boolean {
+    const anyError = error as any;
+    const code = Number(anyError?.code);
+    const message = String(anyError?.message || anyError?.shortMessage || anyError || '').toLowerCase();
+    return (
+      code === -32601 ||
+      message.includes('method not found') ||
+      message.includes('unsupported method') ||
+      message.includes('not implemented')
+    );
+  }
+
+  private normalizeAddress(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(trimmed)) return null;
+    return trimmed.toLowerCase();
+  }
+
+  private normalizeHexData(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed.startsWith('0x')) return null;
+    if (!/^0x[0-9a-f]*$/.test(trimmed)) return null;
+    return trimmed;
+  }
+
+  private async recoverRecentTxHashByPayload(params: {
+    provider: any;
+    expectedChainId: number;
+    from: string;
+    to?: string | null;
+    data?: string | null;
+    timeoutMs?: number;
+    lookbackBlocks?: number;
+  }): Promise<string | null> {
+    const {
+      provider,
+      expectedChainId,
+      from,
+      to,
+      data,
+      timeoutMs = 25_000,
+      lookbackBlocks = 12,
+    } = params;
+
+    if (!provider || typeof provider.request !== 'function') return null;
+    const normalizedFrom = this.normalizeAddress(from);
+    if (!normalizedFrom) return null;
+    const normalizedTo = this.normalizeAddress(to);
+    const normalizedData = this.normalizeHexData(data);
+
+    if (!normalizedTo && !normalizedData) return null;
+
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        const chainHex = await provider.request({ method: 'eth_chainId' });
+        const chainId = this.parseHexChainId(chainHex);
+        if (chainId != null && chainId !== expectedChainId) {
+          return null;
+        }
+
+        const latestHex = await provider.request({ method: 'eth_blockNumber' });
+        const latest = this.parseHexChainId(latestHex);
+        if (latest == null) break;
+
+        for (let offset = 0; offset <= lookbackBlocks; offset++) {
+          const blockNum = latest - offset;
+          if (blockNum < 0) break;
+
+          const blockHex = `0x${blockNum.toString(16)}`;
+          const block = await provider.request({
+            method: 'eth_getBlockByNumber',
+            params: [blockHex, true],
+          });
+
+          const txs = Array.isArray((block as any)?.transactions) ? (block as any).transactions : [];
+          for (const tx of txs) {
+            const txFrom = this.normalizeAddress((tx as any)?.from);
+            if (txFrom !== normalizedFrom) continue;
+
+            if (normalizedTo) {
+              const txTo = this.normalizeAddress((tx as any)?.to);
+              if (txTo !== normalizedTo) continue;
+            }
+
+            if (normalizedData) {
+              const txData = this.normalizeHexData((tx as any)?.input ?? (tx as any)?.data);
+              if (txData !== normalizedData) continue;
+            }
+
+            const txHash = (tx as any)?.hash;
+            if (typeof txHash === 'string' && /^0x[a-fA-F0-9]{64}$/.test(txHash)) {
+              return txHash;
+            }
+          }
+        }
+      } catch {
+        // Ignore and retry.
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     }
 
     return null;
@@ -741,6 +942,81 @@ class LendingApiClient {
   }
 
   async executeTransaction(txData: any): Promise<string> {
+    const result = await this.executeTransactionWithStatus(txData);
+    return result.transactionHash;
+  }
+
+  async executeTransactionWithStatus(txData: any): Promise<TransactionExecutionStatus> {
+    const describeUnknown = (err: unknown): string => {
+      if (err instanceof Error) return err.message || 'Unknown error';
+      if (typeof err === 'string') return err;
+      if (err && typeof err === 'object') {
+        const anyErr = err as any;
+        const message =
+          anyErr?.shortMessage ||
+          anyErr?.message ||
+          anyErr?.error?.message ||
+          anyErr?.error ||
+          anyErr?.reason ||
+          anyErr?.data?.message ||
+          anyErr?.response?.data?.message;
+        if (typeof message === 'string' && message.trim().length > 0) return message;
+        try {
+          const json = JSON.stringify(anyErr);
+          if (json && json !== '{}' && json !== '[]') return json;
+        } catch {}
+        try {
+          const props = Object.getOwnPropertyNames(anyErr);
+          if (props.length) {
+            const out: Record<string, unknown> = {};
+            for (const p of props) out[p] = anyErr[p];
+            return JSON.stringify(out);
+          }
+        } catch {}
+        return String(anyErr);
+      }
+      return 'Unknown error';
+    };
+
+    const extractTxHash = (value: unknown): string | null => {
+      if (!value) return null;
+      if (typeof value === 'string') {
+        return /^0x[a-fA-F0-9]{64}$/.test(value) ? value : null;
+      }
+      const candidate = value as any;
+      const maybeStrings = [
+        candidate?.transactionHash,
+        candidate?.hash,
+        candidate?.receipt?.transactionHash,
+        candidate?.result,
+        candidate?.result?.transactionHash,
+        candidate?.response?.transactionHash,
+        candidate?.response?.hash,
+        candidate?.txHash,
+      ];
+      for (const s of maybeStrings) {
+        if (typeof s === 'string' && /^0x[a-fA-F0-9]{64}$/.test(s)) return s;
+      }
+      return null;
+    };
+
+    const requestWithTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
+      return await new Promise<T>((resolve, reject) => {
+        const timeoutHandle = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s. Check your wallet and try again.`));
+        }, timeoutMs);
+        promise
+          .then((value) => {
+            clearTimeout(timeoutHandle);
+            resolve(value);
+          })
+          .catch((error) => {
+            clearTimeout(timeoutHandle);
+            reject(error);
+          });
+      });
+    };
+
     try {
       if (!this.account) {
         throw new Error('Please connect your wallet to execute blockchain transactions.');
@@ -799,74 +1075,177 @@ class LendingApiClient {
       }
 
       formattedTxData.chainId = targetChainId;
-
-      const extractTxHash = (value: unknown): string | null => {
-        if (!value) return null;
-        if (typeof value === 'string') {
-          return /^0x[a-fA-F0-9]{64}$/.test(value) ? value : null;
-        }
-        const candidate = value as any;
-        const maybeStrings = [
-          candidate?.transactionHash,
-          candidate?.hash,
-          candidate?.receipt?.transactionHash,
-          candidate?.result?.transactionHash,
-          candidate?.txHash,
-        ];
-        for (const s of maybeStrings) {
-          if (typeof s === 'string' && /^0x[a-fA-F0-9]{64}$/.test(s)) return s;
-        }
-        return null;
-      };
-
-      const result = await safeExecuteTransactionV2(async () => {
-        const sent = await this.account.sendTransaction(formattedTxData);
-        const hash = extractTxHash(sent);
-        if (!hash) {
-          console.error('❌ No transaction hash in response:', sent);
-          throw new Error('No transaction hash received from wallet.');
-        }
-        return { transactionHash: hash };
+      const txKey = buildLendingExecutionKey({
+        chainId: targetChainId,
+        to: formattedTxData.to,
+        data: formattedTxData.data,
+        value: formattedTxData.value,
       });
 
-      if (!result.success || !result.transactionHash) {
-        throw new Error(result.error || 'Transaction failed');
+      const existingExecution = inFlightLendingExecutionByKey.get(txKey);
+      if (existingExecution) {
+        return await existingExecution;
       }
+      const executionPromise = (async (): Promise<TransactionExecutionStatus> => {
+        const result = await safeExecuteTransactionV2(async () => {
+          const selectedProvider = await this.resolveInjectedProvider(this.account?.address);
+          const recoverHashFromWallet = async (options?: { timeoutMs?: number; lookbackBlocks?: number }) => {
+            return await this.recoverRecentTxHashByPayload({
+              provider: selectedProvider,
+              expectedChainId: targetChainId,
+              from: this.account.address,
+              to: formattedTxData.to,
+              data: formattedTxData.data,
+              timeoutMs: options?.timeoutMs,
+              lookbackBlocks: options?.lookbackBlocks,
+            });
+          };
+          const sleep = async (ms: number) => {
+            await new Promise((resolve) => setTimeout(resolve, ms));
+          };
+          const raceBroadcastWithRecovery = async (
+            send: () => Promise<unknown>,
+          ): Promise<{ transactionHash: string }> => {
+            let settled = false;
+            const sendPromise = requestWithTimeout(
+              Promise.resolve(send()),
+              45_000,
+              'Wallet transaction broadcast',
+            )
+              .then((value) => {
+                settled = true;
+                return value;
+              })
+              .catch((error) => {
+                settled = true;
+                throw error;
+              });
 
-      return result.transactionHash;
-    } catch (error) {
-      const describeUnknown = (err: unknown): string => {
-        if (err instanceof Error) return err.message || 'Unknown error';
-        if (typeof err === 'string') return err;
-        if (err && typeof err === 'object') {
-          const anyErr = err as any;
-          const message =
-            anyErr?.shortMessage ||
-            anyErr?.message ||
-            anyErr?.error?.message ||
-            anyErr?.error ||
-            anyErr?.reason ||
-            anyErr?.data?.message ||
-            anyErr?.response?.data?.message;
-          if (typeof message === 'string' && message.trim().length > 0) return message;
-          try {
-            const json = JSON.stringify(anyErr);
-            if (json && json !== '{}' && json !== '[]') return json;
-          } catch {}
-          try {
-            const props = Object.getOwnPropertyNames(anyErr);
-            if (props.length) {
-              const out: Record<string, unknown> = {};
-              for (const p of props) out[p] = anyErr[p];
-              return JSON.stringify(out);
+            const recoveryPromise = (async () => {
+              const startedAt = Date.now();
+              while (!settled && Date.now() - startedAt < 55_000) {
+                const recoveredHash = await recoverHashFromWallet({
+                  timeoutMs: 2_500,
+                  lookbackBlocks: 24,
+                });
+                if (recoveredHash) return recoveredHash;
+                if (settled) break;
+                await sleep(600);
+              }
+              return null;
+            })();
+
+            const raceResult = await Promise.race([
+              sendPromise.then((value) => ({ type: 'send' as const, value })),
+              (async () => {
+                const recoveredHash = await recoveryPromise;
+                if (!recoveredHash) {
+                  return await new Promise<never>(() => {});
+                }
+                settled = true;
+                return { type: 'recovered' as const, hash: recoveredHash };
+              })(),
+            ]);
+
+            if (raceResult.type === 'recovered') {
+              void sendPromise.catch(() => {});
+              return { transactionHash: raceResult.hash };
             }
-          } catch {}
-          return String(anyErr);
-        }
-        return 'Unknown error';
-      };
 
+            const directHash = extractTxHash(raceResult.value);
+            if (directHash) {
+              return { transactionHash: directHash };
+            }
+
+            const recoveredAfterSend = await recoverHashFromWallet({
+              timeoutMs: 8_000,
+              lookbackBlocks: 24,
+            });
+            if (recoveredAfterSend) {
+              return { transactionHash: recoveredAfterSend };
+            }
+
+            throw new Error('Wallet submitted transaction without a hash.');
+          };
+          const canUseInjectedProvider =
+            !!selectedProvider &&
+            typeof selectedProvider.request === 'function' &&
+            typeof this.account?.address === 'string';
+
+          if (canUseInjectedProvider) {
+            const providerTxPayload: Record<string, unknown> = {
+              from: this.account.address,
+              to: formattedTxData.to,
+              data: formattedTxData.data,
+              value: formattedTxData.value ?? '0x0',
+            };
+            if (formattedTxData.gas) providerTxPayload.gas = formattedTxData.gas;
+            if (formattedTxData.gasPrice) providerTxPayload.gasPrice = formattedTxData.gasPrice;
+
+            try {
+              return await raceBroadcastWithRecovery(() =>
+                Promise.resolve(
+                  selectedProvider.request({
+                    method: 'eth_sendTransaction',
+                    params: [providerTxPayload],
+                  }),
+                ),
+              );
+            } catch (providerError) {
+              if (!this.isUnsupportedProviderRequest(providerError)) {
+                const recoveredProviderHash = await recoverHashFromWallet();
+                if (recoveredProviderHash) {
+                  return { transactionHash: recoveredProviderHash };
+                }
+                throw providerError;
+              }
+              console.warn('[LENDING] Injected provider does not support eth_sendTransaction, falling back to account.sendTransaction.');
+            }
+          }
+
+          try {
+            return await raceBroadcastWithRecovery(() =>
+              Promise.resolve(this.account.sendTransaction(formattedTxData)),
+            );
+          } catch (accountSendError) {
+            const recoveredAccountHash = await recoverHashFromWallet();
+            if (recoveredAccountHash) {
+              return { transactionHash: recoveredAccountHash };
+            }
+            throw accountSendError;
+          }
+        });
+
+        if (!result.success || !result.transactionHash) {
+          throw new Error(result.error || 'Transaction failed');
+        }
+
+        return { transactionHash: result.transactionHash, confirmed: false };
+      })();
+
+      inFlightLendingExecutionByKey.set(txKey, executionPromise);
+      try {
+        return await executionPromise;
+      } finally {
+        if (inFlightLendingExecutionByKey.get(txKey) === executionPromise) {
+          inFlightLendingExecutionByKey.delete(txKey);
+        }
+      }
+    } catch (error) {
       const msg = describeUnknown(error);
+      const code = (error as any)?.code ?? (error as any)?.error?.code;
+      if (Number(code) === 4001 || /user rejected|user denied|rejected/i.test(msg)) {
+        throw new Error('Transaction rejected in wallet.');
+      }
+      if (/likely to fail|couldn'?t be completed|canceled to save/i.test(msg)) {
+        throw new Error('Wallet blocked this transaction because it is likely to fail. Review amount/method and try again.');
+      }
+      if (/insufficient funds|insufficient balance|gas/i.test(msg)) {
+        throw new Error('Insufficient balance for gas or amount.');
+      }
+      if (/wrong network|chain|network/i.test(msg)) {
+        throw new Error('Wrong network. Please switch to Avalanche C-Chain.');
+      }
       console.error('[LENDING] Transaction failed:', { message: msg, raw: error });
       throw new Error(`Transaction failed: ${msg}`);
     }
