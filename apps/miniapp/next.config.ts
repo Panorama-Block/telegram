@@ -43,6 +43,41 @@ function normalizeLendingDevBase(raw: string | undefined, isDev: boolean): strin
   return remapped;
 }
 
+type LendingBaseResolution = {
+  base: string;
+  errors: string[];
+  warnings: string[];
+};
+
+export function resolveLendingBaseForRewrite(
+  env: NodeJS.ProcessEnv,
+  isDev: boolean,
+): LendingBaseResolution {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const lendingServiceUrl = (env.LENDING_SERVICE_URL || "").trim();
+  const viteLendingBase = (env.VITE_LENDING_API_BASE || "").trim();
+  const publicLendingBase = (env.NEXT_PUBLIC_LENDING_API_URL || "").trim();
+
+  const raw = lendingServiceUrl || viteLendingBase || publicLendingBase;
+  const base = normalizeLendingDevBase(raw, isDev);
+
+  if (!isDev && !lendingServiceUrl) {
+    warnings.push(
+      "[Next.js] LENDING_SERVICE_URL is the canonical production variable for lending proxy.",
+    );
+  }
+
+  if (!isDev && !base) {
+    errors.push(
+      "[Next.js] Lending proxy disabled: LENDING_SERVICE_URL (or VITE_LENDING_API_BASE / NEXT_PUBLIC_LENDING_API_URL) is required in production.",
+    );
+  }
+
+  return { base, errors, warnings };
+}
+
 const nextConfig: NextConfig = {
   // o app vive sob /miniapp
   basePath: "/miniapp",
@@ -75,25 +110,10 @@ const nextConfig: NextConfig = {
 
   async rewrites() {
     const isDev = process.env.NODE_ENV !== "production";
-
     // Prefer host-mapped localhost ports during local dev (Docker service names are not reachable from the browser/Next proxy).
-    const lendingBaseRaw = isDev
-      ? (
-          process.env.LENDING_SERVICE_URL ||
-          process.env.VITE_LENDING_API_BASE ||
-          process.env.NEXT_PUBLIC_LENDING_API_URL ||
-          ""
-        )
-      : (
-          process.env.LENDING_SERVICE_URL ||
-          process.env.VITE_LENDING_API_BASE ||
-          process.env.NEXT_PUBLIC_LENDING_API_URL ||
-          (process.env.PUBLIC_GATEWAY_URL ? process.env.PUBLIC_GATEWAY_URL.replace(/\/+$/, "") : "") ||
-          ""
-        );
-    // Local Docker mapping for lending-service is host 3007 -> container 3006.
-    // If 3006 is used here, the miniapp can end up proxying to itself and return 404 on /benqi/*.
-    const lendingBase = normalizeLendingDevBase(lendingBaseRaw, isDev);
+    // In production, fail fast if lending base is missing; never fall back to generic gateway URL for /api/lending/*.
+    const lendingResolution = resolveLendingBaseForRewrite(process.env, isDev);
+    const lendingBase = lendingResolution.base;
 
     const stakingBaseRaw =
       process.env.VITE_STAKING_API_URL ||
@@ -122,10 +142,16 @@ const nextConfig: NextConfig = {
     });
 
     if (!lendingBase) {
-      console.warn('[Next.js] Lending API base URL not configured, proxy will not work');
-      console.warn('[Next.js] Please set VITE_LENDING_API_BASE or NEXT_PUBLIC_LENDING_API_URL in .env');
+      if (lendingResolution.errors.length > 0) {
+        lendingResolution.errors.forEach((msg) => console.error(msg));
+      } else {
+        console.warn('[Next.js] Lending API base URL not configured, proxy will not work');
+        console.warn('[Next.js] Please set LENDING_SERVICE_URL, VITE_LENDING_API_BASE, or NEXT_PUBLIC_LENDING_API_URL in .env');
+      }
     } else {
+      lendingResolution.warnings.forEach((msg) => console.warn(msg));
       console.log('[Next.js] Lending API proxy configured:', lendingBase);
+      console.log('[Next.js] Lending rewrite target: /api/lending/:path* ->', `${lendingBase}/:path*`);
       rewrites.push({
         source: "/api/lending/:path*",
         destination: `${lendingBase}/:path*`,
