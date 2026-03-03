@@ -55,4 +55,19 @@ describe('next.config lending rewrite resolution', () => {
     expect(result.base).toBe('');
     expect(result.errors.length).toBeGreaterThan(0);
   });
+
+  it('does not use legacy lending envs in production without LENDING_SERVICE_URL', () => {
+    const result = resolveLendingBaseForRewrite(
+      {
+        NODE_ENV: 'production',
+        VITE_LENDING_API_BASE: 'https://legacy-lending.example.com',
+        NEXT_PUBLIC_LENDING_API_URL: 'https://public-legacy-lending.example.com',
+      },
+      false,
+    );
+
+    expect(result.base).toBe('');
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.warnings.join(' ')).toContain('Ignoring VITE_LENDING_API_BASE');
+  });
 });

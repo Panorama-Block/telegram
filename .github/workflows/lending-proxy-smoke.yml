@@ -1,0 +1,80 @@
+name: Lending Proxy Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_base_url:
+        description: "Miniapp public base URL (without trailing slash)"
+        required: false
+        default: "https://www.panoramablock.com"
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  lending-proxy-smoke:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_BASE_URL: ${{ github.event.inputs.target_base_url || vars.MINIAPP_BASE_URL || 'https://www.panoramablock.com' }}
+      SMOKE_ADDRESS: 0x1111111111111111111111111111111111111111
+    steps:
+      - name: Show target
+        run: |
+          echo "TARGET_BASE_URL=$TARGET_BASE_URL"
+
+      - name: Smoke /api/lending/benqi/markets
+        run: |
+          set -euo pipefail
+          markets_url="${TARGET_BASE_URL%/}/api/lending/benqi/markets"
+          markets_status="$(curl -sS -L --max-time 30 -o /tmp/lending_markets_body.txt -w '%{http_code}' "$markets_url")"
+          echo "markets_status=$markets_status"
+          cat /tmp/lending_markets_body.txt || true
+          if [ "$markets_status" = "404" ]; then
+            echo "ERROR: markets endpoint returned 404"
+            exit 1
+          fi
+          if [ "$markets_status" -lt 200 ] || [ "$markets_status" -ge 300 ]; then
+            echo "ERROR: markets endpoint did not return 2xx"
+            exit 1
+          fi
+
+      - name: Smoke /api/lending/benqi/account/:address/positions
+        run: |
+          set -euo pipefail
+          positions_url="${TARGET_BASE_URL%/}/api/lending/benqi/account/${SMOKE_ADDRESS}/positions"
+          positions_status="$(curl -sS -L --max-time 30 -o /tmp/lending_positions_body.txt -w '%{http_code}' "$positions_url")"
+          echo "positions_status=$positions_status"
+          cat /tmp/lending_positions_body.txt || true
+          if [ "$positions_status" = "404" ]; then
+            echo "ERROR: positions endpoint returned 404"
+            exit 1
+          fi
+
+      - name: Smoke /miniapp/api/lending/benqi/markets
+        run: |
+          set -euo pipefail
+          markets_url="${TARGET_BASE_URL%/}/miniapp/api/lending/benqi/markets"
+          markets_status="$(curl -sS -L --max-time 30 -o /tmp/lending_markets_basepath_body.txt -w '%{http_code}' "$markets_url")"
+          echo "markets_basepath_status=$markets_status"
+          cat /tmp/lending_markets_basepath_body.txt || true
+          if [ "$markets_status" = "404" ]; then
+            echo "ERROR: basePath markets endpoint returned 404"
+            exit 1
+          fi
+          if [ "$markets_status" -lt 200 ] || [ "$markets_status" -ge 300 ]; then
+            echo "ERROR: basePath markets endpoint did not return 2xx"
+            exit 1
+          fi
+
+      - name: Smoke /miniapp/api/lending/benqi/account/:address/positions
+        run: |
+          set -euo pipefail
+          positions_url="${TARGET_BASE_URL%/}/miniapp/api/lending/benqi/account/${SMOKE_ADDRESS}/positions"
+          positions_status="$(curl -sS -L --max-time 30 -o /tmp/lending_positions_basepath_body.txt -w '%{http_code}' "$positions_url")"
+          echo "positions_basepath_status=$positions_status"
+          cat /tmp/lending_positions_basepath_body.txt || true
+          if [ "$positions_status" = "404" ]; then
+            echo "ERROR: basePath positions endpoint returned 404"
+            exit 1
+          fi
