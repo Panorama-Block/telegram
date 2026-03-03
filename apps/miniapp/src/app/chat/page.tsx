@@ -24,6 +24,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { swapApi } from '@/features/swap/api';
 import { bridgeApi } from '@/features/swap/bridgeApi';
 import { Lending } from '@/components/Lending';
+import { useLendingApi } from '@/features/lending';
 import { normalizeToApi, formatAmountHuman, toFixedFloor } from '@/features/swap/utils';
 import { networks, Token, TON_CHAIN_ID } from '@/features/swap/tokens';
 import { useActiveAccount, useActiveWallet } from 'thirdweb/react';
@@ -391,6 +392,7 @@ export default function ChatPage() {
   const { address: identityAddress, tonAddress, tonAddressRaw } = useWalletIdentity();
   const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
+  const lendingApi = useLendingApi();
 
   // Swap states
   const [swapQuote, setSwapQuote] = useState<QuoteResponse | null>(null);
@@ -406,6 +408,11 @@ export default function ChatPage() {
   // Lending states
   const [lendingModalOpen, setLendingModalOpen] = useState(false);
   const [currentLendingMetadata, setCurrentLendingMetadata] = useState<Record<string, unknown> | null>(null);
+  const [lendingLoading, setLendingLoading] = useState(false);
+  const [lendingError, setLendingError] = useState<string | null>(null);
+  const [lendingApy, setLendingApy] = useState<{ supplyAPY: number; borrowAPY: number } | null>(null);
+  const [lendingBalance, setLendingBalance] = useState<string | null>(null);
+  const [lendingInsufficientBalance, setLendingInsufficientBalance] = useState(false);
 
   // Staking states
   const [showStakingWidget, setShowStakingWidget] = useState(false);
@@ -1083,6 +1090,12 @@ export default function ChatPage() {
         checkSwapBalance(streamResult.metadata as Record<string, unknown>);
       }
 
+      // Auto-fetch lending APY and check balance if it's a lending intent
+      if (streamResult.metadata?.event === 'lending_intent_ready') {
+        getLendingInfo(streamResult.metadata as Record<string, unknown>);
+        checkLendingBalance(streamResult.metadata as Record<string, unknown>);
+      }
+
       setMessagesByConversation((prev) => {
         const prevMessages = prev[conversationId] ?? [];
         const nextMessages = {
@@ -1539,6 +1552,85 @@ export default function ChatPage() {
       console.error('[Chat] Error checking swap balance:', error);
     }
   }, [client, account?.address]);
+
+  // Fetch lending APY + check balance when a lending intent is ready
+  const getLendingInfo = useCallback(async (metadata: Record<string, unknown>) => {
+    const asset = String(metadata?.asset || metadata?.token || '');
+    const action = String(metadata?.action || 'supply');
+    if (!asset) return;
+
+    try {
+      setLendingLoading(true);
+      setLendingError(null);
+      setLendingApy(null);
+
+      const tokens = await lendingApi.getTokens();
+      const match = tokens.find((t) => t.symbol.toUpperCase() === asset.toUpperCase());
+      if (match) {
+        setLendingApy({ supplyAPY: match.supplyAPY, borrowAPY: match.borrowAPY });
+      }
+    } catch (error) {
+      console.error('[Chat] Error fetching lending info:', error);
+      setLendingError(error instanceof Error ? error.message : 'Failed to fetch lending data');
+    } finally {
+      setLendingLoading(false);
+    }
+  }, [lendingApi]);
+
+  const checkLendingBalance = useCallback(async (metadata: Record<string, unknown>) => {
+    setLendingInsufficientBalance(false);
+    setLendingBalance(null);
+
+    if (!client || !account?.address) return;
+
+    const asset = String(metadata?.asset || metadata?.token || '');
+    const amount = metadata?.amount;
+    const action = String(metadata?.action || 'supply');
+    if (!asset || !amount) return;
+    // Only check balance for supply and repay (user sends tokens)
+    if (action !== 'supply' && action !== 'repay') return;
+
+    try {
+      const { defineChain, getContract } = await import("thirdweb");
+      const { eth_getBalance, getRpcClient } = await import("thirdweb/rpc");
+      const { getBalance } = await import("thirdweb/extensions/erc20");
+
+      // Avalanche C-Chain ID = 43114
+      const AVALANCHE_CHAIN_ID = 43114;
+      const isNativeAvax = asset.toUpperCase() === 'AVAX';
+
+      let balance: bigint;
+      let decimals = 18;
+
+      if (isNativeAvax) {
+        const rpcRequest = getRpcClient({ client, chain: defineChain(AVALANCHE_CHAIN_ID) });
+        balance = await eth_getBalance(rpcRequest, { address: account.address });
+      } else {
+        // Fetch token address from lending API tokens
+        const tokens = await lendingApi.getTokens();
+        const tokenInfo = tokens.find((t) => t.symbol.toUpperCase() === asset.toUpperCase());
+        if (!tokenInfo || tokenInfo.address === 'native') return;
+
+        const tokenContract = getContract({
+          client,
+          chain: defineChain(AVALANCHE_CHAIN_ID),
+          address: tokenInfo.address,
+        });
+        const balanceResult = await getBalance({ contract: tokenContract, address: account.address });
+        balance = balanceResult.value;
+        decimals = balanceResult.decimals;
+      }
+
+      const formattedBalance = formatAmountHuman(balance, decimals, 6);
+      setLendingBalance(formattedBalance);
+
+      const userBalance = parseFloat(formattedBalance);
+      const lendingAmount = parseFloat(String(amount));
+      setLendingInsufficientBalance(userBalance < lendingAmount);
+    } catch (error) {
+      console.error('[Chat] Error checking lending balance:', error);
+    }
+  }, [client, account?.address, lendingApi]);
 
   return (
     <ProtectedRoute>
@@ -2048,13 +2140,17 @@ export default function ChatPage() {
                                   })()}
 
                                   {message.metadata?.event === 'lending_intent_ready' && (() => {
-                                    const token = String(message.metadata?.token || 'USDC');
-                                    const network = String(message.metadata?.network || 'Avalanche');
-                                    const action = String(message.metadata?.action || 'Supply');
+                                    const token = String(message.metadata?.asset || message.metadata?.token || 'USDC');
+                                    const network = String(message.metadata?.network || 'avalanche');
+                                    const action = String(message.metadata?.action || 'supply');
                                     const tokenIcon = getTokenIcon(token);
+                                    const isSupplyOrRepay = action === 'supply' || action === 'repay';
+                                    const displayApy = lendingApy
+                                      ? (action === 'borrow' ? lendingApy.borrowAPY : lendingApy.supplyAPY)
+                                      : null;
 
                                     return (
-                                      <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                      <div className="mt-3 sm:mt-4 w-full max-w-[588px] sm:max-w-2xl">
                                         {/* Lending Card */}
                                         <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
                                           {/* Gradient Glow */}
@@ -2067,6 +2163,7 @@ export default function ChatPage() {
                                             <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-emerald-500/30">
                                               {action.toUpperCase()}
                                             </span>
+                                            {lendingLoading && <div className="loader-inline-sm ml-1" />}
                                           </div>
 
                                           {/* Content */}
@@ -2092,19 +2189,61 @@ export default function ChatPage() {
                                                   <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
                                                 </div>
                                               </div>
+                                              {/* Balance line */}
+                                              {isSupplyOrRepay && lendingBalance !== null && (
+                                                <div className="mt-1 text-right">
+                                                  <span className="text-[9px] sm:text-[10px] text-zinc-500">Balance: {lendingBalance} {token}</span>
+                                                </div>
+                                              )}
                                             </div>
+
+                                            {/* APY Info */}
+                                            {displayApy !== null && (
+                                              <div className="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg sm:rounded-xl px-2.5 sm:px-3 py-2">
+                                                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">
+                                                  {action === 'borrow' ? 'Borrow' : 'Supply'} APY
+                                                </span>
+                                                <span className="text-xs sm:text-sm font-medium text-emerald-400">
+                                                  {displayApy.toFixed(2)}%
+                                                </span>
+                                              </div>
+                                            )}
+
+                                            {/* Error Message */}
+                                            {lendingError && !lendingLoading && (
+                                              <div className="p-2 sm:p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl">
+                                                <p className="text-[10px] sm:text-xs text-red-300">{lendingError}</p>
+                                              </div>
+                                            )}
+
+                                            {/* Insufficient Balance Warning */}
+                                            {lendingInsufficientBalance && !lendingLoading && (
+                                              <div className="bg-red-500/10 border border-red-500/40 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                                <div className="flex items-start gap-2">
+                                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400 flex-shrink-0 mt-0.5">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                  </svg>
+                                                  <div>
+                                                    <p className="text-xs font-semibold text-red-400 mb-0.5">Insufficient Balance</p>
+                                                    <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-relaxed">
+                                                      You have {lendingBalance ?? '0'} {token} but trying to {action} {String(message.metadata?.amount)} {token}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            )}
 
                                             {/* Action Button */}
                                             <button
                                               onClick={async () => {
-                                                // Auto-switch to Avalanche before opening lending modal
-                                                await autoSwitchNetwork('avalanche');
+                                                await autoSwitchNetwork(String(message.metadata?.network || 'avalanche'));
                                                 setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
                                                 setLendingModalOpen(true);
                                               }}
-                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                              disabled={lendingLoading}
+                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                                             >
-                                              Review {action}
+                                              {lendingLoading ? 'Loading...' : `Review ${action.charAt(0).toUpperCase() + action.slice(1)}`}
                                             </button>
                                           </div>
 
@@ -2644,6 +2783,7 @@ export default function ChatPage() {
 	                  parseLendingFlow(currentLendingMetadata?.flow) ??
 	                  deriveLendingFlowFromAction(currentLendingMetadata?.action)
 	                }
+	                initialViewState="review"
 	              />
 	            )}
 	          </AnimatePresence>

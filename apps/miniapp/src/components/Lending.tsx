@@ -57,6 +57,7 @@ interface LendingProps {
   initialAsset?: string;
   initialMode?: Mode;
   initialFlow?: Flow;
+  initialViewState?: ViewState;
   variant?: 'modal' | 'panel';
 }
 
@@ -98,6 +99,7 @@ export function Lending({
   initialAsset,
   initialMode,
   initialFlow,
+  initialViewState,
   variant = 'modal',
 }: LendingProps) {
   const account = useActiveAccount();
@@ -119,6 +121,17 @@ export function Lending({
   const [activeMarket, setActiveMarket] = useState<LendingToken | null>(null);
 
   const [amount, setAmount] = useState<string>(normalizeInitialAmount(initialAmount) ?? '');
+
+  // When launched with initialViewState='review' (e.g. from chat), auto-advance
+  // once the market data has loaded so the review screen can render properly.
+  const hasDeferredReviewRef = useRef(initialViewState === 'review');
+  useEffect(() => {
+    if (!hasDeferredReviewRef.current) return;
+    if (activeMarket && amount) {
+      hasDeferredReviewRef.current = false;
+      setViewState('review');
+    }
+  }, [activeMarket, amount]);
 
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [walletBalanceWei, setWalletBalanceWei] = useState<bigint | null>(null);
