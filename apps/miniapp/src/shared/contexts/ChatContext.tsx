@@ -18,6 +18,7 @@ interface ChatContextType {
   isLoading: boolean;
   error: string | null;
   createConversation: () => Promise<string | null>;
+  deleteConversation: (id: string) => Promise<void>;
   setActiveConversationId: (id: string | null) => void;
   refreshConversations: () => Promise<void>;
   isCreatingConversation: boolean;
@@ -165,6 +166,25 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
   }, [userId, agentsClient, getAuthOptions, isCreatingConversation, setActiveConversationId]);
 
+  const deleteConversation = useCallback(async (conversationId: string): Promise<void> => {
+    if (!userId) return;
+
+    try {
+      const authOpts = getAuthOptions();
+      await agentsClient.deleteConversation(userId, conversationId, authOpts);
+
+      if (!isMountedRef.current) return;
+
+      setConversations(prev => prev.filter(c => c.id !== conversationId));
+
+      if (activeConversationId === conversationId) {
+        setActiveConversationId(null);
+      }
+    } catch (err) {
+      console.error('Error deleting conversation:', err);
+    }
+  }, [userId, agentsClient, getAuthOptions, activeConversationId, setActiveConversationId]);
+
   // Bootstrap on mount
   useEffect(() => {
     isMountedRef.current = true;
@@ -207,6 +227,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     error,
     createConversation,
+    deleteConversation,
     setActiveConversationId,
     refreshConversations,
     isCreatingConversation,
@@ -216,6 +237,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     error,
     createConversation,
+    deleteConversation,
     setActiveConversationId,
     refreshConversations,
     isCreatingConversation,
