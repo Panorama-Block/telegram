@@ -212,6 +212,18 @@ describe('LendingApiClient', () => {
     ).rejects.toThrow(/does not support EVM transactions/i);
   });
 
+  test('normalizes object signature payload returned by wallet signMessage', async () => {
+    const api = new LendingApiClient({
+      address: '0x1111111111111111111111111111111111111111',
+      signMessage: vi.fn().mockResolvedValue({
+        signature: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1b',
+      }),
+    });
+
+    const signature = await (api as any).generateSignature('hello');
+    expect(signature).toMatch(/^0x[a-fA-F0-9]+$/);
+  });
+
   test('normalizes tx payload and executes on matching chain', async () => {
     const sendTransactionMock = vi.fn().mockResolvedValue({
       transactionHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
