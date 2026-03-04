@@ -60,18 +60,20 @@ export function resolveLendingBaseForRewrite(
   const viteLendingBase = (env.VITE_LENDING_API_BASE || "").trim();
   const publicLendingBase = (env.NEXT_PUBLIC_LENDING_API_URL || "").trim();
 
-  const raw = lendingServiceUrl || viteLendingBase || publicLendingBase;
+  const raw = isDev
+    ? (lendingServiceUrl || viteLendingBase || publicLendingBase)
+    : lendingServiceUrl;
   const base = normalizeLendingDevBase(raw, isDev);
 
-  if (!isDev && !lendingServiceUrl) {
+  if (!isDev && !lendingServiceUrl && (viteLendingBase || publicLendingBase)) {
     warnings.push(
-      "[Next.js] LENDING_SERVICE_URL is the canonical production variable for lending proxy.",
+      "[Next.js] Ignoring VITE_LENDING_API_BASE/NEXT_PUBLIC_LENDING_API_URL in production. Set LENDING_SERVICE_URL.",
     );
   }
 
   if (!isDev && !base) {
     errors.push(
-      "[Next.js] Lending proxy disabled: LENDING_SERVICE_URL (or VITE_LENDING_API_BASE / NEXT_PUBLIC_LENDING_API_URL) is required in production.",
+      "[Next.js] Lending proxy disabled: LENDING_SERVICE_URL is required in production.",
     );
   }
 

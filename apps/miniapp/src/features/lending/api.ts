@@ -7,7 +7,9 @@ import {
   LendingToken,
   LendingAccountPositionsResponse,
   ValidationResponse,
-  CacheStatus
+  CacheStatus,
+  LegacyBenqiAccountInfo,
+  LegacyBenqiQTokenRow,
 } from './types';
 import { LENDING_CONFIG, API_ENDPOINTS, TOKEN_ICONS, VALIDATION_FEE, updateValidationFee } from './config';
 import { parseAmountToWei } from '@/features/swap/utils';
@@ -30,6 +32,8 @@ type SharedTokensState = {
 
 const sharedTokensStateByBaseUrl = new Map<string, SharedTokensState>();
 const inFlightLendingExecutionByKey = new Map<string, Promise<TransactionExecutionStatus>>();
+const LEGACY_FALLBACK_SESSION_KEY = 'lending_legacy_fallback_logged';
+const legacyFallbackLoggedKinds = new Set<string>();
 
 function getSharedTokensState(baseUrl: string): SharedTokensState {
   const existing = sharedTokensStateByBaseUrl.get(baseUrl);
@@ -115,6 +119,27 @@ function resolveLendingTokenIcon(...symbols: Array<string | undefined | null>): 
     if (TOKEN_ICONS[normalizedUpper]) return TOKEN_ICONS[normalizedUpper];
   }
   return undefined;
+}
+
+function logLegacyFallbackOnce(kind: 'markets' | 'positions'): void {
+  if (legacyFallbackLoggedKinds.has(kind)) return;
+
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = sessionStorage.getItem(LEGACY_FALLBACK_SESSION_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      const alreadyLogged = Array.isArray(parsed) && parsed.includes(kind);
+      if (alreadyLogged) {
+        legacyFallbackLoggedKinds.add(kind);
+        return;
+      }
+      const next = Array.from(new Set([...(Array.isArray(parsed) ? parsed : []), kind]));
+      sessionStorage.setItem(LEGACY_FALLBACK_SESSION_KEY, JSON.stringify(next));
+    } catch {}
+  }
+
+  legacyFallbackLoggedKinds.add(kind);
+  console.warn(`[LENDING] Legacy fallback enabled (${kind}: 404 on normalized endpoints)`);
 }
 
 class LendingApiClient {
@@ -435,7 +460,16 @@ class LendingApiClient {
     // Only try to sign with account if we don't have JWT (pure MetaMask users)
     if (this.account) {
       try {
-        const signature = await this.account.signMessage({ message });
+        const signedPayload = await this.account.signMessage({ message });
+        const signature =
+          typeof signedPayload === 'string'
+            ? signedPayload
+            : (typeof (signedPayload as any)?.signature === 'string' ? (signedPayload as any).signature : null);
+
+        if (!signature) {
+          throw new Error('Wallet returned an unexpected signature payload format.');
+        }
+
         return signature;
       } catch (error) {
         console.error('[LENDING] Error signing message:', error);
@@ -483,6 +517,162 @@ class LendingApiClient {
       }
     } catch {}
     return raw.length > 240 ? `${raw.slice(0, 240)}...` : raw;
+  }
+
+  private extractMarketsArray(data: any): any[] | null {
+    if (Array.isArray(data)) return data;
+    if (data?.data?.markets && Array.isArray(data.data.markets)) return data.data.markets;
+    if (data?.markets && Array.isArray(data.markets)) return data.markets;
+    if (data?.data && Array.isArray(data.data)) return data.data;
+    return null;
+  }
+
+  private mapMarketsArrayToTokens(marketsArray: any[]): LendingToken[] {
+    return marketsArray.map((market: any) => {
+      const supplyApyBps = Number(market?.supplyApyBps ?? 0);
+      const borrowApyBps = Number(market?.borrowApyBps ?? 0);
+      const collateralFactorBps = market?.collateralFactorBps != null ? Number(market.collateralFactorBps) : null;
+      const underlyingSymbol = normalizeDisplaySymbol(market?.underlyingSymbol || market?.symbol || 'UNKNOWN');
+
+      return {
+        symbol: underlyingSymbol,
+        address: market?.underlyingAddress || market?.address || '0x0000000000000000000000000000000000000000',
+        qTokenAddress: market?.qTokenAddress || market?.qToken || market?.marketAddress || '',
+        qTokenSymbol: market?.qTokenSymbol || market?.qToken?.symbol || '',
+        icon: resolveLendingTokenIcon(underlyingSymbol, market?.symbol, market?.qTokenSymbol),
+        decimals: Number(market?.underlyingDecimals ?? market?.decimals ?? 18),
+        supplyAPY: Number.isFinite(supplyApyBps) ? supplyApyBps / 100 : 0,
+        borrowAPY: Number.isFinite(borrowApyBps) ? borrowApyBps / 100 : 0,
+        totalSupply: '0',
+        totalBorrowed: '0',
+        availableLiquidity: '0',
+        collateralFactor: collateralFactorBps != null && Number.isFinite(collateralFactorBps)
+          ? collateralFactorBps / 10000
+          : 0,
+        isCollateral: true,
+      };
+    }).filter((token) => !!token.qTokenAddress);
+  }
+
+  private extractLegacyQTokens(data: any): LegacyBenqiQTokenRow[] | null {
+    const candidates = [
+      data?.data?.qTokens,
+      data?.qTokens,
+      data?.data,
+      data,
+    ];
+
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        return candidate as LegacyBenqiQTokenRow[];
+      }
+    }
+    return null;
+  }
+
+  private mapLegacyQTokensToTokens(rows: LegacyBenqiQTokenRow[]): LendingToken[] {
+    return rows.map((row) => {
+      const qTokenAddress = row?.address || '';
+      const qTokenSymbol = row?.symbol || '';
+      const underlyingSymbol = normalizeDisplaySymbol(row?.underlying || qTokenSymbol.replace(/^q/i, '') || 'UNKNOWN');
+      const isNative = underlyingSymbol.toUpperCase() === 'AVAX';
+
+      return {
+        symbol: underlyingSymbol,
+        // Legacy route does not expose underlying address. Keep native explicit and fallback for ERC20.
+        address: isNative ? 'native' : '0x0000000000000000000000000000000000000000',
+        qTokenAddress,
+        qTokenSymbol,
+        icon: resolveLendingTokenIcon(underlyingSymbol, qTokenSymbol),
+        decimals: 18,
+        supplyAPY: 0,
+        borrowAPY: 0,
+        totalSupply: '0',
+        totalBorrowed: '0',
+        availableLiquidity: '0',
+        collateralFactor: 0,
+        isCollateral: true,
+      };
+    }).filter((token) => !!token.qTokenAddress);
+  }
+
+  private extractLegacyAccountInfo(data: any): LegacyBenqiAccountInfo | null {
+    const candidate = data?.data ?? data;
+    if (!candidate || typeof candidate !== 'object') return null;
+    if (!candidate.liquidity && !candidate.qTokenBalances && !candidate.borrowBalances) return null;
+    return candidate as LegacyBenqiAccountInfo;
+  }
+
+  private normalizeLegacyAccountInfo(
+    legacyInfo: LegacyBenqiAccountInfo,
+    fallbackAddress: string,
+  ): LendingAccountPositionsResponse {
+    const shared = getSharedTokensState(this.baseUrl);
+    const tokenByQToken = new Map<string, LendingToken>(
+      (shared.tokens || []).map((token) => [token.qTokenAddress.toLowerCase(), token]),
+    );
+
+    const accountAddress = (legacyInfo.accountAddress || fallbackAddress || '').toLowerCase();
+    const collateralSet = new Set(
+      (legacyInfo.assetsIn?.assets || [])
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.toLowerCase()),
+    );
+
+    const qTokenBalances = (legacyInfo.qTokenBalances || []).filter((item) => typeof item?.qTokenAddress === 'string');
+    const borrowBalances = (legacyInfo.borrowBalances || []).filter((item) => typeof item?.qTokenAddress === 'string');
+
+    const supplyByQToken = new Map(qTokenBalances.map((row) => [String(row.qTokenAddress).toLowerCase(), row]));
+    const borrowByQToken = new Map(borrowBalances.map((row) => [String(row.qTokenAddress).toLowerCase(), row]));
+    const allQTokens = Array.from(new Set([...supplyByQToken.keys(), ...borrowByQToken.keys()]));
+
+    const positions = allQTokens.map((qTokenLower) => {
+      const supply = supplyByQToken.get(qTokenLower);
+      const borrow = borrowByQToken.get(qTokenLower);
+      const tokenMeta = tokenByQToken.get(qTokenLower);
+      const qTokenAddress = supply?.qTokenAddress || borrow?.qTokenAddress || '';
+      const symbol = tokenMeta?.symbol || 'UNKNOWN';
+      const suppliedWei = supply?.underlyingBalance || '0';
+      const borrowedWei = borrow?.borrowBalance || '0';
+      const qTokenBalanceWei = supply?.qTokenBalance || '0';
+
+      if (suppliedWei === '0' && borrowedWei === '0' && qTokenBalanceWei === '0') {
+        return null;
+      }
+
+      return {
+        chainId: 43114,
+        protocol: 'benqi',
+        qTokenAddress,
+        qTokenSymbol: tokenMeta?.qTokenSymbol || 'qToken',
+        underlyingAddress: tokenMeta?.address || (symbol === 'AVAX' ? 'native' : '0x0000000000000000000000000000000000000000'),
+        underlyingSymbol: symbol,
+        underlyingDecimals: tokenMeta?.decimals ?? 18,
+        qTokenDecimals: 8,
+        qTokenBalanceWei,
+        suppliedWei,
+        borrowedWei,
+        collateralEnabled: collateralSet.has(qTokenLower),
+      };
+    }).filter((row): row is NonNullable<typeof row> => !!row);
+
+    const rawLiquidity = legacyInfo.liquidity || {};
+    const liquidity = {
+      accountAddress,
+      liquidity: String(rawLiquidity.liquidity ?? '0'),
+      shortfall: String(rawLiquidity.shortfall ?? '0'),
+      isHealthy: typeof rawLiquidity.isHealthy === 'boolean'
+        ? rawLiquidity.isHealthy
+        : String(rawLiquidity.shortfall ?? '0') === '0',
+    };
+
+    return {
+      accountAddress,
+      liquidity,
+      positions,
+      updatedAt: Date.now(),
+      warnings: ['Using legacy lending API compatibility mode.'],
+    };
   }
 
   private formatPrepareError(action: string, status: number, backendMessage: string): string {
@@ -621,54 +811,38 @@ class LendingApiClient {
 
         const response = await fetch(requestUrl, { signal: controller.signal });
 
-        if (!response.ok) {
-          const err = new Error(`HTTP error! status: ${response.status}`);
-          (err as any).status = response.status;
-          (err as any).retryAfterSeconds = extractRetryAfterSeconds(response);
-          throw err;
+        let tokens: LendingToken[] = [];
+        if (!response.ok && response.status === 404) {
+          const legacyUrl = `${this.baseUrl}/benqi/qtokens`;
+          const legacyResponse = await fetch(legacyUrl, { signal: controller.signal });
+          if (!legacyResponse.ok) {
+            const err = new Error(`HTTP error! status: ${legacyResponse.status}`);
+            (err as any).status = legacyResponse.status;
+            (err as any).retryAfterSeconds = extractRetryAfterSeconds(legacyResponse);
+            throw err;
+          }
+          const legacyPayload = await legacyResponse.json();
+          const legacyRows = this.extractLegacyQTokens(legacyPayload);
+          if (!legacyRows) {
+            throw new Error('Invalid legacy API response: expected qTokens array');
+          }
+          tokens = this.mapLegacyQTokensToTokens(legacyRows);
+          logLegacyFallbackOnce('markets');
+        } else {
+          if (!response.ok) {
+            const err = new Error(`HTTP error! status: ${response.status}`);
+            (err as any).status = response.status;
+            (err as any).retryAfterSeconds = extractRetryAfterSeconds(response);
+            throw err;
+          }
+
+          const data = await response.json();
+          const marketsArray = this.extractMarketsArray(data);
+          if (!marketsArray) {
+            throw new Error('Invalid API response: expected markets array');
+          }
+          tokens = this.mapMarketsArrayToTokens(marketsArray);
         }
-
-        const data = await response.json();
-
-        let marketsArray: any[] | null = null;
-        if (Array.isArray(data)) {
-          marketsArray = data;
-        } else if (data?.data?.markets && Array.isArray(data.data.markets)) {
-          marketsArray = data.data.markets;
-        } else if (data?.markets && Array.isArray(data.markets)) {
-          marketsArray = data.markets;
-        } else if (data?.data && Array.isArray(data.data)) {
-          marketsArray = data.data;
-        }
-
-        if (!marketsArray) {
-          throw new Error('Invalid API response: expected markets array');
-        }
-
-        const tokens: LendingToken[] = marketsArray.map((market: any) => {
-          const supplyApyBps = Number(market?.supplyApyBps ?? 0);
-          const borrowApyBps = Number(market?.borrowApyBps ?? 0);
-          const collateralFactorBps = market?.collateralFactorBps != null ? Number(market.collateralFactorBps) : null;
-          const underlyingSymbol = normalizeDisplaySymbol(market?.underlyingSymbol || market?.symbol || 'UNKNOWN');
-
-          return {
-            symbol: underlyingSymbol,
-            address: market?.underlyingAddress || market?.address || '0x0000000000000000000000000000000000000000',
-            qTokenAddress: market?.qTokenAddress || market?.qToken || market?.marketAddress || '',
-            qTokenSymbol: market?.qTokenSymbol || market?.qToken?.symbol || '',
-            icon: resolveLendingTokenIcon(underlyingSymbol, market?.symbol, market?.qTokenSymbol),
-            decimals: Number(market?.underlyingDecimals ?? market?.decimals ?? 18),
-            supplyAPY: Number.isFinite(supplyApyBps) ? supplyApyBps / 100 : 0,
-            borrowAPY: Number.isFinite(borrowApyBps) ? borrowApyBps / 100 : 0,
-            totalSupply: '0',
-            totalBorrowed: '0',
-            availableLiquidity: '0',
-            collateralFactor: collateralFactorBps != null && Number.isFinite(collateralFactorBps)
-              ? collateralFactorBps / 10000
-              : 0,
-            isCollateral: true,
-          };
-        }).filter((token) => !!token.qTokenAddress);
 
         const fetchedAt = Date.now();
         shared.tokens = tokens;
@@ -756,13 +930,37 @@ class LendingApiClient {
     const headers: Record<string, string> = {};
     headers['Authorization'] = `Bearer ${authToken}`;
 
-    const response = await fetchWithAuth(`${this.baseUrl}${API_ENDPOINTS.POSITION}/${userAddress}/positions`, {
+    const normalizedUrl = `${this.baseUrl}${API_ENDPOINTS.POSITION}/${userAddress}/positions`;
+    const response = await fetchWithAuth(normalizedUrl, {
       method: 'GET',
       headers
     });
 
     if (!response.ok) {
       const backendMessage = await this.readBackendErrorMessage(response);
+      if (response.status === 404) {
+        const legacyUrl = `${this.baseUrl}${API_ENDPOINTS.POSITION}/${userAddress}/info`;
+        const legacyResponse = await fetchWithAuth(legacyUrl, {
+          method: 'GET',
+          headers,
+        });
+
+        if (!legacyResponse.ok) {
+          const legacyBackendMessage = await this.readBackendErrorMessage(legacyResponse);
+          if (legacyResponse.status === 429 || /rate-limited|rate limited/i.test(legacyBackendMessage)) {
+            throw new Error('Lending RPC is busy right now. Try again in a few seconds.');
+          }
+          throw new Error(`HTTP error! status: ${legacyResponse.status}. ${legacyBackendMessage}`);
+        }
+
+        const legacyPayload = await legacyResponse.json();
+        const legacyInfo = this.extractLegacyAccountInfo(legacyPayload);
+        if (!legacyInfo) {
+          throw new Error('Legacy account info response is invalid.');
+        }
+        logLegacyFallbackOnce('positions');
+        return this.normalizeLegacyAccountInfo(legacyInfo, userAddress);
+      }
       if (response.status === 429 || /rate-limited|rate limited/i.test(backendMessage)) {
         throw new Error('Lending RPC is busy right now. Try again in a few seconds.');
       }

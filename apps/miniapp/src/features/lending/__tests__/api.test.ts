@@ -34,11 +34,27 @@ const tokenMarketsPayload = {
   },
 };
 
+const legacyQTokensPayload = {
+  status: 200,
+  msg: 'success',
+  data: {
+    qTokens: [
+      {
+        symbol: 'qUSDC',
+        address: '0x1111111111111111111111111111111111111111',
+        underlying: 'USDC',
+      },
+    ],
+  },
+};
+
 describe('LendingApiClient', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     safeExecuteTransactionV2Mock.mockReset();
     localStorage.clear();
+    sessionStorage.clear();
+    new LendingApiClient(null).clearLendingDataCache();
   });
 
   test('deduplicates in-flight getTokens requests and caches result', async () => {
@@ -80,6 +96,110 @@ describe('LendingApiClient', () => {
     await expect(api.getTokens()).rejects.toThrow(/Try again/i);
   });
 
+  test('falls back to legacy /benqi/qtokens when /benqi/markets returns 404', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'Rota não encontrada' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(legacyQTokensPayload), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+    const api = new LendingApiClient(null);
+    const tokens = await api.getTokens();
+
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0]).toMatchObject({
+      symbol: 'USDC',
+      qTokenSymbol: 'qUSDC',
+      qTokenAddress: '0x1111111111111111111111111111111111111111',
+      supplyAPY: 0,
+      borrowAPY: 0,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/api/lending/benqi/markets');
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('/api/lending/benqi/qtokens');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[LENDING] Legacy fallback enabled (markets'),
+    );
+  });
+
+  test('falls back to legacy /info when /positions returns 404', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'Rota não encontrada' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: 200,
+            msg: 'success',
+            data: {
+              accountAddress: '0x1111111111111111111111111111111111111111',
+              liquidity: {
+                accountAddress: '0x1111111111111111111111111111111111111111',
+                liquidity: '1000',
+                shortfall: '0',
+                isHealthy: true,
+              },
+              assetsIn: {
+                assets: ['0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+              },
+              qTokenBalances: [
+                {
+                  qTokenAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                  qTokenBalance: '100',
+                  underlyingBalance: '250',
+                },
+              ],
+              borrowBalances: [
+                {
+                  qTokenAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                  borrowBalance: '50',
+                },
+              ],
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+      );
+
+    localStorage.setItem('authToken', 'test-token');
+    const api = new LendingApiClient({
+      address: '0x1111111111111111111111111111111111111111',
+    });
+
+    const position = await api.getUserPosition();
+
+    expect(position?.accountAddress).toBe('0x1111111111111111111111111111111111111111');
+    expect(position?.positions).toHaveLength(1);
+    expect(position?.positions[0]).toMatchObject({
+      qTokenAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      suppliedWei: '250',
+      borrowedWei: '50',
+      collateralEnabled: true,
+    });
+    expect(position?.warnings).toContain('Using legacy lending API compatibility mode.');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[LENDING] Legacy fallback enabled (positions'),
+    );
+  });
+
   test('throws wallet compatibility error when sendTransaction is not available', async () => {
     const api = new LendingApiClient({ address: '0x1111111111111111111111111111111111111111' });
 
@@ -90,6 +210,18 @@ describe('LendingApiClient', () => {
         value: '0',
       }),
     ).rejects.toThrow(/does not support EVM transactions/i);
+  });
+
+  test('normalizes object signature payload returned by wallet signMessage', async () => {
+    const api = new LendingApiClient({
+      address: '0x1111111111111111111111111111111111111111',
+      signMessage: vi.fn().mockResolvedValue({
+        signature: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1b',
+      }),
+    });
+
+    const signature = await (api as any).generateSignature('hello');
+    expect(signature).toMatch(/^0x[a-fA-F0-9]+$/);
   });
 
   test('normalizes tx payload and executes on matching chain', async () => {

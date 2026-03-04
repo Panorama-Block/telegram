@@ -113,6 +113,35 @@ export interface LendingAccountPositionsResponse {
   warnings?: string[];
 }
 
+/**
+ * Legacy Benqi qToken row returned by /benqi/qtokens on older backends.
+ */
+export interface LegacyBenqiQTokenRow {
+  symbol?: string;
+  address?: string;
+  underlying?: string;
+}
+
+/**
+ * Legacy account-info payload returned by /benqi/account/:address/info on older backends.
+ */
+export interface LegacyBenqiAccountInfo {
+  accountAddress?: string;
+  liquidity?: Partial<LendingAccountLiquidity>;
+  assetsIn?: {
+    assets?: string[];
+  };
+  qTokenBalances?: Array<{
+    qTokenAddress?: string;
+    qTokenBalance?: string;
+    underlyingBalance?: string;
+  }>;
+  borrowBalances?: Array<{
+    qTokenAddress?: string;
+    borrowBalance?: string;
+  }>;
+}
+
 export interface LendingAction {
   /** Type of lending action */
   action: 'supply' | 'withdraw' | 'borrow' | 'repay';
