@@ -460,7 +460,16 @@ class LendingApiClient {
     // Only try to sign with account if we don't have JWT (pure MetaMask users)
     if (this.account) {
       try {
-        const signature = await this.account.signMessage({ message });
+        const signedPayload = await this.account.signMessage({ message });
+        const signature =
+          typeof signedPayload === 'string'
+            ? signedPayload
+            : (typeof (signedPayload as any)?.signature === 'string' ? (signedPayload as any).signature : null);
+
+        if (!signature) {
+          throw new Error('Wallet returned an unexpected signature payload format.');
+        }
+
         return signature;
       } catch (error) {
         console.error('[LENDING] Error signing message:', error);
