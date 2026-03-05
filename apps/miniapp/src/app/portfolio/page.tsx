@@ -350,19 +350,35 @@ export default function PortfolioPage() {
     });
     if (suppliedPositions.length === 0) return null;
 
+    const normalizeAddressLower = (value: unknown) => {
+      if (typeof value !== "string") return null;
+      const trimmed = value.trim();
+      return trimmed ? trimmed.toLowerCase() : null;
+    };
+
+    const normalizeSymbolUpper = (value: unknown) => {
+      if (typeof value !== "string") return null;
+      const trimmed = value.trim();
+      return trimmed ? trimmed.toUpperCase() : null;
+    };
+
     const normalizedTokens = lendingTokens.map((token) => ({
       ...token,
-      addressLower: token.address.toLowerCase(),
-      symbolUpper: token.symbol.toUpperCase(),
+      addressLower: normalizeAddressLower(token.address),
+      symbolUpper: normalizeSymbolUpper(token.symbol),
     }));
 
     const collectedApy: number[] = [];
     for (const position of suppliedPositions) {
-      const addressLower = position.underlyingAddress.toLowerCase();
-      const symbolUpper = position.underlyingSymbol.toUpperCase();
+      const addressLower = normalizeAddressLower(position.underlyingAddress);
+      const symbolUpper = normalizeSymbolUpper(position.underlyingSymbol);
       const market =
-        normalizedTokens.find((token) => token.addressLower === addressLower) ??
-        normalizedTokens.find((token) => token.symbolUpper === symbolUpper);
+        (addressLower
+          ? normalizedTokens.find((token) => token.addressLower === addressLower)
+          : undefined) ??
+        (symbolUpper
+          ? normalizedTokens.find((token) => token.symbolUpper === symbolUpper)
+          : undefined);
       if (market && Number.isFinite(market.supplyAPY)) {
         collectedApy.push(market.supplyAPY);
       }
