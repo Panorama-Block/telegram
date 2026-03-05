@@ -104,7 +104,7 @@ describe('Staking queue status messaging', () => {
 
     render(<Staking onClose={vi.fn()} initialMode="unstake" initialAmount="0.1" />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Request withdrawal (queue)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Request withdrawal' }));
     fireEvent.click(await screen.findByRole('button', { name: /Confirm request/i }));
 
     await waitFor(() => {
