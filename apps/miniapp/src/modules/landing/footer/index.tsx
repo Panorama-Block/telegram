@@ -1,4 +1,5 @@
 import Image from 'next/image'
+import Link from 'next/link'
 import logo from '../../../../public/panorama_block.svg'
 
 const Footer = () => {
@@ -37,13 +38,21 @@ const Footer = () => {
             <h3 className="text-landing-title text-xl font-medium text-center md:text-left">Resources</h3>
             <ul className="flex flex-col gap-3 text-center md:text-left">
               <li>
+                <Link
+                  href="/documentation"
+                  className="text-landing-text hover:text-landing-highlight transition-colors duration-200"
+                >
+                  Documentation
+                </Link>
+              </li>
+              <li>
                 <a
                   href="https://docs.panoramablock.com/"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-landing-text hover:text-landing-highlight transition-colors duration-200"
                 >
-                  Documentation
+                  Official Docs
                 </a>
               </li>
               <li>

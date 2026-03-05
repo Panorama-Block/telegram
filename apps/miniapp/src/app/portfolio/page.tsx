@@ -147,6 +147,7 @@ export default function PortfolioPage() {
     lastFetchTime: stakingLastFetchTime,
   } = useStakingData();
   const {
+    tokens: lendingTokens,
     userPosition: lendingPosition,
     loading: lendingLoading,
     error: lendingError,
@@ -339,6 +340,37 @@ export default function PortfolioPage() {
     if (shortfall > 0n) return { text: 'Shortfall', tone: 'red' as const };
     return liq.isHealthy ? { text: 'Healthy', tone: 'green' as const } : { text: 'At risk', tone: 'yellow' as const };
   }, [lendingPosition?.liquidity]);
+
+  const lendingPositionApy = useMemo(() => {
+    if (!lendingPosition?.positions?.length || !lendingTokens.length) return null;
+
+    const suppliedPositions = lendingPosition.positions.filter((position) => {
+      const supplied = safeParseBigInt(position.suppliedWei);
+      return supplied != null && supplied > 0n;
+    });
+    if (suppliedPositions.length === 0) return null;
+
+    const normalizedTokens = lendingTokens.map((token) => ({
+      ...token,
+      addressLower: token.address.toLowerCase(),
+      symbolUpper: token.symbol.toUpperCase(),
+    }));
+
+    const collectedApy: number[] = [];
+    for (const position of suppliedPositions) {
+      const addressLower = position.underlyingAddress.toLowerCase();
+      const symbolUpper = position.underlyingSymbol.toUpperCase();
+      const market =
+        normalizedTokens.find((token) => token.addressLower === addressLower) ??
+        normalizedTokens.find((token) => token.symbolUpper === symbolUpper);
+      if (market && Number.isFinite(market.supplyAPY)) {
+        collectedApy.push(market.supplyAPY);
+      }
+    }
+
+    if (collectedApy.length === 0) return null;
+    return collectedApy.reduce((sum, apy) => sum + apy, 0) / collectedApy.length;
+  }, [lendingPosition?.positions, lendingTokens]);
 
   return (
     <ProtectedRoute>
@@ -562,12 +594,17 @@ export default function PortfolioPage() {
                     <span className="text-xs text-zinc-500">Pending withdrawals</span>
                     <span className="text-sm font-mono text-white">{stakingPending.count}</span>
                   </div>
-                  {Number.isFinite(lidoApy) && (
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs text-zinc-500">APY</span>
-                      <span className="text-sm font-medium text-emerald-400">{formatAPY(lidoApy)}</span>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-500">APY</span>
+                    <span
+                      className={cn(
+                        "text-sm font-medium",
+                        Number.isFinite(lidoApy) ? "text-emerald-400" : "text-zinc-400",
+                      )}
+                    >
+                      {formatAPY(lidoApy)}
+                    </span>
+                  </div>
                 </div>
 
                 {(stakingError || stakingWithdrawalsError) && (
@@ -635,6 +672,17 @@ export default function PortfolioPage() {
                       )}
                     >
                       {lendingHealthLabel.text}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-500">APY</span>
+                    <span
+                      className={cn(
+                        "text-sm font-medium",
+                        Number.isFinite(lendingPositionApy) ? "text-emerald-400" : "text-zinc-400",
+                      )}
+                    >
+                      {formatAPY(lendingPositionApy)}
                     </span>
                   </div>
                 </div>

@@ -11,6 +11,9 @@ interface AuthGuardProps {
 
 const publicRoutes = [
   '/',
+  '/landing',
+  '/documentation',
+  '/docs',
   '/auth',
   '/auth/callback',
   '/auth/external',
