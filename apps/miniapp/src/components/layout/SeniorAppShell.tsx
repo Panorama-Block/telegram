@@ -297,9 +297,17 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
         )}
       >
         <div className="h-20 flex items-center border-b border-white/5 px-4 gap-3">
-          {/* Zico icon — click to toggle collapse */}
+          {/* Zico icon — on desktop: toggle collapse; on mobile: close sidebar */}
           <button
-            onClick={() => { setIsSidebarCollapsed((v) => !v); if (!isSidebarCollapsed) { setChatSearchOpen(false); setChatSearchQuery(''); } }}
+            onClick={() => {
+              // On mobile, close the sidebar entirely instead of collapsing
+              if (window.innerWidth < 1024) {
+                setIsSidebarOpen(false);
+              } else {
+                setIsSidebarCollapsed((v) => !v);
+                if (!isSidebarCollapsed) { setChatSearchOpen(false); setChatSearchQuery(''); }
+              }
+            }}
             className={cn(
               'relative shrink-0 transition-all duration-500 ease-in-out cursor-pointer hover:opacity-80',
               chatSearchOpen && !isSidebarCollapsed ? 'w-7 h-7' : isSidebarCollapsed ? 'w-8 h-8 mx-auto' : 'w-10 h-10 mx-auto'
@@ -333,28 +341,15 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                 )}
               </div>
 
-              {/* Search / Close toggle */}
+              {/* Search toggle */}
               <button
-                className="absolute right-12 lg:right-4 p-2 text-zinc-500 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
+                className="absolute right-4 p-2 text-zinc-500 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
                 onClick={() => { setChatSearchOpen((v) => { if (!v) setShowChatHistory(true); return !v; }); setChatSearchQuery(''); }}
                 aria-label={chatSearchOpen ? 'Close search' : 'Search chats'}
               >
                 {chatSearchOpen ? <X size={16} /> : <Search size={16} />}
               </button>
             </>
-          )}
-
-          {/* Close sidebar (mobile) */}
-          {!isSidebarCollapsed && (
-            <button
-              className="lg:hidden absolute right-4 p-2 text-pano-text-muted hover:text-pano-text-primary rounded-lg hover:bg-white/5 transition-colors"
-              onClick={() => setIsSidebarOpen(false)}
-              aria-label="Close sidebar"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
           )}
         </div>
 
@@ -577,9 +572,9 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       <div className="flex-1 flex flex-col min-w-0 relative z-10">
         {/* Mobile Header */}
         <div className="lg:hidden h-16 grid grid-cols-[auto_1fr_auto] items-center px-4 border-b border-white/5 bg-pano-bg-secondary/90 backdrop-blur-md sticky top-0 z-30 safe-area-pt">
-          <div className="flex items-center">
+          <button className="flex items-center" onClick={() => setIsSidebarOpen(true)}>
             <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
-          </div>
+          </button>
           <span className="text-xs font-semibold text-pano-text-primary text-center truncate px-2">{pageTitle}</span>
           <button
             onClick={() => setIsSidebarOpen(true)}
