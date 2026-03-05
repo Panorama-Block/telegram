@@ -58,12 +58,20 @@ import {
 } from './openWidgetQuery';
 
 
+interface FilePreview {
+  name: string;
+  type: 'image' | 'document';
+  preview?: string; // ObjectURL for images
+  size: number;
+}
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
   agentName?: string | null;
   metadata?: Record<string, unknown> | null;
+  attachments?: FilePreview[];
 }
 
 
@@ -72,6 +80,7 @@ const MAX_CONVERSATION_TITLE_LENGTH = 48;
 const LAST_CONVERSATION_STORAGE_KEY = 'chat:lastConversationId';
 const CONVERSATION_CACHE_PREFIX = 'chat:cache';
 const CONVERSATION_LIST_KEY = 'chat:ids';
+const AI_TITLE_PREFIX = 'chat:aiTitle';
 const DEBUG_CHAT_FLAG = (process.env.NEXT_PUBLIC_MINIAPP_DEBUG_CHAT ?? process.env.MINIAPP_DEBUG_CHAT ?? '').toLowerCase();
 const DEBUG_CHAT_ENABLED = ['1', 'true', 'on', 'yes'].includes(DEBUG_CHAT_FLAG);
 
@@ -94,8 +103,8 @@ const TOKEN_ICONS: Record<string, string> = {
   'LINK': 'https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png',
   'UNI': 'https://assets.coingecko.com/coins/images/12504/small/uniswap-logo.png',
   'AAVE': 'https://assets.coingecko.com/coins/images/12645/small/AAVE.png',
-  'stETH': 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png',
-  'wstETH': 'https://assets.coingecko.com/coins/images/18834/small/wstETH.png',
+  'STETH': 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png',
+  'WSTETH': 'https://assets.coingecko.com/coins/images/18834/small/wstETH.png',
   'TON': 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png',
   'WLD': 'https://assets.coingecko.com/coins/images/31069/small/worldcoin.jpeg',
 };
@@ -324,18 +333,32 @@ function autoFormatAssistantMarkdown(text: string): string {
 
   return t.trim();
 }
+function isGenericTitle(title: string | undefined): boolean {
+  if (!title) return true;
+  const t = title.trim().toLowerCase();
+  return !t || t === 'new chat' || t === 'chat' || /^chat\s+\d+$/.test(t);
+}
+
 function deriveConversationTitle(fallbackTitle: string | undefined, messages: Message[]): string {
+  // If the conversation already has a meaningful (AI-generated) title, keep it
+  if (!isGenericTitle(fallbackTitle)) return fallbackTitle!;
+
   const firstUserMessage = messages.find((msg) => msg.role === 'user' && msg.content.trim().length > 0);
   if (!firstUserMessage) return fallbackTitle || 'New Chat';
 
   const normalized = firstUserMessage.content.trim().replace(/\s+/g, ' ');
   if (!normalized) return fallbackTitle || 'New Chat';
 
-  if (normalized.length > MAX_CONVERSATION_TITLE_LENGTH) {
-    return `${normalized.slice(0, MAX_CONVERSATION_TITLE_LENGTH - 3)}...`;
+  // Extract 3-8 key words from the message for a concise title
+  const MAX_WORDS = 8;
+  const words = normalized.split(' ').slice(0, MAX_WORDS);
+  const title = words.join(' ');
+
+  if (words.length < normalized.split(' ').length) {
+    return `${title}...`;
   }
 
-  return normalized;
+  return title;
 }
 
 function normalizeConversationId(value: unknown): string | null {
@@ -417,6 +440,10 @@ export default function ChatPage() {
   // Staking states
   const [showStakingWidget, setShowStakingWidget] = useState(false);
   const [currentStakingMetadata, setCurrentStakingMetadata] = useState<Record<string, unknown> | null>(null);
+  const [stakingLoading, setStakingLoading] = useState(false);
+  const [stakingError, setStakingError] = useState<string | null>(null);
+  const [stakingBalance, setStakingBalance] = useState<string | null>(null);
+  const [stakingInsufficientBalance, setStakingInsufficientBalance] = useState(false);
 
   // Trending prompts state
   const [showTrendingPrompts, setShowTrendingPrompts] = useState(false);
@@ -440,6 +467,13 @@ export default function ChatPage() {
   const [showModeDropdown, setShowModeDropdown] = useState(false);
   const modeDropdownRef = useRef<HTMLDivElement>(null);
 
+  // File attachments
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [filePreviews, setFilePreviews] = useState<FilePreview[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+
   // Streaming agent state
   const {
     thoughts: streamThoughts,
@@ -449,6 +483,7 @@ export default function ChatPage() {
     error: streamError,
     result: streamResult,
     send: sendStream,
+    sendWithFiles: sendStreamWithFiles,
     cancel: cancelStream,
     reset: resetStream,
   } = useAgentStream();
@@ -569,7 +604,7 @@ export default function ChatPage() {
   }, [account?.address, walletIdentity]);
 
   const activeConversationTitle = useMemo(() => {
-    if (!activeConversationId) return 'Zico AI Agent';
+    if (!activeConversationId) return '';
     const conversation = conversations.find((c) => c.id === activeConversationId);
     return conversation?.title || 'Chat';
   }, [activeConversationId, conversations]);
@@ -908,32 +943,28 @@ export default function ChatPage() {
           return;
         }
 
-        // Always start with a fresh conversation on platform entry
+        // Defer conversation creation until the user sends the first message.
+        // This prevents empty "Chat" entries from piling up in the sidebar
+        // every time the user opens the platform without interacting.
         let targetConversationId: string | null = null;
-
-        try {
-          targetConversationId = await agentsClient.createConversation(userId, authOpts);
-          if (targetConversationId) {
-            fetchedConversations = [{ id: targetConversationId, title: 'New Chat' }, ...fetchedConversations];
-          }
-          debug('bootstrap:createNewConversation', { targetConversationId });
-        } catch (error) {
-          console.error('Error creating new conversation:', error);
-          debug('bootstrap:createConversation:error', {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          // Fall back to first existing conversation if creation fails
-          if (fetchedConversations.length > 0) {
-            targetConversationId = fetchedConversations[0].id;
-            debug('bootstrap:fallbackToFirstConversation', { targetConversationId });
-          } else if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
-            setInitializationError('We could not start a conversation. Please try again.');
-          }
-        }
 
         if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) return;
 
-        setConversations(fetchedConversations);
+        // Enrich conversations with cached AI titles that may not yet be in the backend
+        const enriched = fetchedConversations.map((c) => {
+          if (!isGenericTitle(c.title)) return c;
+          try {
+            const cached = localStorage.getItem(`${AI_TITLE_PREFIX}:${c.id}`);
+            if (cached) return { ...c, title: cached };
+          } catch {}
+          return c;
+        });
+        setConversations(enriched);
+
+        // Enter pending-new-chat mode: show welcome screen, create backend
+        // conversation only when the user actually sends a message.
+        setPendingNewChat(true);
+        debug('bootstrap:pendingNewChat', { totalConversations: fetchedConversations.length });
         try {
           // Store only IDs to maintain compatibility with loadCachedConversationIds
           const idsToCache = fetchedConversations.map(c => c.id);
@@ -972,10 +1003,79 @@ export default function ChatPage() {
 
   // Track which conversation the current stream belongs to
   const streamConversationRef = useRef<string | null>(null);
+  const aiTitledConversationsRef = useRef<Set<string>>(new Set());
+  const pendingTitleRef = useRef<{ conversationId: string; message: string } | null>(null);
+
+  // ── File attachment handlers ──
+  const IMAGE_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp';
+  const DOCUMENT_ACCEPT = '.pdf,.txt,.md,.csv,text/plain,text/markdown,text/csv,application/pdf';
+  const MAX_FILES = 5;
+
+  const handleFileSelect = useCallback((accept: string) => {
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = accept;
+      fileInputRef.current.click();
+    }
+    setShowAttachMenu(false);
+  }, []);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newFiles = Array.from(e.target.files || []);
+    if (!newFiles.length) return;
+
+    setAttachedFiles((prev) => {
+      const combined = [...prev, ...newFiles].slice(0, MAX_FILES);
+      return combined;
+    });
+
+    const newPreviews: FilePreview[] = newFiles.map((file) => {
+      const isImg = file.type.startsWith('image/');
+      return {
+        name: file.name,
+        type: isImg ? 'image' as const : 'document' as const,
+        preview: isImg ? URL.createObjectURL(file) : undefined,
+        size: file.size,
+      };
+    });
+
+    setFilePreviews((prev) => [...prev, ...newPreviews].slice(0, MAX_FILES));
+
+    // Reset input so the same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  const removeFile = useCallback((index: number) => {
+    setFilePreviews((prev) => {
+      const removed = prev[index];
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const clearFiles = useCallback(() => {
+    filePreviews.forEach((fp) => { if (fp.preview) URL.revokeObjectURL(fp.preview); });
+    setAttachedFiles([]);
+    setFilePreviews([]);
+  }, [filePreviews]);
+
+  // Close attach menu on outside click
+  useEffect(() => {
+    if (!showAttachMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+        setShowAttachMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showAttachMenu]);
 
   const sendMessage = async (content?: string) => {
     const messageContent = content ?? inputMessage.trim();
-    if (!messageContent || isSending) return;
+    const filesToSend = [...attachedFiles];
+    const previewsToSend = [...filePreviews];
+    if ((!messageContent && filesToSend.length === 0) || isSending) return;
 
     // Handle pending new chat - create conversation on first message
     let conversationId = activeConversationId;
@@ -1015,9 +1115,13 @@ export default function ChatPage() {
 
     const userMessage: Message = {
       role: 'user',
-      content: messageContent,
+      content: messageContent || (filesToSend.length > 0 ? `[${filesToSend.length} file(s) attached]` : ''),
       timestamp: new Date(),
+      attachments: previewsToSend.length > 0 ? previewsToSend : undefined,
     };
+
+    // Clear files immediately so the UI resets
+    clearFiles();
 
     const existingMessages = messagesByConversation[conversationId] ?? [];
     const updatedMessages = [...existingMessages, userMessage];
@@ -1040,6 +1144,12 @@ export default function ChatPage() {
       );
       });
 
+    // Mark for AI title generation if this is the first user message in the conversation
+    const userMessagesCount = updatedMessages.filter((m) => m.role === 'user').length;
+    if (userMessagesCount === 1 && !aiTitledConversationsRef.current.has(conversationId)) {
+      pendingTitleRef.current = { conversationId, message: messageContent || userMessage.content };
+    }
+
     setInputMessage('');
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
@@ -1051,19 +1161,31 @@ export default function ChatPage() {
     forceScrollToBottom();
 
     const walletAddress = account?.address || walletIdentity;
-    debug('chat:send:stream', { conversationId, hasUserId: Boolean(userId), hasWalletAddress: Boolean(walletAddress) });
+    debug('chat:send:stream', { conversationId, hasUserId: Boolean(userId), hasWalletAddress: Boolean(walletAddress), fileCount: filesToSend.length });
 
     const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') ?? undefined : undefined;
 
     // Fire-and-forget — the useEffect below handles the result
-    sendStream({
-      message: messageContent,
-      userId: userId ?? '',
-      conversationId,
-      walletAddress: walletAddress || undefined,
-      jwt: authToken,
-      responseMode,
-    });
+    if (filesToSend.length > 0) {
+      sendStreamWithFiles({
+        message: messageContent || '',
+        files: filesToSend,
+        userId: userId ?? '',
+        conversationId,
+        walletAddress: walletAddress || undefined,
+        jwt: authToken,
+        responseMode,
+      });
+    } else {
+      sendStream({
+        message: messageContent,
+        userId: userId ?? '',
+        conversationId,
+        walletAddress: walletAddress || undefined,
+        jwt: authToken,
+        responseMode,
+      });
+    }
   };
 
   // When the stream finishes AND the typewriter has caught up, materialise
@@ -1096,6 +1218,11 @@ export default function ChatPage() {
         checkLendingBalance(streamResult.metadata as Record<string, unknown>);
       }
 
+      // Auto-check staking balance if it's a staking intent
+      if (streamResult.metadata?.event === 'staking_intent_ready') {
+        checkStakingBalance(streamResult.metadata as Record<string, unknown>);
+      }
+
       setMessagesByConversation((prev) => {
         const prevMessages = prev[conversationId] ?? [];
         const nextMessages = {
@@ -1110,6 +1237,29 @@ export default function ChatPage() {
       streamConversationRef.current = null;
       refreshSidebarConversations().catch(() => {});
       debug('chat:stream:complete', { conversationId });
+
+      // Fire AI title generation for first message in a conversation
+      const pending = pendingTitleRef.current;
+      if (pending && pending.conversationId === conversationId) {
+        pendingTitleRef.current = null;
+        aiTitledConversationsRef.current.add(conversationId);
+        agentsClient
+          .generateTitle(userId ?? '', conversationId, pending.message, getAuthOptions())
+          .then((aiTitle) => {
+            if (aiTitle && isMountedRef.current) {
+              // Cache AI title in localStorage for reload resilience
+              try { localStorage.setItem(`${AI_TITLE_PREFIX}:${conversationId}`, aiTitle); } catch {}
+              setConversations((prev) =>
+                prev.map((c) => (c.id === conversationId ? { ...c, title: aiTitle } : c))
+              );
+              // Refresh sidebar so ChatContext picks up the AI-generated title
+              refreshSidebarConversations().catch(() => {});
+            }
+          })
+          .catch((err) => {
+            console.warn('[CHAT] AI title generation failed:', err);
+          });
+      }
     }
 
     if (streamError) {
@@ -1205,51 +1355,19 @@ export default function ChatPage() {
     }
   };
 
-  const createNewChat = async () => {
-    if (isCreatingConversation) return;
-
-    setIsCreatingConversation(true);
-
-    try {
-      const newConversationId = await agentsClient.createConversation(userId, getAuthOptions());
-      console.log('[DEBUG] createNewChat: Generated ID:', newConversationId);
-      if (!newConversationId || !isMountedRef.current) return;
-
-      const newConversation: Conversation = {
-        id: newConversationId,
-        title: 'New Chat',
-      };
-
-      setConversations((prev) => [newConversation, ...prev.filter((conversation) => conversation.id !== newConversationId)]);
-      setMessagesByConversation((prev) => ({
-        ...prev,
-        [newConversationId]: [],
-      }));
-      setInitializationError(null);
-      setActiveConversation(newConversationId);
-      debug('conversation:create:success', { newConversationId });
-      refreshSidebarConversations().catch((error) => {
-        console.warn('[CHAT] Failed to refresh sidebar conversations after new chat:', error);
-      });
-    } catch (error) {
-      console.error('Error creating chat conversation:', error);
-      debug('conversation:create:error', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      if (isMountedRef.current) {
-        setInitializationError('We could not create a new chat. Please try again.');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setIsCreatingConversation(false);
-        debug('conversation:create:complete');
-      }
-    }
+  const createNewChat = () => {
+    // Enter pending-new-chat mode: show welcome screen, defer backend
+    // conversation creation until the user actually sends a message.
+    setPendingNewChat(true);
+    setActiveConversation(null);
+    setInitializationError(null);
+    debug('conversation:create:pending');
   };
 
   const handleSelectConversation = (conversationInput: unknown) => {
     const conversationId = normalizeConversationId(conversationInput);
     if (!conversationId) return;
+    setPendingNewChat(false);
     setActiveConversation(conversationId);
     setInitializationError(null);
     debug('conversation:select', { conversationId });
@@ -1632,6 +1750,59 @@ export default function ChatPage() {
     }
   }, [client, account?.address, lendingApi]);
 
+  const checkStakingBalance = useCallback(async (metadata: Record<string, unknown>) => {
+    setStakingInsufficientBalance(false);
+    setStakingBalance(null);
+    setStakingError(null);
+
+    if (!client || !account?.address) return;
+
+    const action = String(metadata?.action || metadata?.mode || 'stake');
+    const amount = metadata?.amount;
+    if (!amount) return;
+
+    try {
+      setStakingLoading(true);
+
+      const { defineChain, getContract } = await import("thirdweb");
+      const { eth_getBalance, getRpcClient } = await import("thirdweb/rpc");
+      const { getBalance } = await import("thirdweb/extensions/erc20");
+
+      const ETHEREUM_CHAIN_ID = 1;
+
+      let balance: bigint;
+      const decimals = 18;
+
+      if (action === 'unstake') {
+        // For unstake: check stETH balance
+        const STETH_ADDRESS = '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84';
+        const tokenContract = getContract({
+          client,
+          chain: defineChain(ETHEREUM_CHAIN_ID),
+          address: STETH_ADDRESS,
+        });
+        const balanceResult = await getBalance({ contract: tokenContract, address: account.address });
+        balance = balanceResult.value;
+      } else {
+        // For stake: check ETH balance
+        const rpcRequest = getRpcClient({ client, chain: defineChain(ETHEREUM_CHAIN_ID) });
+        balance = await eth_getBalance(rpcRequest, { address: account.address });
+      }
+
+      const formattedBalance = formatAmountHuman(balance, decimals, 6);
+      setStakingBalance(formattedBalance);
+
+      const userBalance = parseFloat(formattedBalance);
+      const stakingAmount = parseFloat(String(amount));
+      setStakingInsufficientBalance(userBalance < stakingAmount);
+    } catch (error) {
+      console.error('[Chat] Error checking staking balance:', error);
+      setStakingError(error instanceof Error ? error.message : 'Failed to check balance');
+    } finally {
+      setStakingLoading(false);
+    }
+  }, [client, account?.address]);
+
   return (
     <ProtectedRoute>
       <TransactionSettingsProvider>
@@ -1800,8 +1971,68 @@ export default function ChatPage() {
                                     className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[40px] max-h-[40vh] pl-2 md:pl-3 py-2 resize-none overflow-y-auto"
                                   />
                                 </div>
+                                {/* File previews strip */}
+                                {filePreviews.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 px-2 pt-1">
+                                    {filePreviews.map((fp, i) => (
+                                      <div key={i} className="relative group">
+                                        {fp.type === 'image' && fp.preview ? (
+                                          <img src={fp.preview} alt={fp.name} className="w-12 h-12 rounded-lg object-cover border border-white/10" />
+                                        ) : (
+                                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-zinc-300">
+                                            <Paperclip className="w-3.5 h-3.5 text-zinc-400" />
+                                            <span className="truncate max-w-[80px]">{fp.name}</span>
+                                          </div>
+                                        )}
+                                        <button
+                                          onClick={() => removeFile(i)}
+                                          className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-700 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                          <X className="w-2.5 h-2.5 text-white" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                                 <div className="flex items-center justify-between px-1 pt-1 shrink-0">
                                   <div className="flex items-center gap-1">
+                                    {/* Attach file button */}
+                                    <div className="relative" ref={attachMenuRef}>
+                                      <button
+                                        onClick={() => setShowAttachMenu(!showAttachMenu)}
+                                        className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors shrink-0"
+                                        title="Attach file"
+                                      >
+                                        <Plus className="w-4 h-4" />
+                                      </button>
+                                      <AnimatePresence>
+                                        {showAttachMenu && (
+                                          <motion.div
+                                            initial={{ opacity: 0, y: -4 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: -4 }}
+                                            transition={{ duration: 0.15 }}
+                                            className="absolute top-full left-0 mt-2 w-48 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
+                                          >
+                                            <button
+                                              onClick={() => handleFileSelect(IMAGE_ACCEPT)}
+                                              className="w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-sm text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+                                            >
+                                              <Plus className="w-4 h-4 text-cyan-400" />
+                                              Upload Image
+                                            </button>
+                                            <div className="h-px bg-white/5" />
+                                            <button
+                                              onClick={() => handleFileSelect(DOCUMENT_ACCEPT)}
+                                              className="w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-sm text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+                                            >
+                                              <Paperclip className="w-4 h-4 text-cyan-400" />
+                                              Upload Document
+                                            </button>
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+                                    </div>
                                     {/* Mode selector dropdown */}
                                     <div className="relative" ref={modeDropdownRef}>
                                       <button
@@ -1816,11 +2047,11 @@ export default function ChatPage() {
                                       <AnimatePresence>
                                         {showModeDropdown && (
                                           <motion.div
-                                            initial={{ opacity: 0, y: 4 }}
+                                            initial={{ opacity: 0, y: -4 }}
                                             animate={{ opacity: 1, y: 0 }}
-                                            exit={{ opacity: 0, y: 4 }}
+                                            exit={{ opacity: 0, y: -4 }}
                                             transition={{ duration: 0.15 }}
-                                            className="absolute bottom-full left-0 mb-2 w-72 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
+                                            className="absolute top-full left-0 mt-2 w-72 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
                                           >
                                             <button
                                               onClick={() => toggleResponseMode('fast')}
@@ -1880,7 +2111,7 @@ export default function ChatPage() {
                                             animate={{ opacity: 1, y: 0, scale: 1 }}
                                             exit={{ opacity: 0, y: 8, scale: 0.96 }}
                                             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-                                            className="absolute bottom-full left-0 mb-2 w-72 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
+                                            className="absolute top-full left-0 mt-2 w-72 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
                                           >
                                             <div className="text-xs text-zinc-500 px-3 py-2 uppercase tracking-wider">Quick Prompts</div>
                                             <div className="space-y-0.5 pb-1">
@@ -1906,7 +2137,7 @@ export default function ChatPage() {
                                   </div>
 
                                   {/* Action button */}
-                                  {inputMessage.trim() ? (
+                                  {(inputMessage.trim() || attachedFiles.length > 0) ? (
                                     <button
                                       onClick={() => sendMessage()}
                                       disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
@@ -1983,6 +2214,20 @@ export default function ChatPage() {
                           >
                             {message.role === 'user' ? (
                               <div className="max-w-[80%] bg-zinc-800/80 backdrop-blur-sm text-white px-6 py-4 rounded-2xl rounded-tr-sm border border-white/5 shadow-lg">
+                                {message.attachments && message.attachments.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 mb-2">
+                                    {message.attachments.map((att, ai) => (
+                                      att.type === 'image' && att.preview ? (
+                                        <img key={ai} src={att.preview} alt={att.name} className="w-16 h-16 rounded-lg object-cover border border-white/10" />
+                                      ) : (
+                                        <div key={ai} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-zinc-300">
+                                          <Paperclip className="w-3.5 h-3.5 text-zinc-400" />
+                                          <span className="truncate max-w-[120px]">{att.name}</span>
+                                        </div>
+                                      )
+                                    ))}
+                                  </div>
+                                )}
                                 <p className="text-base leading-relaxed">{message.content}</p>
                               </div>
                             ) : (
@@ -2258,13 +2503,16 @@ export default function ChatPage() {
                                   })()}
 
                                   {message.metadata?.event === 'staking_intent_ready' && (() => {
-                                    const token = String(message.metadata?.token || 'ETH');
+                                    const action = String(message.metadata?.action || message.metadata?.mode || 'stake');
+                                    const token = action === 'unstake' ? 'stETH' : String(message.metadata?.token || 'ETH');
+                                    const receiveToken = action === 'unstake' ? 'ETH' : 'stETH';
                                     const amount = Number(message.metadata?.amount || 0);
                                     const tokenIcon = getTokenIcon(token);
-                                    const stTokenIcon = getTokenIcon(`st${token}`) || getTokenIcon('stETH');
+                                    const receiveTokenIcon = getTokenIcon(receiveToken);
+                                    const balanceToken = action === 'unstake' ? 'stETH' : 'ETH';
 
                                     return (
-                                      <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                      <div className="mt-3 sm:mt-4 w-full max-w-[588px] sm:max-w-2xl">
                                         {/* Staking Card */}
                                         <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
                                           {/* Gradient Glow */}
@@ -2274,6 +2522,10 @@ export default function ChatPage() {
                                           <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
                                             <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
                                             <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
+                                            <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-blue-500/30">
+                                              {action.toUpperCase()}
+                                            </span>
+                                            {stakingLoading && <div className="loader-inline-sm ml-1" />}
                                           </div>
 
                                           {/* Content */}
@@ -2281,7 +2533,7 @@ export default function ChatPage() {
                                             {/* Stake Input */}
                                             <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
                                               <div className="flex items-center justify-between mb-1">
-                                                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
+                                                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You {action === 'unstake' ? 'Unstake' : 'Stake'}</span>
                                               </div>
                                               <div className="flex items-center justify-between gap-2">
                                                 <span className="text-lg sm:text-xl font-medium text-white truncate">
@@ -2298,6 +2550,12 @@ export default function ChatPage() {
                                                   <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
                                                 </div>
                                               </div>
+                                              {/* Balance line */}
+                                              {stakingBalance !== null && (
+                                                <div className="mt-1 text-right">
+                                                  <span className="text-[9px] sm:text-[10px] text-zinc-500">Balance: {stakingBalance} {balanceToken}</span>
+                                                </div>
+                                              )}
                                             </div>
 
                                             {/* Arrow */}
@@ -2317,17 +2575,41 @@ export default function ChatPage() {
                                                   ~{toFixedFloor(amount * 0.998, 4)}
                                                 </span>
                                                 <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
-                                                  {stTokenIcon ? (
-                                                    <img src={stTokenIcon} alt={`st${token}`} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                                  {receiveTokenIcon ? (
+                                                    <img src={receiveTokenIcon} alt={receiveToken} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
                                                   ) : (
                                                     <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-[7px] sm:text-[8px] text-white font-bold">
-                                                      st
+                                                      {receiveToken[0]}
                                                     </div>
                                                   )}
-                                                  <span className="text-xs sm:text-sm font-medium text-white">st{token}</span>
+                                                  <span className="text-xs sm:text-sm font-medium text-white">{receiveToken}</span>
                                                 </div>
                                               </div>
                                             </div>
+
+                                            {/* Error Message */}
+                                            {stakingError && !stakingLoading && (
+                                              <div className="p-2 sm:p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl">
+                                                <p className="text-[10px] sm:text-xs text-red-300">{stakingError}</p>
+                                              </div>
+                                            )}
+
+                                            {/* Insufficient Balance Warning */}
+                                            {stakingInsufficientBalance && !stakingLoading && (
+                                              <div className="bg-red-500/10 border border-red-500/40 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                                <div className="flex items-start gap-2">
+                                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400 flex-shrink-0 mt-0.5">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                  </svg>
+                                                  <div>
+                                                    <p className="text-xs font-semibold text-red-400 mb-0.5">Insufficient Balance</p>
+                                                    <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-relaxed">
+                                                      You have {stakingBalance ?? '0'} {balanceToken} but trying to {action} {String(message.metadata?.amount)} {balanceToken}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            )}
 
                                             {/* Action Button */}
                                             <button
@@ -2337,9 +2619,10 @@ export default function ChatPage() {
                                                 setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
                                                 setShowStakingWidget(true);
                                               }}
-                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                              disabled={stakingLoading}
+                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                                             >
-                                              Review Staking
+                                              {stakingLoading ? 'Loading...' : `Review ${action === 'unstake' ? 'Unstake' : 'Staking'}`}
                                             </button>
                                           </div>
 
@@ -2434,13 +2717,17 @@ export default function ChatPage() {
                               )}
 
                               {activeMessages.at(-1)?.metadata?.event === 'staking_intent_ready' && (() => {
-                                const token = String(activeMessages.at(-1)?.metadata?.token || 'ETH');
-                                const amount = Number(activeMessages.at(-1)?.metadata?.amount || 0);
+                                const lastMeta = activeMessages.at(-1)?.metadata;
+                                const action = String(lastMeta?.action || lastMeta?.mode || 'stake');
+                                const token = action === 'unstake' ? 'stETH' : String(lastMeta?.token || 'ETH');
+                                const receiveToken = action === 'unstake' ? 'ETH' : 'stETH';
+                                const amount = Number(lastMeta?.amount || 0);
                                 const tokenIcon = getTokenIcon(token);
-                                const stTokenIcon = getTokenIcon(`st${token}`) || getTokenIcon('stETH');
+                                const receiveTokenIcon = getTokenIcon(receiveToken);
+                                const balanceToken = action === 'unstake' ? 'stETH' : 'ETH';
 
                                 return (
-                                  <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                  <div className="mt-3 sm:mt-4 w-full max-w-[588px] sm:max-w-2xl">
                                     {/* Staking Card */}
                                     <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
                                       {/* Gradient Glow */}
@@ -2450,6 +2737,10 @@ export default function ChatPage() {
                                       <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
                                         <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
                                         <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
+                                        <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-blue-500/30">
+                                          {action.toUpperCase()}
+                                        </span>
+                                        {stakingLoading && <div className="loader-inline-sm ml-1" />}
                                       </div>
 
                                       {/* Content */}
@@ -2457,11 +2748,11 @@ export default function ChatPage() {
                                         {/* Stake Input */}
                                         <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
                                           <div className="flex items-center justify-between mb-1">
-                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
+                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You {action === 'unstake' ? 'Unstake' : 'Stake'}</span>
                                           </div>
                                           <div className="flex items-center justify-between gap-2">
                                             <span className="text-lg sm:text-xl font-medium text-white truncate">
-                                              {String(activeMessages.at(-1)?.metadata?.amount || '0')}
+                                              {String(lastMeta?.amount || '0')}
                                             </span>
                                             <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
                                               {tokenIcon ? (
@@ -2474,6 +2765,12 @@ export default function ChatPage() {
                                               <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
                                             </div>
                                           </div>
+                                          {/* Balance line */}
+                                          {stakingBalance !== null && (
+                                            <div className="mt-1 text-right">
+                                              <span className="text-[9px] sm:text-[10px] text-zinc-500">Balance: {stakingBalance} {balanceToken}</span>
+                                            </div>
+                                          )}
                                         </div>
 
                                         {/* Arrow */}
@@ -2490,20 +2787,44 @@ export default function ChatPage() {
                                           </div>
                                           <div className="flex items-center justify-between gap-2">
                                             <span className="text-lg sm:text-xl font-medium text-white truncate">
-                                              --
+                                              ~{toFixedFloor(amount * 0.998, 4)}
                                             </span>
                                             <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
-                                              {stTokenIcon ? (
-                                                <img src={stTokenIcon} alt={`st${token}`} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                              {receiveTokenIcon ? (
+                                                <img src={receiveTokenIcon} alt={receiveToken} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
                                               ) : (
                                                 <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-[7px] sm:text-[8px] text-white font-bold">
-                                                  st
+                                                  {receiveToken[0]}
                                                 </div>
                                               )}
-                                              <span className="text-xs sm:text-sm font-medium text-white">st{token}</span>
+                                              <span className="text-xs sm:text-sm font-medium text-white">{receiveToken}</span>
                                             </div>
                                           </div>
                                         </div>
+
+                                        {/* Error Message */}
+                                        {stakingError && !stakingLoading && (
+                                          <div className="p-2 sm:p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl">
+                                            <p className="text-[10px] sm:text-xs text-red-300">{stakingError}</p>
+                                          </div>
+                                        )}
+
+                                        {/* Insufficient Balance Warning */}
+                                        {stakingInsufficientBalance && !stakingLoading && (
+                                          <div className="bg-red-500/10 border border-red-500/40 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                            <div className="flex items-start gap-2">
+                                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400 flex-shrink-0 mt-0.5">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                              </svg>
+                                              <div>
+                                                <p className="text-xs font-semibold text-red-400 mb-0.5">Insufficient Balance</p>
+                                                <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-relaxed">
+                                                  You have {stakingBalance ?? '0'} {balanceToken} but trying to {action} {String(lastMeta?.amount)} {balanceToken}
+                                                </p>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
 
                                         {/* Action Button */}
                                         <button
@@ -2513,9 +2834,10 @@ export default function ChatPage() {
                                             setCurrentStakingMetadata(activeMessages.at(-1)?.metadata as Record<string, unknown>);
                                             setShowStakingWidget(true);
                                           }}
-                                          className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                          disabled={stakingLoading}
+                                          className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                                         >
-                                          Review Staking
+                                          {stakingLoading ? 'Loading...' : `Review ${action === 'unstake' ? 'Unstake' : 'Staking'}`}
                                         </button>
                                       </div>
 
@@ -2651,9 +2973,69 @@ export default function ChatPage() {
                                   autoFocus
                                 />
                               </div>
+                              {/* File previews strip */}
+                              {filePreviews.length > 0 && (
+                                <div className="flex flex-wrap gap-2 px-2 pt-1">
+                                  {filePreviews.map((fp, i) => (
+                                    <div key={i} className="relative group">
+                                      {fp.type === 'image' && fp.preview ? (
+                                        <img src={fp.preview} alt={fp.name} className="w-12 h-12 rounded-lg object-cover border border-white/10" />
+                                      ) : (
+                                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-zinc-300">
+                                          <Paperclip className="w-3.5 h-3.5 text-zinc-400" />
+                                          <span className="truncate max-w-[80px]">{fp.name}</span>
+                                        </div>
+                                      )}
+                                      <button
+                                        onClick={() => removeFile(i)}
+                                        className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-700 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <X className="w-2.5 h-2.5 text-white" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                               <div className="flex items-center justify-between px-1 pt-1">
                                 <div className="flex items-center gap-1">
-                                  {/* Mode selector dropdown */}
+                                  {/* Attach file button — opens upward in active conversation */}
+                                  <div className="relative" ref={attachMenuRef}>
+                                    <button
+                                      onClick={() => setShowAttachMenu(!showAttachMenu)}
+                                      className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors shrink-0"
+                                      title="Attach file"
+                                    >
+                                      <Plus className="w-4 h-4" />
+                                    </button>
+                                    <AnimatePresence>
+                                      {showAttachMenu && (
+                                        <motion.div
+                                          initial={{ opacity: 0, y: 4 }}
+                                          animate={{ opacity: 1, y: 0 }}
+                                          exit={{ opacity: 0, y: 4 }}
+                                          transition={{ duration: 0.15 }}
+                                          className="absolute bottom-full left-0 mb-2 w-48 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
+                                        >
+                                          <button
+                                            onClick={() => handleFileSelect(IMAGE_ACCEPT)}
+                                            className="w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-sm text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+                                          >
+                                            <Plus className="w-4 h-4 text-cyan-400" />
+                                            Upload Image
+                                          </button>
+                                          <div className="h-px bg-white/5" />
+                                          <button
+                                            onClick={() => handleFileSelect(DOCUMENT_ACCEPT)}
+                                            className="w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-sm text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+                                          >
+                                            <Paperclip className="w-4 h-4 text-cyan-400" />
+                                            Upload Document
+                                          </button>
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
+                                  </div>
+                                  {/* Mode selector dropdown — opens upward in active conversation */}
                                   <div className="relative" ref={modeDropdownRef}>
                                     <button
                                       onClick={() => setShowModeDropdown(!showModeDropdown)}
@@ -2721,7 +3103,7 @@ export default function ChatPage() {
                                 </div>
 
                                 {/* Action button */}
-                                {inputMessage.trim() ? (
+                                {(inputMessage.trim() || attachedFiles.length > 0) ? (
                                   <button
                                     onClick={() => sendMessage()}
                                     disabled={isSending || !activeConversationId || initializing}
@@ -2822,11 +3204,20 @@ export default function ChatPage() {
 	                  parseStakingMode(currentStakingMetadata?.mode) ??
 	                  parseStakingMode(currentStakingMetadata?.action)
 	                }
+	                initialViewState="review"
 	              />
 	            )}
 	          </AnimatePresence>
         </>
       </TransactionSettingsProvider>
+      {/* Hidden file input for attach menu */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        multiple
+        onChange={handleFileChange}
+      />
     </ProtectedRoute>
   );
 }
