@@ -101,10 +101,21 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       if (!isMountedRef.current) return;
 
-      const mappedConversations: Conversation[] = conversationsFromBackend.map((c, index) => ({
-        id: c.id,
-        title: c.title || `Chat ${index + 1}`,
-      }));
+      const mappedConversations: Conversation[] = conversationsFromBackend.map((c, index) => {
+        const backendTitle = c.title || `Chat ${index + 1}`;
+        // Prefer cached AI title over generic backend title
+        if (typeof window !== 'undefined') {
+          const t = backendTitle.trim().toLowerCase();
+          const isGeneric = !t || t === 'new chat' || t === 'chat' || /^chat\s+\d+$/.test(t);
+          if (isGeneric) {
+            try {
+              const cached = localStorage.getItem(`chat:aiTitle:${c.id}`);
+              if (cached) return { id: c.id, title: cached };
+            } catch {}
+          }
+        }
+        return { id: c.id, title: backendTitle };
+      });
 
       setConversations(mappedConversations);
       console.info('[CHAT TRACE][ChatContext] refresh:setConversations', {

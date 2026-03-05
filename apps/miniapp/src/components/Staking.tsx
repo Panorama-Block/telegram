@@ -46,6 +46,7 @@ interface StakingProps {
   onClose: () => void;
   initialAmount?: string | number;
   initialMode?: 'stake' | 'unstake';
+  initialViewState?: ViewState;
   variant?: 'modal' | 'panel';
 }
 
@@ -247,7 +248,7 @@ function flattenPreparedTransactions(prepared: any): PreparedTx[] {
   return deduped;
 }
 
-export function Staking({ onClose, initialAmount, initialMode = 'stake', variant = 'modal' }: StakingProps) {
+export function Staking({ onClose, initialAmount, initialMode = 'stake', initialViewState, variant = 'modal' }: StakingProps) {
   const account = useActiveAccount();
   const stakingApi = useStakingApi();
   const { tokens, userPosition, loading: loadingCore, error: coreError, refresh } = useStakingData();
@@ -260,6 +261,18 @@ export function Staking({ onClose, initialAmount, initialMode = 'stake', variant
   const [unstakeMethod, setUnstakeMethod] = useState<UnstakeMethod>('instant');
   const [stakeAmount, setStakeAmount] = useState(() => (initialMode === 'stake' && normalizedInitialAmount ? normalizedInitialAmount : "0.01"));
   const [unstakeAmount, setUnstakeAmount] = useState(() => (initialMode === 'unstake' && normalizedInitialAmount ? normalizedInitialAmount : ""));
+
+  // When launched with initialViewState='review' (e.g. from chat), auto-advance
+  // once the amount is set so the review screen can render properly.
+  const hasDeferredReviewRef = useRef(initialViewState === 'review');
+  useEffect(() => {
+    if (!hasDeferredReviewRef.current) return;
+    const amount = mode === 'stake' ? stakeAmount : unstakeAmount;
+    if (amount && parseFloat(amount) > 0) {
+      hasDeferredReviewRef.current = false;
+      setViewState('review');
+    }
+  }, [mode, stakeAmount, unstakeAmount]);
   const [stakingError, setStakingError] = useState<string | null>(null);
   const [txWarning, setTxWarning] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
