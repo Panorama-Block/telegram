@@ -14,8 +14,6 @@ import zicoBlue from '../../../public/icons/zico_blue.svg';
 
 // Widget Modals
 import { SwapWidget } from '@/components/SwapWidget';
-import { Lending } from '@/components/Lending';
-import { Staking } from '@/components/Staking';
 import { DCA } from '@/components/DCA';
 
 type NavItem = {
@@ -87,7 +85,6 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     conversations,
     activeConversationId,
     isLoading: isLoadingConversations,
-    createConversation,
     deleteConversation,
     setActiveConversationId,
     isCreatingConversation

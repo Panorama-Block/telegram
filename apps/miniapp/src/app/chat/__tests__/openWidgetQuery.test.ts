@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  buildOpenWidgetPlan,
   buildOpenWidgetQueryKey,
   deriveLendingFlowFromAction,
   deriveLendingModeFromAction,
@@ -65,5 +66,24 @@ describe('openWidgetQuery helpers', () => {
   test('builds deterministic key from query', () => {
     const params = new URLSearchParams('open=lending&amount=2');
     expect(buildOpenWidgetQueryKey('lending', params)).toBe('lending:open=lending&amount=2');
+  });
+
+  test('builds widget opening plan from query params', () => {
+    const lendingParams = new URLSearchParams('open=lending&amount=2&asset=AVAX');
+    const stakingParams = new URLSearchParams('open=staking&amount=0.5&mode=unstake');
+
+    expect(buildOpenWidgetPlan(lendingParams)).toEqual({
+      target: 'lending',
+      network: 'avalanche',
+      metadata: { amount: '2', asset: 'AVAX' },
+    });
+
+    expect(buildOpenWidgetPlan(stakingParams)).toEqual({
+      target: 'staking',
+      network: 'ethereum',
+      metadata: { amount: '0.5', mode: 'unstake' },
+    });
+
+    expect(buildOpenWidgetPlan(new URLSearchParams('open=swap&amount=1'))).toBeNull();
   });
 });

@@ -8,7 +8,7 @@ export const useStakingData = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
-  const hasInitialized = useRef(false);
+  const lastFetchTimeRef = useRef<number>(0);
 
   // Minimum interval between fetches (2 minutes)
   const MIN_FETCH_INTERVAL = 2 * 60 * 1000;
@@ -17,7 +17,7 @@ export const useStakingData = () => {
     const now = Date.now();
 
     // Don't fetch if we recently fetched and it's not a forced refresh
-    if (!forceRefresh && (now - lastFetchTime) < MIN_FETCH_INTERVAL) {
+    if (!forceRefresh && (now - lastFetchTimeRef.current) < MIN_FETCH_INTERVAL) {
       console.log('Skipping fetch - too recent');
       return;
     }
@@ -35,6 +35,7 @@ export const useStakingData = () => {
 
       setTokens(availableTokens);
       setUserPosition(position);
+      lastFetchTimeRef.current = now;
       setLastFetchTime(now);
 
       console.log('Staking data fetched successfully', { tokens: availableTokens.length, hasPosition: !!position });
@@ -44,27 +45,24 @@ export const useStakingData = () => {
     } finally {
       setLoading(false);
     }
-  }, [stakingApi, lastFetchTime, MIN_FETCH_INTERVAL]);
+  }, [stakingApi, MIN_FETCH_INTERVAL]);
 
-  // Initial load - only once
+  // Initial load and account/client changes.
   useEffect(() => {
-    if (!hasInitialized.current) {
-      hasInitialized.current = true;
-      fetchData();
-    }
-  }, []);
+    void fetchData();
+  }, [fetchData]);
 
   // Refresh function for manual updates
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     console.log('Manual refresh triggered');
-    fetchData(true);
+    await fetchData(true);
   }, [fetchData]);
 
   // Clear cache and refresh
-  const clearCacheAndRefresh = useCallback(() => {
+  const clearCacheAndRefresh = useCallback(async () => {
     console.log('Clearing cache and refreshing...');
     stakingApi.clearLidoDataCache();
-    fetchData(true);
+    await fetchData(true);
   }, [stakingApi, fetchData]);
 
   return {

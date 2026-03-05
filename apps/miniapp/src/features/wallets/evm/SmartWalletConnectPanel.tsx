@@ -159,7 +159,7 @@ export function SmartWalletConnectPanel() {
         throw new Error(`Wallet address (${account.address}) does not match payload (${payload.address})`);
       }
 
-      // 2. Assinar a mensagem com a wallet
+      // 2. Sign the message with the wallet
       let signature;
 
       try {
@@ -181,7 +181,7 @@ export function SmartWalletConnectPanel() {
         throw new Error(`Signature error: ${error}`);
       }
 
-      // 3. Verificar assinatura no backend
+      // 3. Verify signature on the backend
       const verifyPayload = { payload, signature };
 
       const verifyResponse = await fetch(`${authApiBase}/auth/verify`, {

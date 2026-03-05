@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import Link from 'next/link'
 import logo from '../../../../public/panorama_block.svg'
 
 const Header = () => {
@@ -27,8 +28,15 @@ const Header = () => {
         <a href="#resources" onClick={(e) => handleSmoothScroll(e, '#resources')} className="hover:text-white transition-colors">Resources</a>
       </nav>
 
-      {/* Right spacer (keeps header height consistent and allows future CTA) */}
-      <div className="ml-auto hidden md:block w-[140px]" aria-hidden />
+      {/* Right CTA */}
+      <div className="ml-auto hidden md:flex items-center">
+        <Link
+          href="/documentation"
+          className="inline-flex items-center justify-center min-h-[40px] px-4 rounded-full border border-landing-highlight/35 text-landing-highlight hover:bg-landing-highlight/10 transition-colors"
+        >
+          Documentation
+        </Link>
+      </div>
     </header>
   )
 }

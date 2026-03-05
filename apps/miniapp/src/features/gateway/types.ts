@@ -1,6 +1,6 @@
 // ============================================================================
 // GATEWAY API TYPES
-// Types para comunicação com o Database Gateway
+// Types for Database Gateway communication
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -205,7 +205,7 @@ export interface CreateTransactionInput {
 }
 
 export interface UpdateTransactionInput {
-  // To (pode ser atualizado com valor real após execução)
+  // To (can be updated with real value after execution)
   toAmountRaw?: string;
   toAmountDisplay?: string;
   toAmountUsd?: string;

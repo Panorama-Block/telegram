@@ -1,6 +1,6 @@
 // ============================================================================
 // WALLET API
-// API para gerenciar carteiras do usuário
+// API for user wallet management
 // ============================================================================
 
 import { gatewayApi, type QueryParams } from './api';
@@ -15,7 +15,7 @@ import type {
 const ENTITY = 'wallets';
 
 // ----------------------------------------------------------------------------
-// Helper para determinar tipo de wallet baseado na chain
+// Helper to determine wallet type from chain
 // ----------------------------------------------------------------------------
 
 export function getWalletTypeFromChain(chain: string): WalletType {
@@ -45,7 +45,7 @@ export function getChainFromChainId(chainId: number): string {
 
 export const walletApi = {
   /**
-   * Lista todas as wallets do usuário
+   * List all user wallets
    */
   async list(userId: string, params?: Omit<QueryParams, 'where'>): Promise<PaginatedResponse<Wallet>> {
     return gatewayApi.list<Wallet>(ENTITY, {
@@ -56,14 +56,14 @@ export const walletApi = {
   },
 
   /**
-   * Busca wallet por ID
+   * Get wallet by ID
    */
   async get(id: string): Promise<Wallet> {
     return gatewayApi.get<Wallet>(ENTITY, id);
   },
 
   /**
-   * Busca wallet por chain e address
+   * Find wallet by chain and address
    */
   async findByAddress(userId: string, chain: string, address: string): Promise<Wallet | null> {
     const normalizedAddress = address.toLowerCase();
@@ -79,7 +79,7 @@ export const walletApi = {
   },
 
   /**
-   * Cria nova wallet
+   * Create new wallet
    */
   async create(data: CreateWalletInput): Promise<Wallet> {
     const normalized: CreateWalletInput = {
@@ -91,7 +91,7 @@ export const walletApi = {
   },
 
   /**
-   * Cria wallet se não existir, retorna existente se já tiver
+   * Create wallet if missing, otherwise return existing one
    */
   async findOrCreate(data: CreateWalletInput): Promise<{ wallet: Wallet; created: boolean }> {
     const existing = await this.findByAddress(data.userId, data.chain, data.address);
@@ -103,24 +103,24 @@ export const walletApi = {
   },
 
   /**
-   * Atualiza wallet
+   * Update wallet
    */
   async update(id: string, data: UpdateWalletInput): Promise<Wallet> {
     return gatewayApi.update<Wallet>(ENTITY, id, data);
   },
 
   /**
-   * Desativa wallet (soft delete)
+   * Deactivate wallet (soft delete)
    */
   async deactivate(id: string): Promise<Wallet> {
     return gatewayApi.update<Wallet>(ENTITY, id, { isActive: false });
   },
 
   /**
-   * Define wallet como primária
+   * Set wallet as primary
    */
   async setPrimary(userId: string, walletId: string): Promise<void> {
-    // Primeiro, remove isPrimary de todas as wallets do usuário
+    // First, remove isPrimary from all user wallets
     const wallets = await this.list(userId);
 
     const updatePromises = wallets.data.map((w) =>
@@ -135,7 +135,7 @@ export const walletApi = {
   },
 
   /**
-   * Busca wallet primária do usuário
+   * Get primary wallet for user
    */
   async getPrimary(userId: string): Promise<Wallet | null> {
     const result = await gatewayApi.list<Wallet>(ENTITY, {

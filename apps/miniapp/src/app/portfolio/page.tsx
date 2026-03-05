@@ -147,6 +147,7 @@ export default function PortfolioPage() {
     lastFetchTime: stakingLastFetchTime,
   } = useStakingData();
   const {
+    tokens: lendingTokens,
     userPosition: lendingPosition,
     loading: lendingLoading,
     error: lendingError,
@@ -340,6 +341,37 @@ export default function PortfolioPage() {
     return liq.isHealthy ? { text: 'Healthy', tone: 'green' as const } : { text: 'At risk', tone: 'yellow' as const };
   }, [lendingPosition?.liquidity]);
 
+  const lendingPositionApy = useMemo(() => {
+    if (!lendingPosition?.positions?.length || !lendingTokens.length) return null;
+
+    const suppliedPositions = lendingPosition.positions.filter((position) => {
+      const supplied = safeParseBigInt(position.suppliedWei);
+      return supplied != null && supplied > 0n;
+    });
+    if (suppliedPositions.length === 0) return null;
+
+    const normalizedTokens = lendingTokens.map((token) => ({
+      ...token,
+      addressLower: token.address.toLowerCase(),
+      symbolUpper: token.symbol.toUpperCase(),
+    }));
+
+    const collectedApy: number[] = [];
+    for (const position of suppliedPositions) {
+      const addressLower = position.underlyingAddress.toLowerCase();
+      const symbolUpper = position.underlyingSymbol.toUpperCase();
+      const market =
+        normalizedTokens.find((token) => token.addressLower === addressLower) ??
+        normalizedTokens.find((token) => token.symbolUpper === symbolUpper);
+      if (market && Number.isFinite(market.supplyAPY)) {
+        collectedApy.push(market.supplyAPY);
+      }
+    }
+
+    if (collectedApy.length === 0) return null;
+    return collectedApy.reduce((sum, apy) => sum + apy, 0) / collectedApy.length;
+  }, [lendingPosition?.positions, lendingTokens]);
+
   return (
     <ProtectedRoute>
     <div className="min-h-[100dvh] bg-[#050505] relative overflow-x-hidden flex flex-col text-foreground font-sans safe-area-pb">
@@ -494,156 +526,181 @@ export default function PortfolioPage() {
           </motion.div>
 	        </div>
 
-	        {/* Positions (Staking + Lending) */}
-	        {!isSmartWalletView && (
-	          <motion.div
-	            initial={{ opacity: 0, y: 20 }}
-	            animate={{ opacity: 1, y: 0 }}
-	            transition={{ delay: 0.23 }}
-	            className="mb-12"
-	          >
-	            <div className="flex items-center justify-between gap-2 mb-4">
-	              <h3 className="text-lg font-medium text-white">Positions</h3>
-	              <div className="text-xs text-zinc-500">Last updated: {formatLastUpdated(Math.max(stakingLastUpdated, lendingLastFetchTime || 0))}</div>
-	            </div>
-	            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-	              {/* Staking position */}
-	              <GlassCard className="p-5 bg-[#0A0A0A]/60">
-	                <div className="flex items-start justify-between gap-3">
-	                  <div className="flex items-center gap-3 min-w-0">
-	                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
-	                      <Droplets className="w-4 h-4" />
-	                    </div>
-	                    <div className="min-w-0">
-	                      <div className="text-white font-medium truncate">Staking position</div>
-	                      <div className="text-xs text-zinc-500">Lido on Ethereum · APY {formatAPY(lidoApy)}</div>
-	                    </div>
-	                  </div>
-	                  <button
-	                    onClick={() => {
-	                      refreshStaking();
-	                      refreshStakingWithdrawals(true);
-	                    }}
-	                    className="text-xs text-zinc-400 hover:text-white transition-colors"
-	                  >
-	                    Refresh
-	                  </button>
-	                </div>
+        {/* Positions (Staking + Lending) */}
+        {!isSmartWalletView && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.23 }}
+            className="mb-12"
+          >
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-lg font-medium text-white">Positions</h3>
+                <div className="text-xs text-zinc-500">
+                  Last updated: {formatLastUpdated(Math.max(stakingLastUpdated, lendingLastFetchTime || 0))}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  void refreshStaking();
+                  void refreshStakingWithdrawals(true);
+                  void refreshLendingPosition();
+                }}
+                className="inline-flex items-center gap-2 text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors disabled:opacity-60"
+                disabled={stakingLoading || stakingWithdrawalsLoading || lendingLoading}
+              >
+                {(stakingLoading || stakingWithdrawalsLoading || lendingLoading) ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Scan className="w-3.5 h-3.5" />
+                )}
+                Refresh
+              </button>
+            </div>
 
-	                <div className="mt-4 grid grid-cols-2 gap-3">
-	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
-	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">stETH</div>
-	                    <div className="text-sm font-mono text-white">{formatWei(stakingPosition?.stETHBalance)}</div>
-	                  </div>
-	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
-	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">wstETH</div>
-	                    <div className="text-sm font-mono text-white">{formatWei(stakingPosition?.wstETHBalance)}</div>
-	                  </div>
-	                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+              <GlassCard className="p-5 bg-[#0A0A0A]/60">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                      <Droplets className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-white font-medium truncate">Lido Staking</div>
+                      <div className="text-xs text-zinc-500">Ethereum</div>
+                    </div>
+                  </div>
+                  <div className="text-[11px] px-2 py-1 rounded-lg border border-white/10 bg-white/5 text-zinc-300">
+                    {stakingClaimable.count > 0
+                      ? `${stakingClaimable.count} claimable`
+                      : stakingPending.count > 0
+                        ? `${stakingPending.count} pending`
+                        : "Active"}
+                  </div>
+                </div>
 
-	                <div className="mt-3 grid grid-cols-2 gap-3">
-	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
-	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Claimable</div>
-	                    <div className="text-sm text-white font-mono">{formatWei(stakingClaimable.amountWei)}</div>
-	                    <div className="text-[11px] text-zinc-500 mt-1">{stakingClaimable.count} request{stakingClaimable.count === 1 ? '' : 's'}</div>
-	                  </div>
-	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
-	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Pending</div>
-	                    <div className="text-sm text-white font-mono">{formatWei(stakingPending.amountWei)}</div>
-	                    <div className="text-[11px] text-zinc-500 mt-1">{stakingPending.count} request{stakingPending.count === 1 ? '' : 's'}</div>
-	                  </div>
-	                </div>
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-500">Staked</span>
+                    <span className="text-sm font-mono text-white">{formatWei(stakingPosition?.stETHBalance)} stETH</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-500">Wrapped</span>
+                    <span className="text-sm font-mono text-white">{formatWei(stakingPosition?.wstETHBalance)} wstETH</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-500">Pending withdrawals</span>
+                    <span className="text-sm font-mono text-white">{stakingPending.count}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-500">APY</span>
+                    <span
+                      className={cn(
+                        "text-sm font-medium",
+                        Number.isFinite(lidoApy) ? "text-emerald-400" : "text-zinc-400",
+                      )}
+                    >
+                      {formatAPY(lidoApy)}
+                    </span>
+                  </div>
+                </div>
 
-	                {(stakingLoading || stakingWithdrawalsLoading) && (
-	                  <div className="mt-3 text-xs text-zinc-500">Loading…</div>
-	                )}
-	                {(stakingError || stakingWithdrawalsError) && (
-	                  <div className="mt-3 text-xs text-red-400">
-	                    {stakingError || stakingWithdrawalsError}
-	                  </div>
-	                )}
+                {(stakingError || stakingWithdrawalsError) && (
+                  <div className="mt-3 text-xs text-red-400">{stakingError || stakingWithdrawalsError}</div>
+                )}
 
-	                <div className="mt-4 flex items-center justify-between">
-	                  <div className="text-xs text-zinc-500">Source: protocol adapters</div>
-	                  <Link
-	                    href="/chat?open=staking"
-	                    className="text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
-	                  >
-	                    Manage
-	                  </Link>
-	                </div>
-	              </GlassCard>
+                <div className="mt-4">
+                  <Link
+                    href="/chat?open=staking"
+                    className="inline-flex text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
+                  >
+                    Manage Position
+                  </Link>
+                </div>
+              </GlassCard>
 
-	              {/* Lending position */}
-	              <GlassCard className="p-5 bg-[#0A0A0A]/60">
-	                <div className="flex items-start justify-between gap-3">
-	                  <div className="flex items-center gap-3 min-w-0">
-	                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-	                      <Landmark className="w-4 h-4" />
-	                    </div>
-	                    <div className="min-w-0">
-	                      <div className="text-white font-medium truncate">Lending position</div>
-	                      <div className="text-xs text-zinc-500">Benqi on Avalanche</div>
-	                    </div>
-	                  </div>
-	                  <button
-	                    onClick={() => void refreshLendingPosition()}
-	                    className="text-xs text-zinc-400 hover:text-white transition-colors"
-	                  >
-	                    Refresh
-	                  </button>
-	                </div>
+              <GlassCard className="p-5 bg-[#0A0A0A]/60">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <Landmark className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-white font-medium truncate">Benqi Lending</div>
+                      <div className="text-xs text-zinc-500">Avalanche</div>
+                    </div>
+                  </div>
+                  <div
+                    className={cn(
+                      "text-[11px] px-2 py-1 rounded-lg border bg-white/5",
+                      lendingHealthLabel.tone === 'green' && "text-emerald-400 border-emerald-500/30",
+                      lendingHealthLabel.tone === 'yellow' && "text-yellow-400 border-yellow-500/30",
+                      lendingHealthLabel.tone === 'red' && "text-red-400 border-red-500/30",
+                      lendingHealthLabel.tone === 'zinc' && "text-zinc-400 border-white/10",
+                    )}
+                  >
+                    {lendingHealthLabel.text}
+                  </div>
+                </div>
 
-	                <div className="mt-4 grid grid-cols-2 gap-3">
-	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
-	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Supplied</div>
-	                    <div className="text-sm text-white font-mono">
-	                      {lendingSuppliedRows.length === 0 ? '0' : lendingSuppliedRows.slice(0, 2).map((r) => `${r.amount} ${r.symbol}`).join(', ')}
-	                      {lendingSuppliedRows.length > 2 ? ` +${lendingSuppliedRows.length - 2}` : ''}
-	                    </div>
-	                  </div>
-	                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
-	                    <div className="text-[10px] text-zinc-500 uppercase mb-1">Borrowed</div>
-	                    <div className="text-sm text-white font-mono">
-	                      {lendingBorrowedRows.length === 0 ? '0' : lendingBorrowedRows.slice(0, 2).map((r) => `${r.amount} ${r.symbol}`).join(', ')}
-	                      {lendingBorrowedRows.length > 2 ? ` +${lendingBorrowedRows.length - 2}` : ''}
-	                    </div>
-	                  </div>
-	                </div>
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-500">Supplied</span>
+                    <span className="text-sm font-mono text-white text-right">
+                      {lendingSuppliedRows.length === 0 ? '0' : lendingSuppliedRows.slice(0, 2).map((r) => `${r.amount} ${r.symbol}`).join(', ')}
+                      {lendingSuppliedRows.length > 2 ? ` +${lendingSuppliedRows.length - 2}` : ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-500">Borrowed</span>
+                    <span className="text-sm font-mono text-white text-right">
+                      {lendingBorrowedRows.length === 0 ? '0' : lendingBorrowedRows.slice(0, 2).map((r) => `${r.amount} ${r.symbol}`).join(', ')}
+                      {lendingBorrowedRows.length > 2 ? ` +${lendingBorrowedRows.length - 2}` : ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-500">Account health</span>
+                    <span
+                      className={cn(
+                        "text-sm font-medium",
+                        lendingHealthLabel.tone === 'green' && "text-emerald-400",
+                        lendingHealthLabel.tone === 'yellow' && "text-yellow-400",
+                        lendingHealthLabel.tone === 'red' && "text-red-400",
+                        lendingHealthLabel.tone === 'zinc' && "text-zinc-400",
+                      )}
+                    >
+                      {lendingHealthLabel.text}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-500">APY</span>
+                    <span
+                      className={cn(
+                        "text-sm font-medium",
+                        Number.isFinite(lendingPositionApy) ? "text-emerald-400" : "text-zinc-400",
+                      )}
+                    >
+                      {formatAPY(lendingPositionApy)}
+                    </span>
+                  </div>
+                </div>
 
-	                <div className="mt-3 flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10">
-	                  <div className="text-[10px] text-zinc-500 uppercase">Account health</div>
-	                  <div className={cn(
-	                    "text-xs font-medium",
-	                    lendingHealthLabel.tone === 'green' && "text-emerald-400",
-	                    lendingHealthLabel.tone === 'yellow' && "text-yellow-400",
-	                    lendingHealthLabel.tone === 'red' && "text-red-400",
-	                    lendingHealthLabel.tone === 'zinc' && "text-zinc-400",
-	                  )}>
-	                    {lendingHealthLabel.text}
-	                  </div>
-	                </div>
+                {lendingError && <div className="mt-3 text-xs text-red-400">{lendingError}</div>}
 
-	                {lendingLoading && (
-	                  <div className="mt-3 text-xs text-zinc-500">Loading…</div>
-	                )}
-	                {lendingError && (
-	                  <div className="mt-3 text-xs text-red-400">{lendingError}</div>
-	                )}
-
-	                <div className="mt-4 flex items-center justify-between">
-	                  <div className="text-xs text-zinc-500">Source: on-chain reads</div>
-	                  <Link
-	                    href="/chat?open=lending"
-	                    className="text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
-	                  >
-	                    Manage
-	                  </Link>
-	                </div>
-	              </GlassCard>
-	            </div>
-	          </motion.div>
-	        )}
+                <div className="mt-4">
+                  <Link
+                    href="/chat?open=lending"
+                    className="inline-flex text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
+                  >
+                    Manage Position
+                  </Link>
+                </div>
+              </GlassCard>
+            </div>
+          </motion.div>
+        )}
 
         {/* DCA Strategies Section (only when viewing Smart Wallet) */}
         {isSmartWalletView && strategies.length > 0 && (
