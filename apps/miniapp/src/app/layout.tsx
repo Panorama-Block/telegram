@@ -141,7 +141,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
+    // Telegram WebApp SDK (and some extensions) may mutate <html> styles before hydration
+    // (e.g. setting --tg-viewport-* CSS vars). Suppress mismatch warnings for trust-first UX.
+    <html
+      lang="en"
+      className="h-full"
+      // Provide stable defaults so client-side mutations (Telegram SDK) don't cause hydration errors.
+      style={{
+        ["--tg-viewport-height" as any]: "100vh",
+        ["--tg-viewport-stable-height" as any]: "100vh",
+      }}
+      suppressHydrationWarning
+    >
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, shrink-to-fit=no" />
         <meta name="theme-color" content="#00d9ff" />
@@ -159,7 +170,7 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://api.coingecko.com" />
         <link rel="dns-prefetch" href="https://api.1inch.io" />
       </head>
-      <body className={`${jetbrainsMono.variable} ${plusJakarta.variable} min-h-[100dvh] bg-pano-bg-primary text-pano-text-primary antialiased overflow-x-hidden`}>
+      <body className={`${jetbrainsMono.variable} ${plusJakarta.variable} min-h-[100dvh] bg-pano-bg-primary text-pano-text-primary antialiased overflow-x-hidden`} suppressHydrationWarning>
         <ClientProviders>
           {children}
         </ClientProviders>

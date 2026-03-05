@@ -6,6 +6,7 @@ import { createThirdwebClient } from 'thirdweb';
 import { createWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import { persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 import { linkTelegramIdentityIfAvailable } from '@/shared/lib/telegram-link';
 
 export default function WalletExternalPage() {
@@ -87,6 +88,7 @@ export default function WalletExternalPage() {
         }
         const { token, address, sessionId } = await verifyResponse.json();
         localStorage.setItem('authToken', token);
+        persistAuthWalletBinding({ walletId, address: accountAddress });
         await linkTelegramIdentityIfAvailable(authApiBase, address || payload.address || accountAddress, {
           sessionId: sessionId || null,
           address: address || accountAddress || null,

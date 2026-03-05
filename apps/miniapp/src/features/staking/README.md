@@ -82,7 +82,7 @@ Fetches available staking tokens with current market data from Lido Protocol.
 **Example:**
 ```typescript
 const tokens = await stakingApi.getTokens();
-console.log(tokens[0].stakingAPY); // 4.2
+console.log(tokens[0].stakingAPY); // e.g. 4.2 (can be null)
 console.log(tokens[0].symbol); // "ETH"
 ```
 
@@ -91,7 +91,7 @@ console.log(tokens[0].symbol); // "ETH"
 Retrieves the user's current staking position.
 
 **Returns:**
-- `StakingPosition` object with staked amount, stETH/wstETH balances, and rewards
+- `StakingPosition` object with staked amount and stETH/wstETH balances
 - `null` if no position exists
 
 **Example:**
@@ -100,8 +100,7 @@ const position = await stakingApi.getUserPosition();
 if (position) {
   console.log(`Staked: ${position.stakedAmount}`);
   console.log(`stETH Balance: ${position.stETHBalance}`);
-  console.log(`Rewards: ${position.rewards}`);
-  console.log(`APY: ${position.apy}%`);
+  console.log(`APY: ${position.apy == null ? 'n/a' : `${position.apy}%`}`);
 }
 ```
 
@@ -213,9 +212,8 @@ interface StakingToken {
   address: string;             // Contract address
   icon?: string;               // Optional icon URL
   decimals: number;            // Token decimals (18 for all)
-  stakingAPY: number;           // Staking APY (%)
-  totalStaked: string;         // Total staked amount
-  totalRewards: string;        // Total rewards distributed
+  stakingAPY: number | null;   // Staking APY (%) (can be null)
+  totalStaked: string | null;  // Total staked amount (wei string; can be null)
   minimumStake: string;         // Minimum stake amount in wei
   lockPeriod: number;          // Lock period in days (0 for Lido)
   isActive: boolean;           // Whether staking is active
@@ -231,8 +229,7 @@ interface StakingPosition {
   stakedAmount: string;        // Total staked amount in wei
   stETHBalance: string;        // Current stETH balance in wei
   wstETHBalance: string;       // Current wstETH balance in wei
-  rewards: string;             // Accumulated rewards in wei
-  apy: number;                 // Current APY (%)
+  apy: number | null;          // Current APY (%) (can be null)
   timestamp: string;            // Position creation timestamp
   status: 'active' | 'inactive'; // Position status
 }
@@ -244,7 +241,7 @@ interface StakingPosition {
 interface StakingTransaction {
   id: string;                  // Transaction ID
   userAddress: string;         // User wallet address
-  type: 'stake' | 'unstake' | 'claim'; // Transaction type
+  type: 'stake' | 'unstake' | 'unstake_approval' | 'claim_rewards' | 'withdrawal_claim'; // Transaction type
   amount: string;              // Amount in wei
   token: string;               // Token symbol
   status: 'pending' | 'completed' | 'failed'; // Transaction status
@@ -420,4 +417,3 @@ Enable detailed logging by checking the browser console for:
 ## License
 
 This module is part of the Panorama Block DeFi platform.
-

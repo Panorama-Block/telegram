@@ -5,6 +5,7 @@ export interface QuoteRequest {
   fromToken: string;
   toToken: string;
   amount: number;
+  unit?: 'token' | 'wei';
   jwtToken?: string;
 }
 
@@ -46,4 +47,3 @@ export class SwapClient {
     return (await res.json()) as QuoteResponse;
   }
 }
-

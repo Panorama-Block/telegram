@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "data": {
+    "id": "tx_stake_01",
+    "userAddress": "0x1111111111111111111111111111111111111111",
+    "type": "stake",
+    "amount": "10000000000000000",
+    "token": "ETH",
+    "status": "pending",
+    "transactionData": {
+      "to": "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84",
+      "data": "0x12345678",
+      "value": "10000000000000000",
+      "gasLimit": "210000",
+      "chainId": 1
+    }
+  }
+}

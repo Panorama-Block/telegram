@@ -32,7 +32,8 @@ export const transactionApi = {
       walletId?: string;
     }
   ): Promise<PaginatedResponse<Transaction>> {
-    const where: Record<string, unknown> = { userId };
+    const normalizedUserId = userId.toLowerCase();
+    const where: Record<string, unknown> = { userId: normalizedUserId };
 
     if (params?.action) where.action = params.action;
     if (params?.status) where.status = params.status;

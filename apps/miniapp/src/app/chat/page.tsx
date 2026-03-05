@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp, Plus, MessageSquare, Loader2, Mic, Square, X, Copy, Check } from 'lucide-react';
+import { Search, Paperclip, ArrowUp, ArrowDown, Sparkles, ArrowLeftRight, PieChart, Landmark, Percent, ArrowRightLeft, TrendingUp, Plus, MessageSquare, Loader2, Mic, Square, X, Copy, Check, Zap, Brain, ChevronDown } from 'lucide-react';
 
 // Window.ethereum type declaration
 declare global {
@@ -24,7 +24,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { swapApi } from '@/features/swap/api';
 import { bridgeApi } from '@/features/swap/bridgeApi';
 import { Lending } from '@/components/Lending';
-import { normalizeToApi, formatAmountHuman } from '@/features/swap/utils';
+import { useLendingApi } from '@/features/lending';
+import { normalizeToApi, formatAmountHuman, toFixedFloor } from '@/features/swap/utils';
 import { networks, Token, TON_CHAIN_ID } from '@/features/swap/tokens';
 import { useActiveAccount, useActiveWallet } from 'thirdweb/react';
 import { useLogout } from '@/shared/hooks/useLogout';
@@ -39,13 +40,30 @@ import { Droplets } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { useAudioRecorder } from '@/shared/hooks/useAudioRecorder';
 import { useKeyboardHeight } from '@/shared/hooks/useKeyboardHeight';
-import { FEATURE_FLAGS } from '@/config/features';
 import { useWalletIdentity } from '@/shared/contexts/WalletIdentityContext';
 import { resolveChatIdentity } from '@/shared/lib/chatIdentity';
 import { useAgentStream } from '@/shared/hooks/useAgentStream';
 import { useTypewriter } from '@/shared/hooks/useTypewriter';
 import { ThoughtProcess } from '@/components/chat/ThoughtProcess';
+import {
+  buildOpenWidgetQueryKey,
+  deriveLendingFlowFromAction,
+  deriveLendingModeFromAction,
+  parseLendingFlow,
+  parseLendingMode,
+  parseLendingQueryMetadata,
+  parseStakingMode,
+  parseStakingQueryMetadata,
+  resolveOpenWidgetTarget,
+} from './openWidgetQuery';
 
+
+interface FilePreview {
+  name: string;
+  type: 'image' | 'document';
+  preview?: string; // ObjectURL for images
+  size: number;
+}
 
 interface Message {
   role: 'user' | 'assistant';
@@ -53,6 +71,7 @@ interface Message {
   timestamp: Date;
   agentName?: string | null;
   metadata?: Record<string, unknown> | null;
+  attachments?: FilePreview[];
 }
 
 
@@ -61,6 +80,7 @@ const MAX_CONVERSATION_TITLE_LENGTH = 48;
 const LAST_CONVERSATION_STORAGE_KEY = 'chat:lastConversationId';
 const CONVERSATION_CACHE_PREFIX = 'chat:cache';
 const CONVERSATION_LIST_KEY = 'chat:ids';
+const AI_TITLE_PREFIX = 'chat:aiTitle';
 const DEBUG_CHAT_FLAG = (process.env.NEXT_PUBLIC_MINIAPP_DEBUG_CHAT ?? process.env.MINIAPP_DEBUG_CHAT ?? '').toLowerCase();
 const DEBUG_CHAT_ENABLED = ['1', 'true', 'on', 'yes'].includes(DEBUG_CHAT_FLAG);
 
@@ -83,8 +103,8 @@ const TOKEN_ICONS: Record<string, string> = {
   'LINK': 'https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png',
   'UNI': 'https://assets.coingecko.com/coins/images/12504/small/uniswap-logo.png',
   'AAVE': 'https://assets.coingecko.com/coins/images/12645/small/AAVE.png',
-  'stETH': 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png',
-  'wstETH': 'https://assets.coingecko.com/coins/images/18834/small/wstETH.png',
+  'STETH': 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png',
+  'WSTETH': 'https://assets.coingecko.com/coins/images/18834/small/wstETH.png',
   'TON': 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png',
   'WLD': 'https://assets.coingecko.com/coins/images/31069/small/worldcoin.jpeg',
 };
@@ -313,18 +333,32 @@ function autoFormatAssistantMarkdown(text: string): string {
 
   return t.trim();
 }
+function isGenericTitle(title: string | undefined): boolean {
+  if (!title) return true;
+  const t = title.trim().toLowerCase();
+  return !t || t === 'new chat' || t === 'chat' || /^chat\s+\d+$/.test(t);
+}
+
 function deriveConversationTitle(fallbackTitle: string | undefined, messages: Message[]): string {
+  // If the conversation already has a meaningful (AI-generated) title, keep it
+  if (!isGenericTitle(fallbackTitle)) return fallbackTitle!;
+
   const firstUserMessage = messages.find((msg) => msg.role === 'user' && msg.content.trim().length > 0);
   if (!firstUserMessage) return fallbackTitle || 'New Chat';
 
   const normalized = firstUserMessage.content.trim().replace(/\s+/g, ' ');
   if (!normalized) return fallbackTitle || 'New Chat';
 
-  if (normalized.length > MAX_CONVERSATION_TITLE_LENGTH) {
-    return `${normalized.slice(0, MAX_CONVERSATION_TITLE_LENGTH - 3)}...`;
+  // Extract 3-8 key words from the message for a concise title
+  const MAX_WORDS = 8;
+  const words = normalized.split(' ').slice(0, MAX_WORDS);
+  const title = words.join(' ');
+
+  if (words.length < normalized.split(' ').length) {
+    return `${title}...`;
   }
 
-  return normalized;
+  return title;
 }
 
 function normalizeConversationId(value: unknown): string | null {
@@ -363,7 +397,7 @@ export default function ChatPage() {
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const agentsClient = useMemo(() => new AgentsClient(), []);
 
   // Keyboard handling for mobile
@@ -381,6 +415,7 @@ export default function ChatPage() {
   const { address: identityAddress, tonAddress, tonAddressRaw } = useWalletIdentity();
   const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
+  const lendingApi = useLendingApi();
 
   // Swap states
   const [swapQuote, setSwapQuote] = useState<QuoteResponse | null>(null);
@@ -391,18 +426,30 @@ export default function ChatPage() {
 
   // SwapWidget modal state
   const [showSwapWidget, setShowSwapWidget] = useState(false);
-  const [swapWidgetTokens, setSwapWidgetTokens] = useState<{ from: any; to: any; amount?: string } | null>(null);
+  const [swapWidgetTokens, setSwapWidgetTokens] = useState<{ from: any; to: any; amount?: string; quote?: any; viewState?: 'input' | 'routing' | 'details' | 'confirm' } | null>(null);
 
   // Lending states
   const [lendingModalOpen, setLendingModalOpen] = useState(false);
   const [currentLendingMetadata, setCurrentLendingMetadata] = useState<Record<string, unknown> | null>(null);
+  const [lendingLoading, setLendingLoading] = useState(false);
+  const [lendingError, setLendingError] = useState<string | null>(null);
+  const [lendingApy, setLendingApy] = useState<{ supplyAPY: number; borrowAPY: number } | null>(null);
+  const [lendingBalance, setLendingBalance] = useState<string | null>(null);
+  const [lendingInsufficientBalance, setLendingInsufficientBalance] = useState(false);
 
   // Staking states
   const [showStakingWidget, setShowStakingWidget] = useState(false);
   const [currentStakingMetadata, setCurrentStakingMetadata] = useState<Record<string, unknown> | null>(null);
+  const [stakingLoading, setStakingLoading] = useState(false);
+  const [stakingError, setStakingError] = useState<string | null>(null);
+  const [stakingBalance, setStakingBalance] = useState<string | null>(null);
+  const [stakingInsufficientBalance, setStakingInsufficientBalance] = useState(false);
 
   // Trending prompts state
   const [showTrendingPrompts, setShowTrendingPrompts] = useState(false);
+  const [showWelcomeQuickPrompts, setShowWelcomeQuickPrompts] = useState(false);
+  const welcomeQuickPromptsRef = useRef<HTMLDivElement>(null);
+  const [promptBarNearMax, setPromptBarNearMax] = useState(false);
 
   // Audio recording
   const {
@@ -415,6 +462,18 @@ export default function ChatPage() {
   } = useAudioRecorder();
   const [isTranscribing, setIsTranscribing] = useState(false);
 
+  // Response mode (fast vs reasoning)
+  const [responseMode, setResponseMode] = useState<'fast' | 'reasoning'>('fast');
+  const [showModeDropdown, setShowModeDropdown] = useState(false);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
+
+  // File attachments
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [filePreviews, setFilePreviews] = useState<FilePreview[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+
   // Streaming agent state
   const {
     thoughts: streamThoughts,
@@ -424,6 +483,7 @@ export default function ChatPage() {
     error: streamError,
     result: streamResult,
     send: sendStream,
+    sendWithFiles: sendStreamWithFiles,
     cancel: cancelStream,
     reset: resetStream,
   } = useAgentStream();
@@ -489,6 +549,43 @@ export default function ChatPage() {
   const walletIdentity = resolvedIdentity.walletAddress;
   const userId = resolvedIdentity.userId;
 
+  // Persist response mode preference per user
+  useEffect(() => {
+    if (!userId) return;
+    const saved = localStorage.getItem(`chat:responseMode:${userId}`);
+    if (saved === 'fast' || saved === 'reasoning') setResponseMode(saved);
+  }, [userId]);
+
+  const toggleResponseMode = useCallback((mode: 'fast' | 'reasoning') => {
+    setResponseMode(mode);
+    setShowModeDropdown(false);
+    if (userId) localStorage.setItem(`chat:responseMode:${userId}`, mode);
+  }, [userId]);
+
+  // Close mode dropdown on outside click
+  useEffect(() => {
+    if (!showModeDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
+        setShowModeDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showModeDropdown]);
+
+  // Close welcome quick prompts dropdown on outside click
+  useEffect(() => {
+    if (!showWelcomeQuickPrompts) return;
+    const handler = (e: MouseEvent) => {
+      if (welcomeQuickPromptsRef.current && !welcomeQuickPromptsRef.current.contains(e.target as Node)) {
+        setShowWelcomeQuickPrompts(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showWelcomeQuickPrompts]);
+
   // Filter out disclaimer messages from the backend
   const DISCLAIMER_TEXT = 'This highly experimental chatbot is not intended for making important decisions';
   const rawMessages = activeConversationId ? (messagesByConversation[activeConversationId] ?? []) : [];
@@ -507,7 +604,7 @@ export default function ChatPage() {
   }, [account?.address, walletIdentity]);
 
   const activeConversationTitle = useMemo(() => {
-    if (!activeConversationId) return 'Zico AI Agent';
+    if (!activeConversationId) return '';
     const conversation = conversations.find((c) => c.id === activeConversationId);
     return conversation?.title || 'Chat';
   }, [activeConversationId, conversations]);
@@ -825,11 +922,7 @@ export default function ChatPage() {
             }));
             setConversations(fallbackConversations);
 
-            const storedConversationId =
-              typeof window !== 'undefined' ? localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY) : null;
-            const targetConversationId = storedConversationId && cachedIds.includes(storedConversationId)
-              ? storedConversationId
-              : cachedIds[0];
+            const targetConversationId = cachedIds[0];
 
             if (targetConversationId) {
               setMessagesByConversation((prev) => ({
@@ -850,44 +943,28 @@ export default function ChatPage() {
           return;
         }
 
-        // Decide which conversation to open:
-        // 1) Previously active (stored locally) if it still exists
-        // 2) First conversation returned by the backend
-        // 3) If none exist, create a fresh one
+        // Defer conversation creation until the user sends the first message.
+        // This prevents empty "Chat" entries from piling up in the sidebar
+        // every time the user opens the platform without interacting.
         let targetConversationId: string | null = null;
-        const storedConversationId =
-          typeof window !== 'undefined' ? localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY) : null;
-
-        if (fetchedConversations.length > 0) {
-          if (storedConversationId && fetchedConversations.some(c => c.id === storedConversationId)) {
-            targetConversationId = storedConversationId;
-            debug('bootstrap:restoreStoredConversation', { targetConversationId });
-          } else {
-            targetConversationId = fetchedConversations[0].id;
-            debug('bootstrap:useFirstConversation', { targetConversationId });
-          }
-        } else {
-          try {
-            targetConversationId = await agentsClient.createConversation(userId, authOpts);
-            if (targetConversationId) {
-              fetchedConversations = [{ id: targetConversationId, title: 'New Chat' }];
-            }
-            debug('bootstrap:createConversation', { targetConversationId });
-          } catch (error) {
-            console.error('Error creating initial conversation:', error);
-            debug('bootstrap:createConversation:error', {
-              error: error instanceof Error ? error.message : String(error),
-            });
-            if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
-              setInitializationError('We could not start a conversation. Please try again.');
-            }
-            // Keep targetConversationId as null to avoid setting active conversation
-          }
-        }
 
         if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) return;
 
-        setConversations(fetchedConversations);
+        // Enrich conversations with cached AI titles that may not yet be in the backend
+        const enriched = fetchedConversations.map((c) => {
+          if (!isGenericTitle(c.title)) return c;
+          try {
+            const cached = localStorage.getItem(`${AI_TITLE_PREFIX}:${c.id}`);
+            if (cached) return { ...c, title: cached };
+          } catch {}
+          return c;
+        });
+        setConversations(enriched);
+
+        // Enter pending-new-chat mode: show welcome screen, create backend
+        // conversation only when the user actually sends a message.
+        setPendingNewChat(true);
+        debug('bootstrap:pendingNewChat', { totalConversations: fetchedConversations.length });
         try {
           // Store only IDs to maintain compatibility with loadCachedConversationIds
           const idsToCache = fetchedConversations.map(c => c.id);
@@ -926,10 +1003,79 @@ export default function ChatPage() {
 
   // Track which conversation the current stream belongs to
   const streamConversationRef = useRef<string | null>(null);
+  const aiTitledConversationsRef = useRef<Set<string>>(new Set());
+  const pendingTitleRef = useRef<{ conversationId: string; message: string } | null>(null);
+
+  // ── File attachment handlers ──
+  const IMAGE_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp';
+  const DOCUMENT_ACCEPT = '.pdf,.txt,.md,.csv,text/plain,text/markdown,text/csv,application/pdf';
+  const MAX_FILES = 5;
+
+  const handleFileSelect = useCallback((accept: string) => {
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = accept;
+      fileInputRef.current.click();
+    }
+    setShowAttachMenu(false);
+  }, []);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newFiles = Array.from(e.target.files || []);
+    if (!newFiles.length) return;
+
+    setAttachedFiles((prev) => {
+      const combined = [...prev, ...newFiles].slice(0, MAX_FILES);
+      return combined;
+    });
+
+    const newPreviews: FilePreview[] = newFiles.map((file) => {
+      const isImg = file.type.startsWith('image/');
+      return {
+        name: file.name,
+        type: isImg ? 'image' as const : 'document' as const,
+        preview: isImg ? URL.createObjectURL(file) : undefined,
+        size: file.size,
+      };
+    });
+
+    setFilePreviews((prev) => [...prev, ...newPreviews].slice(0, MAX_FILES));
+
+    // Reset input so the same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  const removeFile = useCallback((index: number) => {
+    setFilePreviews((prev) => {
+      const removed = prev[index];
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const clearFiles = useCallback(() => {
+    filePreviews.forEach((fp) => { if (fp.preview) URL.revokeObjectURL(fp.preview); });
+    setAttachedFiles([]);
+    setFilePreviews([]);
+  }, [filePreviews]);
+
+  // Close attach menu on outside click
+  useEffect(() => {
+    if (!showAttachMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+        setShowAttachMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showAttachMenu]);
 
   const sendMessage = async (content?: string) => {
     const messageContent = content ?? inputMessage.trim();
-    if (!messageContent || isSending) return;
+    const filesToSend = [...attachedFiles];
+    const previewsToSend = [...filePreviews];
+    if ((!messageContent && filesToSend.length === 0) || isSending) return;
 
     // Handle pending new chat - create conversation on first message
     let conversationId = activeConversationId;
@@ -969,9 +1115,13 @@ export default function ChatPage() {
 
     const userMessage: Message = {
       role: 'user',
-      content: messageContent,
+      content: messageContent || (filesToSend.length > 0 ? `[${filesToSend.length} file(s) attached]` : ''),
       timestamp: new Date(),
+      attachments: previewsToSend.length > 0 ? previewsToSend : undefined,
     };
+
+    // Clear files immediately so the UI resets
+    clearFiles();
 
     const existingMessages = messagesByConversation[conversationId] ?? [];
     const updatedMessages = [...existingMessages, userMessage];
@@ -994,7 +1144,16 @@ export default function ChatPage() {
       );
       });
 
+    // Mark for AI title generation if this is the first user message in the conversation
+    const userMessagesCount = updatedMessages.filter((m) => m.role === 'user').length;
+    if (userMessagesCount === 1 && !aiTitledConversationsRef.current.has(conversationId)) {
+      pendingTitleRef.current = { conversationId, message: messageContent || userMessage.content };
+    }
+
     setInputMessage('');
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
     setIsSending(true);
     streamConversationRef.current = conversationId;
 
@@ -1002,18 +1161,31 @@ export default function ChatPage() {
     forceScrollToBottom();
 
     const walletAddress = account?.address || walletIdentity;
-    debug('chat:send:stream', { conversationId, hasUserId: Boolean(userId), hasWalletAddress: Boolean(walletAddress) });
+    debug('chat:send:stream', { conversationId, hasUserId: Boolean(userId), hasWalletAddress: Boolean(walletAddress), fileCount: filesToSend.length });
 
     const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') ?? undefined : undefined;
 
     // Fire-and-forget — the useEffect below handles the result
-    sendStream({
-      message: messageContent,
-      userId: userId ?? '',
-      conversationId,
-      walletAddress: walletAddress || undefined,
-      jwt: authToken,
-    });
+    if (filesToSend.length > 0) {
+      sendStreamWithFiles({
+        message: messageContent || '',
+        files: filesToSend,
+        userId: userId ?? '',
+        conversationId,
+        walletAddress: walletAddress || undefined,
+        jwt: authToken,
+        responseMode,
+      });
+    } else {
+      sendStream({
+        message: messageContent,
+        userId: userId ?? '',
+        conversationId,
+        walletAddress: walletAddress || undefined,
+        jwt: authToken,
+        responseMode,
+      });
+    }
   };
 
   // When the stream finishes AND the typewriter has caught up, materialise
@@ -1040,6 +1212,17 @@ export default function ChatPage() {
         checkSwapBalance(streamResult.metadata as Record<string, unknown>);
       }
 
+      // Auto-fetch lending APY and check balance if it's a lending intent
+      if (streamResult.metadata?.event === 'lending_intent_ready') {
+        getLendingInfo(streamResult.metadata as Record<string, unknown>);
+        checkLendingBalance(streamResult.metadata as Record<string, unknown>);
+      }
+
+      // Auto-check staking balance if it's a staking intent
+      if (streamResult.metadata?.event === 'staking_intent_ready') {
+        checkStakingBalance(streamResult.metadata as Record<string, unknown>);
+      }
+
       setMessagesByConversation((prev) => {
         const prevMessages = prev[conversationId] ?? [];
         const nextMessages = {
@@ -1054,6 +1237,29 @@ export default function ChatPage() {
       streamConversationRef.current = null;
       refreshSidebarConversations().catch(() => {});
       debug('chat:stream:complete', { conversationId });
+
+      // Fire AI title generation for first message in a conversation
+      const pending = pendingTitleRef.current;
+      if (pending && pending.conversationId === conversationId) {
+        pendingTitleRef.current = null;
+        aiTitledConversationsRef.current.add(conversationId);
+        agentsClient
+          .generateTitle(userId ?? '', conversationId, pending.message, getAuthOptions())
+          .then((aiTitle) => {
+            if (aiTitle && isMountedRef.current) {
+              // Cache AI title in localStorage for reload resilience
+              try { localStorage.setItem(`${AI_TITLE_PREFIX}:${conversationId}`, aiTitle); } catch {}
+              setConversations((prev) =>
+                prev.map((c) => (c.id === conversationId ? { ...c, title: aiTitle } : c))
+              );
+              // Refresh sidebar so ChatContext picks up the AI-generated title
+              refreshSidebarConversations().catch(() => {});
+            }
+          })
+          .catch((err) => {
+            console.warn('[CHAT] AI title generation failed:', err);
+          });
+      }
     }
 
     if (streamError) {
@@ -1084,12 +1290,34 @@ export default function ChatPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamDone, streamError, typewriterRevealing]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
   };
+
+  const autoResizeTextarea = useCallback((el: HTMLTextAreaElement) => {
+    // 1. Snapshot current rendered height
+    const currentH = el.offsetHeight;
+    // 2. Measure natural content height (no transition, height auto)
+    el.style.transition = 'none';
+    el.style.height = 'auto';
+    const maxH = Math.floor(window.innerHeight * 0.4);
+    const targetH = Math.min(el.scrollHeight, maxH);
+    // 3. Pin back to the old height so the browser has a start point
+    el.style.height = `${currentH}px`;
+    // 4. Force reflow so the pinned height is committed
+    void el.offsetHeight;
+    // 5. Enable transition: fast when growing (typing), smooth when shrinking (deleting)
+    const growing = targetH > currentH;
+    el.style.transition = growing
+      ? 'height 0.08s ease-out'
+      : 'height 0.3s cubic-bezier(0.4,0,0.2,1)';
+    el.style.height = `${targetH}px`;
+    // 6. Track whether textarea is near max height (90% threshold)
+    setPromptBarNearMax(targetH >= maxH * 0.9);
+  }, []);
 
   // Format recording time as MM:SS
   const formatRecordingTime = (seconds: number) => {
@@ -1127,55 +1355,69 @@ export default function ChatPage() {
     }
   };
 
-  const createNewChat = async () => {
-    if (isCreatingConversation) return;
-
-    setIsCreatingConversation(true);
-
-    try {
-      const newConversationId = await agentsClient.createConversation(userId, getAuthOptions());
-      console.log('[DEBUG] createNewChat: Generated ID:', newConversationId);
-      if (!newConversationId || !isMountedRef.current) return;
-
-      const newConversation: Conversation = {
-        id: newConversationId,
-        title: 'New Chat',
-      };
-
-      setConversations((prev) => [newConversation, ...prev.filter((conversation) => conversation.id !== newConversationId)]);
-      setMessagesByConversation((prev) => ({
-        ...prev,
-        [newConversationId]: [],
-      }));
-      setInitializationError(null);
-      setActiveConversation(newConversationId);
-      debug('conversation:create:success', { newConversationId });
-      refreshSidebarConversations().catch((error) => {
-        console.warn('[CHAT] Failed to refresh sidebar conversations after new chat:', error);
-      });
-    } catch (error) {
-      console.error('Error creating chat conversation:', error);
-      debug('conversation:create:error', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      if (isMountedRef.current) {
-        setInitializationError('We could not create a new chat. Please try again.');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setIsCreatingConversation(false);
-        debug('conversation:create:complete');
-      }
-    }
+  const createNewChat = () => {
+    // Enter pending-new-chat mode: show welcome screen, defer backend
+    // conversation creation until the user actually sends a message.
+    setPendingNewChat(true);
+    setActiveConversation(null);
+    setInitializationError(null);
+    debug('conversation:create:pending');
   };
 
   const handleSelectConversation = (conversationInput: unknown) => {
     const conversationId = normalizeConversationId(conversationInput);
     if (!conversationId) return;
+    setPendingNewChat(false);
     setActiveConversation(conversationId);
     setInitializationError(null);
     debug('conversation:select', { conversationId });
   };
+
+  // Handle ?open=lending|staking query parameter to auto-open widgets in chat.
+  const openParamRaw = searchParams.get('open');
+  const openWidgetTarget = resolveOpenWidgetTarget(openParamRaw);
+  const openWidgetHandledRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!openWidgetTarget) {
+      openWidgetHandledRef.current = null;
+      return;
+    }
+
+    if (initializing) return;
+
+    const currentKey = buildOpenWidgetQueryKey(openWidgetTarget, searchParams);
+    if (openWidgetHandledRef.current === currentKey) return;
+    openWidgetHandledRef.current = currentKey;
+
+    let cancelled = false;
+
+    const openWidgetFromQuery = async () => {
+      if (openWidgetTarget === 'lending') {
+        await autoSwitchNetwork('avalanche');
+        if (cancelled) return;
+
+        setCurrentLendingMetadata(parseLendingQueryMetadata(searchParams));
+        setLendingModalOpen(true);
+      } else if (openWidgetTarget === 'staking') {
+        await autoSwitchNetwork('ethereum');
+        if (cancelled) return;
+
+        setCurrentStakingMetadata(parseStakingQueryMetadata(searchParams));
+        setShowStakingWidget(true);
+      }
+
+      if (!cancelled) {
+        router.replace('/chat', { scroll: false });
+      }
+    };
+
+    void openWidgetFromQuery();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [openWidgetTarget, initializing, searchParams, router]);
 
   // Handle ?new=true query parameter to show new chat welcome screen
   const newChatRequested = searchParams.get('new') === 'true';
@@ -1183,6 +1425,8 @@ export default function ChatPage() {
   const newChatTriggeredRef = useRef(false);
 
   useEffect(() => {
+    if (openWidgetTarget) return;
+
     if (newChatRequested && !initializing && userId && !newChatTriggeredRef.current) {
       console.log('[CHAT] Setting pending new chat from URL param...');
       newChatTriggeredRef.current = true;
@@ -1196,7 +1440,7 @@ export default function ChatPage() {
       newChatTriggeredRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newChatRequested, initializing, userId]);
+  }, [newChatRequested, initializing, userId, openWidgetTarget]);
 
   useEffect(() => {
     if (!conversationIdFromUrl || initializing) return;
@@ -1341,14 +1585,15 @@ export default function ChatPage() {
         }
       } else {
         console.log('🔄 Using Swap API for EVM swap');
-        const quoteResponse = await swapApi.quote({
-          fromChainId: fromNetwork.chainId,
-          toChainId: toNetwork.chainId,
-          fromToken: normalizeToApi(fromToken.address),
-          toToken: normalizeToApi(toToken.address),
-          amount: String(amount),
-          smartAccountAddress: effectiveAddress || undefined,
-        });
+      const quoteResponse = await swapApi.quote({
+        fromChainId: fromNetwork.chainId,
+        toChainId: toNetwork.chainId,
+        fromToken: normalizeToApi(fromToken.address),
+        toToken: normalizeToApi(toToken.address),
+        amount: String(amount),
+        unit: 'token',
+        smartAccountAddress: effectiveAddress || undefined,
+      });
 
         if (quoteResponse.success && quoteResponse.quote) {
           setSwapQuote({
@@ -1426,6 +1671,138 @@ export default function ChatPage() {
     }
   }, [client, account?.address]);
 
+  // Fetch lending APY + check balance when a lending intent is ready
+  const getLendingInfo = useCallback(async (metadata: Record<string, unknown>) => {
+    const asset = String(metadata?.asset || metadata?.token || '');
+    const action = String(metadata?.action || 'supply');
+    if (!asset) return;
+
+    try {
+      setLendingLoading(true);
+      setLendingError(null);
+      setLendingApy(null);
+
+      const tokens = await lendingApi.getTokens();
+      const match = tokens.find((t) => t.symbol.toUpperCase() === asset.toUpperCase());
+      if (match) {
+        setLendingApy({ supplyAPY: match.supplyAPY, borrowAPY: match.borrowAPY });
+      }
+    } catch (error) {
+      console.error('[Chat] Error fetching lending info:', error);
+      setLendingError(error instanceof Error ? error.message : 'Failed to fetch lending data');
+    } finally {
+      setLendingLoading(false);
+    }
+  }, [lendingApi]);
+
+  const checkLendingBalance = useCallback(async (metadata: Record<string, unknown>) => {
+    setLendingInsufficientBalance(false);
+    setLendingBalance(null);
+
+    if (!client || !account?.address) return;
+
+    const asset = String(metadata?.asset || metadata?.token || '');
+    const amount = metadata?.amount;
+    const action = String(metadata?.action || 'supply');
+    if (!asset || !amount) return;
+    // Only check balance for supply and repay (user sends tokens)
+    if (action !== 'supply' && action !== 'repay') return;
+
+    try {
+      const { defineChain, getContract } = await import("thirdweb");
+      const { eth_getBalance, getRpcClient } = await import("thirdweb/rpc");
+      const { getBalance } = await import("thirdweb/extensions/erc20");
+
+      // Avalanche C-Chain ID = 43114
+      const AVALANCHE_CHAIN_ID = 43114;
+      const isNativeAvax = asset.toUpperCase() === 'AVAX';
+
+      let balance: bigint;
+      let decimals = 18;
+
+      if (isNativeAvax) {
+        const rpcRequest = getRpcClient({ client, chain: defineChain(AVALANCHE_CHAIN_ID) });
+        balance = await eth_getBalance(rpcRequest, { address: account.address });
+      } else {
+        // Fetch token address from lending API tokens
+        const tokens = await lendingApi.getTokens();
+        const tokenInfo = tokens.find((t) => t.symbol.toUpperCase() === asset.toUpperCase());
+        if (!tokenInfo || tokenInfo.address === 'native') return;
+
+        const tokenContract = getContract({
+          client,
+          chain: defineChain(AVALANCHE_CHAIN_ID),
+          address: tokenInfo.address,
+        });
+        const balanceResult = await getBalance({ contract: tokenContract, address: account.address });
+        balance = balanceResult.value;
+        decimals = balanceResult.decimals;
+      }
+
+      const formattedBalance = formatAmountHuman(balance, decimals, 6);
+      setLendingBalance(formattedBalance);
+
+      const userBalance = parseFloat(formattedBalance);
+      const lendingAmount = parseFloat(String(amount));
+      setLendingInsufficientBalance(userBalance < lendingAmount);
+    } catch (error) {
+      console.error('[Chat] Error checking lending balance:', error);
+    }
+  }, [client, account?.address, lendingApi]);
+
+  const checkStakingBalance = useCallback(async (metadata: Record<string, unknown>) => {
+    setStakingInsufficientBalance(false);
+    setStakingBalance(null);
+    setStakingError(null);
+
+    if (!client || !account?.address) return;
+
+    const action = String(metadata?.action || metadata?.mode || 'stake');
+    const amount = metadata?.amount;
+    if (!amount) return;
+
+    try {
+      setStakingLoading(true);
+
+      const { defineChain, getContract } = await import("thirdweb");
+      const { eth_getBalance, getRpcClient } = await import("thirdweb/rpc");
+      const { getBalance } = await import("thirdweb/extensions/erc20");
+
+      const ETHEREUM_CHAIN_ID = 1;
+
+      let balance: bigint;
+      const decimals = 18;
+
+      if (action === 'unstake') {
+        // For unstake: check stETH balance
+        const STETH_ADDRESS = '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84';
+        const tokenContract = getContract({
+          client,
+          chain: defineChain(ETHEREUM_CHAIN_ID),
+          address: STETH_ADDRESS,
+        });
+        const balanceResult = await getBalance({ contract: tokenContract, address: account.address });
+        balance = balanceResult.value;
+      } else {
+        // For stake: check ETH balance
+        const rpcRequest = getRpcClient({ client, chain: defineChain(ETHEREUM_CHAIN_ID) });
+        balance = await eth_getBalance(rpcRequest, { address: account.address });
+      }
+
+      const formattedBalance = formatAmountHuman(balance, decimals, 6);
+      setStakingBalance(formattedBalance);
+
+      const userBalance = parseFloat(formattedBalance);
+      const stakingAmount = parseFloat(String(amount));
+      setStakingInsufficientBalance(userBalance < stakingAmount);
+    } catch (error) {
+      console.error('[Chat] Error checking staking balance:', error);
+      setStakingError(error instanceof Error ? error.message : 'Failed to check balance');
+    } finally {
+      setStakingLoading(false);
+    }
+  }, [client, account?.address]);
+
   return (
     <ProtectedRoute>
       <TransactionSettingsProvider>
@@ -1475,30 +1852,58 @@ export default function ChatPage() {
                       Loading conversation...
                     </div>
                   ) : !hasMessages || pendingNewChat ? (
-                    <div className="flex-1 flex flex-col justify-start items-center w-full pb-safe pb-6 md:pb-4 pt-20 md:pt-[15vh] px-4 overflow-y-auto">
+                    <div className="flex-1 flex flex-col justify-center items-center w-full pb-safe pb-6 md:pb-4 px-6 overflow-hidden">
                       <motion.div
                         initial={{ y: 20, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         transition={{ duration: 0.8, ease: "easeOut" }}
                         className="w-full max-w-3xl text-center flex flex-col items-center"
                       >
-                        {/* Title & Subtitle */}
-                        <div className="space-y-2 md:space-y-4 relative mb-8">
-                          <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
-                            Hello, {displayName}.
-                          </h1>
-                          <p className="text-xl text-zinc-400 font-light">
-                            Zico is ready to navigate the chain.
-                          </p>
-                        </div>
+                        {/* Title & Subtitle — collapses to single line above prompt bar when typing */}
+                        <motion.div
+                          layout
+                          transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+                          className="relative shrink-0 mb-6"
+                        >
+                          <AnimatePresence mode="wait" initial={false}>
+                            {inputMessage.trim() ? (
+                              <motion.p
+                                key="collapsed"
+                                initial={{ opacity: 0, filter: 'blur(4px)' }}
+                                animate={{ opacity: 0.5, filter: 'blur(0px)' }}
+                                exit={{ opacity: 0, filter: 'blur(4px)' }}
+                                transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                                className="text-sm text-zinc-500 font-light whitespace-nowrap"
+                              >
+                                Hello, {displayName}. Zico is ready to navigate the chain.
+                              </motion.p>
+                            ) : (
+                              <motion.div
+                                key="expanded"
+                                initial={{ opacity: 0, filter: 'blur(4px)' }}
+                                animate={{ opacity: 1, filter: 'blur(0px)' }}
+                                exit={{ opacity: 0, filter: 'blur(4px)' }}
+                                transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                                className="space-y-2 md:space-y-4"
+                              >
+                                <h1 className="text-4xl md:text-6xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 pb-2 leading-tight tracking-tight">
+                                  Hello, {displayName}.
+                                </h1>
+                                <p className="text-xl text-zinc-400 font-light">
+                                  Zico is ready to navigate the chain.
+                                </p>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </motion.div>
 
                         {/* Main Input Area */}
-                        <div className="relative group max-w-2xl mx-auto w-full my-8 overflow-hidden">
-                          <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-purple-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                          <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 md:gap-3 shadow-2xl transition-all duration-300 overflow-hidden">
+                        <div className="relative group max-w-2xl mx-auto w-full">
+                          <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-cyan-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500 pointer-events-none" />
+                          <div data-prompt-bar className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex flex-col shadow-2xl">
                             {isRecording ? (
                               // Recording UI
-                              <>
+                              <div className="flex items-center gap-1.5 md:gap-3">
                                 <button
                                   onClick={cancelRecording}
                                   className="p-2 md:p-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors shrink-0"
@@ -1532,10 +1937,10 @@ export default function ChatPage() {
                                     <ArrowUp className="w-5 h-5" />
                                   )}
                                 </button>
-                              </>
+                              </div>
                             ) : isTranscribing ? (
                               // Transcribing UI
-                              <>
+                              <div className="flex items-center gap-1.5 md:gap-3">
                                 <div className="flex-1 min-w-0 flex items-center gap-2 md:gap-3 pl-3">
                                   <Loader2 className="w-4 h-4 text-cyan-400 animate-spin shrink-0" />
                                   <span className="text-sm text-zinc-400">Transcribing...</span>
@@ -1547,40 +1952,210 @@ export default function ChatPage() {
                                 >
                                   <X className="w-5 h-5" />
                                 </button>
-                              </>
+                              </div>
                             ) : (
-                              // Normal input UI
+                              // Normal input UI — two rows
                               <>
-                                <div className="pl-2 md:pl-4 text-zinc-400 shrink-0">
-                                  <Search className="w-5 h-5 md:w-6 md:h-6" />
-                                </div>
-                                <input
-                                  ref={inputRef}
-                                  type="text"
-                                  value={inputMessage}
-                                  onChange={(e) => setInputMessage(e.target.value)}
-                                  onKeyPress={handleKeyPress}
-                                  placeholder="Ask Zico anything..."
-                                  disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
-                                  className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[44px]"
-                                />
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    onClick={startRecording}
+                                <div className="flex items-start gap-1.5 md:gap-3">
+                                  <textarea
+                                    ref={inputRef}
+                                    rows={1}
+                                    value={inputMessage}
+                                    onChange={(e) => {
+                                      setInputMessage(e.target.value);
+                                      autoResizeTextarea(e.target);
+                                    }}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="Ask Zico anything..."
                                     disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
-                                    className="p-2 md:p-3 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                                    aria-label="Record audio"
-                                  >
-                                    <Mic className="w-5 h-5" />
-                                  </button>
-                                  <button
-                                    onClick={() => sendMessage()}
-                                    disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing || !inputMessage.trim()}
-                                    className="p-2.5 md:p-3 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60"
-                                    aria-label="Send message"
-                                  >
-                                    <ArrowUp className="w-5 h-5" />
-                                  </button>
+                                    className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[40px] max-h-[40vh] pl-2 md:pl-3 py-2 resize-none overflow-y-auto"
+                                  />
+                                </div>
+                                {/* File previews strip */}
+                                {filePreviews.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 px-2 pt-1">
+                                    {filePreviews.map((fp, i) => (
+                                      <div key={i} className="relative group">
+                                        {fp.type === 'image' && fp.preview ? (
+                                          <img src={fp.preview} alt={fp.name} className="w-12 h-12 rounded-lg object-cover border border-white/10" />
+                                        ) : (
+                                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-zinc-300">
+                                            <Paperclip className="w-3.5 h-3.5 text-zinc-400" />
+                                            <span className="truncate max-w-[80px]">{fp.name}</span>
+                                          </div>
+                                        )}
+                                        <button
+                                          onClick={() => removeFile(i)}
+                                          className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-700 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                          <X className="w-2.5 h-2.5 text-white" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="flex items-center justify-between px-1 pt-1 shrink-0">
+                                  <div className="flex items-center gap-1">
+                                    {/* Attach file button */}
+                                    <div className="relative" ref={attachMenuRef}>
+                                      <button
+                                        onClick={() => setShowAttachMenu(!showAttachMenu)}
+                                        className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors shrink-0"
+                                        title="Attach file"
+                                      >
+                                        <Plus className="w-4 h-4" />
+                                      </button>
+                                      <AnimatePresence>
+                                        {showAttachMenu && (
+                                          <motion.div
+                                            initial={{ opacity: 0, y: -4 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: -4 }}
+                                            transition={{ duration: 0.15 }}
+                                            className="absolute top-full left-0 mt-2 w-48 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
+                                          >
+                                            <button
+                                              onClick={() => handleFileSelect(IMAGE_ACCEPT)}
+                                              className="w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-sm text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+                                            >
+                                              <Plus className="w-4 h-4 text-cyan-400" />
+                                              Upload Image
+                                            </button>
+                                            <div className="h-px bg-white/5" />
+                                            <button
+                                              onClick={() => handleFileSelect(DOCUMENT_ACCEPT)}
+                                              className="w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-sm text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+                                            >
+                                              <Paperclip className="w-4 h-4 text-cyan-400" />
+                                              Upload Document
+                                            </button>
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+                                    </div>
+                                    {/* Mode selector dropdown */}
+                                    <div className="relative" ref={modeDropdownRef}>
+                                      <button
+                                        onClick={() => setShowModeDropdown(!showModeDropdown)}
+                                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-all"
+                                      >
+                                        {responseMode === 'fast' ? <Zap className="w-3.5 h-3.5 text-cyan-400" /> : <Brain className="w-3.5 h-3.5 text-cyan-400" />}
+                                        <span>{responseMode === 'fast' ? 'Fast' : 'Reasoning'}</span>
+                                        <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', showModeDropdown && 'rotate-180')} />
+                                      </button>
+
+                                      <AnimatePresence>
+                                        {showModeDropdown && (
+                                          <motion.div
+                                            initial={{ opacity: 0, y: -4 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: -4 }}
+                                            transition={{ duration: 0.15 }}
+                                            className="absolute top-full left-0 mt-2 w-72 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
+                                          >
+                                            <button
+                                              onClick={() => toggleResponseMode('fast')}
+                                              className={cn(
+                                                'w-full text-left px-4 py-3 flex items-start gap-3 transition-colors',
+                                                responseMode === 'fast' ? 'bg-cyan-500/10' : 'hover:bg-white/5'
+                                              )}
+                                            >
+                                              <Zap className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-sm font-medium text-white">Fast</span>
+                                                  {responseMode === 'fast' && <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                                                </div>
+                                                <p className="text-xs text-zinc-500 mt-0.5">Quick answers on tokens, prices, swaps, and simple actions</p>
+                                              </div>
+                                            </button>
+                                            <div className="h-px bg-white/5" />
+                                            <button
+                                              onClick={() => toggleResponseMode('reasoning')}
+                                              className={cn(
+                                                'w-full text-left px-4 py-3 flex items-start gap-3 transition-colors',
+                                                responseMode === 'reasoning' ? 'bg-cyan-500/10' : 'hover:bg-white/5'
+                                              )}
+                                            >
+                                              <Brain className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-sm font-medium text-white">Reasoning</span>
+                                                  {responseMode === 'reasoning' && <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                                                </div>
+                                                <p className="text-xs text-zinc-500 mt-0.5">Portfolio analysis, DCA strategies, risk assessment, and complex decisions</p>
+                                              </div>
+                                            </button>
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+                                    </div>
+                                    {/* Quick prompts dropdown — only visible when suggestion cards are hidden */}
+                                    {(inputMessage.trim() || promptBarNearMax) && (
+                                    <div className="relative" ref={welcomeQuickPromptsRef}>
+                                      <button
+                                        onClick={() => setShowWelcomeQuickPrompts(!showWelcomeQuickPrompts)}
+                                        className={cn(
+                                          "p-1.5 transition-colors shrink-0 rounded-lg hover:bg-white/5",
+                                          showWelcomeQuickPrompts ? "text-cyan-400" : "text-cyan-400 hover:text-cyan-300"
+                                        )}
+                                        title="Quick prompts"
+                                      >
+                                        <Sparkles className="w-4 h-4" />
+                                      </button>
+
+                                      <AnimatePresence>
+                                        {showWelcomeQuickPrompts && (
+                                          <motion.div
+                                            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                                            transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                                            className="absolute top-full left-0 mt-2 w-72 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
+                                          >
+                                            <div className="text-xs text-zinc-500 px-3 py-2 uppercase tracking-wider">Quick Prompts</div>
+                                            <div className="space-y-0.5 pb-1">
+                                              {trendingPrompts.map((prompt, index) => (
+                                                <button
+                                                  key={index}
+                                                  onClick={() => {
+                                                    sendMessage(prompt.text);
+                                                    setShowWelcomeQuickPrompts(false);
+                                                  }}
+                                                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors group/prompt"
+                                                >
+                                                  <span className="text-zinc-500 group-hover/prompt:text-cyan-400 transition-colors">{prompt.icon}</span>
+                                                  <span>{prompt.text}</span>
+                                                </button>
+                                              ))}
+                                            </div>
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+                                    </div>
+                                    )}
+                                  </div>
+
+                                  {/* Action button */}
+                                  {(inputMessage.trim() || attachedFiles.length > 0) ? (
+                                    <button
+                                      onClick={() => sendMessage()}
+                                      disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
+                                      className="p-2 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                      aria-label="Send message"
+                                    >
+                                      <ArrowUp className="w-5 h-5" />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={startRecording}
+                                      disabled={isSending || (!activeConversationId && !pendingNewChat) || initializing}
+                                      className="p-2 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:shadow-[0_0_25px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                      aria-label="Record audio"
+                                    >
+                                      <Mic className="w-5 h-5" />
+                                    </button>
+                                  )}
                                 </div>
                               </>
                             )}
@@ -1590,28 +2165,41 @@ export default function ChatPage() {
                           )}
                         </div>
 
-                        {/* Suggestions Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full md:w-auto mt-6">
-                          {[
-                            { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
-                            { label: 'Swap 50 USDC to SOL on Solana', prompt: 'Swap 50 USDC to SOL on Solana' },
-                            { label: 'What are the top trending tokens?', prompt: 'What are the top trending tokens today?' },
-                            { label: 'Market analysis of Bitcoin', prompt: 'Give me a market analysis of Bitcoin' },
-                          ].map((item) => (
-                            <motion.button
-                              key={item.label}
-                              onClick={() => sendMessage(item.prompt)}
-                              disabled={isSending || (!activeConversationId && !pendingNewChat)}
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="w-full text-left"
+                        {/* Suggestions Grid — hides when typing or prompt bar near max height */}
+                        <AnimatePresence>
+                          {!inputMessage.trim() && !promptBarNearMax && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 12, scale: 0.96 }}
+                              transition={{
+                                enter: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
+                                exit: { duration: 0.5, ease: [0.4, 0, 0.2, 1] },
+                                duration: 0.5,
+                                ease: [0.4, 0, 0.2, 1],
+                              }}
+                              className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full max-w-2xl mt-6 shrink-0 overflow-hidden"
                             >
-                              <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 min-h-[48px] flex items-center text-sm text-zinc-300 hover:text-white active:text-white hover:bg-white/10 active:bg-white/15 transition-colors">
-                                {item.label}
-                              </div>
-                            </motion.button>
-                          ))}
-                        </div>
+                              {[
+                                { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
+                                { label: 'Swap 50 USDC to SOL on Solana', prompt: 'Swap 50 USDC to SOL on Solana' },
+                                { label: 'What are the top trending tokens?', prompt: 'What are the top trending tokens today?' },
+                                { label: 'Market analysis of Bitcoin', prompt: 'Give me a market analysis of Bitcoin' },
+                              ].map((item) => (
+                                <motion.button
+                                  key={item.label}
+                                  onClick={() => sendMessage(item.prompt)}
+                                  disabled={isSending || (!activeConversationId && !pendingNewChat)}
+                                  className="w-full text-left"
+                                >
+                                  <div className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 min-h-[48px] flex items-center text-sm text-zinc-300 hover:text-white active:text-white hover:bg-white/10 active:bg-white/15 transition-colors">
+                                    {item.label}
+                                  </div>
+                                </motion.button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </motion.div>
                     </div>
                   ) : (
@@ -1626,6 +2214,20 @@ export default function ChatPage() {
                           >
                             {message.role === 'user' ? (
                               <div className="max-w-[80%] bg-zinc-800/80 backdrop-blur-sm text-white px-6 py-4 rounded-2xl rounded-tr-sm border border-white/5 shadow-lg">
+                                {message.attachments && message.attachments.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 mb-2">
+                                    {message.attachments.map((att, ai) => (
+                                      att.type === 'image' && att.preview ? (
+                                        <img key={ai} src={att.preview} alt={att.name} className="w-16 h-16 rounded-lg object-cover border border-white/10" />
+                                      ) : (
+                                        <div key={ai} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-zinc-300">
+                                          <Paperclip className="w-3.5 h-3.5 text-zinc-400" />
+                                          <span className="truncate max-w-[120px]">{att.name}</span>
+                                        </div>
+                                      )
+                                    ))}
+                                  </div>
+                                )}
                                 <p className="text-base leading-relaxed">{message.content}</p>
                               </div>
                             ) : (
@@ -1633,7 +2235,7 @@ export default function ChatPage() {
                                 <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,211,238,0.3)] overflow-hidden p-1">
                                   <Image src={zicoBlue} alt="Zico" width={24} height={24} className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
                                 </div>
-                                <div className="space-y-4">
+                                <div className="space-y-4 min-w-0 flex-1">
                                   <div className="text-zinc-100 text-base leading-relaxed">
                                     <MarkdownMessage text={message.content} />
                                   </div>
@@ -1709,7 +2311,7 @@ export default function ChatPage() {
                                                 <span className="text-lg sm:text-xl font-medium text-white truncate">
                                                   {swapLoading ? '...' : swapQuote?.quote ? (
                                                     swapQuote.quote.sourceNetwork ?
-                                                      Number(swapQuote.quote.estimatedReceiveAmount).toFixed(4) :
+                                                      toFixedFloor(Number(swapQuote.quote.estimatedReceiveAmount), 4) :
                                                       formatAmountHuman(BigInt(swapQuote.quote.toAmount || swapQuote.quote.estimatedReceiveAmount || 0), toDecimals)
                                                   ) : '~'}
                                                 </span>
@@ -1757,7 +2359,11 @@ export default function ChatPage() {
                                                 if (tokens && tokens.from) {
                                                   // Auto-switch network before opening SwapWidget
                                                   await autoSwitchNetwork(tokens.from.network);
-                                                  setSwapWidgetTokens(tokens);
+                                                  setSwapWidgetTokens({
+                                                    ...tokens,
+                                                    quote: swapQuote?.quote || null,
+                                                    viewState: 'routing',
+                                                  });
                                                   setShowSwapWidget(true);
                                                 }
                                               }}
@@ -1779,37 +2385,17 @@ export default function ChatPage() {
                                   })()}
 
                                   {message.metadata?.event === 'lending_intent_ready' && (() => {
-                                    const token = String(message.metadata?.token || 'USDC');
-                                    const network = String(message.metadata?.network || 'Avalanche');
-                                    const action = String(message.metadata?.action || 'Supply');
+                                    const token = String(message.metadata?.asset || message.metadata?.token || 'USDC');
+                                    const network = String(message.metadata?.network || 'avalanche');
+                                    const action = String(message.metadata?.action || 'supply');
                                     const tokenIcon = getTokenIcon(token);
-
-                                    // Coming Soon state
-                                    if (!FEATURE_FLAGS.LENDING_ENABLED) {
-                                      return (
-                                        <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
-                                          <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
-                                            <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
-                                              <Landmark className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
-                                              <span className="text-xs sm:text-sm font-semibold text-white">Lending</span>
-                                              <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-cyan-500/30">
-                                                COMING SOON
-                                              </span>
-                                            </div>
-                                            <div className="relative z-10 p-4 sm:p-5 text-center">
-                                              <p className="text-zinc-400 text-xs sm:text-sm mb-3">
-                                                Lending feature is coming soon. Stay tuned!
-                                              </p>
-                                              <p className="text-zinc-500 text-[10px]">Expected: Q1 2026</p>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    }
+                                    const isSupplyOrRepay = action === 'supply' || action === 'repay';
+                                    const displayApy = lendingApy
+                                      ? (action === 'borrow' ? lendingApy.borrowAPY : lendingApy.supplyAPY)
+                                      : null;
 
                                     return (
-                                      <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                      <div className="mt-3 sm:mt-4 w-full max-w-[588px] sm:max-w-2xl">
                                         {/* Lending Card */}
                                         <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
                                           {/* Gradient Glow */}
@@ -1822,6 +2408,7 @@ export default function ChatPage() {
                                             <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-emerald-500/30">
                                               {action.toUpperCase()}
                                             </span>
+                                            {lendingLoading && <div className="loader-inline-sm ml-1" />}
                                           </div>
 
                                           {/* Content */}
@@ -1847,19 +2434,61 @@ export default function ChatPage() {
                                                   <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
                                                 </div>
                                               </div>
+                                              {/* Balance line */}
+                                              {isSupplyOrRepay && lendingBalance !== null && (
+                                                <div className="mt-1 text-right">
+                                                  <span className="text-[9px] sm:text-[10px] text-zinc-500">Balance: {lendingBalance} {token}</span>
+                                                </div>
+                                              )}
                                             </div>
+
+                                            {/* APY Info */}
+                                            {displayApy !== null && (
+                                              <div className="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg sm:rounded-xl px-2.5 sm:px-3 py-2">
+                                                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">
+                                                  {action === 'borrow' ? 'Borrow' : 'Supply'} APY
+                                                </span>
+                                                <span className="text-xs sm:text-sm font-medium text-emerald-400">
+                                                  {displayApy.toFixed(2)}%
+                                                </span>
+                                              </div>
+                                            )}
+
+                                            {/* Error Message */}
+                                            {lendingError && !lendingLoading && (
+                                              <div className="p-2 sm:p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl">
+                                                <p className="text-[10px] sm:text-xs text-red-300">{lendingError}</p>
+                                              </div>
+                                            )}
+
+                                            {/* Insufficient Balance Warning */}
+                                            {lendingInsufficientBalance && !lendingLoading && (
+                                              <div className="bg-red-500/10 border border-red-500/40 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                                <div className="flex items-start gap-2">
+                                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400 flex-shrink-0 mt-0.5">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                  </svg>
+                                                  <div>
+                                                    <p className="text-xs font-semibold text-red-400 mb-0.5">Insufficient Balance</p>
+                                                    <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-relaxed">
+                                                      You have {lendingBalance ?? '0'} {token} but trying to {action} {String(message.metadata?.amount)} {token}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            )}
 
                                             {/* Action Button */}
                                             <button
                                               onClick={async () => {
-                                                // Auto-switch to Avalanche before opening lending modal
-                                                await autoSwitchNetwork('avalanche');
+                                                await autoSwitchNetwork(String(message.metadata?.network || 'avalanche'));
                                                 setCurrentLendingMetadata(message.metadata as Record<string, unknown>);
                                                 setLendingModalOpen(true);
                                               }}
-                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                              disabled={lendingLoading}
+                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                                             >
-                                              Review {action}
+                                              {lendingLoading ? 'Loading...' : `Review ${action.charAt(0).toUpperCase() + action.slice(1)}`}
                                             </button>
                                           </div>
 
@@ -1874,37 +2503,16 @@ export default function ChatPage() {
                                   })()}
 
                                   {message.metadata?.event === 'staking_intent_ready' && (() => {
-                                    const token = String(message.metadata?.token || 'ETH');
+                                    const action = String(message.metadata?.action || message.metadata?.mode || 'stake');
+                                    const token = action === 'unstake' ? 'stETH' : String(message.metadata?.token || 'ETH');
+                                    const receiveToken = action === 'unstake' ? 'ETH' : 'stETH';
                                     const amount = Number(message.metadata?.amount || 0);
                                     const tokenIcon = getTokenIcon(token);
-                                    const stTokenIcon = getTokenIcon(`st${token}`) || getTokenIcon('stETH');
-
-                                    // Coming Soon state
-                                    if (!FEATURE_FLAGS.STAKING_ENABLED) {
-                                      return (
-                                        <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
-                                          <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
-                                            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
-                                            <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
-                                              <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
-                                              <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
-                                              <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-cyan-500/30">
-                                                COMING SOON
-                                              </span>
-                                            </div>
-                                            <div className="relative z-10 p-4 sm:p-5 text-center">
-                                              <p className="text-zinc-400 text-xs sm:text-sm mb-3">
-                                                Liquid Staking feature is coming soon. Stay tuned!
-                                              </p>
-                                              <p className="text-zinc-500 text-[10px]">Expected: Q1 2026</p>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    }
+                                    const receiveTokenIcon = getTokenIcon(receiveToken);
+                                    const balanceToken = action === 'unstake' ? 'stETH' : 'ETH';
 
                                     return (
-                                      <div className="mt-3 sm:mt-4 w-full max-w-[280px] sm:max-w-sm">
+                                      <div className="mt-3 sm:mt-4 w-full max-w-[588px] sm:max-w-2xl">
                                         {/* Staking Card */}
                                         <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
                                           {/* Gradient Glow */}
@@ -1914,6 +2522,10 @@ export default function ChatPage() {
                                           <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
                                             <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
                                             <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
+                                            <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-blue-500/30">
+                                              {action.toUpperCase()}
+                                            </span>
+                                            {stakingLoading && <div className="loader-inline-sm ml-1" />}
                                           </div>
 
                                           {/* Content */}
@@ -1921,7 +2533,7 @@ export default function ChatPage() {
                                             {/* Stake Input */}
                                             <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
                                               <div className="flex items-center justify-between mb-1">
-                                                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You Stake</span>
+                                                <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You {action === 'unstake' ? 'Unstake' : 'Stake'}</span>
                                               </div>
                                               <div className="flex items-center justify-between gap-2">
                                                 <span className="text-lg sm:text-xl font-medium text-white truncate">
@@ -1938,6 +2550,12 @@ export default function ChatPage() {
                                                   <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
                                                 </div>
                                               </div>
+                                              {/* Balance line */}
+                                              {stakingBalance !== null && (
+                                                <div className="mt-1 text-right">
+                                                  <span className="text-[9px] sm:text-[10px] text-zinc-500">Balance: {stakingBalance} {balanceToken}</span>
+                                                </div>
+                                              )}
                                             </div>
 
                                             {/* Arrow */}
@@ -1954,20 +2572,44 @@ export default function ChatPage() {
                                               </div>
                                               <div className="flex items-center justify-between gap-2">
                                                 <span className="text-lg sm:text-xl font-medium text-white truncate">
-                                                  ~{(amount * 0.998).toFixed(4)}
+                                                  ~{toFixedFloor(amount * 0.998, 4)}
                                                 </span>
                                                 <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
-                                                  {stTokenIcon ? (
-                                                    <img src={stTokenIcon} alt={`st${token}`} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                                  {receiveTokenIcon ? (
+                                                    <img src={receiveTokenIcon} alt={receiveToken} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
                                                   ) : (
                                                     <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-[7px] sm:text-[8px] text-white font-bold">
-                                                      st
+                                                      {receiveToken[0]}
                                                     </div>
                                                   )}
-                                                  <span className="text-xs sm:text-sm font-medium text-white">st{token}</span>
+                                                  <span className="text-xs sm:text-sm font-medium text-white">{receiveToken}</span>
                                                 </div>
                                               </div>
                                             </div>
+
+                                            {/* Error Message */}
+                                            {stakingError && !stakingLoading && (
+                                              <div className="p-2 sm:p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl">
+                                                <p className="text-[10px] sm:text-xs text-red-300">{stakingError}</p>
+                                              </div>
+                                            )}
+
+                                            {/* Insufficient Balance Warning */}
+                                            {stakingInsufficientBalance && !stakingLoading && (
+                                              <div className="bg-red-500/10 border border-red-500/40 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                                <div className="flex items-start gap-2">
+                                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400 flex-shrink-0 mt-0.5">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                  </svg>
+                                                  <div>
+                                                    <p className="text-xs font-semibold text-red-400 mb-0.5">Insufficient Balance</p>
+                                                    <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-relaxed">
+                                                      You have {stakingBalance ?? '0'} {balanceToken} but trying to {action} {String(message.metadata?.amount)} {balanceToken}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            )}
 
                                             {/* Action Button */}
                                             <button
@@ -1977,9 +2619,10 @@ export default function ChatPage() {
                                                 setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
                                                 setShowStakingWidget(true);
                                               }}
-                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                              disabled={stakingLoading}
+                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                                             >
-                                              Review Staking
+                                              {stakingLoading ? 'Loading...' : `Review ${action === 'unstake' ? 'Unstake' : 'Staking'}`}
                                             </button>
                                           </div>
 
@@ -2072,6 +2715,141 @@ export default function ChatPage() {
                                   </div>
                                 )
                               )}
+
+                              {activeMessages.at(-1)?.metadata?.event === 'staking_intent_ready' && (() => {
+                                const lastMeta = activeMessages.at(-1)?.metadata;
+                                const action = String(lastMeta?.action || lastMeta?.mode || 'stake');
+                                const token = action === 'unstake' ? 'stETH' : String(lastMeta?.token || 'ETH');
+                                const receiveToken = action === 'unstake' ? 'ETH' : 'stETH';
+                                const amount = Number(lastMeta?.amount || 0);
+                                const tokenIcon = getTokenIcon(token);
+                                const receiveTokenIcon = getTokenIcon(receiveToken);
+                                const balanceToken = action === 'unstake' ? 'stETH' : 'ETH';
+
+                                return (
+                                  <div className="mt-3 sm:mt-4 w-full max-w-[588px] sm:max-w-2xl">
+                                    {/* Staking Card */}
+                                    <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                      {/* Gradient Glow */}
+                                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-blue-500/10 blur-[40px] pointer-events-none" />
+
+                                      {/* Header */}
+                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                        <Droplets className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
+                                        <span className="text-xs sm:text-sm font-semibold text-white">Liquid Staking</span>
+                                        <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-blue-500/30">
+                                          {action.toUpperCase()}
+                                        </span>
+                                        {stakingLoading && <div className="loader-inline-sm ml-1" />}
+                                      </div>
+
+                                      {/* Content */}
+                                      <div className="relative z-10 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
+                                        {/* Stake Input */}
+                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You {action === 'unstake' ? 'Unstake' : 'Stake'}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="text-lg sm:text-xl font-medium text-white truncate">
+                                              {String(lastMeta?.amount || '0')}
+                                            </span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                              {tokenIcon ? (
+                                                <img src={tokenIcon} alt={token} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                              ) : (
+                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-[8px] sm:text-[9px] text-white font-bold">
+                                                  {token[0]}
+                                                </div>
+                                              )}
+                                              <span className="text-xs sm:text-sm font-medium text-white">{token}</span>
+                                            </div>
+                                          </div>
+                                          {/* Balance line */}
+                                          {stakingBalance !== null && (
+                                            <div className="mt-1 text-right">
+                                              <span className="text-[9px] sm:text-[10px] text-zinc-500">Balance: {stakingBalance} {balanceToken}</span>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Arrow */}
+                                        <div className="flex justify-center -my-0.5 sm:-my-1">
+                                          <div className="bg-[#0A0A0A] border border-white/10 p-1 sm:p-1.5 rounded-lg">
+                                            <ArrowDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400" />
+                                          </div>
+                                        </div>
+
+                                        {/* Receive Output */}
+                                        <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500">You Receive</span>
+                                          </div>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="text-lg sm:text-xl font-medium text-white truncate">
+                                              ~{toFixedFloor(amount * 0.998, 4)}
+                                            </span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2 sm:px-2.5 py-1 shrink-0">
+                                              {receiveTokenIcon ? (
+                                                <img src={receiveTokenIcon} alt={receiveToken} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                              ) : (
+                                                <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-[7px] sm:text-[8px] text-white font-bold">
+                                                  {receiveToken[0]}
+                                                </div>
+                                              )}
+                                              <span className="text-xs sm:text-sm font-medium text-white">{receiveToken}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Error Message */}
+                                        {stakingError && !stakingLoading && (
+                                          <div className="p-2 sm:p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl">
+                                            <p className="text-[10px] sm:text-xs text-red-300">{stakingError}</p>
+                                          </div>
+                                        )}
+
+                                        {/* Insufficient Balance Warning */}
+                                        {stakingInsufficientBalance && !stakingLoading && (
+                                          <div className="bg-red-500/10 border border-red-500/40 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                            <div className="flex items-start gap-2">
+                                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400 flex-shrink-0 mt-0.5">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                              </svg>
+                                              <div>
+                                                <p className="text-xs font-semibold text-red-400 mb-0.5">Insufficient Balance</p>
+                                                <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-relaxed">
+                                                  You have {stakingBalance ?? '0'} {balanceToken} but trying to {action} {String(lastMeta?.amount)} {balanceToken}
+                                                </p>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Action Button */}
+                                        <button
+                                          onClick={async () => {
+                                            // Auto-switch to Ethereum Mainnet before opening staking widget
+                                            await autoSwitchNetwork('ethereum');
+                                            setCurrentStakingMetadata(activeMessages.at(-1)?.metadata as Record<string, unknown>);
+                                            setShowStakingWidget(true);
+                                          }}
+                                          disabled={stakingLoading}
+                                          className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                        >
+                                          {stakingLoading ? 'Loading...' : `Review ${action === 'unstake' ? 'Unstake' : 'Staking'}`}
+                                        </button>
+                                      </div>
+
+                                      {/* Footer */}
+                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                        <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                                        <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Lido</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })()}
                             </div>
                           </div>
                         )}
@@ -2121,11 +2899,11 @@ export default function ChatPage() {
                           )}
                         </AnimatePresence>
 
-                        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500" />
-                        <div className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex items-center gap-1.5 shadow-2xl overflow-hidden">
+                        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-cyan-500/30 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500 pointer-events-none" />
+                        <div data-prompt-bar className="relative bg-[#0A0A0A] border border-white/10 rounded-2xl p-2 flex flex-col shadow-2xl">
                           {isRecording ? (
                             // Recording UI
-                            <>
+                            <div className="flex items-center gap-1.5">
                               <button
                                 onClick={cancelRecording}
                                 className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors shrink-0"
@@ -2159,10 +2937,10 @@ export default function ChatPage() {
                                   <ArrowUp className="w-5 h-5" />
                                 )}
                               </button>
-                            </>
+                            </div>
                           ) : isTranscribing ? (
                             // Transcribing UI
-                            <>
+                            <div className="flex items-center gap-1.5">
                               <div className="flex-1 min-w-0 flex items-center gap-2 pl-2">
                                 <Loader2 className="w-4 h-4 text-cyan-400 animate-spin shrink-0" />
                                 <span className="text-sm text-zinc-400">Transcribing...</span>
@@ -2174,45 +2952,177 @@ export default function ChatPage() {
                               >
                                 <X className="w-5 h-5" />
                               </button>
-                            </>
+                            </div>
                           ) : (
-                            // Normal input UI
+                            // Normal input UI — two rows
                             <>
-                              <button
-                                onClick={() => setShowTrendingPrompts(!showTrendingPrompts)}
-                                className="pl-1 text-zinc-400 hover:text-cyan-400 transition-colors shrink-0"
-                                title="Trending prompts"
-                              >
-                                <Sparkles className="w-5 h-5" />
-                              </button>
-                              <input
-                                ref={inputRef}
-                                type="text"
-                                value={inputMessage}
-                                onChange={(e) => setInputMessage(e.target.value)}
-                                onKeyPress={handleKeyPress}
-                                onFocus={() => setShowTrendingPrompts(false)}
-                                placeholder="Send a message..."
-                                disabled={isSending || !activeConversationId || initializing}
-                                className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[44px]"
-                                autoFocus
-                              />
-                              <button
-                                onClick={startRecording}
-                                disabled={isSending || !activeConversationId || initializing}
-                                className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
-                                aria-label="Record audio"
-                              >
-                                <Mic className="w-5 h-5" />
-                              </button>
-                              <button
-                                onClick={() => sendMessage()}
-                                disabled={isSending || !activeConversationId || initializing || !inputMessage.trim()}
-                                className="p-2.5 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
-                                aria-label="Send message"
-                              >
-                                <ArrowUp className="w-5 h-5" />
-                              </button>
+                              <div className="flex items-start gap-1.5">
+                                <textarea
+                                  ref={inputRef}
+                                  rows={1}
+                                  value={inputMessage}
+                                  onChange={(e) => {
+                                    setInputMessage(e.target.value);
+                                    autoResizeTextarea(e.target);
+                                  }}
+                                  onKeyDown={handleKeyDown}
+                                  onFocus={() => setShowTrendingPrompts(false)}
+                                  placeholder="Send a message..."
+                                  disabled={isSending || !activeConversationId || initializing}
+                                  className="flex-1 min-w-0 bg-transparent border-none outline-none text-[16px] text-white placeholder:text-zinc-600 min-h-[40px] max-h-[40vh] pl-2 py-2 resize-none overflow-y-auto"
+                                  autoFocus
+                                />
+                              </div>
+                              {/* File previews strip */}
+                              {filePreviews.length > 0 && (
+                                <div className="flex flex-wrap gap-2 px-2 pt-1">
+                                  {filePreviews.map((fp, i) => (
+                                    <div key={i} className="relative group">
+                                      {fp.type === 'image' && fp.preview ? (
+                                        <img src={fp.preview} alt={fp.name} className="w-12 h-12 rounded-lg object-cover border border-white/10" />
+                                      ) : (
+                                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-zinc-300">
+                                          <Paperclip className="w-3.5 h-3.5 text-zinc-400" />
+                                          <span className="truncate max-w-[80px]">{fp.name}</span>
+                                        </div>
+                                      )}
+                                      <button
+                                        onClick={() => removeFile(i)}
+                                        className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-700 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <X className="w-2.5 h-2.5 text-white" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between px-1 pt-1">
+                                <div className="flex items-center gap-1">
+                                  {/* Attach file button — opens upward in active conversation */}
+                                  <div className="relative" ref={attachMenuRef}>
+                                    <button
+                                      onClick={() => setShowAttachMenu(!showAttachMenu)}
+                                      className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors shrink-0"
+                                      title="Attach file"
+                                    >
+                                      <Plus className="w-4 h-4" />
+                                    </button>
+                                    <AnimatePresence>
+                                      {showAttachMenu && (
+                                        <motion.div
+                                          initial={{ opacity: 0, y: 4 }}
+                                          animate={{ opacity: 1, y: 0 }}
+                                          exit={{ opacity: 0, y: 4 }}
+                                          transition={{ duration: 0.15 }}
+                                          className="absolute bottom-full left-0 mb-2 w-48 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
+                                        >
+                                          <button
+                                            onClick={() => handleFileSelect(IMAGE_ACCEPT)}
+                                            className="w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-sm text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+                                          >
+                                            <Plus className="w-4 h-4 text-cyan-400" />
+                                            Upload Image
+                                          </button>
+                                          <div className="h-px bg-white/5" />
+                                          <button
+                                            onClick={() => handleFileSelect(DOCUMENT_ACCEPT)}
+                                            className="w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-sm text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+                                          >
+                                            <Paperclip className="w-4 h-4 text-cyan-400" />
+                                            Upload Document
+                                          </button>
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
+                                  </div>
+                                  {/* Mode selector dropdown — opens upward in active conversation */}
+                                  <div className="relative" ref={modeDropdownRef}>
+                                    <button
+                                      onClick={() => setShowModeDropdown(!showModeDropdown)}
+                                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-all"
+                                    >
+                                    {responseMode === 'fast' ? <Zap className="w-3.5 h-3.5 text-cyan-400" /> : <Brain className="w-3.5 h-3.5 text-cyan-400" />}
+                                    <span>{responseMode === 'fast' ? 'Fast' : 'Reasoning'}</span>
+                                    <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', showModeDropdown && 'rotate-180')} />
+                                  </button>
+
+                                  <AnimatePresence>
+                                    {showModeDropdown && (
+                                      <motion.div
+                                        initial={{ opacity: 0, y: 4 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: 4 }}
+                                        transition={{ duration: 0.15 }}
+                                        className="absolute bottom-full left-0 mb-2 w-72 bg-[#0f1116]/95 border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl overflow-hidden z-50"
+                                      >
+                                        <button
+                                          onClick={() => toggleResponseMode('fast')}
+                                          className={cn(
+                                            'w-full text-left px-4 py-3 flex items-start gap-3 transition-colors',
+                                            responseMode === 'fast' ? 'bg-cyan-500/10' : 'hover:bg-white/5'
+                                          )}
+                                        >
+                                          <Zap className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-sm font-medium text-white">Fast</span>
+                                              {responseMode === 'fast' && <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                                            </div>
+                                            <p className="text-xs text-zinc-500 mt-0.5">Quick answers on tokens, prices, swaps, and simple actions</p>
+                                          </div>
+                                        </button>
+                                        <div className="h-px bg-white/5" />
+                                        <button
+                                          onClick={() => toggleResponseMode('reasoning')}
+                                          className={cn(
+                                            'w-full text-left px-4 py-3 flex items-start gap-3 transition-colors',
+                                            responseMode === 'reasoning' ? 'bg-cyan-500/10' : 'hover:bg-white/5'
+                                          )}
+                                        >
+                                          <Brain className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-sm font-medium text-white">Reasoning</span>
+                                              {responseMode === 'reasoning' && <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                                            </div>
+                                            <p className="text-xs text-zinc-500 mt-0.5">Portfolio analysis, DCA strategies, risk assessment, and complex decisions</p>
+                                          </div>
+                                        </button>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                  </div>
+                                  {/* Trending prompts */}
+                                  <button
+                                    onClick={() => setShowTrendingPrompts(!showTrendingPrompts)}
+                                    className="p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors shrink-0 rounded-lg hover:bg-white/5"
+                                    title="Trending prompts"
+                                  >
+                                    <Sparkles className="w-4 h-4" />
+                                  </button>
+                                </div>
+
+                                {/* Action button */}
+                                {(inputMessage.trim() || attachedFiles.length > 0) ? (
+                                  <button
+                                    onClick={() => sendMessage()}
+                                    disabled={isSending || !activeConversationId || initializing}
+                                    className="p-2 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                    aria-label="Send message"
+                                  >
+                                    <ArrowUp className="w-5 h-5" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={startRecording}
+                                    disabled={isSending || !activeConversationId || initializing}
+                                    className="p-2 flex items-center justify-center bg-cyan-400 text-black rounded-xl hover:bg-cyan-300 active:bg-cyan-200 active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-60 shrink-0"
+                                    aria-label="Record audio"
+                                  >
+                                    <Mic className="w-5 h-5" />
+                                  </button>
+                                )}
+                              </div>
                             </>
                           )}
                         </div>
@@ -2231,19 +3141,34 @@ export default function ChatPage() {
           </SeniorAppShell>
 
           {/* Lending Modal */}
-          <AnimatePresence>
-            {lendingModalOpen && (
-              <Lending
-                onClose={() => {
-                  setLendingModalOpen(false);
-                  setCurrentLendingMetadata(null);
-                }}
-                initialAmount={currentLendingMetadata?.amount as string | undefined}
-                initialAsset={currentLendingMetadata?.asset as string | undefined || currentLendingMetadata?.token as string | undefined}
-                initialAction={currentLendingMetadata?.action as 'supply' | 'borrow' | undefined}
-              />
-            )}
-          </AnimatePresence>
+	          <AnimatePresence>
+	            {lendingModalOpen && (
+	              <Lending
+	                onClose={() => {
+	                  setLendingModalOpen(false);
+	                  setCurrentLendingMetadata(null);
+	                }}
+	                initialAmount={
+	                  typeof currentLendingMetadata?.amount === 'string' || typeof currentLendingMetadata?.amount === 'number'
+	                    ? currentLendingMetadata.amount
+	                    : undefined
+	                }
+	                initialAsset={
+	                  (typeof currentLendingMetadata?.asset === 'string' ? currentLendingMetadata.asset : undefined) ||
+	                  (typeof currentLendingMetadata?.token === 'string' ? currentLendingMetadata.token : undefined)
+	                }
+	                initialMode={
+	                  parseLendingMode(currentLendingMetadata?.mode) ??
+	                  deriveLendingModeFromAction(currentLendingMetadata?.action)
+	                }
+	                initialFlow={
+	                  parseLendingFlow(currentLendingMetadata?.flow) ??
+	                  deriveLendingFlowFromAction(currentLendingMetadata?.action)
+	                }
+	                initialViewState="review"
+	              />
+	            )}
+	          </AnimatePresence>
 
           {/* SwapWidget Modal */}
           <AnimatePresence>
@@ -2256,24 +3181,43 @@ export default function ChatPage() {
                 initialFromToken={swapWidgetTokens.from}
                 initialToToken={swapWidgetTokens.to}
                 initialAmount={swapWidgetTokens.amount}
+                initialQuote={swapWidgetTokens.quote}
+                initialViewState={swapWidgetTokens.viewState}
               />
             )}
           </AnimatePresence>
 
           {/* Staking Modal */}
           <AnimatePresence>
-            {showStakingWidget && (
-              <Staking
-                onClose={() => {
-                  setShowStakingWidget(false);
-                  setCurrentStakingMetadata(null);
-                }}
-                initialAmount={currentStakingMetadata?.amount as string | undefined}
-              />
-            )}
-          </AnimatePresence>
+	            {showStakingWidget && (
+	              <Staking
+	                onClose={() => {
+	                  setShowStakingWidget(false);
+	                  setCurrentStakingMetadata(null);
+	                }}
+	                initialAmount={
+	                  typeof currentStakingMetadata?.amount === 'string' || typeof currentStakingMetadata?.amount === 'number'
+	                    ? currentStakingMetadata.amount
+	                    : undefined
+	                }
+	                initialMode={
+	                  parseStakingMode(currentStakingMetadata?.mode) ??
+	                  parseStakingMode(currentStakingMetadata?.action)
+	                }
+	                initialViewState="review"
+	              />
+	            )}
+	          </AnimatePresence>
         </>
       </TransactionSettingsProvider>
+      {/* Hidden file input for attach menu */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        multiple
+        onChange={handleFileChange}
+      />
     </ProtectedRoute>
   );
 }

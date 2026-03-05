@@ -63,6 +63,14 @@ export async function getTokenDecimals(opts: GetTokenDecimalsOptions): Promise<n
   return value;
 }
 
+/** Like Number.toFixed() but always truncates DOWN (floors) instead of rounding. */
+export function toFixedFloor(value: number, digits: number): string {
+  if (!Number.isFinite(value)) return value.toString();
+  const factor = Math.pow(10, digits);
+  const truncated = Math.floor(value * factor) / factor;
+  return truncated.toFixed(digits);
+}
+
 export function explorerTxUrl(chainId: number, hash: string): string | null {
   const map: Record<number, string> = {
     1: 'https://etherscan.io/tx/',

@@ -12,6 +12,7 @@ import '../../../shared/ui/loader.css';
 import { TonConnectButton } from '@tonconnect/ui-react';
 import { isTelegramWebApp, detectTelegram } from '@/lib/isTelegram';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import { clearAuthWalletBinding, persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 import { linkTelegramIdentityIfAvailable } from '@/shared/lib/telegram-link';
 
 interface AuthModalProps {
@@ -260,6 +261,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       localStorage.setItem('authPayload', JSON.stringify(payload));
       localStorage.setItem('authSignature', signature);
       localStorage.setItem('authToken', authToken);
+      persistAuthWalletBinding({ activeWallet, account });
       await linkTelegramIdentityIfAvailable(authApiBase, address || payload.address || account.address, {
         sessionId: sessionId || null,
         address: address || account.address || null,
@@ -351,6 +353,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       localStorage.removeItem(`walletToken-${clientId}`);
       localStorage.removeItem(`walletSession-${clientId}`);
       localStorage.removeItem(`thirdwebEwsWalletUserId-${clientId}`);
+      clearAuthWalletBinding();
 
       console.log('[AUTH MODAL] ✅ Session cleared - ready for fresh authentication');
     } catch (err: any) {

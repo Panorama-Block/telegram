@@ -12,9 +12,11 @@ import type { GatewayError, PaginatedResponse } from './types';
 const DEFAULT_TENANT_ID = 'panorama';
 
 function getGatewayUrl(): string {
+  // Browser: sempre usa o proxy Next.js (/api/gateway) para evitar CORS
+  if (typeof window !== 'undefined') return '/api/gateway';
+  // Server-side (SSR): chama o gateway diretamente (sem restrição CORS)
   const url = process.env.NEXT_PUBLIC_GATEWAY_URL as string | undefined;
   if (url && url.length > 0) return url.replace(/\/+$/, '');
-  // Fallback para desenvolvimento local
   return 'http://localhost:8080';
 }
 
@@ -80,6 +82,28 @@ function extractErrorMessage(parsed: unknown): string {
     }
   }
   return 'Gateway API error';
+}
+
+const TRANSIENT_GATEWAY_STATUS = new Set([500, 502, 503, 504]);
+
+export function isGatewayUnavailableError(error: unknown): boolean {
+  if (error instanceof GatewayApiError) {
+    if (typeof error.status !== 'number') return true;
+    if (error.status >= 500) return true;
+    return TRANSIENT_GATEWAY_STATUS.has(error.status);
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('network request failed') ||
+      message.includes('failed to fetch') ||
+      message.includes('aggregateerror') ||
+      message.includes('econnrefused')
+    );
+  }
+
+  return false;
 }
 
 // ----------------------------------------------------------------------------

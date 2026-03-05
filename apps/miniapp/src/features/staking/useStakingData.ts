@@ -28,13 +28,16 @@ export const useStakingData = () => {
     try {
       console.log('Fetching staking data...');
 
-      // Fetch tokens only (no user position to avoid signature popup)
-      const availableTokens = await stakingApi.getTokens();
+      const [availableTokens, position] = await Promise.all([
+        stakingApi.getTokens(),
+        stakingApi.getUserPosition(),
+      ]);
 
       setTokens(availableTokens);
+      setUserPosition(position);
       setLastFetchTime(now);
 
-      console.log('Staking data fetched successfully', availableTokens);
+      console.log('Staking data fetched successfully', { tokens: availableTokens.length, hasPosition: !!position });
     } catch (err) {
       console.error('Error fetching staking data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load staking data');

@@ -9,6 +9,7 @@ import { cn } from '@/shared/lib/utils';
 import { useActiveAccount } from 'thirdweb/react';
 import { useLogout } from '@/shared/hooks/useLogout';
 import { useChat } from '@/shared/contexts/ChatContext';
+import { Trash2, Search, X } from 'lucide-react';
 import zicoBlue from '../../../public/icons/zico_blue.svg';
 
 // Widget Modals
@@ -17,9 +18,6 @@ import { Lending } from '@/components/Lending';
 import { Staking } from '@/components/Staking';
 import { DCA } from '@/components/DCA';
 
-// Feature flags
-import { FEATURE_FLAGS } from '@/config/features';
-
 type NavItem = {
   id: string;
   label: string;
@@ -27,7 +25,6 @@ type NavItem = {
   icon: React.ReactNode;
   isModal?: boolean;
   disabled?: boolean;
-  comingSoon?: boolean;
 };
 
 interface SeniorAppShellProps {
@@ -67,8 +64,9 @@ function deriveConversationTitleFromCache(messages: Array<{ role?: string; conte
 
   const normalized = firstUserMessage.content.trim().replace(/\s+/g, ' ');
   if (!normalized) return null;
-  if (normalized.length > 48) return `${normalized.slice(0, 45)}...`;
-  return normalized;
+  const words = normalized.split(' ');
+  const title = words.slice(0, 8).join(' ');
+  return words.length > 8 ? `${title}...` : title;
 }
 
 export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: SeniorAppShellProps) {
@@ -77,9 +75,12 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   const account = useActiveAccount();
   const { logout, isLoggingOut } = useLogout();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [hasMobileSession, setHasMobileSession] = useState(false);
   const [showChatHistory, setShowChatHistory] = useState(true);
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
 
   // Chat context for conversation history
   const {
@@ -87,6 +88,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     activeConversationId,
     isLoading: isLoadingConversations,
     createConversation,
+    deleteConversation,
     setActiveConversationId,
     isCreatingConversation
   } = useChat();
@@ -103,8 +105,6 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
 
   // Modal states
   const [showSwap, setShowSwap] = useState(false);
-  const [showLending, setShowLending] = useState(false);
-  const [showStaking, setShowStaking] = useState(false);
   const [showDCA, setShowDCA] = useState(false);
 
   const address = account?.address;
@@ -158,7 +158,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     {
       id: 'lending',
       label: 'Lending',
-      isModal: true,
+      href: '/chat?open=lending',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3" />
@@ -168,7 +168,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     {
       id: 'staking',
       label: 'Liquid Staking',
-      isModal: true,
+      href: '/chat?open=staking',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z" />
@@ -191,8 +191,6 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   const isActive = (item: NavItem) => {
     if (item.isModal) {
       if (item.id === 'swap') return showSwap;
-      if (item.id === 'lending') return showLending;
-      if (item.id === 'staking') return showStaking;
       if (item.id === 'dca') return showDCA;
       return false;
     }
@@ -203,6 +201,12 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   const resolveConversationTitle = useCallback((conversationId: string, fallbackTitle?: string) => {
     if (typeof window === 'undefined') return fallbackTitle || 'Chat';
     if (!isGenericConversationTitle(fallbackTitle)) return fallbackTitle || 'Chat';
+
+    // Check for cached AI-generated title first
+    try {
+      const aiTitle = localStorage.getItem(`chat:aiTitle:${conversationId}`);
+      if (aiTitle) return aiTitle;
+    } catch {}
 
     try {
       const exactKey = Object.keys(localStorage).find(
@@ -239,6 +243,8 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     if (!conversationId) return;
 
     setIsSidebarOpen(false);
+    setChatSearchOpen(false);
+    setChatSearchQuery('');
     setActiveConversationId(conversationId);
 
     if (!isChatRoute) {
@@ -258,14 +264,10 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     if (item.isModal) {
       // Close all modals first
       setShowSwap(false);
-      setShowLending(false);
-      setShowStaking(false);
       setShowDCA(false);
 
       // Open the selected modal
       if (item.id === 'swap') setShowSwap(true);
-      if (item.id === 'lending') setShowLending(true);
-      if (item.id === 'staking') setShowStaking(true);
       if (item.id === 'dca') setShowDCA(true);
     } else if (item.id === 'chat') {
       handleNewChat();
@@ -289,27 +291,69 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       {/* Sidebar */}
       <aside
         className={cn(
-          'w-64 h-full border-r border-white/10 bg-[#0b0d0f]/95 backdrop-blur-2xl flex flex-col fixed lg:static left-0 top-0 z-50 transition-transform duration-300 shadow-[12px_0_40px_rgba(0,0,0,0.55)]',
+          'h-full border-r border-white/10 bg-[#0b0d0f]/95 backdrop-blur-2xl flex flex-col fixed lg:static left-0 top-0 z-50 transition-all duration-500 ease-in-out shadow-[12px_0_40px_rgba(0,0,0,0.55)]',
+          isSidebarCollapsed ? 'w-16' : 'w-64',
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
-        <div className="h-20 flex items-center justify-center border-b border-white/5 relative">
-          <div className="relative">
-            <div className="absolute inset-0 blur-xl bg-cyan-500/30" />
-            <Image src={zicoBlue} alt="Panorama Block" width={32} height={32} className="relative drop-shadow-[0_0_14px_rgba(34,211,238,0.55)]" />
-          </div>
+        <div className="h-20 flex items-center border-b border-white/5 px-4 gap-3">
+          {/* Zico icon — on desktop: toggle collapse; on mobile: close sidebar */}
           <button
-            className="lg:hidden absolute right-4 p-3 min-h-[44px] min-w-[44px] flex items-center justify-center text-pano-text-muted hover:text-pano-text-primary active:text-pano-text-primary rounded-lg hover:bg-white/5 active:bg-white/10 transition-colors"
-            onClick={() => setIsSidebarOpen(false)}
-            aria-label="Close sidebar"
+            onClick={() => {
+              // On mobile, close the sidebar entirely instead of collapsing
+              if (window.innerWidth < 1024) {
+                setIsSidebarOpen(false);
+              } else {
+                setIsSidebarCollapsed((v) => !v);
+                if (!isSidebarCollapsed) { setChatSearchOpen(false); setChatSearchQuery(''); }
+              }
+            }}
+            className={cn(
+              'relative shrink-0 transition-all duration-500 ease-in-out cursor-pointer hover:opacity-80',
+              chatSearchOpen && !isSidebarCollapsed ? 'w-7 h-7' : isSidebarCollapsed ? 'w-8 h-8 mx-auto' : 'w-10 h-10 mx-auto'
+            )}
+            aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <div className="absolute inset-0 blur-xl bg-cyan-500/30" />
+            <Image src={zicoBlue} alt="Panorama Block" fill className="relative object-contain drop-shadow-[0_0_14px_rgba(34,211,238,0.55)]" />
           </button>
+
+          {/* Search input — slides in (hidden when collapsed) */}
+          {!isSidebarCollapsed && (
+            <>
+              <div className={cn(
+                'flex items-center gap-2 min-w-0 overflow-hidden transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)]',
+                chatSearchOpen ? 'flex-1 opacity-100' : 'w-0 opacity-0'
+              )}>
+                <Search size={14} className="shrink-0 text-zinc-500" />
+                <input
+                  autoFocus={chatSearchOpen}
+                  type="text"
+                  placeholder="Search chats..."
+                  value={chatSearchQuery}
+                  onChange={(e) => setChatSearchQuery(e.target.value)}
+                  className="flex-1 min-w-0 bg-transparent text-xs text-white placeholder-zinc-500 outline-none"
+                />
+                {chatSearchQuery && (
+                  <button onClick={() => setChatSearchQuery('')} className="shrink-0 text-zinc-500 hover:text-white">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Search toggle */}
+              <button
+                className="absolute right-4 p-2 text-zinc-500 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
+                onClick={() => { setChatSearchOpen((v) => { if (!v) setShowChatHistory(true); return !v; }); setChatSearchQuery(''); }}
+                aria-label={chatSearchOpen ? 'Close search' : 'Search chats'}
+              >
+                {chatSearchOpen ? <X size={16} /> : <Search size={16} />}
+              </button>
+            </>
+          )}
         </div>
 
-        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto custom-scrollbar">
+        <nav className={cn('flex-1 py-4 space-y-1 overflow-y-auto custom-scrollbar transition-all duration-500', isSidebarCollapsed ? 'px-2' : 'px-4')}>
           {navItems.map((item, idx) => {
             const active = isActive(item);
             const isNewChatItem = item.id === 'chat';
@@ -321,42 +365,61 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
 
                 {/* New Chat button with special styling */}
                 {isNewChatItem ? (
-                  <div className="space-y-2">
+                  <div className={cn(isSidebarCollapsed ? '' : 'space-y-2')}>
                     <button
                       onClick={() => handleNavClick(item)}
                       disabled={isCreatingConversation}
+                      title={isSidebarCollapsed ? item.label : undefined}
                       className={cn(
-                        'w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden',
+                        'w-full flex items-center rounded-xl transition-all duration-300 group relative overflow-hidden',
+                        isSidebarCollapsed ? 'justify-center p-3' : 'justify-between gap-3 px-4 py-3',
                         active
                           ? 'text-white'
                           : 'text-pano-text-muted hover:text-white/80 hover:bg-white/5',
                         isCreatingConversation && 'opacity-60 cursor-not-allowed'
                       )}
                     >
-                      <div className="flex items-center gap-3">
-                        {active && (
-                          <div className="absolute inset-0 bg-cyan-500/10 border border-cyan-500/20 rounded-xl shadow-[0_0_0_1px_rgba(34,211,238,0.22)]" />
-                        )}
+                      {active && (
+                        <div className="absolute inset-0 bg-cyan-500/10 border border-cyan-500/20 rounded-xl shadow-[0_0_0_1px_rgba(34,211,238,0.22)]" />
+                      )}
+                      {isSidebarCollapsed ? (
                         <span className={cn('relative z-10', active && 'text-cyan-400')}>
                           {isCreatingConversation ? (
                             <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                             </svg>
-                          ) : item.icon}
+                          ) : (
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
+                            </svg>
+                          )}
                         </span>
-                        <span className={cn('relative z-10 text-sm font-semibold tracking-wide', active && 'text-glow')}>
-                          {item.label}
-                        </span>
-                        {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-cyan-500 rounded-r-full blur-[2px]" />}
-                      </div>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cyan-400">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
-                      </svg>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-3">
+                            <span className={cn('relative z-10', active && 'text-cyan-400')}>
+                              {isCreatingConversation ? (
+                                <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                              ) : item.icon}
+                            </span>
+                            <span className={cn('relative z-10 text-sm font-semibold tracking-wide', active && 'text-glow')}>
+                              {item.label}
+                            </span>
+                            {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-cyan-500 rounded-r-full blur-[2px]" />}
+                          </div>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cyan-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
+                          </svg>
+                        </>
+                      )}
                     </button>
 
-                    {/* Chat History Section */}
-                    <div className="mt-2">
+                    {/* Chat History Section — hidden when collapsed */}
+                    {!isSidebarCollapsed && <div className="mt-2">
                       <button
                         onClick={() => setShowChatHistory(!showChatHistory)}
                         className="w-full flex items-center justify-between px-4 py-2 text-xs text-zinc-500 hover:text-zinc-400 transition-colors"
@@ -382,7 +445,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                             transition={{ duration: 0.2 }}
                             className="overflow-hidden"
                           >
-                            <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                            <div className={cn('space-y-1 overflow-y-auto custom-scrollbar pr-1', chatSearchQuery.trim() ? 'max-h-[320px]' : 'max-h-[200px]')}>
                               {isLoadingConversations ? (
                                 <div className="px-4 py-3 text-xs text-zinc-500 flex items-center gap-2">
                                   <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -395,44 +458,77 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                                 <div className="px-4 py-3 text-xs text-zinc-500">
                                   No conversations yet
                                 </div>
-                              ) : (
-                                conversations.slice(0, 8).map((conversation) => {
+                              ) : (() => {
+                                const filtered = conversations
+                                  .filter((conversation) => {
+                                    if (!chatSearchQuery.trim()) return true;
+                                    const convId = normalizeConversationId(conversation);
+                                    const title = convId ? resolveConversationTitle(convId, conversation.title) : conversation.title;
+                                    return title?.toLowerCase().includes(chatSearchQuery.toLowerCase());
+                                  })
+                                  .slice(0, chatSearchQuery.trim() ? 20 : 8);
+
+                                if (filtered.length === 0) {
+                                  return (
+                                    <div className="px-4 py-3 text-xs text-zinc-500">
+                                      No chats found
+                                    </div>
+                                  );
+                                }
+
+                                return filtered.map((conversation) => {
                                   const conversationId = normalizeConversationId(conversation);
                                   if (!conversationId) return null;
 
                                   const isActiveConv = activeConversationId === conversationId;
                                   return (
-                                    <button
+                                    <div
                                       key={conversationId}
-                                      onClick={() => handleSelectConversation(conversationId)}
                                       className={cn(
-                                        'w-full text-left px-4 py-2 rounded-lg text-xs transition-all truncate',
+                                        'group/chat w-full flex items-center rounded-lg text-xs transition-all',
                                         isActiveConv
                                           ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
                                           : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
                                       )}
                                     >
-                                      <div className="flex items-center gap-2">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 opacity-60">
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                                        </svg>
-                                        <span className="truncate">{resolveConversationTitle(conversationId, conversation.title)}</span>
-                                      </div>
-                                    </button>
+                                      <button
+                                        onClick={() => handleSelectConversation(conversationId)}
+                                        className="flex-1 text-left px-4 py-2 truncate"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 opacity-60">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                          </svg>
+                                          <span className="truncate">{resolveConversationTitle(conversationId, conversation.title)}</span>
+                                        </div>
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          deleteConversation(conversationId);
+                                        }}
+                                        className="shrink-0 p-1.5 mr-1.5 rounded-md opacity-0 group-hover/chat:opacity-100 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                        aria-label="Delete conversation"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
                                   );
-                                })
-                              )}
+                                });
+                              })()}
                             </div>
                           </motion.div>
                         )}
                       </AnimatePresence>
-                    </div>
+                    </div>}
                   </div>
                 ) : (
                   <button
                     onClick={() => handleNavClick(item)}
+                    title={isSidebarCollapsed ? item.label : undefined}
                     className={cn(
-                      'flex-1 flex items-center gap-3 px-4 py-3 min-h-[48px] rounded-xl transition-all duration-300 group relative overflow-hidden touch-action-manipulation',
+                      'flex-1 flex items-center min-h-[48px] rounded-xl transition-all duration-300 group relative overflow-hidden touch-action-manipulation',
+                      isSidebarCollapsed ? 'justify-center p-3' : 'gap-3 px-4 py-3',
                       active
                         ? 'text-white'
                         : 'text-pano-text-muted hover:text-white/80 hover:bg-white/5 active:bg-white/10 active:text-white'
@@ -442,7 +538,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                       <div className="absolute inset-0 bg-cyan-500/10 border border-cyan-500/20 rounded-xl shadow-[0_0_0_1px_rgba(34,211,238,0.22)]" />
                     )}
                     <span className={cn('relative z-10', active && 'text-cyan-400')}>{item.icon}</span>
-                    <span className={cn('relative z-10 text-sm font-semibold tracking-wide', active && 'text-glow')}>{item.label}</span>
+                    {!isSidebarCollapsed && <span className={cn('relative z-10 text-sm font-semibold tracking-wide', active && 'text-glow')}>{item.label}</span>}
                     {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-cyan-500 rounded-r-full blur-[2px]" />}
                   </button>
                 )}
@@ -475,11 +571,11 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0 relative z-10">
         {/* Mobile Header */}
-        <div className="lg:hidden h-16 flex items-center justify-between px-4 border-b border-white/5 bg-pano-bg-secondary/90 backdrop-blur-md sticky top-0 z-30 safe-area-pt">
-          <div className="flex items-center gap-3">
+        <div className="lg:hidden h-16 grid grid-cols-[auto_1fr_auto] items-center px-4 border-b border-white/5 bg-pano-bg-secondary/90 backdrop-blur-md sticky top-0 z-30 safe-area-pt">
+          <button className="flex items-center" onClick={() => setIsSidebarOpen(true)}>
             <Image src={zicoBlue} alt="Panorama Block" width={28} height={28} />
-            <span className="font-bold text-pano-text-primary">{pageTitle}</span>
-          </div>
+          </button>
+          <span className="text-xs font-semibold text-pano-text-primary text-center truncate px-2">{pageTitle}</span>
           <button
             onClick={() => setIsSidebarOpen(true)}
             className="p-3 min-h-[44px] min-w-[44px] flex items-center justify-center text-pano-text-muted hover:text-pano-text-primary active:text-pano-text-primary rounded-lg hover:bg-white/5 active:bg-white/10 transition-colors"
@@ -491,9 +587,10 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
         </div>
 
         {/* Desktop Header */}
-        <header className="hidden lg:flex h-20 items-center justify-between px-10 border-b border-white/5 bg-[#08090c]/90 backdrop-blur-2xl sticky top-0 z-30">
-          <h1 className="text-2xl font-bold text-white tracking-tight">{pageTitle}</h1>
-          <div className="flex items-center gap-4">
+        <header className="hidden lg:flex h-20 items-center px-10 border-b border-white/5 bg-[#08090c]/90 backdrop-blur-2xl sticky top-0 z-30">
+          <span className="text-lg font-bold text-white tracking-tight shrink-0">Zico AI</span>
+          <h1 className="flex-1 min-w-0 text-sm font-semibold text-white/70 tracking-tight text-center truncate px-4">{pageTitle}</h1>
+          <div className="flex items-center gap-4 shrink-0">
             <NotificationCenter />
             <div className="relative">
               <button
@@ -559,8 +656,6 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
       {/* Widget Modals */}
       <AnimatePresence>
         {showSwap && <SwapWidget onClose={() => setShowSwap(false)} />}
-        {showLending && <Lending onClose={() => setShowLending(false)} />}
-        {showStaking && <Staking onClose={() => setShowStaking(false)} />}
         {showDCA && <DCA onClose={() => setShowDCA(false)} />}
       </AnimatePresence>
     </div>

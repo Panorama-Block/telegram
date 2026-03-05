@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import SwapIcon from '../../../public/icons/Swap.svg';
 import UniswapIcon from '../../../public/icons/uniswap.svg';
 import AvalancheIcon from '../../../public/icons/Avalanche_Blockchain_Logo.svg';
 import { networks, Token } from '@/features/swap/tokens';
 import { swapApi, SwapApiError } from '@/features/swap/api';
-import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl } from '@/features/swap/utils';
+import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl, toFixedFloor } from '@/features/swap/utils';
 import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
 import { useActiveAccount, PayEmbed, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
@@ -200,12 +201,16 @@ function getAddressFromToken(): string | null {
 export default function SwapPage() {
   const account = useActiveAccount();
   const switchChain = useSwitchActiveWalletChain();
+  const searchParams = useSearchParams();
   const clientId = THIRDWEB_CLIENT_ID || undefined;
   const client = useMemo(() => (clientId ? createThirdwebClient({ clientId }) : null), [clientId]);
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);
   const userAddress = localStorage.getItem('userAddress');
   const effectiveAddress = account?.address || addressFromToken || userAddress;
+
+  const prefillSignatureRef = useRef<string | null>(null);
+  const skipAmountResetRef = useRef(0);
 
   const [fromChainId, setFromChainId] = useState(8453); // Base
   const [toChainId, setToChainId] = useState(42161); // Arbitrum
@@ -222,6 +227,7 @@ export default function SwapPage() {
 
   // Balance states
   const [sellTokenBalance, setSellTokenBalance] = useState<string | null>(null);
+  const [sellTokenBalanceRaw, setSellTokenBalanceRaw] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
 
   // Quote and swap states
@@ -240,6 +246,49 @@ export default function SwapPage() {
   const [tosAccepted, setTosAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
+  // Prefill support (used by Staking "Instant Unstake via Swap" CTA)
+  useEffect(() => {
+    const fromChain = Number(searchParams.get('fromChainId'));
+    const toChain = Number(searchParams.get('toChainId'));
+    const sell = searchParams.get('sellToken');
+    const buy = searchParams.get('buyToken');
+    const sellAmountParam = searchParams.get('sellAmount');
+
+    if (!fromChain || !toChain || !sell || !buy) return;
+
+    const signature = `${fromChain}:${toChain}:${sell.toLowerCase()}:${buy.toLowerCase()}:${sellAmountParam || ''}`;
+    if (prefillSignatureRef.current === signature) return;
+    prefillSignatureRef.current = signature;
+
+    const findToken = (chainId: number, address: string): Token | null => {
+      const network = networks.find((n) => n.chainId === chainId);
+      if (!network) return null;
+
+      if (isNative(address)) {
+        return network.nativeCurrency;
+      }
+
+      const normalized = address.toLowerCase();
+      return network.tokens.find((t) => t.address?.toLowerCase() === normalized) || null;
+    };
+
+    const nextSellToken = findToken(fromChain, sell) || { symbol: 'TOKEN', address: sell };
+    const nextBuyToken = findToken(toChain, buy) || { symbol: 'TOKEN', address: buy };
+
+    // Multiple state updates below can trigger the "reset amount" effect a couple times.
+    // Skip those resets so the prefilled amount is preserved.
+    skipAmountResetRef.current = 3;
+
+    setFromChainId(fromChain);
+    setToChainId(toChain);
+    setSellToken(nextSellToken);
+    setBuyToken(nextBuyToken);
+
+    if (sellAmountParam && String(sellAmountParam).trim().length > 0) {
+      setSellAmount(String(sellAmountParam));
+    }
+  }, [searchParams]);
+
   // Helper to check if swap involves Avalanche
   const isAvalancheSwap = useMemo(() => {
     const isAvalancheChain = fromChainId === 43114 || toChainId === 43114;
@@ -257,8 +306,13 @@ export default function SwapPage() {
 
   // Reset amount when sell token changes - set default to "0.0" until balance is fetched
   useEffect(() => {
-    setSellAmount('0.0');
     setSellTokenBalance(null);
+    setSellTokenBalanceRaw(null);
+    if (skipAmountResetRef.current > 0) {
+      skipAmountResetRef.current -= 1;
+      return;
+    }
+    setSellAmount('0.0');
   }, [sellToken.address, fromChainId]);
 
   // Fetch sell token balance
@@ -310,9 +364,11 @@ export default function SwapPage() {
 
         if (cancelled) return;
 
-        // Format balance
+        // Format balance — display with 6 decimals, keep full precision for max
         const formattedBalance = formatAmountHuman(balance, decimals, 6);
+        const fullPrecisionBalance = formatAmountHuman(balance, decimals, decimals);
         setSellTokenBalance(formattedBalance);
+        setSellTokenBalanceRaw(fullPrecisionBalance);
 
         // Set initial amount to balance or "0.0" if zero (only if amount can be auto-filled)
         const canAutoFill = !sellAmount || sellAmount === '' || sellAmount === '0.0';
@@ -324,6 +380,7 @@ export default function SwapPage() {
         console.error("[SwapPage] Error fetching balance:", error);
         if (!cancelled) {
           setSellTokenBalance("0");
+          setSellTokenBalanceRaw("0");
           const canAutoFill = !sellAmount || sellAmount === '' || sellAmount === '0.0';
           if (canAutoFill) {
             setSellAmount('0.0');
@@ -341,12 +398,12 @@ export default function SwapPage() {
     };
   }, [client, effectiveAddress, sellToken, fromChainId]);
 
-  // Set max balance handler
+  // Set max balance handler — use full-precision balance to avoid rounding up
   const handleSetMax = () => {
     if (!sellTokenBalance || loadingBalance) return;
-    const rawBalance = sellTokenBalance.replace(/,/g, '');
-    if (rawBalance && parseFloat(rawBalance) > 0) {
-      setSellAmount(rawBalance);
+    const exactBalance = (sellTokenBalanceRaw || sellTokenBalance).replace(/,/g, '');
+    if (exactBalance && parseFloat(exactBalance) > 0) {
+      setSellAmount(exactBalance);
     }
   };
 
@@ -389,6 +446,7 @@ export default function SwapPage() {
         fromToken: normalizeToApi(sellToken.address),
         toToken: normalizeToApi(buyToken.address),
         amount: sellAmount.trim(),
+        unit: 'token',
         smartAccountAddress,
       };
 
@@ -1101,7 +1159,7 @@ export default function SwapPage() {
                       <div className="flex items-center justify-between text-[11px] sm:text-xs">
                         <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
                         <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
-                          {(parseFloat(buyAmount || '0') * 0.99).toFixed(6)} {buyToken?.symbol || ''}
+                          {toFixedFloor(parseFloat(buyAmount || '0') * 0.99, 6)} {buyToken?.symbol || ''}
                         </span>
                       </div>
                     </div>
@@ -1231,7 +1289,7 @@ export default function SwapPage() {
                     <div className="flex justify-between gap-2">
                       <span className="text-gray-400 text-[11px] sm:text-xs">Min. Out After Slippage</span>
                       <span className="text-white font-medium text-right break-words text-[11px] sm:text-xs">
-                        {(parseFloat(buyAmount || '0') * 0.99).toFixed(6)} {buyToken?.symbol || ''}
+                        {toFixedFloor(parseFloat(buyAmount || '0') * 0.99, 6)} {buyToken?.symbol || ''}
                       </span>
                     </div>
                   </div>

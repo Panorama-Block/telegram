@@ -7,6 +7,7 @@ import { inAppWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { linkTelegramIdentityIfAvailable } from '@/shared/lib/telegram-link';
+import { persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 import '@/shared/ui/loader.css';
 
 function decodeAuthResult(value: string) {
@@ -131,6 +132,7 @@ export default function AuthCallbackPage() {
         localStorage.setItem('authToken', authToken);
         localStorage.setItem('authPayload', JSON.stringify(payload));
         localStorage.setItem('authSignature', signature);
+        persistAuthWalletBinding({ activeWallet: wallet, account });
         await linkTelegramIdentityIfAvailable(authApiBase, address || payload.address || account.address, {
           sessionId: sessionId || null,
           address: address || account.address || null,

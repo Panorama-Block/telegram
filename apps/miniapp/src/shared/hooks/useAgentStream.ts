@@ -29,6 +29,7 @@ export interface StreamDoneEvent {
   nodes: string[];
   metadata: Record<string, unknown>;
   response: string;
+  response_mode?: 'fast' | 'reasoning';
   costs: { total_usd: number };
 }
 
@@ -60,6 +61,51 @@ export interface AgentStreamState {
 
 const agentsClient = new AgentsClient();
 
+// ── Shared SSE stream consumer ──
+
+async function consumeSSEStream(
+  body: ReadableStream<Uint8Array>,
+  controller: AbortController,
+  setState: React.Dispatch<React.SetStateAction<AgentStreamState>>,
+) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    if (controller.signal.aborted) break;
+
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    let currentEvent = '';
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        currentEvent = line.slice(7).trim();
+      } else if (line.startsWith('data: ') && currentEvent) {
+        try {
+          const data = JSON.parse(line.slice(6));
+          processEvent(currentEvent, data, setState);
+        } catch {
+          // Skip malformed JSON
+        }
+        currentEvent = '';
+      }
+    }
+  }
+
+  setState((prev) => {
+    if (!prev.isDone && prev.isStreaming) {
+      return { ...prev, isStreaming: false, isDone: true };
+    }
+    return prev;
+  });
+}
+
 export function useAgentStream() {
   const [state, setState] = useState<AgentStreamState>({
     thoughts: [],
@@ -90,8 +136,8 @@ export function useAgentStream() {
       conversationId: string;
       walletAddress?: string;
       jwt?: string;
+      responseMode?: 'fast' | 'reasoning';
     }) => {
-      // Reset state for new message
       setState({
         thoughts: [],
         tokens: '',
@@ -101,7 +147,6 @@ export function useAgentStream() {
         result: null,
       });
 
-      // Abort any existing stream
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -120,6 +165,7 @@ export function useAgentStream() {
               source: 'miniapp-chat',
               sent_at: new Date().toISOString(),
             },
+            response_mode: params.responseMode ?? 'fast',
           },
           opts,
         );
@@ -128,44 +174,65 @@ export function useAgentStream() {
           throw new Error('Response body is null — streaming not supported');
         }
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
+        await consumeSSEStream(res.body, controller, setState);
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        const message =
+          err instanceof Error ? err.message : 'Stream failed';
+        setState((prev) => ({
+          ...prev,
+          isStreaming: false,
+          error: message,
+        }));
+      }
+    },
+    [],
+  );
 
-        while (true) {
-          if (controller.signal.aborted) break;
+  const sendWithFiles = useCallback(
+    async (params: {
+      message: string;
+      files: File[];
+      userId: string;
+      conversationId: string;
+      walletAddress?: string;
+      jwt?: string;
+      responseMode?: 'fast' | 'reasoning';
+    }) => {
+      setState({
+        thoughts: [],
+        tokens: '',
+        isStreaming: true,
+        isDone: false,
+        error: null,
+        result: null,
+      });
 
-          const { done, value } = await reader.read();
-          if (done) break;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          // Keep the last potentially incomplete line in the buffer
-          buffer = lines.pop() ?? '';
+      try {
+        const opts: ChatOptions = {};
+        if (params.jwt) opts.jwt = params.jwt;
 
-          let currentEvent = '';
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith('data: ') && currentEvent) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                processEvent(currentEvent, data, setState);
-              } catch {
-                // Skip malformed JSON
-              }
-              currentEvent = '';
-            }
-          }
+        const res = await agentsClient.chatStreamWithFiles(
+          params.message,
+          params.files,
+          {
+            userId: params.userId,
+            conversationId: params.conversationId,
+            walletAddress: params.walletAddress ?? 'default',
+            responseMode: params.responseMode ?? 'fast',
+          },
+          opts,
+        );
+
+        if (!res.body) {
+          throw new Error('Response body is null — streaming not supported');
         }
 
-        // If we never got a done event, mark as done now
-        setState((prev) => {
-          if (!prev.isDone && prev.isStreaming) {
-            return { ...prev, isStreaming: false, isDone: true };
-          }
-          return prev;
-        });
+        await consumeSSEStream(res.body, controller, setState);
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         const message =
@@ -185,7 +252,7 @@ export function useAgentStream() {
     setState((prev) => ({ ...prev, isStreaming: false }));
   }, []);
 
-  return { ...state, send, cancel, reset };
+  return { ...state, send, sendWithFiles, cancel, reset };
 }
 
 // ── Event dispatcher ──

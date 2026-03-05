@@ -1,0 +1,20 @@
+{
+  "status": 200,
+  "msg": "success",
+  "data": {
+    "validation": {
+      "to": "0x8513b57A1B4f4c25dFB7B9f5cd66f07f6D8e43cf",
+      "value": "187000000000000000",
+      "data": "0xabcdef01",
+      "gasLimit": "140000",
+      "chainId": 43114
+    },
+    "withdraw": {
+      "to": "0x5C0401e81Bc07Ca70fAD469b451682c0d747Ef1c",
+      "value": "0",
+      "data": "0xabcdef02",
+      "gasLimit": "300000",
+      "chainId": 43114
+    }
+  }
+}

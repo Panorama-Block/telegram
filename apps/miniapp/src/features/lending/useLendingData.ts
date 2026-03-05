@@ -1,74 +1,111 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLendingApi } from './api';
-import { LendingToken, LendingPosition } from './types';
+import { LendingToken, LendingAccountPositionsResponse } from './types';
+import { LENDING_CONFIG } from './config';
+
+const MIN_FETCH_INTERVAL_MS = 2 * 60 * 1000;
 
 export const useLendingData = () => {
   const lendingApi = useLendingApi();
   const [tokens, setTokens] = useState<LendingToken[]>([]);
-  const [userPosition, setUserPosition] = useState<LendingPosition | null>(null);
+  const [userPosition, setUserPosition] = useState<LendingAccountPositionsResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
-
-  // Minimum interval between fetches (2 minutes)
-  const MIN_FETCH_INTERVAL = 2 * 60 * 1000;
+  const hasInitializedRef = useRef(false);
+  const lastFetchTimeRef = useRef(0);
+  const inFlightRef = useRef<Promise<void> | null>(null);
 
   const fetchData = useCallback(async (forceRefresh = false, includePosition = false) => {
     const now = Date.now();
 
-    // Don't fetch if we recently fetched and it's not a forced refresh
-    if (!forceRefresh && (now - lastFetchTime) < MIN_FETCH_INTERVAL) {
+    if (!forceRefresh && (now - lastFetchTimeRef.current) < MIN_FETCH_INTERVAL_MS) {
       return;
     }
 
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Always fetch tokens
-      const availableTokens = await lendingApi.getTokens();
-      setTokens(availableTokens);
-
-      // Only fetch user position if explicitly requested (to avoid signature popup on load)
-      // NOTE: Commented out because /lending/position route doesn't exist in backend yet
-      // TODO: Implement this route in lending-service or use alternative endpoint
-      // if (includePosition) {
-      //   const position = await lendingApi.getUserPosition();
-      //   setUserPosition(position);
-      // }
-
-      setLastFetchTime(now);
-    } catch (err) {
-      console.error('[LENDING] Error fetching data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load lending data');
-    } finally {
-      setLoading(false);
+    if (inFlightRef.current) {
+      return inFlightRef.current;
     }
-  }, [lendingApi, lastFetchTime, MIN_FETCH_INTERVAL]);
 
-  // Initial load
+    const run = (async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const maxAttempts = Math.max(1, LENDING_CONFIG.MAX_RETRY_ATTEMPTS ?? 1);
+        const baseDelayMs = Math.max(250, LENDING_CONFIG.RETRY_DELAY ?? 1000);
+        const isRateLimitedError = (error: unknown) =>
+          error instanceof Error && (/429/.test(error.message) || /rate-limited|rate limited/i.test(error.message));
+        const isTimeoutError = (error: unknown) =>
+          error instanceof Error && /timeout|aborted/i.test(error.message);
+
+        let availableTokens: LendingToken[] | null = null;
+        let lastErr: unknown = null;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            availableTokens = await lendingApi.getTokens();
+            break;
+          } catch (e) {
+            lastErr = e;
+            if (isRateLimitedError(e) || isTimeoutError(e)) break;
+            if (attempt >= maxAttempts) break;
+            const delay = baseDelayMs * Math.pow(2, attempt - 1);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
+
+        if (!availableTokens) {
+          throw lastErr ?? new Error('Failed to load lending markets');
+        }
+        setTokens(availableTokens);
+
+        if (includePosition) {
+          const position = await lendingApi.getUserPosition();
+          setUserPosition(position);
+        }
+
+        const fetchedAt = Date.now();
+        lastFetchTimeRef.current = fetchedAt;
+        setLastFetchTime(fetchedAt);
+      } catch (err) {
+        console.error('[LENDING] Error fetching data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load lending data');
+      } finally {
+        setLoading(false);
+      }
+    })().finally(() => {
+      inFlightRef.current = null;
+    });
+
+    inFlightRef.current = run;
+    return run;
+  }, [lendingApi]);
+
   useEffect(() => {
-    fetchData();
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
+    void fetchData(false, true);
   }, [fetchData]);
 
-  // Refresh function for manual updates
   const refresh = useCallback(() => {
-    fetchData(true, true); // Include position on manual refresh
+    return fetchData(true, true);
   }, [fetchData]);
 
-  // Clear cache and refresh
   const clearCacheAndRefresh = useCallback(() => {
     lendingApi.clearLendingDataCache();
-    fetchData(true, true); // Include position on manual refresh
+    lastFetchTimeRef.current = 0;
+    setLastFetchTime(0);
+    return fetchData(true, true);
   }, [lendingApi, fetchData]);
 
-  // Function to fetch position separately (can be called when needed)
   const fetchPosition = useCallback(async () => {
     try {
+      setError(null);
       const position = await lendingApi.getUserPosition();
       setUserPosition(position);
     } catch (err) {
       console.error('[LENDING] Error fetching position:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load lending position');
     }
   }, [lendingApi]);
 

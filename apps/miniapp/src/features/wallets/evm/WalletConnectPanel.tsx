@@ -3,6 +3,7 @@ import { ConnectButton, useActiveAccount, useActiveWallet, useDisconnect } from 
 import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
+import { clearAuthWalletBinding, persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 import { linkTelegramIdentityIfAvailable } from '@/shared/lib/telegram-link';
 
 function WalletIcon({ size = 20 }: { size?: number }) {
@@ -238,6 +239,7 @@ export function WalletConnectPanel() {
       
       // 5. Save token locally (same as wallet page)
       localStorage.setItem('authToken', authToken);
+      persistAuthWalletBinding({ activeWallet, account });
       await linkTelegramIdentityIfAvailable(authApiBase, address || payload.address || effectiveAddress, {
         sessionId: sessionId || null,
         address: address || effectiveAddress || null,
@@ -309,6 +311,7 @@ export function WalletConnectPanel() {
       localStorage.removeItem('authToken');
       localStorage.removeItem('authPayload');
       localStorage.removeItem('authSignature');
+      clearAuthWalletBinding();
     } catch (err: any) {
       console.error('wallet disconnect failed', err);
       setError(err?.message || 'Failed to disconnect');

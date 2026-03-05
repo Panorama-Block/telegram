@@ -5,6 +5,7 @@ import { signLoginPayload } from 'thirdweb/auth';
 import { Card, Button } from '@/shared/ui';
 import { THIRDWEB_CLIENT_ID } from '../../../shared/config/thirdweb';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
+import { clearAuthWalletBinding, persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 import { linkTelegramIdentityIfAvailable } from '@/shared/lib/telegram-link';
 
 
@@ -211,6 +212,7 @@ export function SmartWalletConnectPanel() {
 
       // 5. Save token to localStorage
       localStorage.setItem('authToken', authToken);
+      persistAuthWalletBinding({ activeWallet: wallet, account });
       await linkTelegramIdentityIfAvailable(authApiBase, address || payload.address || account?.address, {
         sessionId: sessionId || null,
         address: address || account?.address || null,
@@ -315,6 +317,7 @@ export function SmartWalletConnectPanel() {
               localStorage.removeItem('authToken');
               localStorage.removeItem('authPayload');
               localStorage.removeItem('authSignature');
+              clearAuthWalletBinding();
             }}
             style={{ padding: '8px 16px', fontSize: 14 }}
           >

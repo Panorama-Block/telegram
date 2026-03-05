@@ -17,25 +17,30 @@ import { PortfolioAsset, PortfolioStats } from './types';
 const FALLBACK_PRICES: Record<string, number> = {
   'ETH': 3900,
   'WETH': 3900,
+  // Lido LSTs (fallback to ETH peg when real price is unavailable)
+  'stETH': 3900,
+  'wstETH': 3900,
   'AVAX': 50,
   'WAVAX': 50,
   'USDC': 1.00,
   'USDT': 1.00,
   'DAI': 1.00,
+  'USDe': 1.00,
 };
 
 async function fetchRealPrices(): Promise<Record<string, number>> {
   try {
-    const ids = 'ethereum,avalanche-2,usd-coin,tether,dai';
-    const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`,
-      { next: { revalidate: 60 } } as RequestInit
-    );
+    const ids = 'ethereum,staked-ether,wrapped-steth,ethena-usde,avalanche-2,usd-coin,tether,dai';
+    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
     if (!response.ok) throw new Error('Price fetch failed');
     const data = await response.json();
+    const ethUsd = data.ethereum?.usd || FALLBACK_PRICES['ETH'];
     return {
-      'ETH': data.ethereum?.usd || FALLBACK_PRICES['ETH'],
-      'WETH': data.ethereum?.usd || FALLBACK_PRICES['WETH'],
+      'ETH': ethUsd,
+      'WETH': ethUsd,
+      'stETH': data['staked-ether']?.usd || ethUsd,
+      'wstETH': data['wrapped-steth']?.usd || ethUsd,
+      'USDe': data['ethena-usde']?.usd || 1,
       'AVAX': data['avalanche-2']?.usd || FALLBACK_PRICES['AVAX'],
       'WAVAX': data['avalanche-2']?.usd || FALLBACK_PRICES['WAVAX'],
       'USDC': data['usd-coin']?.usd || 1,
@@ -170,7 +175,7 @@ export function useSmartWalletPortfolio(): SmartWalletPortfolioData {
                   symbol: token.symbol,
                   name: token.name || token.symbol,
                   network: network.name,
-                  protocol: 'Smart Wallet',
+                  protocol: token.symbol === 'stETH' || token.symbol === 'wstETH' ? 'Lido' : 'Smart Wallet',
                   address: token.address,
                   decimals: token.decimals || 18,
                   balance: `${parseFloat(balanceStr).toLocaleString('en-US', { maximumFractionDigits: 4 })} ${token.symbol}`,

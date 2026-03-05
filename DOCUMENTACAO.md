@@ -29,7 +29,7 @@ Arquitetura e módulos
   - Autenticação (fluxo SIWE):
     - Gera payload em `POST {AUTH_API_BASE}/auth/login` e assina com carteira (thirdweb), depois `POST /auth/verify` → salva `authToken` no `localStorage`. Referência: `telegram/apps/miniapp/src/app/newchat/page.tsx:114`.
     - Suporte a callback OAuth por redirect em WebView (`/miniapp/auth/callback`). Referência: `telegram/apps/miniapp/src/app/auth/callback/page.tsx:71`.
-  - Swap API (cliente do gateway): `/swap/quote`, `/swap/tx`, `/swap/status/:hash?chainId=` com suporte a erros “user-facing”. O JWT é enviado em `Authorization: Bearer`. Referência: `telegram/apps/miniapp/src/features/swap/api.ts:173`.
+  - Swap API (cliente do gateway): `/swap/quote`, `/swap/tx`, `/swap/status/:hash?chainId=` com suporte a erros “user-facing”. **Sempre enviar `unit`** (`token` ou `wei`) para evitar dupla conversão. O JWT é enviado em `Authorization: Bearer`. Referência: `telegram/apps/miniapp/src/features/swap/api.ts:173`.
   - Agentes (chat): `AgentsClient` conversa com `zico_agents/new_zico`, padroniza `message`, `conversation_id`, `user_id`, `wallet_address` e extrai a resposta via `AGENTS_RESPONSE_MESSAGE_PATH` opcional. Referência: `telegram/apps/miniapp/src/clients/agentsClient.ts:1`.
   - UI/UX: componentes e animações (ex.: linhas animadas na landing) e suporte PWA (notificação de update). Referências: `telegram/apps/miniapp/src/modules/landing/lines/index.tsx:1`, `telegram/apps/miniapp/src/components/pwa/PWAUpdateNotification.tsx:1`.
 
@@ -84,4 +84,3 @@ Notas de UX/negócio
 - WebView do Telegram no iOS restringe Google auth — o app expõe opção para abrir no navegador. Referência: `telegram/apps/miniapp/src/features/wallets/evm/EvmConnectButton.tsx:35`.
 - Autenticação é não-custodial: o servidor retorna bundles, o cliente assina e envia.
 - Chat com agentes ideal para guiar usuário até intenção de swap (metadados `swap_intent_pending/ready`).
-

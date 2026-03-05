@@ -18,6 +18,7 @@ interface ChatContextType {
   isLoading: boolean;
   error: string | null;
   createConversation: () => Promise<string | null>;
+  deleteConversation: (id: string) => Promise<void>;
   setActiveConversationId: (id: string | null) => void;
   refreshConversations: () => Promise<void>;
   isCreatingConversation: boolean;
@@ -100,10 +101,21 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       if (!isMountedRef.current) return;
 
-      const mappedConversations: Conversation[] = conversationsFromBackend.map((c, index) => ({
-        id: c.id,
-        title: c.title || `Chat ${index + 1}`,
-      }));
+      const mappedConversations: Conversation[] = conversationsFromBackend.map((c, index) => {
+        const backendTitle = c.title || `Chat ${index + 1}`;
+        // Prefer cached AI title over generic backend title
+        if (typeof window !== 'undefined') {
+          const t = backendTitle.trim().toLowerCase();
+          const isGeneric = !t || t === 'new chat' || t === 'chat' || /^chat\s+\d+$/.test(t);
+          if (isGeneric) {
+            try {
+              const cached = localStorage.getItem(`chat:aiTitle:${c.id}`);
+              if (cached) return { id: c.id, title: cached };
+            } catch {}
+          }
+        }
+        return { id: c.id, title: backendTitle };
+      });
 
       setConversations(mappedConversations);
       console.info('[CHAT TRACE][ChatContext] refresh:setConversations', {
@@ -117,15 +129,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(`${CONVERSATION_LIST_KEY}:${userId}`, JSON.stringify(conversationsFromBackend.map(c => c.id)));
       } catch { }
 
-      // Set active conversation if none selected
-      if (!activeConversationId && mappedConversations.length > 0) {
-        const storedId = localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY);
-        if (storedId && conversationsFromBackend.some(c => c.id === storedId)) {
-          setActiveConversationId(storedId);
-        } else {
-          setActiveConversationId(conversationsFromBackend[0].id);
-        }
-      }
+      // Do not auto-select a previous conversation here.
+      // The chat page bootstrap always creates a fresh conversation on entry.
     } catch (err) {
       console.error('Error fetching conversations:', err);
       console.info('[CHAT TRACE][ChatContext] refresh:error', {
@@ -172,6 +177,25 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
   }, [userId, agentsClient, getAuthOptions, isCreatingConversation, setActiveConversationId]);
 
+  const deleteConversation = useCallback(async (conversationId: string): Promise<void> => {
+    if (!userId) return;
+
+    try {
+      const authOpts = getAuthOptions();
+      await agentsClient.deleteConversation(userId, conversationId, authOpts);
+
+      if (!isMountedRef.current) return;
+
+      setConversations(prev => prev.filter(c => c.id !== conversationId));
+
+      if (activeConversationId === conversationId) {
+        setActiveConversationId(null);
+      }
+    } catch (err) {
+      console.error('Error deleting conversation:', err);
+    }
+  }, [userId, agentsClient, getAuthOptions, activeConversationId, setActiveConversationId]);
+
   // Bootstrap on mount
   useEffect(() => {
     isMountedRef.current = true;
@@ -214,6 +238,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     error,
     createConversation,
+    deleteConversation,
     setActiveConversationId,
     refreshConversations,
     isCreatingConversation,
@@ -223,6 +248,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     error,
     createConversation,
+    deleteConversation,
     setActiveConversationId,
     refreshConversations,
     isCreatingConversation,

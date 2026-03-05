@@ -10,6 +10,7 @@ export interface ChatRequest {
   chain_id?: string;
   wallet_address?: string;
   metadata?: Record<string, unknown>;
+  response_mode?: 'fast' | 'reasoning';
 }
 
 export interface ChatResponse {
@@ -251,6 +252,7 @@ export class AgentsClient {
     if (req.chain_id) body.chain_id = req.chain_id;
     if (req.wallet_address) body.wallet_address = req.wallet_address;
     if (req.metadata) body.metadata = req.metadata;
+    if (req.response_mode) body.response_mode = req.response_mode;
     this.logDebug('chat:request', {
       conversationId: req.conversation_id,
       hasUserId: Boolean(req.user_id),
@@ -475,6 +477,7 @@ export class AgentsClient {
     if (req.chain_id) body.chain_id = req.chain_id;
     if (req.wallet_address) body.wallet_address = req.wallet_address;
     if (req.metadata) body.metadata = req.metadata;
+    if (req.response_mode) body.response_mode = req.response_mode;
 
     this.logDebug('chatStream:start', {
       conversationId: req.conversation_id,
@@ -496,6 +499,63 @@ export class AgentsClient {
     }
 
     this.logDebug('chatStream:connected', { conversationId: req.conversation_id });
+    return res;
+  }
+
+  /**
+   * Start a streaming chat session with file attachments via SSE.
+   *
+   * Sends multipart/form-data with message + files to the backend.
+   * Returns the raw `Response` for SSE consumption (same as chatStream).
+   */
+  async chatStreamWithFiles(
+    message: string,
+    files: File[],
+    params: {
+      userId: string;
+      conversationId: string;
+      walletAddress?: string;
+      responseMode?: string;
+    },
+    opts: ChatOptions = {},
+  ): Promise<Response> {
+    this.ensureConfigured();
+
+    const formData = new FormData();
+    formData.append('message', message);
+    formData.append('user_id', params.userId);
+    formData.append('conversation_id', params.conversationId);
+    formData.append('wallet_address', params.walletAddress ?? 'default');
+    formData.append('response_mode', params.responseMode ?? 'fast');
+
+    for (const file of files) {
+      formData.append('files', file, file.name);
+    }
+
+    const headers: Record<string, string> = {};
+    if (opts.jwt) headers['authorization'] = `Bearer ${opts.jwt}`;
+    // Do NOT set Content-Type — browser sets it with multipart boundary
+
+    this.logDebug('chatStreamWithFiles:start', {
+      conversationId: params.conversationId,
+      hasUserId: Boolean(params.userId),
+      fileCount: files.length,
+    });
+
+    const requestUrl = `${this.baseUrl}/chat/stream-with-files`;
+    const res = await fetch(requestUrl, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      this.logDebug('chatStreamWithFiles:error', { status: res.status, response: text });
+      throw new Error(`Agents stream-with-files failed: ${res.status} ${text}`);
+    }
+
+    this.logDebug('chatStreamWithFiles:connected', { conversationId: params.conversationId });
     return res;
   }
 
@@ -608,5 +668,49 @@ export class AgentsClient {
 
     const data = await res.json();
     return { text: data?.text || '' };
+  }
+
+  async generateTitle(userId: string, conversationId: string, message: string, opts: ChatOptions = {}): Promise<string> {
+    this.ensureConfigured();
+    const headers = this.buildHeaders(opts);
+
+    const url = `${this.baseUrl}/chat/generate-title`;
+    const res = await this.fetchWithTimeout(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ user_id: userId, conversation_id: conversationId, message }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      this.logDebug('generateTitle:error', { status: res.status, response: text });
+      throw new Error(`Generate title failed: ${res.status} ${text}`);
+    }
+
+    const data = (await res.json()) as { title: string };
+    this.logDebug('generateTitle:success', { conversationId, title: data.title });
+    return data.title;
+  }
+
+  async deleteConversation(userId: string, conversationId: string, opts: ChatOptions = {}): Promise<void> {
+    this.ensureConfigured();
+    const headers = this.buildHeaders(opts);
+
+    const params = new URLSearchParams();
+    params.set('user_id', userId);
+
+    const url = `${this.baseUrl}/chat/conversations/${conversationId}?${params.toString()}`;
+    const res = await this.fetchWithTimeout(url, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      this.logDebug('deleteConversation:error', { status: res.status, userId, conversationId, response: text });
+      throw new Error(`Agents delete conversation failed: ${res.status} ${text}`);
+    }
+
+    this.logDebug('deleteConversation:success', { userId, conversationId });
   }
 }

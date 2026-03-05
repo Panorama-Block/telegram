@@ -41,7 +41,7 @@ export type {
 } from './types';
 
 // API Client
-export { gatewayApi, GatewayApiError, type QueryParams } from './api';
+export { gatewayApi, GatewayApiError, isGatewayUnavailableError, type QueryParams } from './api';
 
 // Wallet API
 export {
