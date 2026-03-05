@@ -15,6 +15,7 @@ import { TonConnectButton, useTonWallet, useTonConnectUI } from '@tonconnect/ui-
 import { isTelegramWebApp, detectTelegram } from '@/lib/isTelegram';
 import { useLogout } from '@/shared/hooks/useLogout';
 import { clearAuthWalletBinding, persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
+import { linkTelegramIdentityIfAvailable } from '@/shared/lib/telegram-link';
 
 export default function NewChatPage() {
   const router = useRouter();
@@ -219,6 +220,10 @@ export default function NewChatPage() {
             }));
             localStorage.setItem('userAddress', tonWallet.account.address.toLowerCase());
             localStorage.setItem('walletAddress', tonWallet.account.address.toLowerCase());
+            await linkTelegramIdentityIfAvailable(authApiBase, tonWallet.account.address, {
+              address: tonWallet.account.address,
+              source: 'miniapp:newchat-ton',
+            });
             setIsAuthenticated(true);
             router.push('/chat');
             return; // End of TON flow
@@ -368,7 +373,7 @@ export default function NewChatPage() {
       }
 
       const verifyResult = await verifyResponse.json();
-      const { token: authToken } = verifyResult;
+      const { token: authToken, address, sessionId } = verifyResult;
 
       // 4. Persist auth data locally
       setStatusMessage('Saving session...');
@@ -376,6 +381,12 @@ export default function NewChatPage() {
       localStorage.setItem('authSignature', signature);
       localStorage.setItem('authToken', authToken);
       persistAuthWalletBinding({ activeWallet, account });
+
+      await linkTelegramIdentityIfAvailable(authApiBase, address || payload.address || currentAddress, {
+        sessionId: sessionId || null,
+        address: address || currentAddress || null,
+        source: 'miniapp:newchat',
+      });
 
       setIsAuthenticated(true);
       setStatusMessage('Success! Redirecting to chat...');

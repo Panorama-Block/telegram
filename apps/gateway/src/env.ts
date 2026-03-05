@@ -13,6 +13,7 @@ const EnvSchema = z.object({
   REDIS_URL: z.string().default(''),
   AUTH_API_BASE: z.string().url().optional(),
   AGENTS_API_BASE: z.string().url().optional(),
+  AGENTS_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().optional().default(45000),
   DEFAULT_CHAIN_ID: z.coerce.number().int().positive().default(8453),
   DEFAULT_WALLET_ADDRESS: z.string().optional(),
   AGENTS_RESPONSE_MESSAGE_PATH: z.string().optional(),

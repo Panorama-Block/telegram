@@ -1,6 +1,6 @@
 // ============================================================================
 // TRANSACTION API
-// API para gerenciar histórico de transações (swap, bridge, stake, etc.)
+// API for transaction history management (swap, bridge, stake, etc.)
 // ============================================================================
 
 import { gatewayApi, type QueryParams } from './api';
@@ -22,7 +22,7 @@ const ENTITY = 'transactions';
 
 export const transactionApi = {
   /**
-   * Lista transações do usuário
+   * List user transactions
    */
   async list(
     userId: string,
@@ -48,14 +48,14 @@ export const transactionApi = {
   },
 
   /**
-   * Busca transação por ID
+   * Get transaction by ID
    */
   async get(id: string): Promise<Transaction> {
     return gatewayApi.get<Transaction>(ENTITY, id);
   },
 
   /**
-   * Cria nova transação
+   * Create a new transaction
    */
   async create(data: CreateTransactionInput): Promise<Transaction> {
     return gatewayApi.create<Transaction>(ENTITY, {
@@ -66,23 +66,23 @@ export const transactionApi = {
   },
 
   /**
-   * Atualiza transação
+   * Update transaction
    */
   async update(id: string, data: UpdateTransactionInput): Promise<Transaction> {
     return gatewayApi.update<Transaction>(ENTITY, id, data);
   },
 
   /**
-   * Adiciona hash de transação
+   * Add transaction hash
    */
   async addTxHash(id: string, txHash: TxHash): Promise<Transaction> {
     const tx = await this.get(id);
     const existingHashes = tx.txHashes || [];
 
-    // Verifica se já existe
+    // Check if it already exists
     const exists = existingHashes.some((h) => h.hash === txHash.hash);
     if (exists) {
-      // Atualiza status do hash existente
+      // Update status of existing hash
       const updatedHashes = existingHashes.map((h) =>
         h.hash === txHash.hash ? { ...h, ...txHash } : h
       );
@@ -95,21 +95,21 @@ export const transactionApi = {
   },
 
   /**
-   * Marca transação como submetida
+   * Mark transaction as submitted
    */
   async markSubmitted(id: string): Promise<Transaction> {
     return this.update(id, { status: 'submitted' });
   },
 
   /**
-   * Marca transação como pendente
+   * Mark transaction as pending
    */
   async markPending(id: string): Promise<Transaction> {
     return this.update(id, { status: 'pending' });
   },
 
   /**
-   * Marca transação como confirmada
+   * Mark transaction as confirmed
    */
   async markConfirmed(
     id: string,
@@ -128,7 +128,7 @@ export const transactionApi = {
   },
 
   /**
-   * Marca transação como falha
+   * Mark transaction as failed
    */
   async markFailed(id: string, errorCode?: string, errorMessage?: string): Promise<Transaction> {
     return this.update(id, {
@@ -139,7 +139,7 @@ export const transactionApi = {
   },
 
   /**
-   * Busca transações por bridge ID
+   * Find transactions by bridge ID
    */
   async findByBridgeId(bridgeId: string): Promise<Transaction | null> {
     const result = await gatewayApi.list<Transaction>(ENTITY, {
@@ -150,7 +150,7 @@ export const transactionApi = {
   },
 
   /**
-   * Busca transações pendentes do usuário
+   * Get user pending transactions
    */
   async getPending(userId: string): Promise<Transaction[]> {
     const result = await this.list(userId, {
@@ -161,7 +161,7 @@ export const transactionApi = {
   },
 
   /**
-   * Busca histórico de swaps do usuário
+   * Get user swap history
    */
   async getSwapHistory(userId: string, limit = 20): Promise<Transaction[]> {
     const result = await this.list(userId, {
@@ -172,7 +172,7 @@ export const transactionApi = {
   },
 
   /**
-   * Busca histórico de bridges do usuário
+   * Get user bridge history
    */
   async getBridgeHistory(userId: string, limit = 20): Promise<Transaction[]> {
     const result = await this.list(userId, {

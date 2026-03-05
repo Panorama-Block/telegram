@@ -1,0 +1,80 @@
+name: telegram-gateway
+type: containerapp
+location: brazilsouth
+properties:
+  environmentId: ${ACA_ENV_ID}
+  configuration:
+    ingress:
+      external: true
+      targetPort: 8443
+    registries:
+      - server: ghcr.io
+        username: ${GHCR_USERNAME}
+        passwordSecretRef: ghcr-password
+    secrets:
+      - name: ghcr-password
+        value: ${GHCR_PASSWORD}
+      - name: telegram-bot-token
+        value: ${TELEGRAM_BOT_TOKEN}
+      - name: telegram-webhook-secret
+        value: ${TELEGRAM_WEBHOOK_SECRET}
+      - name: redis-url
+        value: ${REDIS_URL}
+      - name: public-gateway-url
+        value: ${PUBLIC_GATEWAY_URL}
+      - name: public-webapp-url
+        value: ${PUBLIC_WEBAPP_URL}
+      - name: website-url
+        value: ${WEBSITE_URL}
+      - name: auth-api-base
+        value: ${AUTH_API_BASE}
+      - name: agents-api-base
+        value: ${AGENTS_API_BASE}
+      - name: default-wallet-address
+        value: ${DEFAULT_WALLET_ADDRESS}
+  template:
+    containers:
+      - name: telegram-gateway
+        image: ghcr.io/${GHCR_NAMESPACE}/telegram-gateway:${IMAGE_TAG}
+        env:
+          - name: PORT
+            value: "8443"
+          - name: NODE_ENV
+            value: "production"
+          - name: TELEGRAM_BOT_TOKEN
+            secretRef: telegram-bot-token
+          - name: TELEGRAM_WEBHOOK_SECRET
+            secretRef: telegram-webhook-secret
+          - name: REDIS_URL
+            secretRef: redis-url
+          - name: PUBLIC_GATEWAY_URL
+            secretRef: public-gateway-url
+          - name: PUBLIC_WEBAPP_URL
+            secretRef: public-webapp-url
+          - name: WEBSITE_URL
+            secretRef: website-url
+          - name: AUTH_API_BASE
+            secretRef: auth-api-base
+          - name: AGENTS_API_BASE
+            secretRef: agents-api-base
+          - name: TELEGRAM_INITDATA_MAX_AGE_SECONDS
+            value: "600"
+          - name: AGENTS_REQUEST_TIMEOUT_MS
+            value: "45000"
+          - name: DEFAULT_CHAIN_ID
+            value: "8453"
+          - name: DEFAULT_WALLET_ADDRESS
+            secretRef: default-wallet-address
+          - name: AGENTS_DEBUG_SHAPE
+            value: "false"
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+    scale:
+      minReplicas: 1
+      maxReplicas: 5
+      rules:
+        - name: http-rps
+          http:
+            metadata:
+              concurrentRequests: "60"

@@ -1,6 +1,6 @@
 // ============================================================================
 // GATEWAY HOOKS
-// React hooks para usar as APIs do gateway
+// React hooks for gateway APIs
 // ============================================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -30,7 +30,7 @@ function getTenantId(): string {
 }
 
 // ----------------------------------------------------------------------------
-// useWallet - Gerencia wallet do usuário
+// useWallet - Manages user wallet state
 // ----------------------------------------------------------------------------
 
 interface UseWalletOptions {
@@ -61,7 +61,7 @@ export function useWallet({ userId, autoRegister = true }: UseWalletOptions): Us
       const result = await walletApi.list(userId);
       setWallets(result.data);
 
-      // Define wallet primária ou primeira como atual
+      // Use primary wallet or fallback to the first available wallet
       const primary = result.data.find((w) => w.isPrimary) || result.data[0];
       setCurrentWallet(primary || null);
       setError(null);
@@ -80,7 +80,7 @@ export function useWallet({ userId, autoRegister = true }: UseWalletOptions): Us
         address,
         walletType: getWalletTypeFromChain(chain),
         name,
-        isPrimary: wallets.length === 0, // Primeira wallet é primária
+        isPrimary: wallets.length === 0, // First wallet becomes primary
         tenantId: getTenantId(),
       });
 
@@ -110,7 +110,7 @@ export function useWallet({ userId, autoRegister = true }: UseWalletOptions): Us
 }
 
 // ----------------------------------------------------------------------------
-// useTransactionHistory - Histórico de transações
+// useTransactionHistory - Transaction history
 // ----------------------------------------------------------------------------
 
 interface UseTransactionHistoryOptions {
@@ -231,7 +231,7 @@ export function useTransactionHistory({
 }
 
 // ----------------------------------------------------------------------------
-// useTransactionTracker - Rastreia uma transação em andamento
+// useTransactionTracker - Tracks an in-flight transaction
 // ----------------------------------------------------------------------------
 
 interface UseTransactionTrackerResult {
@@ -378,7 +378,7 @@ export function useTransactionTracker(): UseTransactionTrackerResult {
 }
 
 // ----------------------------------------------------------------------------
-// useNotifications - Notificações do usuário
+// useNotifications - User notifications
 // ----------------------------------------------------------------------------
 
 interface UseNotificationsOptions {

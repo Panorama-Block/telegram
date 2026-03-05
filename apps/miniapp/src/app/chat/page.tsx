@@ -47,6 +47,7 @@ import { useTypewriter } from '@/shared/hooks/useTypewriter';
 import { ThoughtProcess } from '@/components/chat/ThoughtProcess';
 import {
   buildOpenWidgetQueryKey,
+  buildOpenWidgetPlan,
   deriveLendingFlowFromAction,
   deriveLendingModeFromAction,
   parseLendingFlow,
@@ -444,6 +445,62 @@ export default function ChatPage() {
   const [stakingError, setStakingError] = useState<string | null>(null);
   const [stakingBalance, setStakingBalance] = useState<string | null>(null);
   const [stakingInsufficientBalance, setStakingInsufficientBalance] = useState(false);
+
+  const openSwapFromStakingPrefill = useCallback(
+    async (params: { fromToken: string; toToken: string; amount?: string }) => {
+      const ethNetwork = networks.find((network) => network.chainId === 1);
+      if (!ethNetwork) {
+        console.warn("[CHAT] Ethereum network config not found for staking->swap prefill");
+        return;
+      }
+
+      const normalizeAddress = (address: string): string => address.trim().toLowerCase();
+      const isNativeAddress = (address: string): boolean => {
+        const normalized = normalizeAddress(address);
+        return (
+          normalized === "native" ||
+          normalized === "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" ||
+          normalized === "0x0000000000000000000000000000000000000000"
+        );
+      };
+
+      const findToken = (address: string): Token | null => {
+        if (isNativeAddress(address)) return ethNetwork.nativeCurrency;
+        const normalized = normalizeAddress(address);
+        return ethNetwork.tokens.find((token) => token.address?.toLowerCase() === normalized) || null;
+      };
+
+      const fromToken = findToken(params.fromToken);
+      const toToken = findToken(params.toToken);
+
+      if (!fromToken || !toToken) {
+        console.warn("[CHAT] Could not resolve staking prefill tokens for SwapWidget", params);
+        return;
+      }
+
+      const toSwapWidgetToken = (token: Token) => ({
+        ticker: token.symbol,
+        name: token.name || token.symbol,
+        network: "Ethereum",
+        address: token.address || "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        balance: "0.00",
+        icon: token.icon,
+      });
+
+      await autoSwitchNetwork("ethereum");
+
+      setSwapWidgetTokens({
+        from: toSwapWidgetToken(fromToken),
+        to: toSwapWidgetToken(toToken),
+        amount: params.amount,
+        viewState: "input",
+      });
+      setCurrentStakingMetadata(null);
+      setShowStakingWidget(false);
+      setShowSwapWidget(true);
+    },
+    [],
+  );
 
   // Trending prompts state
   const [showTrendingPrompts, setShowTrendingPrompts] = useState(false);
@@ -1376,34 +1433,32 @@ export default function ChatPage() {
   // Handle ?open=lending|staking query parameter to auto-open widgets in chat.
   const openParamRaw = searchParams.get('open');
   const openWidgetTarget = resolveOpenWidgetTarget(openParamRaw);
+  const openWidgetPlan = useMemo(() => buildOpenWidgetPlan(searchParams), [searchParams]);
   const openWidgetHandledRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!openWidgetTarget) {
+    if (!openWidgetTarget || !openWidgetPlan) {
       openWidgetHandledRef.current = null;
       return;
     }
 
     if (initializing) return;
 
-    const currentKey = buildOpenWidgetQueryKey(openWidgetTarget, searchParams);
+    const currentKey = buildOpenWidgetQueryKey(openWidgetPlan.target, searchParams);
     if (openWidgetHandledRef.current === currentKey) return;
     openWidgetHandledRef.current = currentKey;
 
     let cancelled = false;
 
     const openWidgetFromQuery = async () => {
-      if (openWidgetTarget === 'lending') {
-        await autoSwitchNetwork('avalanche');
-        if (cancelled) return;
+      await autoSwitchNetwork(openWidgetPlan.network);
+      if (cancelled) return;
 
-        setCurrentLendingMetadata(parseLendingQueryMetadata(searchParams));
+      if (openWidgetPlan.target === 'lending') {
+        setCurrentLendingMetadata(openWidgetPlan.metadata ?? parseLendingQueryMetadata(searchParams));
         setLendingModalOpen(true);
-      } else if (openWidgetTarget === 'staking') {
-        await autoSwitchNetwork('ethereum');
-        if (cancelled) return;
-
-        setCurrentStakingMetadata(parseStakingQueryMetadata(searchParams));
+      } else if (openWidgetPlan.target === 'staking') {
+        setCurrentStakingMetadata(openWidgetPlan.metadata ?? parseStakingQueryMetadata(searchParams));
         setShowStakingWidget(true);
       }
 
@@ -1417,7 +1472,7 @@ export default function ChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [openWidgetTarget, initializing, searchParams, router]);
+  }, [openWidgetPlan, openWidgetTarget, initializing, searchParams, router]);
 
   // Handle ?new=true query parameter to show new chat welcome screen
   const newChatRequested = searchParams.get('new') === 'true';
@@ -3195,6 +3250,7 @@ export default function ChatPage() {
 	                  setShowStakingWidget(false);
 	                  setCurrentStakingMetadata(null);
 	                }}
+	                onOpenSwapPrefill={openSwapFromStakingPrefill}
 	                initialAmount={
 	                  typeof currentStakingMetadata?.amount === 'string' || typeof currentStakingMetadata?.amount === 'number'
 	                    ? currentStakingMetadata.amount
