@@ -9,6 +9,11 @@ const metrics = {
   totalChats: new Set<number>(),
   totalActions: 0,
   totalErrors: 0,
+  identityResolves: {
+    found: 0,
+    fallback: 0,
+    error: 0,
+  },
   apiCalls: {
     auth: 0,
     agents: 0,
@@ -44,6 +49,10 @@ export function incrementApiCall(api: 'auth' | 'agents') {
   metrics.apiCalls[api]++;
 }
 
+export function incrementIdentityResolve(metric: 'found' | 'fallback' | 'error') {
+  metrics.identityResolves[metric]++;
+}
+
 export async function registerMetricsRoutes(app: FastifyInstance) {
   // Endpoint público de métricas básicas
   app.get('/metrics', async () => {
@@ -63,6 +72,7 @@ export async function registerMetricsRoutes(app: FastifyInstance) {
           unique_chats: metrics.totalChats.size,
           total_actions: metrics.totalActions,
           total_errors: metrics.totalErrors,
+          identity_resolves: metrics.identityResolves,
           api_calls: metrics.apiCalls,
         },
         services: {
@@ -82,6 +92,7 @@ export async function registerMetricsRoutes(app: FastifyInstance) {
           unique_chats: metrics.totalChats.size,
           total_actions: metrics.totalActions,
           total_errors: metrics.totalErrors,
+          identity_resolves: metrics.identityResolves,
           api_calls: metrics.apiCalls,
         },
         services: {

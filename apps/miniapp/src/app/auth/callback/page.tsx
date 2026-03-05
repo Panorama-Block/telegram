@@ -6,6 +6,7 @@ import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import { linkTelegramIdentityIfAvailable } from '@/shared/lib/telegram-link';
 import '@/shared/ui/loader.css';
 
 function decodeAuthResult(value: string) {
@@ -123,13 +124,18 @@ export default function AuthCallbackPage() {
           throw new Error(`Verification error: ${errorText}`);
         }
         const verifyResult = await verifyResponse.json();
-        const { token: authToken } = verifyResult;
+        const { token: authToken, address, sessionId } = verifyResult;
         if (!authToken) throw new Error('Authentication token missing in backend response');
 
         // Persist your platform token locally
         localStorage.setItem('authToken', authToken);
         localStorage.setItem('authPayload', JSON.stringify(payload));
         localStorage.setItem('authSignature', signature);
+        await linkTelegramIdentityIfAvailable(authApiBase, address || payload.address || account.address, {
+          sessionId: sessionId || null,
+          address: address || account.address || null,
+          source: 'miniapp:auth-callback',
+        });
 
         const isTelegram = (window as any).Telegram?.WebApp;
         const bot = process.env.VITE_TELEGRAM_BOT_USERNAME || '';

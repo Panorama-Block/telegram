@@ -3,6 +3,7 @@ import { ConnectButton, useActiveAccount, useActiveWallet, useDisconnect } from 
 import { createThirdwebClient } from 'thirdweb';
 import { inAppWallet, createWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
+import { linkTelegramIdentityIfAvailable } from '@/shared/lib/telegram-link';
 
 function WalletIcon({ size = 20 }: { size?: number }) {
   return (
@@ -237,6 +238,11 @@ export function WalletConnectPanel() {
       
       // 5. Save token locally (same as wallet page)
       localStorage.setItem('authToken', authToken);
+      await linkTelegramIdentityIfAvailable(authApiBase, address || payload.address || effectiveAddress, {
+        sessionId: sessionId || null,
+        address: address || effectiveAddress || null,
+        source: 'miniapp:wallet-connect-panel',
+      });
       setIsAuthenticated(true);
       setJwtToken(authToken);
       setAuthMessage('Authenticated successfully!');

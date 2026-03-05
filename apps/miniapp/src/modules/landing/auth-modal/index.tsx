@@ -12,6 +12,7 @@ import '../../../shared/ui/loader.css';
 import { TonConnectButton } from '@tonconnect/ui-react';
 import { isTelegramWebApp, detectTelegram } from '@/lib/isTelegram';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import { linkTelegramIdentityIfAvailable } from '@/shared/lib/telegram-link';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -252,13 +253,18 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       }
 
       const verifyResult = await verifyResponse.json();
-      const { token: authToken } = verifyResult;
+      const { token: authToken, address, sessionId } = verifyResult;
 
       // 4. Persist auth data locally
       setStatusMessage('Saving session...');
       localStorage.setItem('authPayload', JSON.stringify(payload));
       localStorage.setItem('authSignature', signature);
       localStorage.setItem('authToken', authToken);
+      await linkTelegramIdentityIfAvailable(authApiBase, address || payload.address || account.address, {
+        sessionId: sessionId || null,
+        address: address || account.address || null,
+        source: 'miniapp:landing-auth-modal',
+      });
 
       // 4.5. Verify wallet session token persistence
       const clientId = THIRDWEB_CLIENT_ID;

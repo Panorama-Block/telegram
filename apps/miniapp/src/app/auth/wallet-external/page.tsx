@@ -6,6 +6,7 @@ import { createThirdwebClient } from 'thirdweb';
 import { createWallet } from 'thirdweb/wallets';
 import { signLoginPayload } from 'thirdweb/auth';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
+import { linkTelegramIdentityIfAvailable } from '@/shared/lib/telegram-link';
 
 export default function WalletExternalPage() {
   const search = useSearchParams();
@@ -84,8 +85,13 @@ export default function WalletExternalPage() {
           const errorText = await verifyResponse.text();
           throw new Error(`Verification error: ${errorText}`);
         }
-        const { token } = await verifyResponse.json();
+        const { token, address, sessionId } = await verifyResponse.json();
         localStorage.setItem('authToken', token);
+        await linkTelegramIdentityIfAvailable(authApiBase, address || payload.address || accountAddress, {
+          sessionId: sessionId || null,
+          address: address || accountAddress || null,
+          source: 'miniapp:wallet-external',
+        });
 
         // Create a session so Telegram can resume the flow
         if (bot) {
