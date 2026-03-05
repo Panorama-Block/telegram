@@ -1,6 +1,6 @@
 // ============================================================================
 // GATEWAY API CLIENT
-// Cliente base para comunicação com o Database Gateway
+// Base client for Database Gateway communication
 // ============================================================================
 
 import type { GatewayError, PaginatedResponse } from './types';
@@ -12,9 +12,9 @@ import type { GatewayError, PaginatedResponse } from './types';
 const DEFAULT_TENANT_ID = 'panorama';
 
 function getGatewayUrl(): string {
-  // Browser: sempre usa o proxy Next.js (/api/gateway) para evitar CORS
+  // Browser: always use the Next.js proxy (/api/gateway) to avoid CORS issues
   if (typeof window !== 'undefined') return '/api/gateway';
-  // Server-side (SSR): chama o gateway diretamente (sem restrição CORS)
+  // Server-side (SSR): call gateway directly (no CORS restriction)
   const url = process.env.NEXT_PUBLIC_GATEWAY_URL as string | undefined;
   if (url && url.length > 0) return url.replace(/\/+$/, '');
   return 'http://localhost:8080';
@@ -133,11 +133,11 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${authToken}`;
   }
 
-  // Idempotency key para operações de escrita
+  // Idempotency key for write operations
   if (options?.idempotencyKey && ['POST', 'PATCH', 'DELETE'].includes(method)) {
     headers['Idempotency-Key'] = options.idempotencyKey;
   } else if (['POST', 'PATCH', 'DELETE'].includes(method)) {
-    // Gera um idempotency key automático se não fornecido
+    // Generate an idempotency key automatically when not provided
     headers['Idempotency-Key'] = `${method}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
@@ -163,7 +163,7 @@ async function request<T>(
       });
     }
 
-    // DELETE retorna 204 No Content
+    // DELETE returns 204 No Content
     if (res.status === 204) {
       return undefined as T;
     }

@@ -1,31 +1,22 @@
-type StakingMode = 'stake' | 'unstake';
-type UnstakeMethod = 'instant' | 'queue';
+type StakingMode = "stake" | "unstake";
 
-export type StakingTxStage = 'idle' | 'awaiting_wallet' | 'pending' | 'confirmed' | 'failed' | 'timeout';
+export type StakingTxStage = "idle" | "awaiting_wallet" | "pending" | "confirmed" | "failed" | "timeout";
 
-export function getStakingStatusTitle(
-  stage: StakingTxStage,
-  mode: StakingMode,
-  unstakeMethod: UnstakeMethod,
-): string {
-  if (stage === 'awaiting_wallet') return 'Confirm in wallet';
-  if (stage === 'pending') return 'Pending confirmation';
-  if (stage === 'confirmed') {
-    return mode === 'unstake' && unstakeMethod === 'queue' ? 'Request submitted' : 'Confirmed';
+export function getStakingStatusTitle(stage: StakingTxStage, mode: StakingMode): string {
+  if (stage === "awaiting_wallet") return "Confirm in wallet";
+  if (stage === "pending") return "Pending confirmation";
+  if (stage === "confirmed") {
+    return mode === "unstake" ? "Request submitted" : "Confirmed";
   }
-  if (stage === 'timeout') return 'Submitted';
-  if (stage === 'failed') return 'Transaction failed';
-  return 'Transaction';
+  if (stage === "timeout") return "Submitted";
+  if (stage === "failed") return "Transaction failed";
+  return "Transaction";
 }
 
-export function shouldShowQueueCompletionHint(
-  stage: StakingTxStage,
-  mode: StakingMode,
-  unstakeMethod: UnstakeMethod,
-): boolean {
-  return stage === 'confirmed' && mode === 'unstake' && unstakeMethod === 'queue';
+export function shouldShowQueueCompletionHint(stage: StakingTxStage, mode: StakingMode): boolean {
+  return stage === "confirmed" && mode === "unstake";
 }
 
 export function canRetryStakingTx(stage: StakingTxStage): boolean {
-  return stage === 'failed' || stage === 'timeout';
+  return stage === "failed" || stage === "timeout";
 }

@@ -1,6 +1,6 @@
 // ============================================================================
 // GATEWAY MODULE
-// Módulo para comunicação com o Database Gateway
+// Module for Database Gateway communication
 // ============================================================================
 
 // Types

@@ -140,6 +140,9 @@ describe('Lending component flow', () => {
 
     render(<Lending onClose={vi.fn()} initialAmount="1" />);
     expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('defi-widget-overlay').className).not.toContain('overflow-y-auto');
+    expect(screen.getByTestId('defi-widget-card').className).not.toContain('overflow-y-auto');
+    expect(screen.getByTestId('defi-widget-body').className).toContain('overflow-y-auto');
 
     const supplyButtons = await screen.findAllByRole('button', { name: 'Supply' });
     fireEvent.click(supplyButtons[supplyButtons.length - 1]);

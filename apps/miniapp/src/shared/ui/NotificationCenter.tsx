@@ -115,7 +115,7 @@ export function NotificationCenter() {
       {/* Bell button */}
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-pano-text-muted hover:text-pano-text transition-colors rounded-full"
+        className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-pano-text-muted hover:text-pano-text-primary transition-colors rounded-full"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
       >
         <Bell className="w-5 h-5" />
@@ -134,15 +134,15 @@ export function NotificationCenter() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full mt-2 w-[360px] max-h-[480px] bg-pano-bg-card border border-pano-border rounded-xl shadow-xl z-50 flex flex-col overflow-hidden"
+            className="absolute right-0 top-full mt-2 w-[360px] max-h-[480px] bg-[#0b0d10]/95 backdrop-blur-2xl border border-pano-border rounded-xl shadow-xl z-[120] isolate flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-pano-border">
-              <h3 className="text-sm font-semibold text-pano-text">Notifications</h3>
+              <h3 className="text-sm font-semibold text-pano-text-primary">Notifications</h3>
               {unreadCount > 0 && (
                 <button
                   onClick={markAllRead}
-                  className="flex items-center gap-1 text-xs text-pano-text-muted hover:text-pano-text transition-colors"
+                  className="flex items-center gap-1 text-xs text-pano-text-muted hover:text-pano-text-primary transition-colors"
                 >
                   <CheckCheck className="w-3.5 h-3.5" />
                   Mark all read
@@ -175,8 +175,8 @@ export function NotificationCenter() {
                         key={n.id}
                         onClick={() => handleNotificationClick(n)}
                         className={cn(
-                          'flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-pano-bg-hover transition-colors',
-                          !n.isRead && 'bg-pano-bg-hover/50',
+                          'flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-white/10 transition-colors',
+                          !n.isRead && 'bg-white/5',
                           priorityClass(n.priority),
                         )}
                       >
@@ -188,7 +188,7 @@ export function NotificationCenter() {
                         {/* Content */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
-                            <p className={cn('text-sm leading-snug', n.isRead ? 'text-pano-text-muted' : 'text-pano-text font-medium')}>
+                            <p className={cn('text-sm leading-snug', n.isRead ? 'text-pano-text-muted' : 'text-pano-text-primary font-medium')}>
                               {n.title}
                             </p>
                             {!n.isRead && (
@@ -209,7 +209,7 @@ export function NotificationCenter() {
                             e.stopPropagation();
                             dismiss(n.id);
                           }}
-                          className="mt-0.5 flex-shrink-0 p-1 rounded hover:bg-pano-bg-hover text-pano-text-muted/40 hover:text-red-400 transition-colors"
+                          className="mt-0.5 flex-shrink-0 p-1 rounded hover:bg-white/10 text-pano-text-muted/40 hover:text-red-400 transition-colors"
                           aria-label="Dismiss notification"
                         >
                           <Trash2 className="w-3.5 h-3.5" />

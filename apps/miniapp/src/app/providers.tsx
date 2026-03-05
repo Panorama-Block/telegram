@@ -67,7 +67,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
                 }
                 if (token) {
                   localStorage.setItem('authToken', token);
-                  // tentar auto-conectar a in-app wallet
+                  // try auto-connecting the in-app wallet
                   try {
                     const thirdweb = await import('thirdweb');
                     const wallets = await import('thirdweb/wallets');

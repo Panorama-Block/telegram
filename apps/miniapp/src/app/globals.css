@@ -4,7 +4,7 @@
   --background: #050505;
   --foreground: #f5f5f5;
 
-  /* Landing page colors (existentes, alinhados ao look escuro) */
+  /* Landing page colors (existing, aligned with dark look) */
   --landing-background: 0 0% 2%;
   --landing-primary: 183 84% 9%;
   --landing-secondary: 180 65% 6%;
@@ -15,7 +15,7 @@
   --landing-border-color: 0 0% 30% / 1;
   --landing-border-gradient: 0 0% 12%;
 
-  /* PanoramaBlock Design System v2.0 — alinhado ao SeniorFrontendUI (preto + ciano glass) */
+  /* PanoramaBlock Design System v2.0 — aligned with SeniorFrontendUI (black + cyan glass) */
   /* Base Colors */
   --pano-bg-primary: 0 0% 2%;           /* #050505 */
   --pano-bg-secondary: 0 0% 4%;         /* #0a0a0a */
@@ -58,7 +58,7 @@
   --pano-transition-base: 250ms ease-out;
   --pano-transition-slow: 350ms ease-out;
 
-  /* Breakpoints (para container queries) */
+  /* Breakpoints (for container queries) */
   --pano-breakpoint-xs: 375px;
   --pano-breakpoint-sm: 640px;
   --pano-breakpoint-md: 768px;
@@ -1130,6 +1130,28 @@ textarea::placeholder {
 
 .min-h-tg-viewport-stable {
   min-height: var(--tg-viewport-stable-height, 100vh);
+}
+
+/* Shared DeFi modal shell layout */
+.defi-widget-shell-overlay {
+  padding-top: max(env(safe-area-inset-top), 1rem);
+  padding-right: max(env(safe-area-inset-right), 1rem);
+  padding-left: max(env(safe-area-inset-left), 1rem);
+  padding-bottom: max(calc(env(safe-area-inset-bottom) + 5rem), 1rem);
+}
+
+@media (min-width: 768px) {
+  .defi-widget-shell-overlay {
+    padding-bottom: max(env(safe-area-inset-bottom), 1rem);
+  }
+}
+
+.defi-widget-shell-card {
+  max-height: calc(var(--tg-viewport-stable-height, 100dvh) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem);
+}
+
+.defi-widget-shell-body {
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ============================================

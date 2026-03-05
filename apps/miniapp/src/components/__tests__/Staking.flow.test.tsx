@@ -7,6 +7,7 @@ const waitForEvmReceiptMock = vi.fn();
 const stakeMock = vi.fn();
 const executeTransactionMock = vi.fn();
 const getWithdrawalsMock = vi.fn();
+const refreshMock = vi.fn();
 const startSwapTrackingMock = vi.fn();
 const trackerAddHashMock = vi.fn();
 const trackerAddTxHashMock = vi.fn();
@@ -32,13 +33,6 @@ vi.mock('@/shared/utils/evmReceipt', () => ({
   waitForEvmReceipt: (...args: unknown[]) => waitForEvmReceiptMock(...args),
 }));
 
-vi.mock('@/features/swap/api', () => ({
-  swapApi: {
-    quote: vi.fn(),
-    prepare: vi.fn(),
-  },
-}));
-
 vi.mock('@/features/staking/useStakingData', () => ({
   useStakingData: () => ({
     tokens: [
@@ -59,7 +53,7 @@ vi.mock('@/features/staking/useStakingData', () => ({
     },
     loading: false,
     error: null,
-    refresh: vi.fn(),
+    refresh: (...args: unknown[]) => refreshMock(...args),
   }),
 }));
 
@@ -86,7 +80,9 @@ describe('Staking component flow', () => {
     executeTransactionMock.mockReset();
     waitForEvmReceiptMock.mockReset();
     getWithdrawalsMock.mockReset();
+    refreshMock.mockReset();
     getWithdrawalsMock.mockResolvedValue([]);
+    refreshMock.mockResolvedValue(undefined);
     trackerAddHashMock.mockReset();
     trackerAddTxHashMock.mockReset();
     trackerMarkSubmittedMock.mockReset();
@@ -114,7 +110,7 @@ describe('Staking component flow', () => {
     });
   });
 
-  test('runs stake mint flow and reaches confirmed status', async () => {
+  test('runs stake flow via lido and reaches confirmed status', async () => {
     stakeMock.mockResolvedValue({
       id: 'tx_1',
       transactionData: {
@@ -135,13 +131,16 @@ describe('Staking component flow', () => {
 
     render(<Staking onClose={vi.fn()} initialAmount="0.01" initialMode="stake" />);
     expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('defi-widget-overlay').className).not.toContain('overflow-y-auto');
+    expect(screen.getByTestId('defi-widget-card').className).not.toContain('overflow-y-auto');
+    expect(screen.getByTestId('defi-widget-body').className).toContain('overflow-y-auto');
 
-    fireEvent.click(await screen.findByRole('button', { name: /^Stake$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Stake ETH' }));
     fireEvent.click(await screen.findByRole('button', { name: /Confirm stake/i }));
 
     await waitFor(() => {
       expect(screen.getByText('Confirmed')).toBeInTheDocument();
-      expect(screen.getByText('Stake 0.01 ETH')).toBeInTheDocument();
+      expect(screen.getByText('Stake 0.01 ETH (Lido)')).toBeInTheDocument();
     });
 
     expect(startSwapTrackingMock).toHaveBeenCalledWith(
@@ -169,7 +168,7 @@ describe('Staking component flow', () => {
 
     render(<Staking onClose={vi.fn()} initialAmount="0.01" initialMode="stake" />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /^Stake$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Stake ETH' }));
     fireEvent.click(await screen.findByRole('button', { name: /Confirm stake/i }));
 
     await waitFor(() => {

@@ -12,6 +12,12 @@ const getHistoryMock = vi.fn();
 const getPortfolioMock = vi.fn();
 const submitTransactionHashMock = vi.fn();
 const claimWithdrawalsMock = vi.fn();
+const startSwapTrackingMock = vi.fn();
+const trackerAddTxHashMock = vi.fn();
+const trackerMarkSubmittedMock = vi.fn();
+const trackerMarkPendingMock = vi.fn();
+const trackerMarkConfirmedMock = vi.fn();
+const trackerMarkFailedMock = vi.fn();
 
 vi.mock('@/config/features', () => ({
   FEATURE_FLAGS: { STAKING_ENABLED: true },
@@ -27,13 +33,6 @@ vi.mock('thirdweb/react', () => ({
 
 vi.mock('@/shared/utils/evmReceipt', () => ({
   waitForEvmReceipt: (...args: unknown[]) => waitForEvmReceiptMock(...args),
-}));
-
-vi.mock('@/features/swap/api', () => ({
-  swapApi: {
-    quote: vi.fn(),
-    prepare: vi.fn(),
-  },
 }));
 
 vi.mock('@/features/staking/useStakingData', () => ({
@@ -56,7 +55,7 @@ vi.mock('@/features/staking/useStakingData', () => ({
     },
     loading: false,
     error: null,
-    refresh: refreshMock,
+    refresh: (...args: unknown[]) => refreshMock(...args),
   }),
 }));
 
@@ -75,6 +74,10 @@ vi.mock('@/features/staking/api', () => ({
   useStakingApi: () => stakingApiMock,
 }));
 
+vi.mock('@/features/gateway', () => ({
+  startSwapTracking: (...args: unknown[]) => startSwapTrackingMock(...args),
+}));
+
 describe('Staking queue unstake flow', () => {
   beforeEach(() => {
     unstakeMock.mockReset();
@@ -91,6 +94,27 @@ describe('Staking queue unstake flow', () => {
     getPortfolioMock.mockResolvedValue(null);
     submitTransactionHashMock.mockResolvedValue(undefined);
     claimWithdrawalsMock.mockResolvedValue(undefined);
+    refreshMock.mockResolvedValue(undefined);
+    trackerAddTxHashMock.mockReset();
+    trackerMarkSubmittedMock.mockReset();
+    trackerMarkPendingMock.mockReset();
+    trackerMarkConfirmedMock.mockReset();
+    trackerMarkFailedMock.mockReset();
+    trackerAddTxHashMock.mockResolvedValue(undefined);
+    trackerMarkSubmittedMock.mockResolvedValue(undefined);
+    trackerMarkPendingMock.mockResolvedValue(undefined);
+    trackerMarkConfirmedMock.mockResolvedValue(undefined);
+    trackerMarkFailedMock.mockResolvedValue(undefined);
+    startSwapTrackingMock.mockReset();
+    startSwapTrackingMock.mockResolvedValue({
+      transactionId: 'tx_gateway_1',
+      walletId: 'wallet_gateway_1',
+      addTxHash: trackerAddTxHashMock,
+      markSubmitted: trackerMarkSubmittedMock,
+      markPending: trackerMarkPendingMock,
+      markConfirmed: trackerMarkConfirmedMock,
+      markFailed: trackerMarkFailedMock,
+    });
   });
 
   test('executes approval + request and renders queue progression', async () => {
@@ -135,9 +159,9 @@ describe('Staking queue unstake flow', () => {
       });
 
     render(<Staking onClose={vi.fn()} initialMode="unstake" initialAmount="0.1" />);
+    expect(screen.queryByText(/market/i)).not.toBeInTheDocument();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Protocol (Lido)' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Unstake (queue)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Request withdrawal' }));
     fireEvent.click(await screen.findByRole('button', { name: /Confirm request/i }));
 
     await waitFor(() => {
