@@ -178,8 +178,8 @@
 
   /* Legacy animations (keep for compatibility) */
   --animate-slideUpIn: slideUpIn 0.5s ease-out forwards;
-  --animate-marquee: marquee 24s linear infinite;
-  --animate-marquee2: marquee2 24s linear infinite;
+  --animate-marquee: marquee 48s linear infinite;
+  --animate-marquee2: marquee2 48s linear infinite;
 
   /* New animations */
   --animate-fadeIn: fadeIn var(--pano-transition-base);
