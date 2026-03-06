@@ -1,6 +1,6 @@
 // ============================================================================
 // NOTIFICATION API
-// API para gerenciar notificações do usuário
+// API for user notification management
 // ============================================================================
 
 import { gatewayApi, type QueryParams } from './api';
@@ -20,7 +20,7 @@ const ENTITY = 'notifications';
 
 export const notificationApi = {
   /**
-   * Lista notificações do usuário
+   * List user notifications
    */
   async list(
     userId: string,
@@ -43,14 +43,14 @@ export const notificationApi = {
   },
 
   /**
-   * Busca notificação por ID
+   * Get notification by ID
    */
   async get(id: string): Promise<Notification> {
     return gatewayApi.get<Notification>(ENTITY, id);
   },
 
   /**
-   * Cria nova notificação
+   * Create a new notification
    */
   async create(data: CreateNotificationInput): Promise<Notification> {
     return gatewayApi.create<Notification>(ENTITY, {
@@ -60,7 +60,7 @@ export const notificationApi = {
   },
 
   /**
-   * Marca notificação como lida
+   * Mark notification as read
    */
   async markRead(id: string): Promise<Notification> {
     return gatewayApi.update<Notification>(ENTITY, id, {
@@ -70,7 +70,7 @@ export const notificationApi = {
   },
 
   /**
-   * Marca todas as notificações como lidas
+   * Mark all notifications as read
    */
   async markAllRead(userId: string): Promise<void> {
     const unread = await this.list(userId, { unreadOnly: true, take: 100 });
@@ -81,7 +81,7 @@ export const notificationApi = {
   },
 
   /**
-   * Descarta notificação
+   * Dismiss notification
    */
   async dismiss(id: string): Promise<Notification> {
     return gatewayApi.update<Notification>(ENTITY, id, {
@@ -90,18 +90,18 @@ export const notificationApi = {
   },
 
   /**
-   * Conta notificações não lidas
+   * Count unread notifications
    */
   async getUnreadCount(userId: string): Promise<number> {
     const result = await this.list(userId, { unreadOnly: true, take: 1 });
-    // Como não temos count direto, fazemos uma estimativa
-    // Em produção, seria melhor ter um endpoint específico
+    // No direct count endpoint yet, estimate by listing a bounded page
+    // In production, this should use a dedicated count endpoint
     const fullResult = await this.list(userId, { unreadOnly: true, take: 100 });
     return fullResult.data.length;
   },
 
   /**
-   * Cria notificação de transação confirmada
+   * Create transaction-confirmed notification
    */
   async notifyTxConfirmed(
     userId: string,
@@ -121,7 +121,7 @@ export const notificationApi = {
   },
 
   /**
-   * Cria notificação de transação falha
+   * Create transaction-failed notification
    */
   async notifyTxFailed(
     userId: string,

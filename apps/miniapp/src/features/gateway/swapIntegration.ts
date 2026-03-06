@@ -1,6 +1,6 @@
 // ============================================================================
 // SWAP INTEGRATION
-// Helper para integrar o histórico de transações com o fluxo de swap
+// Helper to integrate transaction history with swap flow
 // ============================================================================
 
 import { gatewayApi } from './api';
@@ -144,8 +144,8 @@ function parseAmountToRaw(amount: string, decimals: number): string {
 }
 
 /**
- * Inicia o rastreamento de uma transação de swap
- * Deve ser chamado ANTES de executar o swap
+ * Starts tracking a swap transaction
+ * Must be called BEFORE executing the swap
  */
 export async function startSwapTracking(params: SwapParams): Promise<SwapTracker> {
   const tenantId = getTenantId();
@@ -154,7 +154,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
   // Normalize userId to lowercase so it matches queries from resolveChatIdentity (safeLower)
   params = { ...params, userId: params.userId.toLowerCase(), walletAddress: params.walletAddress.toLowerCase() };
 
-  // 1. Garante que o User existe (Wallet tem FK para User)
+  // 1. Ensure user exists (Wallet has FK to User)
   try {
     await gatewayApi.list('users', {
       where: { userId: params.userId },
@@ -173,7 +173,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
     console.warn('[swapTracking] User ensure error (may already exist):', e);
   }
 
-  // 2. Garante que a wallet está registrada
+  // 2. Ensure wallet is registered
   const { wallet } = await walletApi.findOrCreate({
     userId: params.userId,
     chain,
@@ -182,7 +182,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
     tenantId,
   });
 
-  // 2. Determina se é swap ou bridge
+  // 3. Determine whether action is swap or bridge
   const isBridge = params.action === 'bridge' || params.fromChainId !== params.toChainId;
   const action: TransactionAction = params.action || (isBridge ? 'bridge' : 'swap');
   const actionLabel = getActionLabel(action);
@@ -193,7 +193,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
     ? parseAmountToRaw(params.toAmount, params.toAsset.decimals)
     : undefined;
 
-  // 4. Cria o registro da transação
+  // 4. Create transaction record
   const txInput: CreateTransactionInput = {
     userId: params.userId,
     walletId: wallet.id,
@@ -226,7 +226,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
     bridgeFee: params.fees?.bridgeFee,
     totalFeeUsd: params.fees?.totalFeeUsd,
 
-    // Status inicial
+    // Initial status
     status: 'created',
     txHashes: [],
     tenantId,
@@ -237,7 +237,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
   // Store hashes locally for sync addHash
   const pendingHashes: Array<{ hash: string; chainId: number; type: TxHash['type'] }> = [];
 
-  // 5. Retorna o tracker
+  // 5. Return tracker
   return {
     transactionId: transaction.id,
     walletId: wallet.id,
@@ -291,7 +291,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
 
       await transactionApi.markConfirmed(transaction.id, confirmData);
 
-      // Cria notificação de sucesso
+      // Create success notification
       try {
         await notificationApi.notifyTxConfirmed(
           params.userId,
@@ -305,7 +305,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
           tenantId
         );
       } catch {
-        // Ignora erro de notificação
+        // Ignore notification errors
       }
     },
 
@@ -316,7 +316,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
         errorMessage
       );
 
-      // Cria notificação de falha
+      // Create failure notification
       try {
         await notificationApi.notifyTxFailed(
           params.userId,
@@ -328,7 +328,7 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
           tenantId
         );
       } catch {
-        // Ignora erro de notificação
+        // Ignore notification errors
       }
     },
 
@@ -343,28 +343,28 @@ export async function startSwapTracking(params: SwapParams): Promise<SwapTracker
 // ----------------------------------------------------------------------------
 
 /**
- * Busca o histórico de swaps do usuário
+ * Get user swap history
  */
 export async function getSwapHistory(userId: string, limit = 20): Promise<Transaction[]> {
   return transactionApi.getSwapHistory(userId, limit);
 }
 
 /**
- * Busca o histórico de bridges do usuário
+ * Get user bridge history
  */
 export async function getBridgeHistory(userId: string, limit = 20): Promise<Transaction[]> {
   return transactionApi.getBridgeHistory(userId, limit);
 }
 
 /**
- * Busca todas as transações pendentes do usuário
+ * Get all user pending transactions
  */
 export async function getPendingTransactions(userId: string): Promise<Transaction[]> {
   return transactionApi.getPending(userId);
 }
 
 /**
- * Registra wallet se ainda não existir
+ * Register wallet if it does not exist yet
  */
 export async function ensureWalletRegistered(
   userId: string,

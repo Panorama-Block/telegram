@@ -115,7 +115,7 @@ export function NotificationCenter() {
       {/* Bell button */}
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-zinc-400 hover:text-white transition-colors rounded-full"
+        className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-pano-text-muted hover:text-pano-text-primary transition-colors rounded-full"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
       >
         <Bell className="w-5 h-5" />
@@ -134,15 +134,15 @@ export function NotificationCenter() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full mt-2 w-[360px] max-h-[480px] bg-[#0f1116] border border-white/10 rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] z-50 flex flex-col overflow-hidden"
+            className="absolute right-0 top-full mt-2 w-[360px] max-h-[480px] bg-[#0b0d10]/95 backdrop-blur-2xl border border-pano-border rounded-xl shadow-xl z-[120] isolate flex flex-col overflow-hidden"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-              <h3 className="text-sm font-semibold text-white">Notifications</h3>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-pano-border">
+              <h3 className="text-sm font-semibold text-pano-text-primary">Notifications</h3>
               {unreadCount > 0 && (
                 <button
                   onClick={markAllRead}
-                  className="flex items-center gap-1 text-xs text-zinc-400 hover:text-white transition-colors"
+                  className="flex items-center gap-1 text-xs text-pano-text-muted hover:text-pano-text-primary transition-colors"
                 >
                   <CheckCheck className="w-3.5 h-3.5" />
                   Mark all read
@@ -154,18 +154,18 @@ export function NotificationCenter() {
             <div className="flex-1 overflow-y-auto">
               {loading && notifications.length === 0 ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-5 h-5 text-zinc-400 animate-spin" />
+                  <Loader2 className="w-5 h-5 text-pano-text-muted animate-spin" />
                 </div>
               ) : notifications.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                  <Bell className="w-8 h-8 text-zinc-400/40 mb-2" />
-                  <p className="text-sm text-zinc-400">No notifications yet</p>
-                  <p className="text-xs text-zinc-400/60 mt-1">
+                  <Bell className="w-8 h-8 text-pano-text-muted/40 mb-2" />
+                  <p className="text-sm text-pano-text-muted">No notifications yet</p>
+                  <p className="text-xs text-pano-text-muted/60 mt-1">
                     Swap confirmations and alerts will appear here
                   </p>
                 </div>
               ) : (
-                <ul className="divide-y divide-white/10">
+                <ul className="divide-y divide-pano-border">
                   {notifications.map((n) => {
                     const style = TYPE_STYLES[n.type] ?? TYPE_STYLES.welcome;
                     const Icon = style.icon;
@@ -175,7 +175,7 @@ export function NotificationCenter() {
                         key={n.id}
                         onClick={() => handleNotificationClick(n)}
                         className={cn(
-                          'flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors',
+                          'flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-white/10 transition-colors',
                           !n.isRead && 'bg-white/5',
                           priorityClass(n.priority),
                         )}
@@ -188,17 +188,17 @@ export function NotificationCenter() {
                         {/* Content */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
-                            <p className={cn('text-sm leading-snug', n.isRead ? 'text-zinc-400' : 'text-white font-medium')}>
+                            <p className={cn('text-sm leading-snug', n.isRead ? 'text-pano-text-muted' : 'text-pano-text-primary font-medium')}>
                               {n.title}
                             </p>
                             {!n.isRead && (
                               <span className="mt-1.5 flex-shrink-0 w-2 h-2 rounded-full bg-blue-500" />
                             )}
                           </div>
-                          <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">
+                          <p className="text-xs text-pano-text-muted mt-0.5 line-clamp-2">
                             {n.message}
                           </p>
-                          <span className="text-[10px] text-zinc-400/60 mt-1 block">
+                          <span className="text-[10px] text-pano-text-muted/60 mt-1 block">
                             {formatTimeAgo(n.createdAt)}
                           </span>
                         </div>
@@ -209,7 +209,7 @@ export function NotificationCenter() {
                             e.stopPropagation();
                             dismiss(n.id);
                           }}
-                          className="mt-0.5 flex-shrink-0 p-1 rounded hover:bg-white/5 text-zinc-400/40 hover:text-red-400 transition-colors"
+                          className="mt-0.5 flex-shrink-0 p-1 rounded hover:bg-white/10 text-pano-text-muted/40 hover:text-red-400 transition-colors"
                           aria-label="Dismiss notification"
                         >
                           <Trash2 className="w-3.5 h-3.5" />

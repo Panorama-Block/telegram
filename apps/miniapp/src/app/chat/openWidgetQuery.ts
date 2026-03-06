@@ -2,6 +2,19 @@ export type LendingMode = 'supply' | 'borrow';
 export type LendingFlow = 'open' | 'close';
 export type StakingMode = 'stake' | 'unstake';
 export type OpenWidgetTarget = 'lending' | 'staking';
+export type OpenWidgetNetwork = 'avalanche' | 'ethereum';
+
+export type OpenWidgetPlan =
+  | {
+      target: 'lending';
+      network: 'avalanche';
+      metadata: Record<string, unknown> | null;
+    }
+  | {
+      target: 'staking';
+      network: 'ethereum';
+      metadata: Record<string, unknown> | null;
+    };
 
 export function parseLendingMode(value: unknown): LendingMode | undefined {
   if (typeof value !== 'string') return undefined;
@@ -45,6 +58,25 @@ export function resolveOpenWidgetTarget(openParamRaw: string | null): OpenWidget
   const normalized = openParamRaw.trim().toLowerCase();
   if (normalized === 'lending' || normalized === 'staking') return normalized;
   return null;
+}
+
+export function buildOpenWidgetPlan(searchParams: URLSearchParams): OpenWidgetPlan | null {
+  const target = resolveOpenWidgetTarget(searchParams.get('open'));
+  if (!target) return null;
+
+  if (target === 'lending') {
+    return {
+      target,
+      network: 'avalanche',
+      metadata: parseLendingQueryMetadata(searchParams),
+    };
+  }
+
+  return {
+    target,
+    network: 'ethereum',
+    metadata: parseStakingQueryMetadata(searchParams),
+  };
 }
 
 export function buildOpenWidgetQueryKey(target: OpenWidgetTarget, searchParams: URLSearchParams): string {

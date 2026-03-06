@@ -16,6 +16,9 @@ export interface StakingToken {
   icon?: string;
   decimals: number;
   stakingAPY: number | null;
+  apySource?: string | null;
+  apyUpdatedAt?: string | null;
+  apyStale?: boolean;
   totalStaked: string | null; // wei string
   minimumStake: string;
   lockPeriod: number; // in days
@@ -87,6 +90,16 @@ export interface ProtocolInfo {
   lastUpdate: string;
 }
 
+type LidoApySource = 'backend' | 'lido-stats' | 'lido-apr-last' | 'cache' | 'none';
+
+type LidoProtocolData = {
+  apy: number | null;
+  totalStakedWei: string | null;
+  updatedAt: string | null;
+  source: LidoApySource;
+  stale: boolean;
+};
+
 export interface StakingResponse {
   success: boolean;
   data: StakingTransaction;
@@ -146,10 +159,12 @@ class StakingApiClient {
   private activeWallet: any;
   private switchChain: SwitchChainFn | null;
 
-  // Cache for Lido protocol data to prevent infinite loops
-  private lidoDataCache: any = null;
+  // Cache for Lido protocol data to prevent over-fetching and UI flicker.
+  private lidoDataCache: LidoProtocolData | null = null;
   private lidoDataCacheTime: number = 0;
-  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private readonly CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+  private readonly NULL_APY_CACHE_DURATION = 15 * 1000; // retry quickly when APY is missing
+  private readonly STALE_AFTER_MS = 15 * 60 * 1000; // 15 minutes
 
   constructor(account: any, switchChain?: SwitchChainFn, activeWallet?: any) {
     this.activeWallet = activeWallet ?? null;
@@ -425,6 +440,9 @@ class StakingApiClient {
         address: '0x0000000000000000000000000000000000000000',
         decimals: 18,
         stakingAPY: lidoData.apy,
+        apySource: lidoData.source,
+        apyUpdatedAt: lidoData.updatedAt,
+        apyStale: lidoData.stale,
         totalStaked: lidoData.totalStakedWei,
         minimumStake: '1000000000000000000', // 1 ETH in wei
         lockPeriod: 0,
@@ -435,6 +453,9 @@ class StakingApiClient {
         address: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84',
         decimals: 18,
         stakingAPY: lidoData.apy,
+        apySource: lidoData.source,
+        apyUpdatedAt: lidoData.updatedAt,
+        apyStale: lidoData.stale,
         totalStaked: lidoData.totalStakedWei,
         minimumStake: '1000000000000000', // 0.001 ETH in wei
         lockPeriod: 0,
@@ -445,6 +466,9 @@ class StakingApiClient {
         address: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0',
         decimals: 18,
         stakingAPY: lidoData.apy,
+        apySource: lidoData.source,
+        apyUpdatedAt: lidoData.updatedAt,
+        apyStale: lidoData.stale,
         totalStaked: lidoData.totalStakedWei,
         minimumStake: '1000000000000000', // 0.001 ETH in wei
         lockPeriod: 0,
@@ -453,23 +477,112 @@ class StakingApiClient {
     ];
   }
 
-  private async fetchLidoProtocolData(): Promise<{ apy: number | null; totalStakedWei: string | null }> {
-    // Check if we have valid cached data
+  private async fetchLidoProtocolData(): Promise<LidoProtocolData> {
     const now = Date.now();
-    if (this.lidoDataCache && (now - this.lidoDataCacheTime) < this.CACHE_DURATION) {
-      return this.lidoDataCache;
+    const previousCache = this.lidoDataCache;
+    const cacheAge = this.lidoDataCacheTime ? now - this.lidoDataCacheTime : Number.POSITIVE_INFINITY;
+    const previousHasApy = previousCache?.apy != null;
+    const cacheWindow = previousHasApy ? this.CACHE_DURATION : this.NULL_APY_CACHE_DURATION;
+    if (previousCache && cacheAge < cacheWindow) {
+      return {
+        ...previousCache,
+        stale: cacheAge > this.STALE_AFTER_MS,
+      };
     }
 
     const parseApy = (value: unknown): number | null => {
-      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        if (value > 0 && value < 0.2) return value * 100; // decimal APR (0.0342) -> %
+        if (value > 100 && value < 10_000) return value / 100; // bps-like payload (342) -> 3.42%
+        return value <= 10_000 ? value : null;
+      }
       if (typeof value === 'string') {
-        const n = Number(value);
-        return Number.isFinite(n) ? n : null;
+        const n = Number(value.replace('%', '').replace(',', '.').trim());
+        if (!Number.isFinite(n)) return null;
+        if (n > 0 && n < 0.2) return n * 100;
+        if (n > 100 && n < 10_000) return n / 100;
+        return n <= 10_000 ? n : null;
       }
       return null;
     };
 
-    // Prefer our backend when available (already normalized)
+    const parseTotalStakedWei = (value: unknown): string | null => {
+      if (typeof value === 'string' && value.trim().length > 0) return value;
+      if (typeof value === 'number' && Number.isFinite(value)) return String(Math.trunc(value));
+      return null;
+    };
+
+    const parseUpdatedAt = (value: unknown): string | null => {
+      if (!value) return null;
+      if (typeof value === 'string') {
+        const parsed = Date.parse(value);
+        if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+      }
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        const ms = value < 1e12 ? value * 1000 : value;
+        return new Date(ms).toISOString();
+      }
+      return null;
+    };
+
+    const normalizeProtocolPayload = (raw: any): Omit<LidoProtocolData, 'source' | 'stale'> => {
+      const apyCandidate =
+        raw?.currentAPY ??
+        raw?.currentApy ??
+        raw?.smaApr ??
+        raw?.smaAPR ??
+        raw?.smaAPY ??
+        raw?.apy ??
+        raw?.apr ??
+        raw?.data?.currentAPY ??
+        raw?.data?.currentApy ??
+        raw?.data?.smaApr ??
+        raw?.data?.smaAPR ??
+        raw?.data?.smaAPY ??
+        raw?.data?.apy ??
+        raw?.data?.apr ??
+        raw?.result?.currentAPY ??
+        raw?.result?.currentApy ??
+        raw?.result?.smaApr ??
+        raw?.result?.smaAPR ??
+        raw?.result?.smaAPY ??
+        raw?.result?.apy ??
+        raw?.result?.apr;
+
+      const totalCandidate =
+        raw?.totalStaked ??
+        raw?.totalStakedWei ??
+        raw?.totalPooledEther ??
+        raw?.data?.totalStaked ??
+        raw?.data?.totalStakedWei ??
+        raw?.result?.totalStaked ??
+        raw?.result?.totalStakedWei;
+
+      const updatedAtCandidate =
+        raw?.lastUpdate ??
+        raw?.updatedAt ??
+        raw?.timestamp ??
+        raw?.timeUnix ??
+        raw?.data?.lastUpdate ??
+        raw?.data?.updatedAt ??
+        raw?.data?.timestamp ??
+        raw?.data?.timeUnix ??
+        raw?.result?.lastUpdate ??
+        raw?.result?.updatedAt ??
+        raw?.result?.timestamp ??
+        raw?.result?.timeUnix;
+
+      return {
+        apy: parseApy(apyCandidate),
+        totalStakedWei: parseTotalStakedWei(totalCandidate),
+        updatedAt: parseUpdatedAt(updatedAtCandidate),
+      };
+    };
+
+    let backendTotalStakedWei: string | null = null;
+    let backendUpdatedAt: string | null = null;
+
+    // Prefer backend APY when available.
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -482,59 +595,109 @@ class StakingApiClient {
 
       if (backendResp.ok) {
         const backendJson = await backendResp.json();
-        if (backendJson?.success && backendJson?.data) {
-          const result = {
-            apy: parseApy(backendJson.data.currentAPY),
-            totalStakedWei: typeof backendJson.data.totalStaked === 'string' ? backendJson.data.totalStaked : null,
-          };
+        const normalized = normalizeProtocolPayload(backendJson?.data ?? backendJson);
+        backendTotalStakedWei = normalized.totalStakedWei ?? null;
+        backendUpdatedAt = normalized.updatedAt ?? null;
 
-          this.lidoDataCache = result;
+        if (normalized.apy != null) {
+          this.lidoDataCache = {
+            ...normalized,
+            updatedAt: normalized.updatedAt ?? null,
+            source: 'backend',
+            stale: false,
+          };
           this.lidoDataCacheTime = now;
-          return result;
+          return this.lidoDataCache;
         }
       }
     } catch (backendError) {
       console.warn('[STAKING] Backend protocol info unavailable, falling back to Lido API:', backendError);
     }
 
+    const isBrowser = typeof window !== 'undefined';
+
     // Fallback: Lido public endpoints (APR only)
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+    // stake.lido.fi blocks browser CORS; use it only server-side.
+    if (!isBrowser) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const response = await fetch('https://stake.lido.fi/api/stats', { signal: controller.signal });
-      clearTimeout(timeoutId);
+        const response = await fetch('https://stake.lido.fi/api/stats', { signal: controller.signal });
+        clearTimeout(timeoutId);
 
-      if (response.ok) {
+        if (response.ok) {
+          const data = await response.json();
+          const normalized = normalizeProtocolPayload(data);
+          const result: LidoProtocolData = {
+            apy: normalized.apy,
+            totalStakedWei: normalized.totalStakedWei ?? backendTotalStakedWei,
+            updatedAt: normalized.updatedAt ?? backendUpdatedAt,
+            source: 'lido-stats',
+            stale: false,
+          };
+          this.lidoDataCache = result;
+          this.lidoDataCacheTime = now;
+          return result;
+        }
+      } catch (error) {
+        console.warn('[STAKING] Failed to fetch APR from stake.lido.fi:', error);
+      }
+    }
+
+    const aprEndpoints = [
+      'https://eth-api.lido.fi/v1/protocol/steth/apr/sma',
+      'https://eth-api.lido.fi/v1/protocol/steth/apr/last',
+      // Legacy fallback
+      'https://api.lido.fi/v1/protocol/staking/apr/last',
+    ];
+
+    for (const endpoint of aprEndpoints) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const response = await fetch(endpoint, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) continue;
+
         const data = await response.json();
-        const result = { apy: parseApy(data?.apr), totalStakedWei: null };
+        const normalized = normalizeProtocolPayload(data);
+        if (normalized.apy == null) continue;
+
+        const result: LidoProtocolData = {
+          apy: normalized.apy,
+          totalStakedWei: normalized.totalStakedWei ?? backendTotalStakedWei,
+          updatedAt: normalized.updatedAt ?? backendUpdatedAt,
+          source: 'lido-apr-last',
+          stale: false,
+        };
         this.lidoDataCache = result;
         this.lidoDataCacheTime = now;
         return result;
+      } catch (error) {
+        console.warn(`[STAKING] Failed to fetch APR from ${endpoint}:`, error);
       }
-    } catch (error) {
-      console.warn('[STAKING] Failed to fetch APR from stake.lido.fi:', error);
     }
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-      const response = await fetch('https://api.lido.fi/v1/protocol/staking/apr/last', { signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
-        const result = { apy: parseApy(data?.apr), totalStakedWei: null };
-        this.lidoDataCache = result;
-        this.lidoDataCacheTime = now;
-        return result;
-      }
-    } catch (error) {
-      console.warn('[STAKING] Failed to fetch APR from api.lido.fi:', error);
+    if (previousCache) {
+      const staleFallback: LidoProtocolData = {
+        ...previousCache,
+        stale: true,
+        source: previousCache.source || 'cache',
+      };
+      this.lidoDataCache = staleFallback;
+      this.lidoDataCacheTime = now;
+      return staleFallback;
     }
 
-    const empty = { apy: null, totalStakedWei: null };
+    const empty: LidoProtocolData = {
+      apy: null,
+      totalStakedWei: backendTotalStakedWei,
+      updatedAt: null,
+      source: 'none',
+      stale: true,
+    };
     this.lidoDataCache = empty;
     this.lidoDataCacheTime = now;
     return empty;
@@ -885,6 +1048,33 @@ class StakingApiClient {
     return result.transactionHash;
   }
 
+  async recoverTransactionHashByPayload(params: {
+    chainId?: number;
+    to?: string | null;
+    data?: string | null;
+    timeoutMs?: number;
+    lookbackBlocks?: number;
+  }): Promise<string | null> {
+    if (!this.account?.address) return null;
+
+    const selectedProvider = await this.resolveInjectedProvider(this.account.address);
+    if (!selectedProvider || typeof selectedProvider.request !== 'function') return null;
+
+    const chainId = Number.isFinite(Number(params.chainId)) ? Number(params.chainId) : 1;
+    const to = typeof params.to === 'string' ? params.to : undefined;
+    const data = typeof params.data === 'string' ? params.data : undefined;
+
+    return await this.recoverRecentTxHashByPayload({
+      provider: selectedProvider,
+      expectedChainId: chainId,
+      from: this.account.address,
+      to,
+      data,
+      timeoutMs: params.timeoutMs,
+      lookbackBlocks: params.lookbackBlocks,
+    });
+  }
+
   async executeTransactionWithStatus(txData: any): Promise<TransactionExecutionStatus> {
     const describeUnknown = (err: unknown): string => {
       if (err instanceof Error) return err.message || 'Unknown error';
@@ -1110,7 +1300,7 @@ class StakingApiClient {
         return await existingExecution;
       }
       const executionPromise = (async (): Promise<TransactionExecutionStatus> => {
-        const result = await safeExecuteTransactionV2(async () => {
+        const executionAttempt = safeExecuteTransactionV2(async () => {
           const selectedProvider = await this.resolveInjectedProvider(this.account?.address);
           const recoverHashFromWallet = async (options?: { timeoutMs?: number; lookbackBlocks?: number }) => {
             return await this.recoverRecentTxHashByPayload({
@@ -1238,6 +1428,43 @@ class StakingApiClient {
             throw accountSendError;
           }
         });
+
+        let result: Awaited<ReturnType<typeof safeExecuteTransactionV2>>;
+        try {
+          result = await requestWithTimeout(
+            executionAttempt,
+            70_000,
+            'Wallet confirmation',
+          );
+        } catch (executionError) {
+          const timeoutMessage = describeUnknown(executionError);
+          const isTimeout = /timed out/i.test(timeoutMessage);
+          if (!isTimeout) {
+            throw executionError;
+          }
+
+          // Fallback: wallet may have broadcasted but never returned hash to the dapp.
+          const recoveryProvider = await this.resolveInjectedProvider(this.account?.address);
+          const recoveredHash = await this.recoverRecentTxHashByPayload({
+            provider: recoveryProvider,
+            expectedChainId: expectedChainId,
+            from: this.account.address,
+            to: formattedTxData.to,
+            data: formattedTxData.data,
+            timeoutMs: 15_000,
+            lookbackBlocks: 48,
+          });
+          if (recoveredHash) {
+            console.warn('[STAKING] Wallet confirmation timed out, but tx hash was recovered:', recoveredHash);
+            return { transactionHash: recoveredHash, confirmed: false };
+          }
+
+          throw new Error(
+            `${timeoutMessage}. If you already approved in wallet, check explorer and then press "Try again".`,
+          );
+        } finally {
+          void executionAttempt.catch(() => {});
+        }
 
         if (!result.success || !result.transactionHash) {
           throw new Error(result.error || 'Transaction failed');

@@ -40,13 +40,54 @@ function receiptStatusToOutcome(status: unknown): "confirmed" | "reverted" {
 
 type Eip1193Provider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  selectedAddress?: string;
+  isMetaMask?: boolean;
 };
 
-function getWalletProvider(): Eip1193Provider | null {
-  if (typeof window === "undefined") return null;
-  const maybeProvider = (window as any)?.ethereum;
-  if (!maybeProvider || typeof maybeProvider.request !== "function") return null;
-  return maybeProvider as Eip1193Provider;
+function getWalletProviderCandidates(): Eip1193Provider[] {
+  if (typeof window === "undefined") return [];
+  const ethereum = (window as any)?.ethereum;
+  if (!ethereum) return [];
+
+  const providers = Array.isArray(ethereum?.providers) ? ethereum.providers : null;
+  const candidates = providers && providers.length > 0 ? providers : [ethereum];
+  return candidates.filter((provider: any) => provider && typeof provider.request === "function");
+}
+
+async function providerHasAddress(provider: Eip1193Provider, normalizedAddress: string): Promise<boolean> {
+  try {
+    const accounts = await provider.request({ method: "eth_accounts" });
+    return (
+      Array.isArray(accounts) &&
+      accounts.some((entry) => typeof entry === "string" && entry.toLowerCase() === normalizedAddress)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function resolveWalletProvider(preferredFromAddress?: string | null): Promise<Eip1193Provider | null> {
+  const candidates = getWalletProviderCandidates();
+  if (!candidates.length) return null;
+
+  const normalized = normalizeAddress(preferredFromAddress);
+  if (normalized) {
+    const selectedAddressMatch = candidates.find(
+      (provider) => typeof provider.selectedAddress === "string" && provider.selectedAddress.toLowerCase() === normalized,
+    );
+    if (selectedAddressMatch) return selectedAddressMatch;
+
+    for (const provider of candidates) {
+      if (await providerHasAddress(provider, normalized)) {
+        return provider;
+      }
+    }
+  }
+
+  const metaMaskProvider = candidates.find((provider) => provider.isMetaMask);
+  if (metaMaskProvider) return metaMaskProvider;
+
+  return candidates[0] ?? null;
 }
 
 function parseHexChainId(chainIdHex: unknown): number | null {
@@ -302,13 +343,13 @@ export async function waitForEvmReceipt(params: WaitForEvmReceiptParams): Promis
   if (!isTxHash(txHash)) return { outcome: "timeout", txHash };
 
   const normalizedChainId = Number.isFinite(Number(chainId)) ? Number(chainId) : 1;
-  const walletProvider = getWalletProvider();
   const originalHash = txHash as Hex;
   let trackedHash = originalHash;
   let baseTxMeta: { from: string; nonce: bigint; to: string | null; data: string | null } | null = null;
   const trackingFromAddress = normalizeAddress(tracking?.fromAddress);
   const trackingTo = normalizeAddress(tracking?.to);
   const trackingData = normalizeHexData(tracking?.data);
+  const walletProvider = await resolveWalletProvider(trackingFromAddress);
 
   let rpc: ReturnType<(typeof import("thirdweb/rpc"))["getRpcClient"]> | null = null;
   if (clientId) {

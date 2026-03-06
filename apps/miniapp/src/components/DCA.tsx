@@ -600,7 +600,7 @@ export function DCA({ onClose }: DCAProps) {
                     <NeonButton
                       onClick={() => setViewState("review")}
                       disabled={!selectedAccount || smartAccounts.length === 0}
-                      className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 border-none w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="bg-primary text-black hover:bg-primary/90 shadow-[0_0_20px_rgba(34,211,238,0.25)] border-none w-full disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Review Strategy
                     </NeonButton>

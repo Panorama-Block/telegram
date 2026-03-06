@@ -4,10 +4,51 @@
   position: relative;
   width: 100%;
   height: 100%;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   font-family: var(--font-jakarta), sans-serif;
+}
+
+/* ── Header ── */
+.docs-header {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.08) 0%, rgba(8, 9, 12, 0.86) 40%, rgba(8, 9, 12, 0.86) 100%);
+  backdrop-filter: blur(16px);
+}
+
+.docs-header__content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.docs-header__title {
+  margin: 0;
+  font-size: clamp(20px, 2.6vw, 32px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.docs-header__title-accent {
+  color: #22d3ee;
+}
+
+.docs-header__subtitle {
+  margin: 0;
+  font-size: clamp(13px, 1.2vw, 16px);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 /* ── Layers bar (compact, inside the diagram area) ── */
@@ -49,6 +90,16 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+  max-width: 100%;
+}
+
+.docs-header__layers::-webkit-scrollbar {
+  display: none;
 }
 
 /* Layer chips (matches sidebar nav active style: bg-cyan-500/10 border-cyan-500/20) */
@@ -95,6 +146,12 @@
   flex: 1;
   position: relative;
   z-index: 1;
+  min-height: 0;
+}
+
+.docs-canvas .react-flow {
+  width: 100%;
+  height: 100%;
 }
 
 /* ── Legend (matches header glass style) ── */
@@ -122,6 +179,7 @@
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .docs-legend__item {
@@ -530,10 +588,12 @@
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
 }
 
 .docs-canvas .react-flow__minimap {
   border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
 }
 
 .docs-canvas .react-flow__edge-path {
@@ -757,6 +817,107 @@
 .nmodal__btn--cancel:hover {
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.7);
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 1280px) {
+  .docs-header {
+    padding: 12px 14px 10px;
+    gap: 12px;
+  }
+
+  .docs-legend {
+    padding: 10px 14px;
+    gap: 14px;
+  }
+
+  .docs-canvas .react-flow__minimap {
+    width: 150px !important;
+    height: 96px !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  .docs-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .docs-header__layers {
+    width: 100%;
+  }
+
+  .docs-layer {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+
+  .docs-legend {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .docs-legend__items {
+    row-gap: 8px;
+    column-gap: 12px;
+  }
+
+  .docs-canvas .react-flow__controls {
+    right: 10px !important;
+    bottom: 10px !important;
+  }
+
+  .docs-canvas .react-flow__minimap {
+    left: 10px !important;
+    bottom: 10px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .docs-header {
+    padding: 10px 12px 8px;
+    gap: 8px;
+  }
+
+  .docs-header__title {
+    font-size: 24px;
+  }
+
+  .docs-header__subtitle {
+    font-size: 13px;
+  }
+
+  .docs-layer {
+    font-size: 9px;
+    padding: 3px 7px;
+  }
+
+  .docs-layer-arrow {
+    font-size: 10px;
+  }
+
+  .docs-canvas .react-flow__controls {
+    transform: scale(0.94);
+    transform-origin: bottom right;
+  }
+
+  .docs-canvas .react-flow__minimap {
+    display: none;
+  }
+
+  .docs-legend {
+    padding: 8px 12px 10px;
+  }
+
+  .docs-legend__title {
+    font-size: 9px;
+  }
+
+  .docs-legend__item {
+    font-size: 10px;
+    gap: 4px;
+  }
 }
 
 .nmodal__btn--save {
