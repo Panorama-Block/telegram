@@ -76,9 +76,10 @@ export interface BaseTransactionBundle {
 /*  API Client                                                         */
 /* ------------------------------------------------------------------ */
 
-const BASE_API_URL =
-  process.env.NEXT_PUBLIC_BASE_EXECUTION_API_URL ||
-  (typeof window !== 'undefined' ? 'http://localhost:3010' : 'http://localhost:3010');
+// Use the Next.js rewrite proxy (/api/base-execution) for same-origin requests,
+// avoiding CORS / helmet Cross-Origin-Resource-Policy issues.
+// Falls back to direct URL if NEXT_PUBLIC_BASE_EXECUTION_API_URL is explicitly set.
+const BASE_API_URL = process.env.NEXT_PUBLIC_BASE_EXECUTION_API_URL || '/api/base-execution';
 
 const CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 
@@ -91,15 +92,27 @@ export class BaseStakingApiClient {
   }
 
   private async fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${BASE_API_URL}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
-      ...init,
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
+    const url = `${BASE_API_URL}${path}`;
+    console.log(`[baseApi] fetch ${init?.method ?? 'GET'} ${url}`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        ...init,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error(`[baseApi] HTTP ${res.status} for ${path}:`, body);
+        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json() as T;
+      console.log(`[baseApi] ${path} =>`, JSON.stringify(data).slice(0, 200));
+      return data;
+    } finally {
+      clearTimeout(timer);
     }
-    return res.json();
   }
 
   async getProtocolInfo(): Promise<BaseProtocolInfo> {
@@ -118,7 +131,10 @@ export class BaseStakingApiClient {
   }
 
   async getPositions(): Promise<BaseStakingPosition[]> {
-    if (!this.userAddress) return [];
+    if (!this.userAddress) {
+      console.warn('[baseApi] getPositions skipped — no userAddress');
+      return [];
+    }
     const data = await this.fetchJson<{ positions: BaseStakingPosition[] }>(
       `/staking/position/${this.userAddress}`,
     );
@@ -126,7 +142,10 @@ export class BaseStakingApiClient {
   }
 
   async getPortfolio(): Promise<BasePortfolioResponse | null> {
-    if (!this.userAddress) return null;
+    if (!this.userAddress) {
+      console.warn('[baseApi] getPortfolio skipped — no userAddress');
+      return null;
+    }
     return this.fetchJson<BasePortfolioResponse>(
       `/staking/portfolio/${this.userAddress}`,
     );

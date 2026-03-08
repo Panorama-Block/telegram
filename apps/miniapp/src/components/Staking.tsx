@@ -108,12 +108,16 @@ function formatWei(wei: string | null | undefined, decimals = 18, maxFrac = 6): 
   const parsed = safeParseBigInt(wei);
   if (parsed == null) return "--";
   if (parsed === 0n) return "0.00";
-  // For very small values, increase precision so they don't round to 0
+  // For very small values, increase precision so they don't round to 0.
+  // e.g. 17713562065 with 18 decimals = 0.000000017... needs ~11 decimals to show.
   let frac = maxFrac;
   if (parsed > 0n && parsed < 10n ** BigInt(decimals - maxFrac)) {
-    // Value is smaller than what maxFrac can show — use enough decimals
-    const digits = decimals - parsed.toString().length + 1;
-    frac = Math.min(Math.max(digits, maxFrac), decimals);
+    // Count how many leading zeros the fractional part has
+    const valueDigits = parsed.toString().length;
+    const leadingZeros = decimals - valueDigits;
+    // Show enough decimals: leading zeros + 2 significant digits
+    frac = Math.min(leadingZeros + 2, decimals);
+    frac = Math.max(frac, maxFrac);
   }
   const human = formatAmountHuman(parsed, decimals, frac);
   return human === "0" ? "0.00" : human;
@@ -187,6 +191,7 @@ export function Staking({
   // Base / Aerodrome staking
   const {
     positions: basePositions,
+    portfolioAssets: basePortfolioAssets,
     protocolInfo: baseProtocolInfo,
     apr: baseApr,
     loading: baseLoading,
@@ -214,50 +219,65 @@ export function Staking({
   const [baseWalletBalances, setBaseWalletBalances] = useState<Record<string, string>>({});
   const [baseBalancesLoading, setBaseBalancesLoading] = useState(false);
 
-  const baseBalanceFetchRef = useRef(0);
   const refreshBaseBalances = useCallback(async () => {
     const addr = account?.address;
+    console.log('[refreshBaseBalances] called, addr=', addr);
     if (!addr) return;
-    const fetchId = ++baseBalanceFetchRef.current;
     setBaseBalancesLoading(true);
     try {
-      // Try backend first
-      const portfolio = await baseApi.getPortfolio();
-      if (fetchId !== baseBalanceFetchRef.current) return; // stale
-      const wb = portfolio?.walletBalances;
-      const hasRealBalance = wb && Object.values(wb).some(v => parseFloat(v) > 0);
-      if (hasRealBalance) {
-        setBaseWalletBalances(wb);
-        setBaseBalancesLoading(false);
-        return;
-      }
-      // Fallback: fetch on-chain via thirdweb
-      const { createThirdwebClient, defineChain, getContract: getTwContract } = await import("thirdweb");
-      const { balanceOf } = await import("thirdweb/extensions/erc20");
-      const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID });
-      const baseChain = defineChain(8453);
-
       const tokenAddrs: Record<string, string> = {
         WETH: "0x4200000000000000000000000000000000000006",
         USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       };
-      const balances: Record<string, string> = {};
-      await Promise.all(
-        Object.entries(tokenAddrs).map(async ([symbol, tokenAddr]) => {
-          try {
-            const contract = getTwContract({ client, chain: baseChain, address: tokenAddr as `0x${string}` });
-            const bal = await balanceOf({ contract, address: addr as `0x${string}` });
-            const dec = BASE_TOKEN_DECIMALS[symbol] ?? 18;
-            balances[symbol] = formatAmountHuman(bal, dec, 8);
-          } catch { balances[symbol] = "0"; }
-        })
-      );
-      if (fetchId !== baseBalanceFetchRef.current) return; // stale
-      setBaseWalletBalances(balances);
+
+      let balances: Record<string, string> = {};
+
+      // Try backend first
+      try {
+        const portfolio = await baseApi.getPortfolio();
+        console.log('[refreshBaseBalances] portfolio result:', portfolio);
+        if (portfolio?.walletBalances) {
+          balances = { ...portfolio.walletBalances };
+        }
+      } catch (e) { console.error('[refreshBaseBalances] backend failed:', e); }
+
+      // For any token still missing or "0", verify via thirdweb on-chain query (with timeout)
+      const zeroTokens = Object.keys(tokenAddrs).filter(s => !balances[s] || parseFloat(balances[s]) === 0);
+      if (zeroTokens.length > 0) {
+        try {
+          const { createThirdwebClient, defineChain, getContract: getTwContract } = await import("thirdweb");
+          const { balanceOf } = await import("thirdweb/extensions/erc20");
+          const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID });
+          const baseChain = defineChain(8453);
+
+          const timeout = (ms: number) => new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), ms));
+          await Promise.all(
+            zeroTokens.map(async (symbol) => {
+              try {
+                const contract = getTwContract({ client, chain: baseChain, address: tokenAddrs[symbol] as `0x${string}` });
+                const bal = await Promise.race([
+                  balanceOf({ contract, address: addr as `0x${string}` }),
+                  timeout(8000),
+                ]);
+                const dec = BASE_TOKEN_DECIMALS[symbol] ?? 18;
+                if (bal > 0n) {
+                  balances[symbol] = formatAmountHuman(bal, dec, 8);
+                }
+              } catch { /* keep existing value */ }
+            })
+          );
+        } catch { /* thirdweb import failed */ }
+      }
+
+      // Always set whatever data we got — stale data is better than no data
+      console.log('[refreshBaseBalances] final balances:', balances);
+      if (Object.keys(balances).length > 0) {
+        setBaseWalletBalances(balances);
+      }
     } catch {
       // Don't reset existing balances on error
     } finally {
-      if (fetchId === baseBalanceFetchRef.current) setBaseBalancesLoading(false);
+      setBaseBalancesLoading(false);
     }
   }, [account?.address, baseApi]);
 
@@ -1771,7 +1791,15 @@ export function Staking({
                   const posTokens = parsePoolTokens(pos.poolName);
                   const poolInfo = baseProtocolInfo?.pools?.find((p) => p.poolId === pos.poolId);
                   const posApr = poolInfo ? formatBaseAPR(poolInfo.estimatedAPR, poolInfo) : null;
-                  const hasRewards = parseFloat(pos.earnedRewards) > 0;
+                  const hasStakedLP = safeParseBigInt(pos.stakedBalance) != null && safeParseBigInt(pos.stakedBalance)! > 0n;
+                  const portfolio = basePortfolioAssets.find((a) => a.poolId === pos.poolId);
+                  const tokenABal = portfolio ? parseFloat(portfolio.tokenA.balance) : 0;
+                  const tokenBBal = portfolio ? parseFloat(portfolio.tokenB.balance) : 0;
+                  // Use position earnedRewards (raw wei) or fall back to portfolio pendingRewards (formatted)
+                  const rewardsBigRaw = safeParseBigInt(pos.earnedRewards);
+                  const hasRewardsFromPosition = rewardsBigRaw != null && rewardsBigRaw > 0n;
+                  const portfolioRewards = portfolio ? parseFloat(portfolio.pendingRewards) : 0;
+                  const hasRewards = hasRewardsFromPosition || portfolioRewards > 0;
 
                   return (
                     <div
@@ -1799,36 +1827,79 @@ export function Staking({
                         </div>
                       </div>
 
-                      {/* Position stats */}
-                      <div className="grid grid-cols-2 gap-px bg-white/5">
-                        <div className="p-3 bg-black/60">
-                          <div className="text-[10px] uppercase tracking-widest text-zinc-500">Staked LP</div>
-                          <div className="mt-1 text-white font-mono text-sm">{formatWei(pos.stakedBalance)}</div>
-                        </div>
-                        <div className="p-3 bg-black/60">
-                          <div className="text-[10px] uppercase tracking-widest text-zinc-500">Rewards</div>
-                          <div className="mt-1 text-yellow-400 font-mono text-sm">{formatWei(pos.earnedRewards)} {pos.rewardToken.symbol}</div>
-                        </div>
+                      {/* Position details */}
+                      <div className="space-y-0">
+                        {/* Underlying token balances (when available) or LP amount */}
+                        {tokenABal > 0 || tokenBBal > 0 ? (
+                          <div className="grid grid-cols-2 gap-px bg-white/5">
+                            <div className="p-3 bg-black/60">
+                              <div className="text-[10px] uppercase tracking-widest text-zinc-500">{posTokens.tokenA}</div>
+                              <div className="mt-1 text-white font-mono text-sm">
+                                {tokenABal.toFixed(tokenABal < 0.01 ? 6 : 4)}
+                              </div>
+                            </div>
+                            <div className="p-3 bg-black/60">
+                              <div className="text-[10px] uppercase tracking-widest text-zinc-500">{posTokens.tokenB}</div>
+                              <div className="mt-1 text-white font-mono text-sm">
+                                {tokenBBal.toFixed(tokenBBal < 0.01 ? 6 : 2)}
+                              </div>
+                            </div>
+                          </div>
+                        ) : hasStakedLP ? (
+                          <div className="px-3 py-2.5 border-t border-white/5 bg-black/60">
+                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Staked LP</div>
+                            <div className="mt-1 text-white font-mono text-sm">{formatWei(pos.stakedBalance)}</div>
+                          </div>
+                        ) : null}
+
+                        {/* Rewards row */}
+                        {hasRewards && (
+                          <div className="flex items-center justify-between px-3 py-2.5 border-t border-white/5 bg-black/60">
+                            <span className="text-[10px] uppercase tracking-widest text-zinc-500">Pending Rewards</span>
+                            <span className="text-sm font-mono text-amber-400">
+                              {hasRewardsFromPosition
+                                ? `${formatWei(pos.earnedRewards, pos.rewardToken.decimals)} ${pos.rewardToken.symbol}`
+                                : `${portfolioRewards.toFixed(portfolioRewards < 0.001 ? 6 : 4)} ${portfolio!.rewardTokenSymbol}`
+                              }
+                            </span>
+                          </div>
+                        )}
                       </div>
+
+                      {/* Info note when LP=0 but rewards exist */}
+                      {!hasStakedLP && hasRewards && (
+                        <div className="px-3 py-2 bg-yellow-500/5 border-t border-white/5">
+                          <p className="text-[10px] text-yellow-400/80">
+                            Rewards will be automatically collected on your next stake operation.
+                          </p>
+                        </div>
+                      )}
 
                       {/* Action buttons */}
                       <div className="flex gap-2 p-3 border-t border-white/5">
-                        <button
-                          type="button"
-                          onClick={() => void handleBaseUnstake(pos.poolId)}
-                          disabled={baseTxLoading}
-                          className="flex-1 py-2 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium transition-colors disabled:opacity-50"
-                        >
-                          {baseTxLoading ? "..." : "Unstake"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleBaseClaim(pos.poolId)}
-                          disabled={baseTxLoading || !hasRewards}
-                          className="flex-1 py-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 text-xs font-medium transition-colors disabled:opacity-50"
-                        >
-                          {baseTxLoading ? "..." : "Claim Rewards"}
-                        </button>
+                        {hasStakedLP && (
+                          <button
+                            type="button"
+                            onClick={() => void handleBaseUnstake(pos.poolId)}
+                            disabled={baseTxLoading}
+                            className="flex-1 py-2 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium transition-colors disabled:opacity-50"
+                          >
+                            {baseTxLoading ? "..." : "Unstake"}
+                          </button>
+                        )}
+                        {hasStakedLP && hasRewards && (
+                          <button
+                            type="button"
+                            onClick={() => void handleBaseClaim(pos.poolId)}
+                            disabled={baseTxLoading}
+                            className="flex-1 py-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 text-xs font-medium transition-colors disabled:opacity-50"
+                          >
+                            {baseTxLoading ? "..." : "Claim Rewards"}
+                          </button>
+                        )}
+                        {!hasStakedLP && !hasRewards && (
+                          <span className="text-xs text-zinc-500 py-2">Position fully withdrawn</span>
+                        )}
                       </div>
                     </div>
                   );

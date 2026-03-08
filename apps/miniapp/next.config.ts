@@ -184,6 +184,26 @@ const nextConfig: NextConfig = {
       });
     }
 
+    // Base execution layer (Aerodrome liquid staking) — port 3010
+    const baseExecBaseRaw =
+      process.env.NEXT_PUBLIC_BASE_EXECUTION_API_URL ||
+      process.env.BASE_EXECUTION_API_URL ||
+      "";
+    const baseExecBase = normalizeDevServiceBase(baseExecBaseRaw, "http://localhost:3010", isDev);
+    if (baseExecBase) {
+      console.log('[Next.js] Base execution API proxy configured:', baseExecBase);
+      rewrites.push({
+        source: "/api/base-execution/:path*",
+        destination: `${baseExecBase}/:path*`,
+        basePath: false,
+      });
+      rewrites.push({
+        source: "/miniapp/api/base-execution/:path*",
+        destination: `${baseExecBase}/:path*`,
+        basePath: false,
+      });
+    }
+
     if (!swapBase) {
       console.warn('[Next.js] Swap API base URL not configured, proxy will not work');
       console.warn('[Next.js] Please set SWAP_API_BASE or NEXT_PUBLIC_SWAP_API_BASE in .env');
@@ -208,7 +228,8 @@ const nextConfig: NextConfig = {
 
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "assets.coingecko.com", pathname: "/coins/images/**" },
+      { protocol: "https", hostname: "assets.coingecko.com", pathname: "/**" },
+      { protocol: "https", hostname: "s2.coinmarketcap.com", pathname: "/**" },
     ],
     unoptimized: true,
     minimumCacheTTL: 60,

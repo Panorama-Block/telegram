@@ -18,6 +18,8 @@ import {
   ChevronUp,
   ArrowRightLeft,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Landmark,
   Droplets,
@@ -79,7 +81,15 @@ function safeParseBigInt(value: string | null | undefined): bigint | null {
 function formatWei(wei: string | null | undefined, decimals = 18): string {
   const parsed = safeParseBigInt(wei);
   if (parsed == null) return '--';
-  const human = formatAmountHuman(parsed, decimals, 6);
+  // For very small values (e.g. tiny LP positions), show enough decimals
+  let frac = 6;
+  if (parsed > 0n && parsed < 10n ** BigInt(decimals - 6)) {
+    const valueDigits = parsed.toString().length;
+    const leadingZeros = decimals - valueDigits;
+    frac = Math.min(leadingZeros + 2, decimals);
+    frac = Math.max(frac, 6);
+  }
+  const human = formatAmountHuman(parsed, decimals, frac);
   return human === '0' ? '0.00' : human;
 }
 
@@ -128,6 +138,8 @@ export default function PortfolioPage() {
 
   const [viewMode, setViewMode] = useState<ViewMode>('main');
   const [activeTab, setActiveTab] = useState<TabMode>('assets');
+  const [stakingSlide, setStakingSlide] = useState(0);
+  const [lendingSlide, setLendingSlide] = useState(0);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -159,6 +171,7 @@ export default function PortfolioPage() {
   // Base / Aerodrome Staking
   const {
     positions: basePositions,
+    portfolioAssets: basePortfolioAssets,
     apr: baseApr,
     loading: baseStakingLoading,
     error: baseStakingError,
@@ -589,210 +602,322 @@ export default function PortfolioPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-              <GlassCard className="p-5 bg-[#0A0A0A]/60">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                      <Droplets className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-white font-medium truncate">Lido Staking</div>
-                      <div className="text-xs text-zinc-500">Ethereum</div>
-                    </div>
-                  </div>
-                  <div className="text-[11px] px-2 py-1 rounded-lg border border-white/10 bg-white/5 text-zinc-300">
-                    {stakingClaimable.count > 0
-                      ? `${stakingClaimable.count} claimable`
-                      : stakingPending.count > 0
-                        ? `${stakingPending.count} pending`
-                        : "Active"}
-                  </div>
-                </div>
+            {/* ═══════════ Liquid Staking ═══════════ */}
+            {(() => {
+              const stakingCards = [
+                { id: 'aerodrome', name: 'Aerodrome', chain: 'Base', logo: 'https://assets.coingecko.com/coins/images/31745/small/token.png', chainLogo: 'https://assets.coingecko.com/asset_platforms/images/131/small/base.png', href: '/chat?open=staking', color: 'blue' as const },
+                { id: 'lido', name: 'Lido', chain: 'Ethereum', logo: 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png', chainLogo: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', href: '/chat?open=staking', color: 'sky' as const },
+              ];
+              const total = stakingCards.length;
+              const idx = stakingSlide % total;
+              const card = stakingCards[idx];
 
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-zinc-500">Staked</span>
-                    <span className="text-sm font-mono text-white">{formatWei(stakingPosition?.stETHBalance)} stETH</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-zinc-500">Wrapped</span>
-                    <span className="text-sm font-mono text-white">{formatWei(stakingPosition?.wstETHBalance)} wstETH</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-zinc-500">Pending withdrawals</span>
-                    <span className="text-sm font-mono text-white">{stakingPending.count}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-zinc-500">APY</span>
-                    <span
-                      className={cn(
-                        "text-sm font-medium",
-                        Number.isFinite(lidoApy) ? "text-emerald-400" : "text-zinc-400",
-                      )}
-                    >
-                      {formatAPY(lidoApy)}
-                    </span>
-                  </div>
-                </div>
-
-                {(stakingError || stakingWithdrawalsError) && (
-                  <div className="mt-3 text-xs text-red-400">{stakingError || stakingWithdrawalsError}</div>
-                )}
-
-                <div className="mt-4">
-                  <Link
-                    href="/chat?open=staking"
-                    className="inline-flex text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
-                  >
-                    Manage Position
-                  </Link>
-                </div>
-              </GlassCard>
-
-              <GlassCard className="p-5 bg-[#0A0A0A]/60">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      <Landmark className="w-4 h-4" />
+              return (
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Droplets className="w-4 h-4 text-sky-400" />
+                      <h4 className="text-sm font-medium text-white">Liquid Staking</h4>
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-white font-medium truncate">Benqi Lending</div>
-                      <div className="text-xs text-zinc-500">Avalanche</div>
-                    </div>
-                  </div>
-                  <div
-                    className={cn(
-                      "text-[11px] px-2 py-1 rounded-lg border bg-white/5",
-                      lendingHealthLabel.tone === 'green' && "text-emerald-400 border-emerald-500/30",
-                      lendingHealthLabel.tone === 'yellow' && "text-yellow-400 border-yellow-500/30",
-                      lendingHealthLabel.tone === 'red' && "text-red-400 border-red-500/30",
-                      lendingHealthLabel.tone === 'zinc' && "text-zinc-400 border-white/10",
+                    {total > 1 && (
+                      <div className="flex items-center gap-1.5">
+                        <button type="button" onClick={() => setStakingSlide((idx - 1 + total) % total)} className="p-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white transition-colors">
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <div className="flex gap-1">
+                          {stakingCards.map((_, i) => (
+                            <button key={i} type="button" onClick={() => setStakingSlide(i)} className={cn("w-1.5 h-1.5 rounded-full transition-colors", i === idx ? "bg-sky-400" : "bg-white/20 hover:bg-white/30")} />
+                          ))}
+                        </div>
+                        <button type="button" onClick={() => setStakingSlide((idx + 1) % total)} className="p-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white transition-colors">
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     )}
-                  >
-                    {lendingHealthLabel.text}
                   </div>
-                </div>
 
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-zinc-500">Supplied</span>
-                    <span className="text-sm font-mono text-white text-right">
-                      {lendingSuppliedRows.length === 0 ? '0' : lendingSuppliedRows.slice(0, 2).map((r) => `${r.amount} ${r.symbol}`).join(', ')}
-                      {lendingSuppliedRows.length > 2 ? ` +${lendingSuppliedRows.length - 2}` : ''}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-zinc-500">Borrowed</span>
-                    <span className="text-sm font-mono text-white text-right">
-                      {lendingBorrowedRows.length === 0 ? '0' : lendingBorrowedRows.slice(0, 2).map((r) => `${r.amount} ${r.symbol}`).join(', ')}
-                      {lendingBorrowedRows.length > 2 ? ` +${lendingBorrowedRows.length - 2}` : ''}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-zinc-500">Account health</span>
-                    <span
-                      className={cn(
-                        "text-sm font-medium",
-                        lendingHealthLabel.tone === 'green' && "text-emerald-400",
-                        lendingHealthLabel.tone === 'yellow' && "text-yellow-400",
-                        lendingHealthLabel.tone === 'red' && "text-red-400",
-                        lendingHealthLabel.tone === 'zinc' && "text-zinc-400",
+                  <GlassCard className="p-5 bg-[#0A0A0A]/60">
+                    {/* Card header */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="relative shrink-0">
+                          <img src={card.logo} alt={card.name} className="w-9 h-9 rounded-lg" />
+                          <img src={card.chainLogo} alt={card.chain} className="w-4 h-4 rounded-full absolute -bottom-1 -right-1 ring-2 ring-[#0A0A0A]" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-white font-medium truncate">{card.name}</div>
+                          <div className="text-xs text-zinc-500">{card.chain}</div>
+                        </div>
+                      </div>
+
+                      {card.id === 'lido' && (
+                        <div className={cn(
+                          "text-[11px] px-2 py-1 rounded-lg border shrink-0",
+                          stakingClaimable.count > 0
+                            ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
+                            : "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+                        )}>
+                          {stakingClaimable.count > 0 ? `${stakingClaimable.count} Claimable` : stakingPending.count > 0 ? `${stakingPending.count} Pending` : 'Active'}
+                        </div>
                       )}
-                    >
-                      {lendingHealthLabel.text}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-zinc-500">APY</span>
-                    <span
-                      className={cn(
-                        "text-sm font-medium",
-                        Number.isFinite(lendingPositionApy) ? "text-emerald-400" : "text-zinc-400",
+                      {card.id === 'aerodrome' && (
+                        basePositions.length > 0 ? (
+                          <div className="text-[11px] px-2 py-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 shrink-0">{basePositions.length} Active</div>
+                        ) : (
+                          <div className="text-[11px] px-2 py-1 rounded-lg border border-white/10 bg-white/5 text-zinc-500 shrink-0">No positions</div>
+                        )
                       )}
-                    >
-                      {formatAPY(lendingPositionApy)}
-                    </span>
-                  </div>
-                </div>
-
-                {lendingError && <div className="mt-3 text-xs text-red-400">{lendingError}</div>}
-
-                <div className="mt-4">
-                  <Link
-                    href="/chat?open=lending"
-                    className="inline-flex text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
-                  >
-                    Manage Position
-                  </Link>
-                </div>
-              </GlassCard>
-
-              {/* Aerodrome Staking on Base */}
-              <GlassCard className="p-5 bg-[#0A0A0A]/60">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                      <Zap className="w-4 h-4" />
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-white font-medium truncate">Aerodrome Staking</div>
-                      <div className="text-xs text-zinc-500">Base</div>
-                    </div>
-                  </div>
-                  <div className="text-[11px] px-2 py-1 rounded-lg border border-white/10 bg-white/5 text-zinc-300">
-                    {basePositions.length > 0 ? 'Active' : '--'}
-                  </div>
-                </div>
 
-                <div className="mt-4 space-y-3">
-                  {basePositions.length > 0 ? (
-                    <>
-                      {basePositions.map((pos) => (
-                        <div key={pos.poolId} className="space-y-2">
-                          <div className="text-xs text-blue-400 font-medium">{pos.poolName}</div>
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-xs text-zinc-500">Staked LP</span>
-                            <span className="text-sm font-mono text-white">{formatWei(pos.stakedBalance)}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-xs text-zinc-500">Rewards</span>
-                            <span className="text-sm font-mono text-white">{formatWei(pos.earnedRewards)} {pos.rewardToken.symbol}</span>
+                    {/* ── Lido content ── */}
+                    {card.id === 'lido' && (
+                      <>
+                        <div className="mt-4">
+                          <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <Droplets className="w-3.5 h-3.5 text-sky-400" />
+                              <span className="text-xs font-medium text-white">Liquid Staking</span>
+                              <span className={cn("text-xs font-medium ml-auto", Number.isFinite(lidoApy) ? "text-emerald-400" : "text-zinc-500")}>
+                                {Number.isFinite(lidoApy) ? `${lidoApy!.toFixed(2)}% APY` : ''}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="rounded-md bg-white/[0.03] px-2.5 py-2">
+                                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">stETH</div>
+                                <div className="text-sm font-mono text-white mt-0.5">{formatWei(stakingPosition?.stETHBalance)}</div>
+                              </div>
+                              <div className="rounded-md bg-white/[0.03] px-2.5 py-2">
+                                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">wstETH</div>
+                                <div className="text-sm font-mono text-white mt-0.5">{formatWei(stakingPosition?.wstETHBalance)}</div>
+                              </div>
+                            </div>
+                            {stakingPending.count > 0 && (
+                              <div className="flex items-center justify-between px-0.5">
+                                <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Pending Withdrawals</span>
+                                <span className="text-xs font-mono text-amber-400">{stakingPending.count}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      ))}
-                    </>
-                  ) : (
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs text-zinc-500">Positions</span>
-                      <span className="text-sm font-mono text-zinc-400">0</span>
+                        {(stakingError || stakingWithdrawalsError) && <div className="mt-3 text-xs text-red-400">{stakingError || stakingWithdrawalsError}</div>}
+                      </>
+                    )}
+
+                    {/* ── Aerodrome content ── */}
+                    {card.id === 'aerodrome' && (
+                      <>
+                        {basePositions.length > 0 && (
+                          <div className="mt-4 space-y-3">
+                            {basePositions.map((pos) => {
+                              const portfolio = basePortfolioAssets.find((a) => a.poolId === pos.poolId);
+                              const tokenABal = portfolio ? parseFloat(portfolio.tokenA.balance) : 0;
+                              const tokenBBal = portfolio ? parseFloat(portfolio.tokenB.balance) : 0;
+                              // Use position earnedRewards (raw wei) or fall back to portfolio pendingRewards (formatted)
+                              const rewardsBig = safeParseBigInt(pos.earnedRewards);
+                              const hasRewardsFromPosition = rewardsBig != null && rewardsBig > 0n;
+                              const portfolioRewards = portfolio ? parseFloat(portfolio.pendingRewards) : 0;
+                              const hasRewards = hasRewardsFromPosition || portfolioRewards > 0;
+                              const rewardsLabel = hasRewardsFromPosition
+                                ? `${formatWei(pos.earnedRewards, pos.rewardToken.decimals)} ${pos.rewardToken.symbol}`
+                                : portfolioRewards > 0
+                                  ? `${portfolioRewards.toFixed(portfolioRewards < 0.001 ? 6 : 4)} ${portfolio!.rewardTokenSymbol}`
+                                  : '';
+                              const poolTokens = pos.poolName.match(/^(\w+)\/(\w+)/);
+                              const tA = poolTokens?.[1] ?? pos.tokenA.symbol;
+                              const tB = poolTokens?.[2] ?? pos.tokenB.symbol;
+                              return (
+                                <div key={pos.poolId} className="rounded-lg border border-white/5 bg-white/[0.02] p-3 space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <Droplets className="w-3.5 h-3.5 text-blue-400" />
+                                      <span className="text-xs font-medium text-white">{pos.poolName}</span>
+                                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded border", pos.stable ? "text-cyan-400 border-cyan-500/20 bg-cyan-500/5" : "text-amber-400 border-amber-500/20 bg-amber-500/5")}>{pos.stable ? 'Stable' : 'Volatile'}</span>
+                                    </div>
+                                    <span className={cn("text-xs font-medium", Number.isFinite(baseApr) && baseApr! > 0 ? "text-emerald-400" : "text-zinc-500")}>
+                                      {Number.isFinite(baseApr) && baseApr! > 0 ? `${baseApr!.toFixed(2)}% APR` : ''}
+                                    </span>
+                                  </div>
+                                  {tokenABal > 0 || tokenBBal > 0 ? (
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div className="rounded-md bg-white/[0.03] px-2.5 py-2">
+                                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider">{tA}</div>
+                                        <div className="text-sm font-mono text-white mt-0.5">{tokenABal.toFixed(tokenABal < 0.01 ? 6 : 4)}</div>
+                                      </div>
+                                      <div className="rounded-md bg-white/[0.03] px-2.5 py-2">
+                                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider">{tB}</div>
+                                        <div className="text-sm font-mono text-white mt-0.5">{tokenBBal.toFixed(tokenBBal < 0.01 ? 6 : 2)}</div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs text-zinc-500">Staked LP</span>
+                                      <span className="text-sm font-mono text-white">{formatWei(pos.stakedBalance)}</span>
+                                    </div>
+                                  )}
+                                  {hasRewards && (
+                                    <div className="flex items-center justify-between px-0.5">
+                                      <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Pending Rewards</span>
+                                      <span className="text-xs font-mono text-amber-400">{rewardsLabel}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {basePositions.length === 0 && !baseStakingLoading && (
+                          <div className="mt-4 text-center py-3">
+                            <p className="text-xs text-zinc-500">No active liquidity positions</p>
+                            <p className="text-[10px] text-zinc-600 mt-1">Stake in a pool to start earning AERO rewards</p>
+                          </div>
+                        )}
+                        {baseStakingLoading && basePositions.length === 0 && (
+                          <div className="mt-4 flex items-center justify-center gap-2 py-3 text-zinc-500 text-xs">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Loading...
+                          </div>
+                        )}
+                        {baseStakingError && <div className="mt-3 text-xs text-red-400">{baseStakingError}</div>}
+                      </>
+                    )}
+
+                    {/* Manage button */}
+                    <div className="mt-4">
+                      <Link
+                        href={card.href}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border transition-colors",
+                          card.color === 'sky' && "bg-sky-500/10 hover:bg-sky-500/15 border-sky-500/20 text-sky-400",
+                          card.color === 'blue' && "bg-blue-500/10 hover:bg-blue-500/15 border-blue-500/20 text-blue-400",
+                        )}
+                      >
+                        Manage Position <Droplets className="w-3 h-3" />
+                      </Link>
                     </div>
-                  )}
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-zinc-500">APR</span>
-                    <span
-                      className={cn(
-                        "text-sm font-medium",
-                        Number.isFinite(baseApr) && baseApr! > 0 ? "text-emerald-400" : "text-zinc-400",
-                      )}
-                    >
-                      {Number.isFinite(baseApr) && baseApr! > 0 ? `${baseApr!.toFixed(2)}%` : '--'}
-                    </span>
+                  </GlassCard>
+                </div>
+              );
+            })()}
+
+            {/* ═══════════ Lending ═══════════ */}
+            {(() => {
+              const lendingCards = [
+                { id: 'benqi', name: 'Benqi', chain: 'Avalanche', logo: 'https://s2.coinmarketcap.com/static/img/coins/64x64/9288.png', chainLogo: 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png', href: '/chat?open=lending', color: 'emerald' as const },
+              ];
+              const total = lendingCards.length;
+              const idx = lendingSlide % total;
+              const card = lendingCards[idx];
+
+              return (
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Landmark className="w-4 h-4 text-emerald-400" />
+                      <h4 className="text-sm font-medium text-white">Lending</h4>
+                    </div>
+                    {total > 1 && (
+                      <div className="flex items-center gap-1.5">
+                        <button type="button" onClick={() => setLendingSlide((idx - 1 + total) % total)} className="p-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white transition-colors">
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <div className="flex gap-1">
+                          {lendingCards.map((_, i) => (
+                            <button key={i} type="button" onClick={() => setLendingSlide(i)} className={cn("w-1.5 h-1.5 rounded-full transition-colors", i === idx ? "bg-emerald-400" : "bg-white/20 hover:bg-white/30")} />
+                          ))}
+                        </div>
+                        <button type="button" onClick={() => setLendingSlide((idx + 1) % total)} className="p-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white transition-colors">
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                </div>
 
-                {baseStakingError && <div className="mt-3 text-xs text-red-400">{baseStakingError}</div>}
+                  <GlassCard className="p-5 bg-[#0A0A0A]/60">
+                    {/* Card header */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="relative shrink-0">
+                          <img src={card.logo} alt={card.name} className="w-9 h-9 rounded-lg" />
+                          <img src={card.chainLogo} alt={card.chain} className="w-4 h-4 rounded-full absolute -bottom-1 -right-1 ring-2 ring-[#0A0A0A]" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-white font-medium truncate">{card.name}</div>
+                          <div className="text-xs text-zinc-500">{card.chain}</div>
+                        </div>
+                      </div>
 
-                <div className="mt-4">
-                  <Link
-                    href="/staking"
-                    className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
-                  >
-                    Manage Position <Droplets className="w-3 h-3" />
-                  </Link>
+                      {card.id === 'benqi' && (
+                        <div className={cn(
+                          "text-[11px] px-2 py-1 rounded-lg border shrink-0",
+                          lendingHealthLabel.tone === 'green' && "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+                          lendingHealthLabel.tone === 'yellow' && "text-yellow-400 border-yellow-500/30 bg-yellow-500/10",
+                          lendingHealthLabel.tone === 'red' && "text-red-400 border-red-500/30 bg-red-500/10",
+                          lendingHealthLabel.tone === 'zinc' && "text-zinc-400 border-white/10 bg-white/5",
+                        )}>
+                          {lendingHealthLabel.text}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Benqi content ── */}
+                    {card.id === 'benqi' && (
+                      <>
+                        <div className="mt-4">
+                          <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <Landmark className="w-3.5 h-3.5 text-emerald-400" />
+                              <span className="text-xs font-medium text-white">Lending</span>
+                              <span className={cn("text-xs font-medium ml-auto", Number.isFinite(lendingPositionApy) ? "text-emerald-400" : "text-zinc-500")}>
+                                {Number.isFinite(lendingPositionApy) ? `${lendingPositionApy!.toFixed(2)}% APY` : ''}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="rounded-md bg-white/[0.03] px-2.5 py-2">
+                                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Supplied</div>
+                                <div className="text-sm font-mono text-white mt-0.5">
+                                  {lendingSuppliedRows.length === 0 ? '0' : lendingSuppliedRows.slice(0, 2).map((r) => `${r.amount} ${r.symbol}`).join(', ')}
+                                  {lendingSuppliedRows.length > 2 ? ` +${lendingSuppliedRows.length - 2}` : ''}
+                                </div>
+                              </div>
+                              <div className="rounded-md bg-white/[0.03] px-2.5 py-2">
+                                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Borrowed</div>
+                                <div className="text-sm font-mono text-white mt-0.5">
+                                  {lendingBorrowedRows.length === 0 ? '0' : lendingBorrowedRows.slice(0, 2).map((r) => `${r.amount} ${r.symbol}`).join(', ')}
+                                  {lendingBorrowedRows.length > 2 ? ` +${lendingBorrowedRows.length - 2}` : ''}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between px-0.5">
+                              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Health Factor</span>
+                              <span className={cn(
+                                "text-xs font-medium",
+                                lendingHealthLabel.tone === 'green' && "text-emerald-400",
+                                lendingHealthLabel.tone === 'yellow' && "text-yellow-400",
+                                lendingHealthLabel.tone === 'red' && "text-red-400",
+                                lendingHealthLabel.tone === 'zinc' && "text-zinc-400",
+                              )}>
+                                {lendingHealthLabel.text}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        {lendingError && <div className="mt-3 text-xs text-red-400">{lendingError}</div>}
+                      </>
+                    )}
+
+                    {/* Manage button */}
+                    <div className="mt-4">
+                      <Link
+                        href={card.href}
+                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 transition-colors"
+                      >
+                        Manage Position <Landmark className="w-3 h-3" />
+                      </Link>
+                    </div>
+                  </GlassCard>
                 </div>
-              </GlassCard>
-            </div>
+              );
+            })()}
           </motion.div>
         )}
 
