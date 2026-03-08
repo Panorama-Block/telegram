@@ -629,13 +629,34 @@ export default function ChatPage() {
   // When pendingNewChat is true, we're in "new chat" mode without a backend conversation
   // In this case, always show the welcome screen (hasMessages = false)
   const hasMessages = pendingNewChat ? false : activeMessages.length > 0;
+  const [profileNickname, setProfileNickname] = useState<string | null>(null);
+  useEffect(() => {
+    const stored = localStorage.getItem('profileNickname');
+    if (stored) {
+      setProfileNickname(stored);
+    } else {
+      const addr = account?.address || walletIdentity;
+      if (addr) {
+        import('@/features/gateway/profileApi').then(({ profileApi }) => {
+          profileApi.getByWallet(addr.toLowerCase()).then((p) => {
+            if (p?.nickname) {
+              setProfileNickname(p.nickname);
+              localStorage.setItem('profileNickname', p.nickname);
+            }
+          }).catch(() => {});
+        });
+      }
+    }
+  }, [account?.address, walletIdentity]);
+
   const displayName = useMemo(() => {
+    if (profileNickname) return profileNickname;
     const address = account?.address || walletIdentity;
     if (address) {
       return `${address.slice(0, 6)}...${address.slice(-4)}`;
     }
     return 'User';
-  }, [account?.address, walletIdentity]);
+  }, [account?.address, walletIdentity, profileNickname]);
 
   const activeConversationTitle = useMemo(() => {
     if (!activeConversationId) return '';
