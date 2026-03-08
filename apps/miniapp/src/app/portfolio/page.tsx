@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -219,7 +219,8 @@ export default function PortfolioPage() {
 
   // Determine which data to show based on view mode
   const isSmartWalletView = viewMode === 'smart' && hasSmartWallet;
-  const currentAssets = isSmartWalletView ? smartAssets : mainAssets;
+  const currentAssetsUnsorted = isSmartWalletView ? smartAssets : mainAssets;
+  const currentAssets = useMemo(() => [...currentAssetsUnsorted].sort((a, b) => (b.valueRaw || 0) - (a.valueRaw || 0)), [currentAssetsUnsorted]);
   const currentStats = isSmartWalletView ? smartStats : mainStats;
   const currentLoading = isSmartWalletView ? smartAssetsLoading : mainLoading;
 
@@ -567,6 +568,34 @@ export default function PortfolioPage() {
           </motion.div>
 	        </div>
 
+        {/* Allocation Bar */}
+        {currentStats.allocation.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.22 }}
+            className="mb-8"
+          >
+            <div className="h-4 w-full rounded-full flex overflow-hidden bg-white/5">
+              {currentStats.allocation.map(item => (
+                <div
+                  key={item.label}
+                  className={cn("h-full transition-all duration-500", item.color)}
+                  style={{ width: `${item.value}%` }}
+                />
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2 sm:gap-4 mt-2">
+              {currentStats.allocation.map(item => (
+                <div key={item.label} className="flex items-center gap-1.5 sm:gap-2">
+                  <div className={cn("w-2 h-2 rounded-full", item.color)} />
+                  <span className="text-xs text-zinc-400">{item.label} ({item.value.toFixed(0)}%)</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
         {/* Positions (Staking + Lending) */}
         {!isSmartWalletView && (
           <motion.div
@@ -604,6 +633,8 @@ export default function PortfolioPage() {
 
             {/* ═══════════ Liquid Staking ═══════════ */}
             {(() => {
+              const LIQUID_STAKING_COMING_SOON = true; // Remove this flag when the on-chain service is deployed
+
               const stakingCards = [
                 { id: 'aerodrome', name: 'Aerodrome', chain: 'Base', logo: 'https://assets.coingecko.com/coins/images/31745/small/token.png', chainLogo: 'https://assets.coingecko.com/asset_platforms/images/131/small/base.png', href: '/chat?open=staking', color: 'blue' as const },
                 { id: 'lido', name: 'Lido', chain: 'Ethereum', logo: 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png', chainLogo: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', href: '/chat?open=staking', color: 'sky' as const },
@@ -611,6 +642,8 @@ export default function PortfolioPage() {
               const total = stakingCards.length;
               const idx = stakingSlide % total;
               const card = stakingCards[idx];
+
+              const isAerodromeComingSoon = LIQUID_STAKING_COMING_SOON && card.id === 'aerodrome';
 
               return (
                 <div className="mb-6">
@@ -636,7 +669,23 @@ export default function PortfolioPage() {
                     )}
                   </div>
 
-                  <GlassCard className="p-5 bg-[#0A0A0A]/60">
+                  <GlassCard className="bg-[#0A0A0A]/60 relative overflow-hidden">
+                    <AnimatePresence mode="wait">
+                    <motion.div
+                      key={card.id}
+                      initial={{ opacity: 0, x: 40 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -40 }}
+                      transition={{ duration: 0.25, ease: 'easeInOut' }}
+                      className="p-5"
+                    >
+                    {isAerodromeComingSoon && (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#050505]/85 backdrop-blur-sm rounded-2xl">
+                        <Droplets className="w-7 h-7 text-blue-400/50 mb-2" />
+                        <span className="text-sm font-semibold text-white">Coming Soon</span>
+                        <span className="text-[11px] text-zinc-500 mt-1">On-chain integration not yet deployed</span>
+                      </div>
+                    )}
                     {/* Card header */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
@@ -794,6 +843,8 @@ export default function PortfolioPage() {
                         Manage Position <Droplets className="w-3 h-3" />
                       </Link>
                     </div>
+                    </motion.div>
+                    </AnimatePresence>
                   </GlassCard>
                 </div>
               );
@@ -1116,34 +1167,6 @@ export default function PortfolioPage() {
           </motion.div>
         )}
 
-        {/* Allocation Bar */}
-        {currentStats.allocation.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="mb-8"
-          >
-            <div className="h-4 w-full rounded-full flex overflow-hidden bg-white/5">
-              {currentStats.allocation.map(item => (
-                <div
-                  key={item.label}
-                  className={cn("h-full transition-all duration-500", item.color)}
-                  style={{ width: `${item.value}%` }}
-                />
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-2 sm:gap-4 mt-2">
-              {currentStats.allocation.map(item => (
-                <div key={item.label} className="flex items-center gap-1.5 sm:gap-2">
-                  <div className={cn("w-2 h-2 rounded-full", item.color)} />
-                  <span className="text-xs text-zinc-400">{item.label} ({item.value.toFixed(0)}%)</span>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
         {/* Tabs: History / Assets */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -1317,65 +1340,6 @@ export default function PortfolioPage() {
                   ))}
               </div>
 
-          {/* Desktop Table View */}
-          <GlassCard className="overflow-hidden bg-[#0A0A0A]/60 hidden md:block mt-4">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-white/5 text-xs text-zinc-500 uppercase tracking-wider">
-                    <th className="p-4 font-medium">Asset</th>
-                    <th className="p-4 font-medium">Protocol</th>
-                    <th className="p-4 font-medium">Balance</th>
-                    <th className="p-4 font-medium">Value</th>
-                    <th className="p-4 font-medium">Price</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {currentAssets.map((asset) => (
-                    <tr key={`desktop-${asset.network}-${asset.symbol}-${asset.address}`} className="group hover:bg-white/5 transition-colors">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-inner",
-                            "bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10"
-                          )}>
-                            {asset.icon ? (
-                              <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
-                            ) : (
-                              asset.symbol[0]
-                            )}
-                          </div>
-                          <div>
-                            <div className="font-medium text-white">{asset.name}</div>
-                            <div className="flex items-center gap-1.5">
-                               <span className="text-xs text-zinc-500">{asset.symbol}</span>
-                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-zinc-400 border border-white/5">{asset.network}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4 text-zinc-400 text-sm">
-                        <div className="flex items-center gap-2">
-                          {asset.protocol === 'Wallet' && <Wallet className="w-3 h-3" />}
-                          {asset.protocol === 'Smart Wallet' && <Zap className="w-3 h-3 text-cyan-400" />}
-                          {asset.protocol === 'Lido' && <Droplets className="w-3 h-3 text-blue-400" />}
-                          <span>
-                            {asset.protocol}
-                            {asset.protocol === 'Lido' && (
-                              <span className="text-zinc-500"> · {formatAPY(lidoApy)}</span>
-                            )}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="p-4 text-zinc-300 font-mono text-sm">{asset.balance}</td>
-                      <td className="p-4 text-white font-mono font-medium text-sm">{asset.value}</td>
-                      <td className="p-4 text-zinc-500 font-mono text-sm">{asset.price}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </GlassCard>
             </div>
           )}
         </motion.div>

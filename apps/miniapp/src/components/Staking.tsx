@@ -1601,10 +1601,22 @@ export function Staking({
     >
       {/* ========== BASE (AERODROME) VIEW ========== */}
       {network === "base" && (() => {
+        const AERODROME_COMING_SOON = true; // Remove this flag when the on-chain service is deployed
         const poolTokens = selectedBasePool ? parsePoolTokens(selectedBasePool.poolName) : { tokenA: "Token A", tokenB: "Token B" };
         const apr = selectedBasePool ? formatBaseAPR(selectedBasePool.estimatedAPR, selectedBasePool) : null;
         return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full relative">
+          {AERODROME_COMING_SOON && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#0A0A0A]/90 backdrop-blur-sm">
+              <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-3">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-blue-400">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2M12 2a10 10 0 100 20 10 10 0 000-20z" />
+                </svg>
+              </div>
+              <span className="text-base font-semibold text-white mb-1">Coming Soon</span>
+              <span className="text-xs text-zinc-500 text-center px-8">Aerodrome on-chain integration is not yet deployed. Switch to Ethereum (Lido) to stake now.</span>
+            </div>
+          )}
           <div className="px-6 pb-8 space-y-4 relative z-10 flex-1 flex flex-col">
 
             {/* Action mode tabs: Stake / Positions */}
