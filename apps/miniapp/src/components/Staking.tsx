@@ -1,7 +1,9 @@
 import { AnimatePresence } from "framer-motion";
-import { ArrowLeft, Droplets, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, Droplets, Info, RefreshCcw, X } from "lucide-react";
+import { DataInput } from "@/components/ui/DataInput";
+import { NeonButton } from "@/components/ui/NeonButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useActiveAccount } from "thirdweb/react";
+import { useActiveAccount, useSwitchActiveWalletChain } from "thirdweb/react";
 import { StakingInputView } from "@/components/staking/StakingInputView";
 import { StakingStatusView } from "@/components/staking/StakingStatusView";
 import { type StakingTxStage } from "@/components/staking/stakingTxState";
@@ -14,6 +16,8 @@ import {
   type WithdrawalRequest,
 } from "@/features/staking/api";
 import { useStakingData } from "@/features/staking/useStakingData";
+import { useBaseStakingData } from "@/features/staking/useBaseStakingData";
+import { useBaseStakingApi, type BaseTransactionBundle } from "@/features/staking/baseApi";
 import type { PreparedTx } from "@/features/swap/types";
 import { formatAmountHuman, parseAmountToWei } from "@/features/swap/utils";
 import { useRateLimitCountdown, parseRetryAfter } from "@/shared/hooks/useRateLimitCountdown";
@@ -22,11 +26,41 @@ import { mapError } from "@/shared/lib/errorMapper";
 import { THIRDWEB_CLIENT_ID } from "@/shared/config/thirdweb";
 import { waitForEvmReceipt } from "@/shared/utils/evmReceipt";
 
+const AERODROME_LOGO = "https://assets.coingecko.com/coins/images/31745/small/token.png";
+
+const BASE_TOKEN_ICONS: Record<string, string> = {
+  WETH: "https://assets.coingecko.com/coins/images/2518/small/weth.png",
+  ETH: "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
+  USDC: "https://assets.coingecko.com/coins/images/6319/small/usdc.png",
+  USDbC: "https://assets.coingecko.com/coins/images/6319/small/usdc.png",
+  AERO: "https://assets.coingecko.com/coins/images/31745/small/token.png",
+};
+
+const BASE_TOKEN_DECIMALS: Record<string, number> = {
+  WETH: 18, ETH: 18, AERO: 18, USDC: 6, USDbC: 6,
+};
+
+function parsePoolTokens(poolName: string): { tokenA: string; tokenB: string } {
+  const match = poolName.match(/^(\w+)\/(\w+)/);
+  if (match) return { tokenA: match[1], tokenB: match[2] };
+  return { tokenA: "Token A", tokenB: "Token B" };
+}
+
+function formatBalance(val: string | null, maxDecimals = 6): string {
+  if (!val) return "--";
+  const n = parseFloat(val);
+  if (!Number.isFinite(n) || n <= 0) return "0.00";
+  if (n < 0.000001) return "<0.000001";
+  return n.toFixed(maxDecimals).replace(/\.?0+$/, "");
+}
+
 const ETH_ICON = "https://assets.coingecko.com/coins/images/279/small/ethereum.png";
 const STETH_ICON = "https://assets.coingecko.com/coins/images/13442/small/steth_logo.png";
 const ETH_NATIVE_ADDRESS = "0x0000000000000000000000000000000000000000";
 const STETH_ADDRESS = "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84";
 const GAS_BUFFER_WEI = 300_000_000_000_000n; // 0.0003 ETH
+
+type StakingNetwork = "ethereum" | "base";
 
 interface StakingProps {
   onClose: () => void;
@@ -70,16 +104,49 @@ function normalizeInitialAmount(raw: unknown): string | undefined {
   return trimmed;
 }
 
-function formatWei(wei: string | null | undefined, decimals = 18): string {
+function formatWei(wei: string | null | undefined, decimals = 18, maxFrac = 6): string {
   const parsed = safeParseBigInt(wei);
   if (parsed == null) return "--";
-  const human = formatAmountHuman(parsed, decimals, 6);
+  if (parsed === 0n) return "0.00";
+  // For very small values, increase precision so they don't round to 0
+  let frac = maxFrac;
+  if (parsed > 0n && parsed < 10n ** BigInt(decimals - maxFrac)) {
+    // Value is smaller than what maxFrac can show — use enough decimals
+    const digits = decimals - parsed.toString().length + 1;
+    frac = Math.min(Math.max(digits, maxFrac), decimals);
+  }
+  const human = formatAmountHuman(parsed, decimals, frac);
   return human === "0" ? "0.00" : human;
 }
 
 function formatAPY(apy: number | null | undefined): string {
   if (apy == null || !Number.isFinite(apy)) return "--";
   return `${apy.toFixed(4)}%`;
+}
+
+function cleanBaseError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (raw.includes("CALL_EXCEPTION")) return "Transaction reverted on-chain. The pool may have insufficient liquidity or the amounts are too small. Try increasing your amounts.";
+  if (raw.includes("insufficient funds")) return "Insufficient funds for this transaction (including gas).";
+  if (raw.includes("user rejected")) return "Transaction was rejected in your wallet.";
+  if (raw.includes("not a valid numeric string")) return "Invalid amount. Please enter valid numbers.";
+  if (raw.includes("HTTP 5")) return "Backend server error. Please try again.";
+  if (raw.length > 120) return raw.slice(0, 120) + "...";
+  return raw;
+}
+
+function formatBaseAPR(raw: string, pool?: { rewardRatePerSecond: string; totalStaked: string }): { label: string; lowTvl: boolean; newPool: boolean } {
+  const num = parseFloat(raw.replace("%", ""));
+  if (!Number.isFinite(num) || num <= 0) {
+    // Pool has active rewards but no stakers yet
+    if (pool && pool.rewardRatePerSecond !== "0" && pool.totalStaked === "0") {
+      return { label: "Rewards Active", lowTvl: false, newPool: true };
+    }
+    return { label: "0%", lowTvl: false, newPool: false };
+  }
+  if (num > 10000) return { label: ">10,000%", lowTvl: true, newPool: false };
+  if (num > 1000) return { label: `${(num / 1000).toFixed(1)}k%`, lowTvl: true, newPool: false };
+  return { label: `${num.toFixed(2)}%`, lowTvl: false, newPool: false };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -106,6 +173,7 @@ export function Staking({
   onOpenSwapPrefill,
 }: StakingProps) {
   const account = useActiveAccount();
+  const switchChain = useSwitchActiveWalletChain();
   const stakingApi = useStakingApi();
   const {
     tokens,
@@ -115,6 +183,294 @@ export function Staking({
     refresh,
     clearCacheAndRefresh,
   } = useStakingData();
+
+  // Base / Aerodrome staking
+  const {
+    positions: basePositions,
+    protocolInfo: baseProtocolInfo,
+    apr: baseApr,
+    loading: baseLoading,
+    error: baseError,
+    refresh: refreshBase,
+  } = useBaseStakingData();
+  const baseApi = useBaseStakingApi();
+
+  const [network, setNetwork] = useState<StakingNetwork>("base");
+
+  // Base inline staking state
+  type BaseAction = "stake" | "positions";
+  const [baseAction, setBaseAction] = useState<BaseAction>("stake");
+  const [baseSelectedPool, setBaseSelectedPool] = useState<string>("");
+  const [baseAmountA, setBaseAmountA] = useState("");
+  const [baseAmountB, setBaseAmountB] = useState("");
+  const [baseSlippage, setBaseSlippage] = useState("0.5");
+  const [baseTxLoading, setBaseTxLoading] = useState(false);
+  const [baseTxError, setBaseTxError] = useState<string | null>(null);
+  const [baseTxStage, setBaseTxStage] = useState<"idle" | "preparing" | "signing" | "pending" | "confirmed" | "failed">("idle");
+  const [baseTxStep, setBaseTxStep] = useState<{ current: number; total: number; label: string } | null>(null);
+  const [baseTxHashes, setBaseTxHashes] = useState<string[]>([]);
+
+  // Base wallet balances
+  const [baseWalletBalances, setBaseWalletBalances] = useState<Record<string, string>>({});
+  const [baseBalancesLoading, setBaseBalancesLoading] = useState(false);
+
+  const baseBalanceFetchRef = useRef(0);
+  const refreshBaseBalances = useCallback(async () => {
+    const addr = account?.address;
+    if (!addr) return;
+    const fetchId = ++baseBalanceFetchRef.current;
+    setBaseBalancesLoading(true);
+    try {
+      // Try backend first
+      const portfolio = await baseApi.getPortfolio();
+      if (fetchId !== baseBalanceFetchRef.current) return; // stale
+      const wb = portfolio?.walletBalances;
+      const hasRealBalance = wb && Object.values(wb).some(v => parseFloat(v) > 0);
+      if (hasRealBalance) {
+        setBaseWalletBalances(wb);
+        setBaseBalancesLoading(false);
+        return;
+      }
+      // Fallback: fetch on-chain via thirdweb
+      const { createThirdwebClient, defineChain, getContract: getTwContract } = await import("thirdweb");
+      const { balanceOf } = await import("thirdweb/extensions/erc20");
+      const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID });
+      const baseChain = defineChain(8453);
+
+      const tokenAddrs: Record<string, string> = {
+        WETH: "0x4200000000000000000000000000000000000006",
+        USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      };
+      const balances: Record<string, string> = {};
+      await Promise.all(
+        Object.entries(tokenAddrs).map(async ([symbol, tokenAddr]) => {
+          try {
+            const contract = getTwContract({ client, chain: baseChain, address: tokenAddr as `0x${string}` });
+            const bal = await balanceOf({ contract, address: addr as `0x${string}` });
+            const dec = BASE_TOKEN_DECIMALS[symbol] ?? 18;
+            balances[symbol] = formatAmountHuman(bal, dec, 8);
+          } catch { balances[symbol] = "0"; }
+        })
+      );
+      if (fetchId !== baseBalanceFetchRef.current) return; // stale
+      setBaseWalletBalances(balances);
+    } catch {
+      // Don't reset existing balances on error
+    } finally {
+      if (fetchId === baseBalanceFetchRef.current) setBaseBalancesLoading(false);
+    }
+  }, [account?.address, baseApi]);
+
+  useEffect(() => {
+    refreshBaseBalances();
+  }, [refreshBaseBalances]);
+
+  // Auto-select first pool & set default amounts
+  useEffect(() => {
+    if (!baseSelectedPool && baseProtocolInfo?.pools?.length) {
+      setBaseSelectedPool(baseProtocolInfo.pools[0].poolId);
+    }
+  }, [baseSelectedPool, baseProtocolInfo]);
+
+  const selectedBasePool = useMemo(
+    () => baseProtocolInfo?.pools?.find((p) => p.poolId === baseSelectedPool) ?? null,
+    [baseProtocolInfo, baseSelectedPool],
+  );
+
+  // Resolve token balances for the selected pool
+  const baseTokenBalances = useMemo(() => {
+    if (!selectedBasePool) return { balA: null, balB: null };
+    const tokens = parsePoolTokens(selectedBasePool.poolName);
+    const balA = baseWalletBalances[tokens.tokenA] ?? null;
+    const balB = baseWalletBalances[tokens.tokenB] ?? null;
+    return { balA, balB };
+  }, [selectedBasePool, baseWalletBalances]);
+
+  // Set sensible default amounts ONLY when pool selection changes (not on balance updates)
+  useEffect(() => {
+    if (!selectedBasePool) return;
+    setBaseAmountA("");
+    setBaseAmountB("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseSelectedPool]);
+
+  const basePositionForPool = useMemo(
+    () => basePositions.find((p) => p.poolId === baseSelectedPool) ?? null,
+    [basePositions, baseSelectedPool],
+  );
+
+  const resetBaseTx = useCallback(() => {
+    setBaseTxError(null);
+    setBaseTxStage("idle");
+    setBaseTxStep(null);
+    setBaseTxHashes([]);
+  }, []);
+
+  const executeBaseTxBundle = useCallback(async (bundle: BaseTransactionBundle) => {
+    if (!account) throw new Error("Wallet not connected");
+
+    const { sendAndConfirmTransaction, createThirdwebClient, defineChain, prepareTransaction, getContract: getTwContract } = await import("thirdweb");
+    const { balanceOf } = await import("thirdweb/extensions/erc20");
+    const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID });
+    const baseChain = defineChain(8453);
+
+    // Ensure wallet is on Base before executing
+    await switchChain(baseChain);
+
+    const hashes: string[] = [];
+
+    for (let i = 0; i < bundle.steps.length; i++) {
+      let step = bundle.steps[i];
+      setBaseTxStep({ current: i + 1, total: bundle.totalSteps, label: step.description || `Step ${i + 1}` });
+      setBaseTxStage("signing");
+
+      // For "enter" bundles: before the stake step (last), wait for RPC to catch up
+      // then query actual LP balance and re-encode to avoid TransferFromFailed errors.
+      if (bundle.action === "enter" && i === bundle.steps.length - 1 && i >= 1) {
+        // Wait for the previous tx (addLiquidity) to be indexed by the RPC
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const { ethers } = await import("ethers");
+          const executorIface = new ethers.Interface([
+            "function executeStake(bytes32 protocolId, address lpToken, uint256 amount, bytes calldata extraData) external",
+          ]);
+          const decoded = executorIface.decodeFunctionData("executeStake", step.data);
+          const lpAddress = decoded[1] as string;
+          const lpContract = getTwContract({ client, chain: baseChain, address: lpAddress as `0x${string}` });
+          const lpBalance = await balanceOf({ contract: lpContract, address: account.address as `0x${string}` });
+          console.log("[STAKE] LP balance before stake:", lpBalance.toString(), "pre-prepared amount:", decoded[2].toString());
+          if (lpBalance > 0n) {
+            const newData = executorIface.encodeFunctionData("executeStake", [
+              decoded[0], decoded[1], lpBalance, decoded[3],
+            ]);
+            step = { ...step, data: newData, description: `Stake ${lpBalance.toString()} LP tokens in gauge` };
+          } else {
+            console.warn("[STAKE] LP balance is 0 — skipping re-encode, using pre-prepared amount");
+          }
+        } catch (reencodeErr) {
+          console.error("[STAKE] Re-encode failed:", reencodeErr);
+        }
+      }
+
+      console.log(`[TX] Step ${i + 1}/${bundle.steps.length}: ${step.description} → to=${step.to}, value=${step.value}`);
+
+      const tx = prepareTransaction({
+        client,
+        chain: baseChain,
+        to: step.to as `0x${string}`,
+        data: step.data as `0x${string}`,
+        value: BigInt(step.value || "0"),
+        gas: step.gasLimit ? BigInt(step.gasLimit) : undefined,
+      });
+
+      try {
+        const receipt = await sendAndConfirmTransaction({ transaction: tx, account });
+        hashes.push(receipt.transactionHash);
+        setBaseTxHashes([...hashes]);
+        setBaseTxStage("pending");
+
+        if (receipt.status === "reverted") {
+          throw new Error(`Step ${i + 1} ("${step.description}") reverted on-chain`);
+        }
+      } catch (txErr: unknown) {
+        const msg = txErr instanceof Error ? txErr.message : String(txErr);
+        throw new Error(`Step ${i + 1}/${bundle.steps.length} ("${step.description}") failed: ${msg}`);
+      }
+    }
+
+    return hashes;
+  }, [account, switchChain]);
+
+  const handleBaseStake = useCallback(async () => {
+    if (baseTxLoading) return;
+    setBaseTxLoading(true);
+    resetBaseTx();
+
+    try {
+      if (!account) throw new Error("Connect your wallet first");
+      if (!baseSelectedPool) throw new Error("Select a pool");
+      if (!baseAmountA && !baseAmountB) throw new Error("Enter at least one token amount");
+
+      // Validate balances before sending
+      const poolInfo = selectedBasePool;
+      const tokens = poolInfo ? parsePoolTokens(poolInfo.poolName) : { tokenA: "WETH", tokenB: "USDC" };
+      const balA = parseFloat(baseWalletBalances[tokens.tokenA] ?? "0");
+      const balB = parseFloat(baseWalletBalances[tokens.tokenB] ?? "0");
+      // Use 0.1% tolerance to avoid false positives from floating point rounding
+      if (baseAmountA && parseFloat(baseAmountA) > balA * 1.001) throw new Error(`Insufficient ${tokens.tokenA} balance. You have ${balA.toFixed(6)} but need ${baseAmountA}`);
+      if (baseAmountB && parseFloat(baseAmountB) > balB * 1.001) throw new Error(`Insufficient ${tokens.tokenB} balance. You have ${balB.toFixed(6)} but need ${baseAmountB}`);
+
+      setBaseTxStage("preparing");
+      const decA = BASE_TOKEN_DECIMALS[tokens.tokenA] ?? 18;
+      const decB = BASE_TOKEN_DECIMALS[tokens.tokenB] ?? 18;
+      const weiA = baseAmountA ? parseAmountToWei(baseAmountA, decA).toString() : "0";
+      const weiB = baseAmountB ? parseAmountToWei(baseAmountB, decB).toString() : "0";
+      const bundle = await baseApi.prepareEnter({
+        poolId: baseSelectedPool,
+        amountA: weiA,
+        amountB: weiB,
+        slippageBps: Math.round(parseFloat(baseSlippage) * 100),
+      });
+
+      const hashes = await executeBaseTxBundle(bundle);
+      setBaseTxStage("confirmed");
+      setBaseTxHashes(hashes);
+
+      // Refresh data and balances
+      setTimeout(() => { void refreshBase(); refreshBaseBalances(); }, 2000);
+    } catch (err) {
+      setBaseTxError(cleanBaseError(err));
+      setBaseTxStage("failed");
+    } finally {
+      setBaseTxLoading(false);
+    }
+  }, [account, baseAmountA, baseAmountB, baseApi, baseSelectedPool, selectedBasePool, baseSlippage, baseWalletBalances, baseTxLoading, executeBaseTxBundle, refreshBase, refreshBaseBalances, resetBaseTx]);
+
+  const handleBaseUnstake = useCallback(async (poolId: string) => {
+    if (baseTxLoading) return;
+    setBaseTxLoading(true);
+    resetBaseTx();
+
+    try {
+      if (!account) throw new Error("Connect your wallet first");
+
+      setBaseTxStage("preparing");
+      const bundle = await baseApi.prepareExit(poolId);
+      const hashes = await executeBaseTxBundle(bundle);
+      setBaseTxStage("confirmed");
+      setBaseTxHashes(hashes);
+
+      setTimeout(() => void refreshBase(), 2000);
+    } catch (err) {
+      setBaseTxError(cleanBaseError(err));
+      setBaseTxStage("failed");
+    } finally {
+      setBaseTxLoading(false);
+    }
+  }, [account, baseApi, baseTxLoading, executeBaseTxBundle, refreshBase, refreshBaseBalances, resetBaseTx]);
+
+  const handleBaseClaim = useCallback(async (poolId: string) => {
+    if (baseTxLoading) return;
+    setBaseTxLoading(true);
+    resetBaseTx();
+
+    try {
+      if (!account) throw new Error("Connect your wallet first");
+
+      setBaseTxStage("preparing");
+      const bundle = await baseApi.prepareClaim(poolId);
+      const hashes = await executeBaseTxBundle(bundle);
+      setBaseTxStage("confirmed");
+      setBaseTxHashes(hashes);
+
+      setTimeout(() => void refreshBase(), 2000);
+    } catch (err) {
+      setBaseTxError(cleanBaseError(err));
+      setBaseTxStage("failed");
+    } finally {
+      setBaseTxLoading(false);
+    }
+  }, [account, baseApi, baseTxLoading, executeBaseTxBundle, refreshBase, refreshBaseBalances, resetBaseTx]);
 
   const normalizedInitialAmount = normalizeInitialAmount(initialAmount);
   const [viewState, setViewState] = useState<ViewState>("input");
@@ -1152,21 +1508,38 @@ export function Staking({
 
   const header =
     viewState === "input" ? (
-      <div className="p-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-blue-500/20 text-blue-400">
-            <Droplets className="w-5 h-5" />
+      <div className="p-6 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-500/20 text-blue-400">
+              <Droplets className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-display font-bold text-white">Liquid Staking</h2>
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-display font-bold text-white">Liquid Staking</h2>
-          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        <button
-          onClick={onClose}
-          className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        {/* Network selector */}
+        <div className="flex gap-1 p-1 bg-white/5 rounded-lg border border-white/10">
+          <button
+            onClick={() => setNetwork("base")}
+            className={`flex-1 text-xs font-medium py-1.5 px-3 rounded-md transition-colors ${network === "base" ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "text-zinc-500 hover:text-zinc-300"}`}
+          >
+            Base (Aerodrome)
+          </button>
+          <button
+            onClick={() => setNetwork("ethereum")}
+            className={`flex-1 text-xs font-medium py-1.5 px-3 rounded-md transition-colors ${network === "ethereum" ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "text-zinc-500 hover:text-zinc-300"}`}
+          >
+            Ethereum (Lido)
+          </button>
+        </div>
       </div>
     ) : viewState === "review" ? (
       <div className="p-6 flex items-center justify-between">
@@ -1191,14 +1564,338 @@ export function Staking({
       isMobile={isMobile}
       header={header}
       footer={
-        <div className="py-8 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
-          <img src="/miniapp/icons/lido_logo.png" alt="Lido" className="w-8 h-8 rounded-full" />
-          <span className="text-sm font-medium text-zinc-400">Powered by Lido</span>
-        </div>
+        network === "base" ? (
+          <div className="py-8 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
+            <img src={AERODROME_LOGO} alt="Aerodrome" className="w-6 h-6 rounded-full" />
+            <span className="text-sm font-medium text-zinc-400">Powered by Aerodrome Finance</span>
+          </div>
+        ) : (
+          <div className="py-8 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
+            <img src="/miniapp/icons/lido_logo.png" alt="Lido" className="w-8 h-8 rounded-full" />
+            <span className="text-sm font-medium text-zinc-400">Powered by Lido</span>
+          </div>
+        )
       }
       cardClassName="md:min-h-[540px]"
       bodyClassName="custom-scrollbar"
     >
+      {/* ========== BASE (AERODROME) VIEW ========== */}
+      {network === "base" && (() => {
+        const poolTokens = selectedBasePool ? parsePoolTokens(selectedBasePool.poolName) : { tokenA: "Token A", tokenB: "Token B" };
+        const apr = selectedBasePool ? formatBaseAPR(selectedBasePool.estimatedAPR, selectedBasePool) : null;
+        return (
+        <div className="flex flex-col h-full">
+          <div className="px-6 pb-8 space-y-4 relative z-10 flex-1 flex flex-col">
+
+            {/* Action mode tabs: Stake / Positions */}
+            <div className="grid grid-cols-2 gap-2">
+              {(["stake", "positions"] as BaseAction[]).map((action) => (
+                <button
+                  key={action}
+                  type="button"
+                  onClick={() => { setBaseAction(action); resetBaseTx(); }}
+                  className={`py-2 rounded-xl border transition-colors text-xs font-medium capitalize ${
+                    baseAction === action
+                      ? "bg-primary/15 border-primary/30 text-white"
+                      : "bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  {action === "positions" ? `Positions${basePositions.length > 0 ? ` (${basePositions.length})` : ""}` : "Stake"}
+                </button>
+              ))}
+            </div>
+
+            {/* ---- STAKE TAB ---- */}
+            {baseAction === "stake" && (
+              <>
+                {/* Pool header */}
+                {selectedBasePool && (
+                  <div className="flex items-center gap-3 p-3 rounded-xl border border-primary/30 bg-primary/10">
+                    <div className="flex items-center -space-x-1.5">
+                      {BASE_TOKEN_ICONS[poolTokens.tokenA] && <img src={BASE_TOKEN_ICONS[poolTokens.tokenA]} alt="" className="w-7 h-7 rounded-full border-2 border-black" />}
+                      {BASE_TOKEN_ICONS[poolTokens.tokenB] && <img src={BASE_TOKEN_ICONS[poolTokens.tokenB]} alt="" className="w-7 h-7 rounded-full border-2 border-black" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-white">{selectedBasePool.poolName}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${selectedBasePool.stable ? "bg-blue-500/15 text-blue-400" : "bg-yellow-500/15 text-yellow-400"}`}>
+                          {selectedBasePool.stable ? "Stable" : "Volatile"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-[11px] mt-0.5">
+                        {apr && <span className="text-zinc-500">APR <span className={`font-semibold ${apr.newPool ? "text-cyan-400" : "text-emerald-400"}`}>{apr.label}</span></span>}
+                        <button
+                          onClick={() => void refreshBase()}
+                          type="button"
+                          className="inline-flex items-center gap-1 text-primary/90 hover:text-primary transition-colors"
+                          disabled={baseLoading}
+                        >
+                          <RefreshCcw className={`w-3 h-3 ${baseLoading ? "animate-spin" : ""}`} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {baseLoading && !baseProtocolInfo && (
+                  <div className="flex items-center justify-center py-8 text-zinc-500 text-sm gap-2">
+                    <RefreshCcw className="w-4 h-4 animate-spin" />
+                    Loading pools...
+                  </div>
+                )}
+
+                {baseError && (
+                  <div className="px-2">
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-2">
+                      <Info className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                      <p className="text-red-200 text-xs">{baseError}</p>
+                    </div>
+                  </div>
+                )}
+
+                {!selectedBasePool && !baseLoading && baseProtocolInfo && baseProtocolInfo.pools.length === 0 && (
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-6 text-center text-zinc-500 text-sm">
+                    No pools available at the moment
+                  </div>
+                )}
+
+                {selectedBasePool && (
+                  <>
+                    <div className="rounded-xl border border-white/10 bg-blue-500/5 px-3 py-2 text-[11px] text-zinc-400 leading-relaxed">
+                      Provide liquidity to the {selectedBasePool.poolName} pool on Aerodrome. You receive LP tokens staked in the gauge, earning AERO rewards.
+                    </div>
+
+                    <DataInput
+                      label={`You provide (${poolTokens.tokenA})`}
+                      balance={baseBalancesLoading ? "Available: ..." : `Available: ${formatBalance(baseTokenBalances.balA)} ${poolTokens.tokenA}`}
+                      onMaxClick={baseTokenBalances.balA ? () => {
+                        // Use raw balance string, trim trailing zeros for display
+                        const raw = baseTokenBalances.balA!;
+                        const n = parseFloat(raw);
+                        if (!Number.isFinite(n) || n <= 0) return;
+                        // Reduce by 0.1% to avoid rounding-induced TransferFromFailed
+                        const safe = n * 0.999;
+                        const dec = BASE_TOKEN_DECIMALS[poolTokens.tokenA] ?? 18;
+                        const frac = Math.min(dec, 8);
+                        setBaseAmountA(safe >= 1 ? safe.toFixed(4) : safe.toFixed(frac).replace(/0+$/, "").replace(/\.$/, ""));
+                      } : undefined}
+                      value={baseAmountA}
+                      placeholder="0.00"
+                      onChange={(e) => { if (/^\d*\.?\d*$/.test(e.target.value)) setBaseAmountA(e.target.value); }}
+                      rightElement={
+                        <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-2 min-h-[40px]">
+                          {BASE_TOKEN_ICONS[poolTokens.tokenA] && <img src={BASE_TOKEN_ICONS[poolTokens.tokenA]} alt="" className="w-5 h-5 rounded-full" />}
+                          <span className="text-white font-medium text-sm">{poolTokens.tokenA}</span>
+                        </div>
+                      }
+                    />
+
+                    <div className="h-1" />
+
+                    <DataInput
+                      label={`You provide (${poolTokens.tokenB})`}
+                      balance={baseBalancesLoading ? "Available: ..." : `Available: ${formatBalance(baseTokenBalances.balB)} ${poolTokens.tokenB}`}
+                      onMaxClick={baseTokenBalances.balB ? () => {
+                        const raw = baseTokenBalances.balB!;
+                        const n = parseFloat(raw);
+                        if (!Number.isFinite(n) || n <= 0) return;
+                        const safe = n * 0.999;
+                        const dec = BASE_TOKEN_DECIMALS[poolTokens.tokenB] ?? 18;
+                        const frac = Math.min(dec, 8);
+                        setBaseAmountB(safe >= 1 ? safe.toFixed(4) : safe.toFixed(frac).replace(/0+$/, "").replace(/\.$/, ""));
+                      } : undefined}
+                      value={baseAmountB}
+                      placeholder="0.00"
+                      onChange={(e) => { if (/^\d*\.?\d*$/.test(e.target.value)) setBaseAmountB(e.target.value); }}
+                      rightElement={
+                        <div className="flex items-center gap-2 bg-black border border-white/10 rounded-full px-3 py-2 min-h-[40px]">
+                          {BASE_TOKEN_ICONS[poolTokens.tokenB] && <img src={BASE_TOKEN_ICONS[poolTokens.tokenB]} alt="" className="w-5 h-5 rounded-full" />}
+                          <span className="text-white font-medium text-sm">{poolTokens.tokenB}</span>
+                        </div>
+                      }
+                    />
+
+                    <div className="flex items-center justify-between px-2 text-xs">
+                      <span className="inline-flex items-center gap-1 text-zinc-400">
+                        Estimated APR {apr ? <span className={`font-semibold ${apr.newPool ? "text-cyan-400" : "text-emerald-400"}`}>{apr.label}</span> : "—"}
+                        <Info className="w-3.5 h-3.5" />
+                      </span>
+                      <span className="text-zinc-500">Slippage: {baseSlippage}%</span>
+                    </div>
+
+                    {/* Stake CTA */}
+                    <div className="mt-auto pt-2">
+                      <NeonButton
+                        onClick={handleBaseStake}
+                        disabled={baseTxLoading || (!baseAmountA && !baseAmountB)}
+                      >
+                        {baseTxLoading ? "Processing..." : "Stake Liquidity"}
+                      </NeonButton>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {/* ---- POSITIONS TAB ---- */}
+            {baseAction === "positions" && (
+              <>
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-xs text-zinc-500 font-medium">Your Positions</span>
+                  <button
+                    onClick={() => void refreshBase()}
+                    type="button"
+                    className="inline-flex items-center gap-1 text-primary/90 hover:text-primary transition-colors text-xs"
+                    disabled={baseLoading}
+                  >
+                    <RefreshCcw className={`w-3.5 h-3.5 ${baseLoading ? "animate-spin" : ""}`} />
+                    Refresh
+                  </button>
+                </div>
+
+                {baseLoading && basePositions.length === 0 && (
+                  <div className="flex items-center justify-center py-8 text-zinc-500 text-sm gap-2">
+                    <RefreshCcw className="w-4 h-4 animate-spin" />
+                    Loading positions...
+                  </div>
+                )}
+
+                {!baseLoading && basePositions.length === 0 && (
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-8 text-center space-y-2">
+                    <p className="text-zinc-500 text-sm">No active positions</p>
+                    <p className="text-zinc-600 text-xs">Stake liquidity in a pool to see your positions here.</p>
+                  </div>
+                )}
+
+                {basePositions.map((pos) => {
+                  const posTokens = parsePoolTokens(pos.poolName);
+                  const poolInfo = baseProtocolInfo?.pools?.find((p) => p.poolId === pos.poolId);
+                  const posApr = poolInfo ? formatBaseAPR(poolInfo.estimatedAPR, poolInfo) : null;
+                  const hasRewards = parseFloat(pos.earnedRewards) > 0;
+
+                  return (
+                    <div
+                      key={pos.poolId}
+                      className="rounded-xl border border-white/10 bg-black/40 overflow-hidden"
+                    >
+                      {/* Position header */}
+                      <div className="flex items-center gap-3 p-3 border-b border-white/5">
+                        <div className="flex items-center -space-x-1.5">
+                          {BASE_TOKEN_ICONS[posTokens.tokenA] && <img src={BASE_TOKEN_ICONS[posTokens.tokenA]} alt="" className="w-6 h-6 rounded-full border-2 border-black" />}
+                          {BASE_TOKEN_ICONS[posTokens.tokenB] && <img src={BASE_TOKEN_ICONS[posTokens.tokenB]} alt="" className="w-6 h-6 rounded-full border-2 border-black" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-white truncate">{pos.poolName}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${pos.stable ? "bg-blue-500/15 text-blue-400" : "bg-yellow-500/15 text-yellow-400"}`}>
+                              {pos.stable ? "Stable" : "Volatile"}
+                            </span>
+                          </div>
+                          {posApr && (
+                            <div className="text-[11px] text-zinc-500 mt-0.5">
+                              APR <span className="text-emerald-400 font-semibold">{posApr.label}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Position stats */}
+                      <div className="grid grid-cols-2 gap-px bg-white/5">
+                        <div className="p-3 bg-black/60">
+                          <div className="text-[10px] uppercase tracking-widest text-zinc-500">Staked LP</div>
+                          <div className="mt-1 text-white font-mono text-sm">{formatWei(pos.stakedBalance)}</div>
+                        </div>
+                        <div className="p-3 bg-black/60">
+                          <div className="text-[10px] uppercase tracking-widest text-zinc-500">Rewards</div>
+                          <div className="mt-1 text-yellow-400 font-mono text-sm">{formatWei(pos.earnedRewards)} {pos.rewardToken.symbol}</div>
+                        </div>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex gap-2 p-3 border-t border-white/5">
+                        <button
+                          type="button"
+                          onClick={() => void handleBaseUnstake(pos.poolId)}
+                          disabled={baseTxLoading}
+                          className="flex-1 py-2 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium transition-colors disabled:opacity-50"
+                        >
+                          {baseTxLoading ? "..." : "Unstake"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleBaseClaim(pos.poolId)}
+                          disabled={baseTxLoading || !hasRewards}
+                          className="flex-1 py-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 text-xs font-medium transition-colors disabled:opacity-50"
+                        >
+                          {baseTxLoading ? "..." : "Claim Rewards"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Transaction status (shared) */}
+            {baseTxStage !== "idle" && (
+              <div className="px-2">
+                <div className={`p-3 rounded-xl border text-xs space-y-2 ${
+                  baseTxStage === "confirmed" ? "bg-emerald-500/10 border-emerald-500/20" :
+                  baseTxStage === "failed" ? "bg-red-500/10 border-red-500/20" :
+                  "bg-blue-500/10 border-blue-500/20"
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {(baseTxStage === "preparing" || baseTxStage === "signing" || baseTxStage === "pending") && (
+                      <RefreshCcw className="w-3 h-3 text-cyan-400 animate-spin" />
+                    )}
+                    <span className={
+                      baseTxStage === "confirmed" ? "text-emerald-400" :
+                      baseTxStage === "failed" ? "text-red-400" :
+                      "text-cyan-400"
+                    }>
+                      {baseTxStage === "preparing" && "Preparing transaction..."}
+                      {baseTxStage === "signing" && (baseTxStep ? `Sign ${baseTxStep.label} (${baseTxStep.current}/${baseTxStep.total})` : "Awaiting wallet signature...")}
+                      {baseTxStage === "pending" && (baseTxStep ? `Confirming ${baseTxStep.label} (${baseTxStep.current}/${baseTxStep.total})` : "Confirming...")}
+                      {baseTxStage === "confirmed" && "Transaction confirmed!"}
+                      {baseTxStage === "failed" && "Transaction failed"}
+                    </span>
+                  </div>
+                  {baseTxError && <div className="text-red-400">{baseTxError}</div>}
+                  {baseTxHashes.length > 0 && (
+                    <div className="space-y-1">
+                      {baseTxHashes.map((hash, i) => (
+                        <a
+                          key={hash}
+                          href={`https://basescan.org/tx/${hash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block text-cyan-400 hover:text-cyan-300 font-mono truncate text-[11px]"
+                        >
+                          Tx {i + 1}: {hash.slice(0, 10)}...{hash.slice(-8)}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {(baseTxStage === "confirmed" || baseTxStage === "failed") && (
+                    <button
+                      onClick={resetBaseTx}
+                      type="button"
+                      className="mt-1 text-xs text-zinc-400 hover:text-white transition-colors"
+                    >
+                      Dismiss
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+        );
+      })()}
+
+      {/* ========== ETHEREUM (LIDO) VIEW ========== */}
+      {network === "ethereum" && (
       <AnimatePresence mode="wait">
         {viewState === "input" && (
           <StakingInputView
@@ -1302,6 +1999,7 @@ export function Staking({
           />
         )}
       </AnimatePresence>
+      )}
 
       {infoPopup && (
         <div className="absolute inset-0 z-40 bg-black/55 backdrop-blur-[1px] flex items-center justify-center p-4">

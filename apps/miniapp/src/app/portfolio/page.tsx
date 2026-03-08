@@ -31,6 +31,7 @@ import { useSmartWalletPortfolio } from "@/features/portfolio/useSmartWalletPort
 import { useStakingApi, type WithdrawalRequest } from "@/features/staking/api";
 import { useStakingData } from "@/features/staking/useStakingData";
 import { useLendingData } from "@/features/lending/useLendingData";
+import { useBaseStakingData } from "@/features/staking/useBaseStakingData";
 import { SmartWalletCard, SmartWalletIndicator } from "@/features/portfolio/SmartWalletCard";
 import { CreateSmartWalletModal } from "@/features/portfolio/CreateSmartWalletModal";
 import { DeleteWalletModal } from "@/features/portfolio/DeleteWalletModal";
@@ -155,6 +156,16 @@ export default function PortfolioPage() {
     lastFetchTime: lendingLastFetchTime,
   } = useLendingData();
 
+  // Base / Aerodrome Staking
+  const {
+    positions: basePositions,
+    apr: baseApr,
+    loading: baseStakingLoading,
+    error: baseStakingError,
+    refresh: refreshBaseStaking,
+    lastFetchTime: baseStakingLastFetchTime,
+  } = useBaseStakingData();
+
   const [stakingWithdrawals, setStakingWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [stakingWithdrawalsLoading, setStakingWithdrawalsLoading] = useState(false);
   const [stakingWithdrawalsError, setStakingWithdrawalsError] = useState<string | null>(null);
@@ -190,7 +201,8 @@ export default function PortfolioPage() {
     if (viewMode !== 'main') return;
     refreshStakingWithdrawals();
     void refreshLendingPosition();
-  }, [refreshLendingPosition, refreshStakingWithdrawals, viewMode]);
+    void refreshBaseStaking();
+  }, [refreshLendingPosition, refreshStakingWithdrawals, refreshBaseStaking, viewMode]);
 
   // Determine which data to show based on view mode
   const isSmartWalletView = viewMode === 'smart' && hasSmartWallet;
@@ -563,11 +575,12 @@ export default function PortfolioPage() {
                   void refreshStaking();
                   void refreshStakingWithdrawals(true);
                   void refreshLendingPosition();
+                  void refreshBaseStaking();
                 }}
                 className="inline-flex items-center gap-2 text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors disabled:opacity-60"
-                disabled={stakingLoading || stakingWithdrawalsLoading || lendingLoading}
+                disabled={stakingLoading || stakingWithdrawalsLoading || lendingLoading || baseStakingLoading}
               >
-                {(stakingLoading || stakingWithdrawalsLoading || lendingLoading) ? (
+                {(stakingLoading || stakingWithdrawalsLoading || lendingLoading || baseStakingLoading) ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
                   <Scan className="w-3.5 h-3.5" />
@@ -711,6 +724,71 @@ export default function PortfolioPage() {
                     className="inline-flex text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
                   >
                     Manage Position
+                  </Link>
+                </div>
+              </GlassCard>
+
+              {/* Aerodrome Staking on Base */}
+              <GlassCard className="p-5 bg-[#0A0A0A]/60">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-white font-medium truncate">Aerodrome Staking</div>
+                      <div className="text-xs text-zinc-500">Base</div>
+                    </div>
+                  </div>
+                  <div className="text-[11px] px-2 py-1 rounded-lg border border-white/10 bg-white/5 text-zinc-300">
+                    {basePositions.length > 0 ? 'Active' : '--'}
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {basePositions.length > 0 ? (
+                    <>
+                      {basePositions.map((pos) => (
+                        <div key={pos.poolId} className="space-y-2">
+                          <div className="text-xs text-blue-400 font-medium">{pos.poolName}</div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs text-zinc-500">Staked LP</span>
+                            <span className="text-sm font-mono text-white">{formatWei(pos.stakedBalance)}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs text-zinc-500">Rewards</span>
+                            <span className="text-sm font-mono text-white">{formatWei(pos.earnedRewards)} {pos.rewardToken.symbol}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs text-zinc-500">Positions</span>
+                      <span className="text-sm font-mono text-zinc-400">0</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-500">APR</span>
+                    <span
+                      className={cn(
+                        "text-sm font-medium",
+                        Number.isFinite(baseApr) && baseApr! > 0 ? "text-emerald-400" : "text-zinc-400",
+                      )}
+                    >
+                      {Number.isFinite(baseApr) && baseApr! > 0 ? `${baseApr!.toFixed(2)}%` : '--'}
+                    </span>
+                  </div>
+                </div>
+
+                {baseStakingError && <div className="mt-3 text-xs text-red-400">{baseStakingError}</div>}
+
+                <div className="mt-4">
+                  <Link
+                    href="/staking"
+                    className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors"
+                  >
+                    Manage Position <Droplets className="w-3 h-3" />
                   </Link>
                 </div>
               </GlassCard>
