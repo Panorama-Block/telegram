@@ -7,6 +7,14 @@ export default defineConfig({
     css: false,
     setupFiles: ['./test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**/*.{test,spec}.{ts,tsx}'],
+    server: {
+      deps: {
+        fallbackCJS: true,
+      },
+    },
+    deps: {
+      moduleDirectories: ['node_modules', '../../node_modules'],
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'json-summary'],

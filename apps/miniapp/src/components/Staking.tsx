@@ -200,7 +200,8 @@ export function Staking({
   } = useBaseStakingData();
   const baseApi = useBaseStakingApi();
 
-  const [network, setNetwork] = useState<StakingNetwork>("base");
+  const AERODROME_COMING_SOON = true; // Remove this flag when the on-chain service is deployed
+  const [network, setNetwork] = useState<StakingNetwork>(AERODROME_COMING_SOON ? "ethereum" : "base");
 
   // Base inline staking state
   type BaseAction = "stake" | "positions";
@@ -1601,7 +1602,6 @@ export function Staking({
     >
       {/* ========== BASE (AERODROME) VIEW ========== */}
       {network === "base" && (() => {
-        const AERODROME_COMING_SOON = true; // Remove this flag when the on-chain service is deployed
         const poolTokens = selectedBasePool ? parsePoolTokens(selectedBasePool.poolName) : { tokenA: "Token A", tokenB: "Token B" };
         const apr = selectedBasePool ? formatBaseAPR(selectedBasePool.estimatedAPR, selectedBasePool) : null;
         return (
