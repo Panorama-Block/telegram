@@ -1,17 +1,17 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import SwapIcon from '../../../public/icons/Swap.svg';
 import UniswapIcon from '../../../public/icons/uniswap.svg';
 import AvalancheIcon from '../../../public/icons/Avalanche_Blockchain_Logo.svg';
-import { networks, Token } from '@/features/swap/tokens';
+import { networks, Token, TON_CHAIN_ID } from '@/features/swap/tokens';
 import { swapApi, SwapApiError } from '@/features/swap/api';
 import { normalizeToApi, getTokenDecimals, parseAmountToWei, formatAmountHuman, isNative, explorerTxUrl, toFixedFloor } from '@/features/swap/utils';
 import { SwapSuccessCard } from '@/components/ui/SwapSuccessCard';
 import { useActiveAccount, PayEmbed, useSwitchActiveWalletChain } from 'thirdweb/react';
-import { createThirdwebClient, defineChain, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
+import { createThirdwebClient, defineChain, getContract, prepareTransaction, sendTransaction, type Address, type Hex } from 'thirdweb';
 import { THIRDWEB_CLIENT_ID } from '../../shared/config/thirdweb';
 import { safeExecuteTransactionV2 } from '../../shared/utils/transactionUtilsV2';
 import type { PreparedTx } from '@/features/swap/types';
@@ -28,28 +28,124 @@ interface TokenSelectorProps {
   currentChainId: number;
 }
 
+type TokenWithMeta = Token & { chainId: number; networkName: string; balance: string };
+
 function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: TokenSelectorProps) {
   const [search, setSearch] = useState('');
   const [selectedChain, setSelectedChain] = useState<number | null>(currentChainId);
+  const [balances, setBalances] = useState<Record<string, string>>({});
+  const [loadingBalances, setLoadingBalances] = useState(false);
+  const fetchIdRef = useRef(0);
+  const account = useActiveAccount();
+
+  // Reset selectedChain when currentChainId changes
+  useEffect(() => {
+    if (isOpen) setSelectedChain(currentChainId);
+  }, [currentChainId, isOpen]);
+
+  // Fetch balances when modal opens
+  useEffect(() => {
+    if (!isOpen || !account?.address) return;
+
+    const fetchId = ++fetchIdRef.current;
+    let cancelled = false;
+    setLoadingBalances(true);
+
+    async function fetchAllBalances() {
+      const result: Record<string, string> = {};
+
+      try {
+        const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID });
+        const { getBalance } = await import('thirdweb/extensions/erc20');
+        const { eth_getBalance, getRpcClient } = await import('thirdweb/rpc');
+
+        const evmNetworks = networks.filter(n => n.chainId !== TON_CHAIN_ID);
+
+        await Promise.allSettled(evmNetworks.map(async (network) => {
+          const chain = defineChain(network.chainId);
+
+          await Promise.allSettled(network.tokens.map(async (token) => {
+            const key = `${network.chainId}:${token.address}`;
+            try {
+              const isNativeToken = isNative(token.address);
+              let balance: bigint;
+              let decimals = token.decimals || 18;
+
+              if (isNativeToken) {
+                const rpcRequest = getRpcClient({ client, chain });
+                balance = await eth_getBalance(rpcRequest, { address: account!.address });
+              } else {
+                const tokenContract = getContract({
+                  client,
+                  chain,
+                  address: token.address,
+                });
+                const balResult = await getBalance({ contract: tokenContract, address: account!.address });
+                balance = balResult.value;
+                decimals = balResult.decimals;
+              }
+
+              if (!cancelled) {
+                result[key] = formatAmountHuman(balance, decimals, 6);
+              }
+            } catch {
+              // balance stays absent → will show "0.00"
+            }
+          }));
+        }));
+      } catch (err) {
+        console.error('[TokenSelector] Error fetching balances:', err);
+      }
+
+      if (!cancelled && fetchId === fetchIdRef.current) {
+        setBalances(result);
+        setLoadingBalances(false);
+      }
+    }
+
+    fetchAllBalances();
+    return () => { cancelled = true; };
+  }, [isOpen, account?.address]);
+
+  // Build flat token list with balances
+  const allTokensWithBalance: TokenWithMeta[] = useMemo(() => {
+    const evmNetworks = networks.filter(n => n.chainId !== TON_CHAIN_ID);
+    const list: TokenWithMeta[] = [];
+
+    for (const net of evmNetworks) {
+      for (const token of net.tokens) {
+        const key = `${net.chainId}:${token.address}`;
+        list.push({
+          ...token,
+          chainId: net.chainId,
+          networkName: net.name,
+          balance: balances[key] || '0.00',
+        });
+      }
+    }
+
+    // Sort: tokens with balance first, then alphabetical
+    return list.sort((a, b) => {
+      const balA = parseFloat(a.balance) || 0;
+      const balB = parseFloat(b.balance) || 0;
+      if (balB !== balA) return balB - balA;
+      const priority = ['ETH', 'USDC', 'USDT', 'WBTC'];
+      return priority.indexOf(a.symbol) - priority.indexOf(b.symbol);
+    });
+  }, [balances]);
+
+  const filteredTokens = useMemo(() => {
+    return allTokensWithBalance.filter(token => {
+      const matchesChain = selectedChain === null || token.chainId === selectedChain;
+      const matchesSearch = !search ||
+        token.symbol.toLowerCase().includes(search.toLowerCase()) ||
+        (token.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        token.address.toLowerCase().includes(search.toLowerCase());
+      return matchesChain && matchesSearch;
+    });
+  }, [allTokensWithBalance, selectedChain, search]);
 
   if (!isOpen) return null;
-
-  // Get all tokens from selected chain or all chains
-  const allTokens = selectedChain
-    ? networks.find(n => n.chainId === selectedChain)?.tokens || []
-    : networks.flatMap(n => n.tokens);
-
-  // Filter tokens by search
-  const filteredTokens = allTokens.filter(token =>
-    token.symbol.toLowerCase().includes(search.toLowerCase()) ||
-    token.address.toLowerCase().includes(search.toLowerCase())
-  );
-
-  // Sort by 24h volume (simulated - just show ETH, USDC, USDT first)
-  const sortedTokens = [...filteredTokens].sort((a, b) => {
-    const priority = ['ETH', 'USDC', 'USDT', 'WBTC'];
-    return priority.indexOf(a.symbol) - priority.indexOf(b.symbol);
-  });
 
   return (
     <>
@@ -108,7 +204,7 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
               >
                 All Chains
               </button>
-              {networks.map((network) => (
+              {networks.filter(n => n.chainId !== TON_CHAIN_ID).map((network) => (
                 <button
                   key={network.chainId}
                   onClick={() => setSelectedChain(network.chainId)}
@@ -127,52 +223,62 @@ function TokenSelector({ isOpen, onClose, onSelect, title, currentChainId }: Tok
           {/* Token List */}
           <div className="flex-1 overflow-y-auto custom-scrollbar-modal">
             <div className="p-3">
-              {!search && (
-                <div className="px-3 py-2.5 flex items-center gap-2 text-xs text-gray-500 mb-2">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                  </svg>
-                  Tokens by 24H volume
+              {filteredTokens.map((token, idx) => {
+                const bal = parseFloat(token.balance) || 0;
+                const balKey = `${token.chainId}:${token.address}`;
+                return (
+                  <button
+                    key={`${token.chainId}-${token.symbol}-${token.address}-${idx}`}
+                    onClick={() => {
+                      const { chainId: _cid, networkName: _nn, balance: _b, ...rawToken } = token;
+                      onSelect(rawToken, token.chainId);
+                      onClose();
+                    }}
+                    className="w-full flex items-center gap-3.5 px-3.5 py-3.5 rounded-xl hover:bg-[#252525] transition-all text-left min-w-0 border border-transparent hover:border-white/10 group"
+                  >
+                    <Image
+                      src={token.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
+                      alt={token.symbol}
+                      width={36}
+                      height={36}
+                      className="w-9 h-9 rounded-full flex-shrink-0 group-hover:scale-105 transition-transform"
+                      unoptimized
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-white truncate">{token.symbol}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-zinc-500 border border-white/5">
+                          {token.networkName}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {token.name || token.symbol}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      {loadingBalances && !balances[balKey] ? (
+                        <div className="w-4 h-4 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <div className="text-sm font-mono text-zinc-300">{token.balance}</div>
+                          {bal > 0 && (
+                            <div className="text-[10px] text-zinc-600">Balance</div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+              {filteredTokens.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
+                  <p>No tokens found</p>
                 </div>
               )}
-              {sortedTokens.map((token, idx) => (
-                <button
-                  key={`${token.symbol}-${token.address}-${idx}`}
-                  onClick={() => {
-                    onSelect(token, selectedChain || currentChainId);
-                    onClose();
-                  }}
-                  className="w-full flex items-center gap-3.5 px-3.5 py-3.5 rounded-xl hover:bg-[#252525] transition-all text-left min-w-0 border border-transparent hover:border-white/10 group"
-                >
-                  <Image
-                    src={token.icon || 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png'}
-                    alt={token.symbol}
-                    width={36}
-                    height={36}
-                    className="w-9 h-9 rounded-full flex-shrink-0 group-hover:scale-105 transition-transform"
-                    unoptimized
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.src = 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png';
-                    }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-white truncate">{token.symbol}</div>
-                    <div className="text-xs text-gray-500 truncate font-mono">
-                      {token.address.slice(0, 6)}...{token.address.slice(-4)}
-                    </div>
-                  </div>
-                  <svg
-                    className="w-5 h-5 text-gray-600 group-hover:text-gray-400 transition-colors flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              ))}
             </div>
           </div>
         </div>
@@ -398,13 +504,17 @@ export default function SwapPage() {
     };
   }, [client, effectiveAddress, sellToken, fromChainId]);
 
-  // Set max balance handler — use full-precision balance to avoid rounding up
+  // Set max balance handler — apply 1% buffer and truncate down to avoid insufficient balance
   const handleSetMax = () => {
     if (!sellTokenBalance || loadingBalance) return;
     const exactBalance = (sellTokenBalanceRaw || sellTokenBalance).replace(/,/g, '');
-    if (exactBalance && parseFloat(exactBalance) > 0) {
-      setSellAmount(exactBalance);
-    }
+    const val = parseFloat(exactBalance);
+    if (!val || val <= 0) return;
+    // Apply 99% factor and floor to 6 decimals
+    const buffered = val * 0.99;
+    const factor = 1e6;
+    const floored = Math.floor(buffered * factor) / factor;
+    setSellAmount(floored > 0 ? floored.toFixed(6).replace(/0+$/, '').replace(/\.$/, '') : '0');
   };
 
   // Auto-quote effect

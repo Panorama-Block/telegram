@@ -616,7 +616,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                     </div>
                     <div className="font-mono text-sm text-white">{shortAddress || '0x...'}</div>
                   </div>
-                  <div className="grid grid-cols-1 gap-2">
+                  <div className="grid grid-cols-1 gap-1">
                     <button
                       onClick={() => {
                         setIsProfileOpen(false);
@@ -625,6 +625,15 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                       className="w-full flex items-center gap-3 px-3 py-2.5 min-h-[44px] text-sm text-white/80 hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-colors text-left"
                     >
                       Portfolio
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsProfileOpen(false);
+                        router.push('/portfolio/profile');
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 min-h-[44px] text-sm text-white/80 hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-colors text-left"
+                    >
+                      Profile
                     </button>
                   </div>
                   <div className="h-px bg-white/5" />

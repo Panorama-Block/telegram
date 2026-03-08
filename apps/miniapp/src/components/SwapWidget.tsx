@@ -476,13 +476,17 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     return amountNum > balance;
   }, [sellTokenBalance, amount]);
 
-  // Set max balance handler — use full-precision balance to avoid rounding up
+  // Set max balance handler — apply 1% buffer and truncate down to avoid insufficient balance
   const handleSetMax = () => {
     if (!sellTokenBalance || loadingBalance) return;
     const exactBalance = (sellTokenBalanceRaw || sellTokenBalance).replace(/,/g, '');
-    if (exactBalance && parseFloat(exactBalance) > 0) {
-      setAmount(exactBalance);
-    }
+    const val = parseFloat(exactBalance);
+    if (!val || val <= 0) return;
+    // Apply 99% factor and floor to 6 decimals
+    const buffered = val * 0.99;
+    const factor = 1e6;
+    const floored = Math.floor(buffered * factor) / factor;
+    setAmount(floored > 0 ? floored.toFixed(6).replace(/0+$/, '').replace(/\.$/, '') : '0');
   };
 
   // Quote Logic
