@@ -6,7 +6,7 @@ import { TelegramIdentityClient } from '../clients/telegramIdentityClient.js';
 import { incrementApiCall, incrementIdentityResolve, incrementMetric } from '../routes/metrics.js';
 import { chunkTelegramText, formatForTelegram } from '../utils/telegramText.js';
 
-type ReadyActionEvent = 'swap_intent_ready' | 'lending_intent_ready' | 'staking_intent_ready';
+type ReadyActionEvent = 'swap_intent_ready' | 'lending_intent_ready' | 'staking_intent_ready' | 'liquidity_intent_ready';
 
 export function buildTelegramConversationId(chatId: number | string): string {
   return `tgchat:${String(chatId)}`;
@@ -34,12 +34,14 @@ export function detectReadyActionEvent(metadata?: Record<string, unknown> | null
   if (event === 'swap_intent_ready') return event;
   if (event === 'lending_intent_ready') return event;
   if (event === 'staking_intent_ready') return event;
+  if (event === 'liquidity_intent_ready') return event;
   return null;
 }
 
 function actionButtonLabel(event: ReadyActionEvent): string {
   if (event === 'swap_intent_ready') return 'Review Swap';
   if (event === 'lending_intent_ready') return 'Review Lending';
+  if (event === 'liquidity_intent_ready') return 'Review Liquidity';
   return 'Review Staking';
 }
 

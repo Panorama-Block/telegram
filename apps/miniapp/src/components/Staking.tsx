@@ -1190,12 +1190,7 @@ export function Staking({
       variant={variant}
       isMobile={isMobile}
       header={header}
-      footer={
-        <div className="py-8 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
-          <img src="/miniapp/icons/lido_logo.png" alt="Lido" className="w-8 h-8 rounded-full" />
-          <span className="text-sm font-medium text-zinc-400">Powered by Lido</span>
-        </div>
-      }
+      footer={undefined}
       cardClassName="md:min-h-[540px]"
       bodyClassName="custom-scrollbar"
     >

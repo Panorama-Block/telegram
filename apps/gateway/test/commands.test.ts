@@ -41,6 +41,7 @@ describe('command handlers', () => {
 
   it('detects ready action events from metadata', () => {
     expect(detectReadyActionEvent({ event: 'swap_intent_ready' })).toBe('swap_intent_ready');
+    expect(detectReadyActionEvent({ event: 'liquidity_intent_ready' })).toBe('liquidity_intent_ready');
     expect(detectReadyActionEvent({ event: 'lending_intent_pending' })).toBeNull();
     expect(detectReadyActionEvent(null)).toBeNull();
   });

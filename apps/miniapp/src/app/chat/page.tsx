@@ -35,6 +35,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { SeniorAppShell } from '@/components/layout';
 import { SwapWidget } from '@/components/SwapWidget';
 import { Staking } from '@/components/Staking';
+import { Yield } from '@/components/Yield';
 import { OnboardingModal } from '@/components/OnboardingModal';
 import { Droplets } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
@@ -55,8 +56,12 @@ import {
   parseLendingQueryMetadata,
   parseStakingMode,
   parseStakingQueryMetadata,
+  parseYieldAction,
+  parseYieldPoolId,
+  parseYieldQueryMetadata,
   resolveOpenWidgetTarget,
 } from './openWidgetQuery';
+import { formatYieldActionLabel, normalizeYieldIntentMetadata } from '@/features/yield/normalizers';
 
 
 interface FilePreview {
@@ -446,6 +451,10 @@ export default function ChatPage() {
   const [stakingBalance, setStakingBalance] = useState<string | null>(null);
   const [stakingInsufficientBalance, setStakingInsufficientBalance] = useState(false);
 
+  // Yield states
+  const [showYieldWidget, setShowYieldWidget] = useState(false);
+  const [currentYieldMetadata, setCurrentYieldMetadata] = useState<Record<string, unknown> | null>(null);
+
   const openSwapFromStakingPrefill = useCallback(
     async (params: { fromToken: string; toToken: string; amount?: string }) => {
       const ethNetwork = networks.find((network) => network.chainId === 1);
@@ -553,9 +562,9 @@ export default function ChatPage() {
 
   const trendingPrompts = [
     { icon: <ArrowLeftRight className="w-4 h-4" />, text: 'Swap 0.1 ETH to USDC on Base' },
-    { icon: <ArrowLeftRight className="w-4 h-4" />, text: 'Swap 50 USDC to SOL on Solana' },
-    { icon: <TrendingUp className="w-4 h-4" />, text: 'What are the top trending tokens today?' },
-    { icon: <PieChart className="w-4 h-4" />, text: 'Give me a market analysis of Bitcoin' },
+    { icon: <TrendingUp className="w-4 h-4" />, text: 'Run a 2-leg yield strategy on Base network' },
+    { icon: <Landmark className="w-4 h-4" />, text: 'Borrow 5 AVAX tokens on Benqi' },
+    { icon: <PieChart className="w-4 h-4" />, text: 'Buy ETH every Sunday morning for me' },
   ];
 
   const debug = useCallback(
@@ -1460,6 +1469,9 @@ export default function ChatPage() {
       } else if (openWidgetPlan.target === 'staking') {
         setCurrentStakingMetadata(openWidgetPlan.metadata ?? parseStakingQueryMetadata(searchParams));
         setShowStakingWidget(true);
+      } else if (openWidgetPlan.target === 'yield') {
+        setCurrentYieldMetadata(openWidgetPlan.metadata ?? parseYieldQueryMetadata(searchParams));
+        setShowYieldWidget(true);
       }
 
       if (!cancelled) {
@@ -2691,6 +2703,59 @@ export default function ChatPage() {
                                     );
                                   })()}
 
+                                  {message.metadata?.event === 'liquidity_intent_ready' && (() => {
+                                    const normalizedMetadata = normalizeYieldIntentMetadata(
+                                      (message.metadata as Record<string, unknown> | null | undefined) ?? null,
+                                    ) ?? {};
+                                    const yieldAction = parseYieldAction(normalizedMetadata.action) ?? 'enter';
+                                    const poolId = parseYieldPoolId(normalizedMetadata.pool_id) ?? String(normalizedMetadata.pool_id || '');
+                                    const yieldAmount = normalizedMetadata.amount != null ? String(normalizedMetadata.amount) : null;
+                                    const actionLabel = formatYieldActionLabel(yieldAction);
+                                    const poolLabel = poolId
+                                      ? poolId.replace(/-(stable|volatile)$/i, '').replace(/-/g, ' / ').toUpperCase()
+                                      : '--';
+
+                                    return (
+                                      <div className="mt-3 sm:mt-4 w-full max-w-[588px] sm:max-w-2xl">
+                                        <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
+                                          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
+                                          <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
+                                            <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
+                                            <span className="text-xs sm:text-sm font-semibold text-white">Yield</span>
+                                            <span className="ml-auto px-1.5 sm:px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-[9px] sm:text-[10px] font-medium rounded-full border border-cyan-500/30">
+                                              {actionLabel}
+                                            </span>
+                                          </div>
+                                          <div className="relative z-10 p-3 sm:p-4 space-y-2.5 sm:space-y-3">
+                                            <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                              <div className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Pool</div>
+                                              <div className="text-sm text-white font-medium">{poolLabel}</div>
+                                            </div>
+                                            {yieldAmount && (
+                                              <div className="bg-black/40 border border-white/5 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                                <div className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Amount</div>
+                                                <div className="text-lg sm:text-xl font-medium text-white">{String(yieldAmount)}</div>
+                                              </div>
+                                            )}
+                                            <button
+                                              onClick={async () => {
+                                                await autoSwitchNetwork('base');
+                                                setCurrentYieldMetadata(normalizedMetadata);
+                                                setShowYieldWidget(true);
+                                              }}
+                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-cyan-500 text-black font-semibold text-xs sm:text-sm transition-all hover:bg-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.2)]"
+                                            >
+                                              Review {actionLabel}
+                                            </button>
+                                          </div>
+                                          <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
+                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered on Base</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+
                                   {/* Copy button */}
                                   <button
                                     onClick={() => {
@@ -3264,6 +3329,27 @@ export default function ChatPage() {
 	              />
 	            )}
 	          </AnimatePresence>
+
+          {/* Yield Modal */}
+          <AnimatePresence>
+            {showYieldWidget && (
+              <Yield
+                onClose={() => {
+                  setShowYieldWidget(false);
+                  setCurrentYieldMetadata(null);
+                }}
+                initialAmount={
+                  typeof currentYieldMetadata?.amount === 'string' || typeof currentYieldMetadata?.amount === 'number'
+                    ? currentYieldMetadata.amount
+                    : undefined
+                }
+                initialAction={parseYieldAction(currentYieldMetadata?.action)}
+                initialPoolId={
+                  parseYieldPoolId(currentYieldMetadata?.pool_id)
+                }
+              />
+            )}
+          </AnimatePresence>
         </>
       </TransactionSettingsProvider>
       {/* Hidden file input for attach menu */}

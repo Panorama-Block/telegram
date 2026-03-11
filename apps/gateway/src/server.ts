@@ -129,7 +129,7 @@ export async function createServer(): Promise<FastifyInstance> {
   });
 
   // Proxy to Next.js miniapp server
-  const NEXTJS_PORT = process.env.NEXTJS_PORT || '3003';
+  const NEXTJS_PORT = process.env.NEXTJS_PORT || '7777';
   const NEXTJS_URL = `http://localhost:${NEXTJS_PORT}`;
 
   app.all('/miniapp', async (req, reply) => {
@@ -162,7 +162,7 @@ export async function createServer(): Promise<FastifyInstance> {
   app.log.info({ NEXTJS_URL }, 'Miniapp proxying to Next.js server');
 
   // ===== SWAP SERVICE PROXY =====
-  const SWAP_SERVICE_URL = process.env.SWAP_SERVICE_URL || 'http://localhost:3302';
+  const SWAP_SERVICE_URL = process.env.SWAP_SERVICE_URL || 'http://localhost:3002';
 
   app.all('/swap/*', async (req, reply) => {
     try {

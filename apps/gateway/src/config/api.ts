@@ -1,7 +1,7 @@
 // API configuration
 export const API_CONFIG = {
-  SWAP_BASE_URL: process.env.SWAP_API_BASE || 'http://localhost:3302',
-  AUTH_BASE_URL: process.env.AUTH_API_BASE || 'http://localhost:3301',
+  SWAP_BASE_URL: process.env.SWAP_API_BASE || 'http://localhost:3002',
+  AUTH_BASE_URL: process.env.AUTH_API_BASE || 'http://localhost:3001',
 } as const;
 
 // API endpoints
