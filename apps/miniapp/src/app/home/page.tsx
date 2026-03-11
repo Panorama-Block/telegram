@@ -37,8 +37,27 @@ export default function HomePage() {
   const account = useActiveAccount();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [nickname, setNickname] = useState<string | null>(null);
 
   const userId = account?.address?.toLowerCase() || getWalletAddress();
+
+  // Load nickname from localStorage (persisted by profile page)
+  useEffect(() => {
+    const stored = localStorage.getItem('profileNickname');
+    if (stored) {
+      setNickname(stored);
+    } else if (userId) {
+      // Try fetching from gateway
+      import('@/features/gateway/profileApi').then(({ profileApi }) => {
+        profileApi.getByWallet(userId).then((p) => {
+          if (p?.nickname) {
+            setNickname(p.nickname);
+            localStorage.setItem('profileNickname', p.nickname);
+          }
+        }).catch(() => {});
+      });
+    }
+  }, [userId]);
   const agentsClient = new AgentsClient();
 
   useEffect(() => {
@@ -82,7 +101,7 @@ export default function HomePage() {
           {/* Header */}
           <div className="text-center mb-12">
             <h1 className="text-3xl font-bold text-white mb-4">
-              Welcome to Zico AI Agent
+              {nickname ? `Welcome back, ${nickname}` : 'Welcome to Zico AI Agent'}
             </h1>
             <p className="text-zinc-400 text-lg">
               Your AI-powered DeFi assistant for smart trading and insights

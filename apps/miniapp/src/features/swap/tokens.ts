@@ -135,6 +135,7 @@ export const networks: Network[] = [
     name: 'Binance Smart Chain',
     nativeCurrency: { symbol: 'BNB', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png', decimals: 18, name: 'BNB' },
     tokens: [
+      { symbol: 'BNB', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png', decimals: 18, name: 'BNB' },
       { symbol: 'USDT', address: '0x55d398326f99059ff775485246999027b3197955', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 18, name: 'Tether USD' },
       { symbol: 'USDC', address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 18, name: 'USD Coin' },
       { symbol: 'CAKE', address: '0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82', icon: 'https://assets.coingecko.com/coins/images/12632/small/IMG_0440.PNG', decimals: 18, name: 'PancakeSwap' },
@@ -148,8 +149,9 @@ export const networks: Network[] = [
   {
     chainId: 137,
     name: 'Polygon',
-    nativeCurrency: { symbol: 'MATIC', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/4713/small/matic-token-icon.png', decimals: 18, name: 'Polygon' },
+    nativeCurrency: { symbol: 'POL', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/4713/small/matic-token-icon.png', decimals: 18, name: 'Polygon' },
     tokens: [
+      { symbol: 'POL', address: '0x0000000000000000000000000000000000000000', icon: 'https://assets.coingecko.com/coins/images/4713/small/matic-token-icon.png', decimals: 18, name: 'Polygon' },
       { symbol: 'USDT', address: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
       { symbol: 'USDC', address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
       { symbol: 'WETH', address: '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619', icon: 'https://assets.coingecko.com/coins/images/2518/small/weth.png', decimals: 18, name: 'Wrapped Ether' },
@@ -164,10 +166,11 @@ export const networks: Network[] = [
     name: 'Arbitrum',
     nativeCurrency: { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
     tokens: [
-      { symbol: 'ARB', address: '0x912CE59144191C1204E64559FE8253a0e49E6548', icon: 'https://assets.coingecko.com/coins/images/16547/small/photo_2023-03-29_21.47.00.jpeg', decimals: 18, name: 'Arbitrum' },
-      { symbol: 'USDT', address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
-      { symbol: 'USDC', address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
       { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
+      { symbol: 'WETH', address: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', icon: 'https://assets.coingecko.com/coins/images/2518/small/weth.png', decimals: 18, name: 'Wrapped Ether' },
+      { symbol: 'ARB', address: '0x912CE59144191C1204E64559FE8253a0e49E6548', icon: 'https://assets.coingecko.com/coins/images/16547/small/photo_2023-03-29_21.47.00.jpeg', decimals: 18, name: 'Arbitrum' },
+      { symbol: 'USDC', address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
+      { symbol: 'USDT', address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
       { symbol: 'GMX', address: '0xfc5a1a6eb076a2c7ad06ed22c90d7e710e35ad0a', icon: 'https://assets.coingecko.com/coins/images/18323/small/arbit.png', decimals: 18, name: 'GMX' },
     ],
   },
@@ -176,11 +179,13 @@ export const networks: Network[] = [
     name: 'Base',
     nativeCurrency: { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
     tokens: [
-      { symbol: 'USDC', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
       { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
-      { symbol: 'cbBTC', address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', icon: 'https://assets.coingecko.com/coins/images/40489/small/cbBTC.png', decimals: 8, name: 'Coinbase Wrapped BTC' },
-      { symbol: 'AERO', address: '0x940181a94a35a4569e4529a3cdfb74e38fd98631', icon: 'https://assets.coingecko.com/coins/images/31745/small/token.png', decimals: 18, name: 'Aerodrome' },
+      { symbol: 'WETH', address: '0x4200000000000000000000000000000000000006', icon: 'https://assets.coingecko.com/coins/images/2518/small/weth.png', decimals: 18, name: 'Wrapped Ether' },
+      { symbol: 'USDC', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
       { symbol: 'USDT', address: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
+      { symbol: 'cbBTC', address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', icon: 'https://assets.coingecko.com/coins/images/40489/small/cbBTC.png', decimals: 8, name: 'Coinbase Wrapped BTC' },
+      { symbol: 'DAI', address: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', icon: 'https://assets.coingecko.com/coins/images/9956/small/Badge_Dai.png', decimals: 18, name: 'Dai Stablecoin' },
+      { symbol: 'AERO', address: '0x940181a94a35a4569e4529a3cdfb74e38fd98631', icon: 'https://assets.coingecko.com/coins/images/31745/small/token.png', decimals: 18, name: 'Aerodrome' },
     ],
   },
   {
@@ -188,6 +193,7 @@ export const networks: Network[] = [
     name: 'Optimism',
     nativeCurrency: { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
     tokens: [
+      { symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', decimals: 18, name: 'Ethereum' },
       { symbol: 'USDC', address: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
       { symbol: 'USDT', address: '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
       { symbol: 'OP', address: '0x4200000000000000000000000000000000000042', icon: 'https://assets.coingecko.com/coins/images/25244/small/Optimism.png', decimals: 18, name: 'Optimism' },

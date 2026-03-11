@@ -34,13 +34,21 @@ const FALLBACK_PRICES: Record<string, number> = {
   'AAVE': 370,
   'UNI': 17,
   'LINK': 28,
-  'TON': 5.50
+  'TON': 5.50,
+  'cbBTC': 101000,
+  'AERO': 0.80,
+  'LDO': 2.00,
+  'CAKE': 2.50,
+  'GMX': 30,
+  'JOE': 0.40,
+  'QUICK': 0.04,
+  'SAND': 0.40,
 };
 
 // Fetch real prices from CoinGecko
 async function fetchRealPrices(): Promise<Record<string, number>> {
   try {
-    const ids = 'ethereum,staked-ether,wrapped-steth,ethena-usde,bitcoin,usd-coin,tether,dai,matic-network,avalanche-2,binancecoin,arbitrum,optimism,worldcoin-wld,aave,uniswap,chainlink,the-open-network,toncoin';
+    const ids = 'ethereum,staked-ether,wrapped-steth,ethena-usde,bitcoin,coinbase-wrapped-btc,usd-coin,tether,dai,matic-network,avalanche-2,binancecoin,arbitrum,optimism,worldcoin-wld,aave,uniswap,chainlink,the-open-network,toncoin,aerodrome-finance,lido-dao,pancakeswap-token,gmx,joe,quickswap,the-sandbox';
     const response = await fetch(
       `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`,
       { next: { revalidate: 60 } }
@@ -76,6 +84,14 @@ async function fetchRealPrices(): Promise<Record<string, number>> {
       'UNI': data.uniswap?.usd || FALLBACK_PRICES['UNI'],
       'LINK': data.chainlink?.usd || FALLBACK_PRICES['LINK'],
       'TON': data['the-open-network']?.usd || data.toncoin?.usd || FALLBACK_PRICES['TON'],
+      'cbBTC': data['coinbase-wrapped-btc']?.usd || data.bitcoin?.usd || FALLBACK_PRICES['cbBTC'],
+      'AERO': data['aerodrome-finance']?.usd || FALLBACK_PRICES['AERO'],
+      'LDO': data['lido-dao']?.usd || FALLBACK_PRICES['LDO'],
+      'CAKE': data['pancakeswap-token']?.usd || FALLBACK_PRICES['CAKE'],
+      'GMX': data.gmx?.usd || FALLBACK_PRICES['GMX'],
+      'JOE': data.joe?.usd || FALLBACK_PRICES['JOE'],
+      'QUICK': data.quickswap?.usd || FALLBACK_PRICES['QUICK'],
+      'SAND': data['the-sandbox']?.usd || FALLBACK_PRICES['SAND'],
     };
   } catch (e) {
     console.warn('Failed to fetch real prices, using fallback:', e);

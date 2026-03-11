@@ -23,6 +23,7 @@ type NavItem = {
   icon: React.ReactNode;
   isModal?: boolean;
   disabled?: boolean;
+  comingSoon?: boolean;
 };
 
 interface SeniorAppShellProps {
@@ -547,7 +548,12 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                       <div className="absolute inset-0 bg-cyan-500/10 border border-cyan-500/20 rounded-xl shadow-[0_0_0_1px_rgba(34,211,238,0.22)]" />
                     )}
                     <span className={cn('relative z-10', active && 'text-cyan-400')}>{item.icon}</span>
-                    {!isSidebarCollapsed && <span className={cn('relative z-10 text-sm font-semibold tracking-wide', active && 'text-glow')}>{item.label}</span>}
+                    {!isSidebarCollapsed && (
+                      <span className={cn('relative z-10 text-sm font-semibold tracking-wide flex items-center gap-2', active && 'text-glow')}>
+                        {item.label}
+                        {item.comingSoon && <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-zinc-500 border border-white/10 font-normal">Soon</span>}
+                      </span>
+                    )}
                     {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-cyan-500 rounded-r-full blur-[2px]" />}
                   </button>
                 )}
@@ -628,7 +634,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                     </div>
                     <div className="font-mono text-sm text-white">{shortAddress || '0x...'}</div>
                   </div>
-                  <div className="grid grid-cols-1 gap-2">
+                  <div className="grid grid-cols-1 gap-1">
                     <button
                       onClick={() => {
                         setIsProfileOpen(false);
@@ -637,6 +643,15 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                       className="w-full flex items-center gap-3 px-3 py-2.5 min-h-[44px] text-sm text-white/80 hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-colors text-left"
                     >
                       Portfolio
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsProfileOpen(false);
+                        router.push('/portfolio/profile');
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 min-h-[44px] text-sm text-white/80 hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-colors text-left"
+                    >
+                      Profile
                     </button>
                   </div>
                   <div className="h-px bg-white/5" />

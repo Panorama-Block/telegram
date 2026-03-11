@@ -56,6 +56,9 @@ export { transactionApi } from './transactionApi';
 // Notification API
 export { notificationApi } from './notificationApi';
 
+// Profile API
+export { profileApi, type UserProfile, type InvestorType, type CreateProfileInput, type UpdateProfileInput } from './profileApi';
+
 // React Hooks
 export {
   useWallet,

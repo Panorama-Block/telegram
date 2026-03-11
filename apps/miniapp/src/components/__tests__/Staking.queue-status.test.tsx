@@ -13,6 +13,7 @@ vi.mock('framer-motion', async () => await import('../../../test/mocks/framerMot
 
 vi.mock('thirdweb/react', () => ({
   useActiveAccount: () => ({ address: '0x1111111111111111111111111111111111111111' }),
+  useSwitchActiveWalletChain: () => vi.fn(),
 }));
 
 vi.mock('@/shared/utils/evmReceipt', () => ({

@@ -307,37 +307,14 @@ function normalizeContent(content: unknown): string {
   return '';
 }
 
-// Markdown structural fixer: ensures headings, lists, and paragraphs have
-// the blank-line spacing that react-markdown needs to parse them correctly.
-// Handles both "already has \n but needs \n\n" AND "inline with no \n at all".
+// Keep assistant markdown mostly raw to avoid accidental content loss.
+// We only normalize newlines and cap excessive blank lines.
 function autoFormatAssistantMarkdown(text: string): string {
   if (!text) return '';
-  let t = String(text).replace(/\r\n/g, '\n');
-
-  // --- Fix inline headers: "some text. ## Header" → "some text.\n\n## Header" ---
-  // Match a non-newline char followed by optional space then # header (no \n in between)
-  t = t.replace(/([^\n]) *(#{1,3}\s)/g, '$1\n\n$2');
-  // Also fix single-\n before header → double-\n
-  t = t.replace(/([^\n])\n(#{1,3}\s)/g, '$1\n\n$2');
-
-  // --- Fix inline numbered lists: "...text. 1. Item" → "...text.\n\n1. Item" ---
-  // Only match "sentence-end + number-dot" to avoid breaking "version 2.0" etc.
-  t = t.replace(/([.!?:]) +(\d+\.\s+[A-Z])/g, '$1\n\n$2');
-  // Single-\n before numbered item → double-\n
-  t = t.replace(/([^\n])\n(\d+\.\s)/g, '$1\n\n$2');
-
-  // --- Fix inline bullet lists: "...text. - Item" or "...text. * Item" ---
-  t = t.replace(/([.!?:]) +([-*]\s+[A-Z])/g, '$1\n\n$2');
-  t = t.replace(/([^\n])\n([-*]\s)/g, '$1\n\n$2');
-
-  // --- Remove stray lone "#" characters at end of lines ---
-  t = t.replace(/ #\s*$/gm, '');
-  t = t.replace(/ #(\n)/g, '$1');
-
-  // Collapse 3+ blank lines into 2
-  t = t.replace(/\n{3,}/g, '\n\n');
-
-  return t.trim();
+  const t = String(text)
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n');
+  return t.trimEnd();
 }
 function isGenericTitle(title: string | undefined): boolean {
   if (!title) return true;
@@ -661,13 +638,34 @@ export default function ChatPage() {
   // When pendingNewChat is true, we're in "new chat" mode without a backend conversation
   // In this case, always show the welcome screen (hasMessages = false)
   const hasMessages = pendingNewChat ? false : activeMessages.length > 0;
+  const [profileNickname, setProfileNickname] = useState<string | null>(null);
+  useEffect(() => {
+    const stored = localStorage.getItem('profileNickname');
+    if (stored) {
+      setProfileNickname(stored);
+    } else {
+      const addr = account?.address || walletIdentity;
+      if (addr) {
+        import('@/features/gateway/profileApi').then(({ profileApi }) => {
+          profileApi.getByWallet(addr.toLowerCase()).then((p) => {
+            if (p?.nickname) {
+              setProfileNickname(p.nickname);
+              localStorage.setItem('profileNickname', p.nickname);
+            }
+          }).catch(() => {});
+        });
+      }
+    }
+  }, [account?.address, walletIdentity]);
+
   const displayName = useMemo(() => {
+    if (profileNickname) return profileNickname;
     const address = account?.address || walletIdentity;
     if (address) {
       return `${address.slice(0, 6)}...${address.slice(-4)}`;
     }
     return 'User';
-  }, [account?.address, walletIdentity]);
+  }, [account?.address, walletIdentity, profileNickname]);
 
   const activeConversationTitle = useMemo(() => {
     if (!activeConversationId) return '';
