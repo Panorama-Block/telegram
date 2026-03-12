@@ -184,6 +184,18 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
         </svg>
       ),
     },
+    {
+      id: 'yield',
+      label: 'Yield',
+      href: '/chat?open=yield',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v2m0 8v2" />
+          <circle cx="12" cy="12" r="10" />
+        </svg>
+      ),
+    },
   ];
 
   const isActive = (item: NavItem) => {

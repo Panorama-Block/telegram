@@ -18,6 +18,7 @@ function normalizeDevServiceBase(raw: string | undefined, devFallback: string, i
     "lending_service",
     "liquid_swap_service",
     "bridge_service",
+    "execution_service",
     "engine_postgres",
     "engine",
     "redis",
@@ -184,22 +185,26 @@ const nextConfig: NextConfig = {
       });
     }
 
-    // Base execution layer (Aerodrome liquid staking) — port 3010
-    const baseExecBaseRaw =
-      process.env.NEXT_PUBLIC_BASE_EXECUTION_API_URL ||
-      process.env.BASE_EXECUTION_API_URL ||
+    const yieldBaseRaw =
+      process.env.VITE_YIELD_API_URL ||
+      process.env.NEXT_PUBLIC_YIELD_API_URL ||
+      process.env.YIELD_SERVICE_URL ||
       "";
-    const baseExecBase = normalizeDevServiceBase(baseExecBaseRaw, "http://localhost:3010", isDev);
-    if (baseExecBase) {
-      console.log('[Next.js] Base execution API proxy configured:', baseExecBase);
+    const yieldBase = normalizeDevServiceBase(yieldBaseRaw, "http://localhost:3011", isDev);
+
+    if (!yieldBase) {
+      console.warn('[Next.js] Yield API base URL not configured, proxy will not work');
+      console.warn('[Next.js] Please set YIELD_SERVICE_URL or NEXT_PUBLIC_YIELD_API_URL in .env');
+    } else {
+      console.log('[Next.js] Yield API proxy configured:', yieldBase);
       rewrites.push({
-        source: "/api/base-execution/:path*",
-        destination: `${baseExecBase}/:path*`,
+        source: "/api/yield/:path*",
+        destination: `${yieldBase}/:path*`,
         basePath: false,
       });
       rewrites.push({
-        source: "/miniapp/api/base-execution/:path*",
-        destination: `${baseExecBase}/:path*`,
+        source: "/miniapp/api/yield/:path*",
+        destination: `${yieldBase}/:path*`,
         basePath: false,
       });
     }
