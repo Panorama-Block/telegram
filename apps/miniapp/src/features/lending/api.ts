@@ -160,9 +160,16 @@ class LendingApiClient {
     // to avoid CORS issues. Proxy is configured in next.config.ts.
     const direct = process.env.VITE_LENDING_API_BASE || process.env.NEXT_PUBLIC_LENDING_API_URL;
     const isBrowser = typeof window !== 'undefined';
+    const isDev = process.env.NODE_ENV === 'development';
+    const isLocalHost =
+      isBrowser &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
     if (!isBrowser && direct && direct.length > 0) {
       this.baseUrl = direct.replace(/\/+$/, '');
+    } else if (isDev && isLocalHost) {
+      // In local dev, skip Next rewrite proxy to reduce one network hop.
+      this.baseUrl = 'http://localhost:3007';
     } else {
       this.baseUrl = '/api/lending';
     }
@@ -929,21 +936,48 @@ class LendingApiClient {
     }
     const headers: Record<string, string> = {};
     headers['Authorization'] = `Bearer ${authToken}`;
+    const timeoutMs = Math.max(5_000, Math.min(LENDING_CONFIG.REQUEST_TIMEOUT ?? 10_000, 12_000));
+    const isAbortError = (error: unknown) =>
+      (error instanceof DOMException && error.name === 'AbortError') ||
+      (typeof (error as any)?.name === 'string' && (error as any).name === 'AbortError');
+    const fetchPositionWithTimeout = async (url: string): Promise<Response> => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetchWithAuth(url, {
+          method: 'GET',
+          headers,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
 
     const normalizedUrl = `${this.baseUrl}${API_ENDPOINTS.POSITION}/${userAddress}/positions`;
-    const response = await fetchWithAuth(normalizedUrl, {
-      method: 'GET',
-      headers
-    });
+    let response: Response;
+    try {
+      response = await fetchPositionWithTimeout(normalizedUrl);
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw new Error('Lending positions request timed out. Please try again.');
+      }
+      throw error;
+    }
 
     if (!response.ok) {
       const backendMessage = await this.readBackendErrorMessage(response);
       if (response.status === 404) {
         const legacyUrl = `${this.baseUrl}${API_ENDPOINTS.POSITION}/${userAddress}/info`;
-        const legacyResponse = await fetchWithAuth(legacyUrl, {
-          method: 'GET',
-          headers,
-        });
+        let legacyResponse: Response;
+        try {
+          legacyResponse = await fetchPositionWithTimeout(legacyUrl);
+        } catch (error) {
+          if (isAbortError(error)) {
+            throw new Error('Lending positions request timed out. Please try again.');
+          }
+          throw error;
+        }
 
         if (!legacyResponse.ok) {
           const legacyBackendMessage = await this.readBackendErrorMessage(legacyResponse);
