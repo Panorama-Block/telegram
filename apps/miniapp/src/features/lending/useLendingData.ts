@@ -39,29 +39,49 @@ export const useLendingData = () => {
         const isTimeoutError = (error: unknown) =>
           error instanceof Error && /timeout|aborted/i.test(error.message);
 
-        let availableTokens: LendingToken[] | null = null;
-        let lastErr: unknown = null;
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-          try {
-            availableTokens = await lendingApi.getTokens();
-            break;
-          } catch (e) {
-            lastErr = e;
-            if (isRateLimitedError(e) || isTimeoutError(e)) break;
-            if (attempt >= maxAttempts) break;
-            const delay = baseDelayMs * Math.pow(2, attempt - 1);
-            await new Promise((resolve) => setTimeout(resolve, delay));
+        const loadTokensWithRetry = async (): Promise<LendingToken[]> => {
+          let availableTokens: LendingToken[] | null = null;
+          let lastErr: unknown = null;
+
+          for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+              availableTokens = await lendingApi.getTokens();
+              break;
+            } catch (e) {
+              lastErr = e;
+              if (isRateLimitedError(e) || isTimeoutError(e)) break;
+              if (attempt >= maxAttempts) break;
+              const delay = baseDelayMs * Math.pow(2, attempt - 1);
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            }
           }
-        }
 
-        if (!availableTokens) {
-          throw lastErr ?? new Error('Failed to load lending markets');
-        }
+          if (!availableTokens) {
+            throw lastErr ?? new Error('Failed to load lending markets');
+          }
+
+          return availableTokens;
+        };
+
+        const positionPromise = includePosition
+          ? lendingApi
+              .getUserPosition()
+              .then((position) => ({ position, error: null as unknown }))
+              .catch((error) => ({ position: null, error }))
+          : null;
+
+        const availableTokens = await loadTokensWithRetry();
         setTokens(availableTokens);
+        // Do not block first render on position data.
+        setLoading(false);
 
-        if (includePosition) {
-          const position = await lendingApi.getUserPosition();
-          setUserPosition(position);
+        if (positionPromise) {
+          const positionResult = await positionPromise;
+          if (positionResult.position) {
+            setUserPosition(positionResult.position);
+          } else if (positionResult.error) {
+            console.warn('[LENDING] Position fetch failed (non-blocking):', positionResult.error);
+          }
         }
 
         const fetchedAt = Date.now();
