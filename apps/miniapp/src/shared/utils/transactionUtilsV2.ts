@@ -1,5 +1,5 @@
 import { getRpcClient, eth_gasPrice, eth_maxPriorityFeePerGas, eth_getTransactionCount } from "thirdweb/rpc";
-import { defineChain, getContract, readContract, prepareTransaction, encode } from "thirdweb";
+import { defineChain, getContract, readContract } from "thirdweb";
 import type { ThirdwebClient } from "thirdweb";
 import type { Address } from "thirdweb";
 
@@ -84,6 +84,7 @@ export function extractTokenFromApproval(tx: any): Address | null {
 export interface TransactionResult {
   success: boolean;
   transactionHash?: string;
+  source?: 'wallet' | 'recovered';
   error?: string;
 }
 
@@ -198,13 +199,26 @@ export async function getValidGasParams(
  * Alternative approach: Try to catch the error and extract hash more aggressively
  */
 export async function safeExecuteTransactionV2(
-  transactionFn: () => Promise<{ transactionHash: string }>
+  transactionFn: () => Promise<unknown>
 ): Promise<TransactionResult> {
   try {
     const result = await transactionFn();
+    const txHash = extractHashFromUnknown(result);
+    if (!txHash || txHash === `0x${'0'.repeat(64)}`) {
+      return {
+        success: false,
+        error: 'Wallet submitted transaction without a hash.',
+      };
+    }
+    const sourceCandidate = (result as any)?.source;
+    const source = sourceCandidate === 'recovered' || sourceCandidate === 'wallet'
+      ? sourceCandidate
+      : 'wallet';
+
     return {
       success: true,
-      transactionHash: result.transactionHash,
+      transactionHash: txHash,
+      source,
     };
   } catch (error: any) {
     const message = describeAnyError(error);
@@ -218,12 +232,13 @@ export async function safeExecuteTransactionV2(
 
     // Some wallet/providers throw ABI/serialization errors *after* broadcasting the tx.
     // Trust-first UX: if we can extract a tx hash, treat it as submitted and let the UI track confirmations.
-    const extractedHash = extractHashFromError(error);
+    const extractedHash = extractHashFromUnknown(error);
     if (extractedHash && extractedHash !== `0x${'0'.repeat(64)}`) {
       console.warn('⚠️ Transaction threw but hash was found; treating as submitted:', extractedHash);
       return {
         success: true,
         transactionHash: extractedHash,
+        source: 'recovered',
       };
     }
 
@@ -242,13 +257,14 @@ export async function safeExecuteTransactionV2(
       console.warn('Error details:', message);
 
       // Try to extract hash from the error
-      const hash = extractHashFromError(error);
+      const hash = extractHashFromUnknown(error);
 
       if (hash && hash !== `0x${'0'.repeat(64)}`) {
         console.log('✅ Successfully extracted hash from ABI error:', hash);
         return {
           success: true,
           transactionHash: hash,
+          source: 'recovered',
         };
       }
 
@@ -295,12 +311,13 @@ function isABIErrorSignatureNotFound(error: any): boolean {
   );
 }
 
-function extractHashFromError(error: any): string | null {
+function extractHashFromUnknown(value: unknown): string | null {
   const hashRegex = /0x[a-fA-F0-9]{64}/g;
 
   const deepFind = (val: unknown, seen = new Set<any>()): string | null => {
     if (!val) return null;
     if (typeof val === 'string') {
+      if (/^0x[a-fA-F0-9]{64}$/.test(val)) return val;
       const m = val.match(hashRegex);
       return m && m[0] ? m[0] : null;
     }
@@ -346,11 +363,12 @@ function extractHashFromError(error: any): string | null {
     return null;
   };
 
+  const anyValue = value as any;
   // 1) Look in message-like fields first
-  const msg = String(error?.shortMessage || error?.message || '');
+  const msg = String(anyValue?.shortMessage || anyValue?.message || '');
   const matches = msg.match(hashRegex);
   if (matches && matches.length > 0) return matches[0];
 
-  // 2) Deep search error object
-  return deepFind(error);
+  // 2) Deep search unknown object/value
+  return deepFind(value);
 }

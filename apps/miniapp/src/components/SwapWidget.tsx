@@ -65,8 +65,8 @@ const getTokenColor = (token: any) => {
   return 'bg-zinc-500';
 };
 
-const DEFAULT_SELL_TOKEN = { ticker: "ETH", name: "Ethereum", network: "Ethereum", address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", balance: "0.00", icon: "https://assets.coingecko.com/coins/images/279/small/ethereum.png" };
-const DEFAULT_BUY_TOKEN = { ticker: "AVAX", name: "Avalanche", network: "Avalanche", address: "0x0000000000000000000000000000000000000000", balance: "0.00", icon: "https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" };
+const DEFAULT_SELL_TOKEN = { ticker: "ETH", name: "Ethereum", network: "Base", address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", balance: "0.00", icon: "https://assets.coingecko.com/coins/images/279/small/ethereum.png" };
+const DEFAULT_BUY_TOKEN = { ticker: "USDC", name: "USD Coin", network: "Base", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", balance: "0.00", icon: "https://assets.coingecko.com/coins/images/6319/small/usdc.png" };
 
 // Translate Portuguese error messages to English
 const translateError = (message: string): string => {
@@ -1704,6 +1704,11 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
               <>
                 <img src="https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" alt="Avalanche" className="w-7 h-7 object-contain" />
                 <span className="text-sm font-medium text-zinc-400">Powered by Avax</span>
+              </>
+            ) : sellToken.network === 'Base' ? (
+              <>
+                <img src="https://assets.coingecko.com/coins/images/9576/small/AERO.png" alt="Aerodrome" className="w-7 h-7 object-contain rounded-full" />
+                <span className="text-sm font-medium text-zinc-400">Powered by Aerodrome on Base</span>
               </>
             ) : (
               <>
