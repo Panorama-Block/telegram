@@ -5,7 +5,8 @@
 
 import { authenticatedFetch } from '@/shared/lib/telegram-auth';
 
-export const DCA_API_URL = process.env.DCA_API_BASE || process.env.NEXT_PUBLIC_DCA_API_BASE || 'http://localhost:3007';
+// Requests go through the Next.js rewrite proxy at /api/dca/* → localhost:3007
+export const DCA_API_URL = '/api/dca';
 
 export interface SmartAccountPermissions {
   approvedTargets: string[];
@@ -212,11 +213,28 @@ export async function deleteSmartAccount(address: string, userId: string): Promi
   }
 }
 
+export interface VaultUnsignedResult {
+  type: 'vault_unsigned';
+  steps: Array<{ to: string; data: string; value: string }>;
+  description: string;
+}
+
+export interface StrategyCreatedResult {
+  type: 'created';
+  strategyId: string;
+  nextExecution: Date;
+}
+
 /**
  * Create a DCA strategy
+ * - Base (chainId 8453): returns { type: 'vault_unsigned', steps } — user must sign the txs
+ * - Other chains: returns { type: 'created', strategyId, nextExecution }
  * 🔒 SECURE: Uses Telegram authentication
  */
-export async function createStrategy(request: CreateStrategyRequest, userId?: string): Promise<{ strategyId: string; nextExecution: Date }> {
+export async function createStrategy(
+  request: CreateStrategyRequest,
+  userId?: string,
+): Promise<VaultUnsignedResult | StrategyCreatedResult> {
   try {
     const response = await authenticatedFetch(`${DCA_API_URL}/dca/create-strategy`, {
       method: 'POST',
@@ -229,10 +247,16 @@ export async function createStrategy(request: CreateStrategyRequest, userId?: st
     }
 
     const data = await response.json();
+
+    if (data.type === 'vault_unsigned') {
+      return data as VaultUnsignedResult;
+    }
+
     return {
+      type: 'created',
       ...data,
-      nextExecution: new Date(data.nextExecution)
-    };
+      nextExecution: new Date(data.nextExecution),
+    } as StrategyCreatedResult;
   } catch (error: any) {
     if (error instanceof DCAApiError) {
       throw error;

@@ -22,13 +22,14 @@ import {
   createStrategy,
   SmartAccount,
   CreateStrategyRequest,
+  type VaultUnsignedResult,
 } from "@/features/dca/api";
 
 interface DCAProps {
   onClose: () => void;
 }
 
-type ViewState = "input" | "review" | "success";
+type ViewState = "input" | "review" | "success" | "sign";
 type Frequency = "daily" | "weekly" | "monthly";
 
 // Supported tokens for DCA
@@ -43,6 +44,7 @@ interface Token {
 }
 
 const SUPPORTED_TOKENS: Token[] = [
+  // ── Ethereum (chainId 1) ──────────────────────────────────────────────────
   {
     symbol: "ETH",
     name: "Ethereum",
@@ -80,15 +82,6 @@ const SUPPORTED_TOKENS: Token[] = [
     icon: "https://assets.coingecko.com/coins/images/325/small/Tether.png",
   },
   {
-    symbol: "DAI",
-    name: "Dai Stablecoin",
-    address: "0x6B175474E89094C44Da98b954EescdeCB5147d6dc",
-    decimals: 18,
-    color: "bg-yellow-500",
-    chainId: 1,
-    icon: "https://assets.coingecko.com/coins/images/9956/small/Badge_Dai.png",
-  },
-  {
     symbol: "WBTC",
     name: "Wrapped BTC",
     address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
@@ -96,6 +89,15 @@ const SUPPORTED_TOKENS: Token[] = [
     color: "bg-orange-500",
     chainId: 1,
     icon: "https://assets.coingecko.com/coins/images/7598/small/wrapped_bitcoin_wbtc.png",
+  },
+  {
+    symbol: "DAI",
+    name: "Dai Stablecoin",
+    address: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+    decimals: 18,
+    color: "bg-yellow-500",
+    chainId: 1,
+    icon: "https://assets.coingecko.com/coins/images/9956/small/Badge_Dai.png",
   },
   {
     symbol: "LINK",
@@ -115,14 +117,51 @@ const SUPPORTED_TOKENS: Token[] = [
     chainId: 1,
     icon: "https://assets.coingecko.com/coins/images/12504/small/uniswap-uni.png",
   },
+  // ── Base (chainId 8453) ───────────────────────────────────────────────────
+  {
+    symbol: "WETH",
+    name: "Wrapped Ether (Base)",
+    address: "0x4200000000000000000000000000000000000006",
+    decimals: 18,
+    color: "bg-indigo-500",
+    chainId: 8453,
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0x4200000000000000000000000000000000000006/logo.png",
+  },
+  {
+    symbol: "USDC",
+    name: "USD Coin (Base)",
+    address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    decimals: 6,
+    color: "bg-green-500",
+    chainId: 8453,
+    icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913/logo.png",
+  },
+  {
+    symbol: "cbBTC",
+    name: "Coinbase Wrapped BTC",
+    address: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+    decimals: 8,
+    color: "bg-orange-500",
+    chainId: 8453,
+    icon: "https://assets.coingecko.com/coins/images/40143/small/cbbtc.webp",
+  },
+  {
+    symbol: "AERO",
+    name: "Aerodrome",
+    address: "0x940181a94a35a4569e4529a3cdfb74e38fd98631",
+    decimals: 18,
+    color: "bg-blue-600",
+    chainId: 8453,
+    icon: "https://assets.coingecko.com/coins/images/31745/small/token.png",
+  },
 ];
 
-// Tokens available to buy (excluding stablecoins for "buy" side)
+// Tokens available to buy — grouped by chain, excluding pay-only tokens
 const BUY_TOKENS = SUPPORTED_TOKENS.filter(
-  (t) => !["USDC", "USDT", "DAI"].includes(t.symbol)
+  (t) => !["USDC", "USDT"].includes(t.symbol)
 );
 
-// Tokens available to pay with (stablecoins + ETH)
+// Tokens available to pay with — USDC/stables + ETH per chain
 const PAY_TOKENS = SUPPORTED_TOKENS.filter((t) =>
   ["ETH", "USDC", "USDT", "DAI"].includes(t.symbol)
 );
@@ -154,6 +193,7 @@ export function DCA({ onClose }: DCAProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nextExecution, setNextExecution] = useState<Date | null>(null);
+  const [vaultBundle, setVaultBundle] = useState<VaultUnsignedResult | null>(null);
 
   // Load user's smart accounts
   useEffect(() => {
@@ -225,8 +265,14 @@ export function DCA({ onClose }: DCAProps) {
       };
 
       const result = await createStrategy(request, account.address);
-      setNextExecution(result.nextExecution);
-      setViewState("success");
+
+      if (result.type === "vault_unsigned") {
+        setVaultBundle(result);
+        setViewState("sign");
+      } else {
+        setNextExecution(result.nextExecution);
+        setViewState("success");
+      }
     } catch (err: any) {
       console.error("Error creating strategy:", err);
       setError(err.message || "Failed to create strategy");
@@ -323,7 +369,12 @@ export function DCA({ onClose }: DCAProps) {
                   <div className={cn("w-10 h-10 rounded-full", token.color)} />
                 )}
                 <div className="text-left">
-                  <div className="text-white font-medium">{token.symbol}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white font-medium">{token.symbol}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-zinc-400">
+                      {token.chainId === 8453 ? "Base" : "Ethereum"}
+                    </span>
+                  </div>
                   <div className="text-xs text-zinc-500">{token.name}</div>
                 </div>
               </button>
@@ -370,7 +421,17 @@ export function DCA({ onClose }: DCAProps) {
                   isOpen={showBuyTokenModal}
                   onClose={() => setShowBuyTokenModal(false)}
                   tokens={BUY_TOKENS}
-                  onSelect={setBuyToken}
+                  onSelect={(token) => {
+                    setBuyToken(token);
+                    // Auto-switch payToken to match the selected chain
+                    setPayToken((prev) => {
+                      if (prev.chainId === token.chainId) return prev;
+                      const match =
+                        PAY_TOKENS.find((t) => t.chainId === token.chainId && t.symbol === "USDC") ||
+                        PAY_TOKENS.find((t) => t.chainId === token.chainId);
+                      return match ?? prev;
+                    });
+                  }}
                   title="Select Token to Buy"
                 />
                 <TokenModal
@@ -774,7 +835,54 @@ export function DCA({ onClose }: DCAProps) {
               </motion.div>
             )}
 
-            {/* --- STATE 3: SUCCESS --- */}
+            {/* --- STATE 3: SIGN (Base DCAVault) --- */}
+            {viewState === "sign" && vaultBundle && (
+              <motion.div
+                key="sign"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="flex flex-col h-full items-center justify-center p-6 text-center"
+              >
+                <div className="w-20 h-20 rounded-full bg-blue-500/10 flex items-center justify-center mb-6">
+                  <CheckCircle2 className="w-10 h-10 text-blue-400" />
+                </div>
+
+                <h2 className="text-2xl font-bold text-white mb-2">
+                  Sign to Confirm
+                </h2>
+
+                <p className="text-zinc-400 mb-6">
+                  Your Base DCA order is ready. Sign{" "}
+                  <span className="text-white font-medium">
+                    {vaultBundle.steps.length} transaction{vaultBundle.steps.length > 1 ? "s" : ""}
+                  </span>{" "}
+                  in your wallet to activate it on-chain via Aerodrome.
+                </p>
+
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 w-full mb-6 space-y-2 text-left">
+                  {vaultBundle.steps.map((step, i) => (
+                    <div key={i} className="flex items-center gap-3 text-sm">
+                      <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold text-xs shrink-0">
+                        {i + 1}
+                      </div>
+                      <div>
+                        <div className="text-white font-mono text-xs">{step.to.slice(0, 10)}...{step.to.slice(-6)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <NeonButton
+                  onClick={onClose}
+                  className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-400 hover:to-cyan-400 border-none w-full"
+                >
+                  Open Wallet to Sign
+                </NeonButton>
+              </motion.div>
+            )}
+
+            {/* --- STATE 4: SUCCESS --- */}
             {viewState === "success" && (
               <motion.div
                 key="success"
