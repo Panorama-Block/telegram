@@ -14,9 +14,10 @@ import {
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NeonButton } from "@/components/ui/NeonButton";
 import { DataInput } from "@/components/ui/DataInput";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import { useActiveAccount } from "thirdweb/react";
+import { useActiveAccount, useSwitchActiveWalletChain } from "thirdweb/react";
+import { THIRDWEB_CLIENT_ID } from "@/shared/config/thirdweb";
 import {
   getUserAccounts,
   createStrategy,
@@ -168,6 +169,7 @@ const PAY_TOKENS = SUPPORTED_TOKENS.filter((t) =>
 
 export function DCA({ onClose }: DCAProps) {
   const account = useActiveAccount();
+  const switchChain = useSwitchActiveWalletChain();
   const [viewState, setViewState] = useState<ViewState>("input");
 
   // Form state
@@ -194,6 +196,38 @@ export function DCA({ onClose }: DCAProps) {
   const [error, setError] = useState<string | null>(null);
   const [nextExecution, setNextExecution] = useState<Date | null>(null);
   const [vaultBundle, setVaultBundle] = useState<VaultUnsignedResult | null>(null);
+  const [isSigning, setIsSigning] = useState(false);
+  const [signStep, setSignStep] = useState<{ current: number; total: number } | null>(null);
+
+  const handleSign = useCallback(async () => {
+    if (!account || !vaultBundle) return;
+    setIsSigning(true);
+    setError(null);
+    try {
+      const { sendAndConfirmTransaction, createThirdwebClient, defineChain, prepareTransaction } = await import("thirdweb");
+      const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID });
+      const baseChain = defineChain(8453);
+      await switchChain(baseChain);
+      for (let i = 0; i < vaultBundle.steps.length; i++) {
+        const step = vaultBundle.steps[i];
+        setSignStep({ current: i + 1, total: vaultBundle.steps.length });
+        const tx = prepareTransaction({
+          client,
+          chain: baseChain,
+          to: step.to as `0x${string}`,
+          data: step.data as `0x${string}`,
+          value: BigInt(step.value || "0"),
+        });
+        await sendAndConfirmTransaction({ transaction: tx, account });
+      }
+      setViewState("success");
+    } catch (err: any) {
+      setError(err.message || "Transaction failed");
+    } finally {
+      setIsSigning(false);
+      setSignStep(null);
+    }
+  }, [account, vaultBundle, switchChain]);
 
   // Load user's smart accounts
   useEffect(() => {
@@ -873,11 +907,20 @@ export function DCA({ onClose }: DCAProps) {
                   ))}
                 </div>
 
+                {error && (
+                  <p className="text-red-400 text-sm mb-4">{error}</p>
+                )}
+
                 <NeonButton
-                  onClick={onClose}
+                  onClick={handleSign}
+                  disabled={isSigning}
                   className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-400 hover:to-cyan-400 border-none w-full"
                 >
-                  Open Wallet to Sign
+                  {isSigning
+                    ? signStep
+                      ? `Signing ${signStep.current}/${signStep.total}...`
+                      : "Waiting for wallet..."
+                    : "Open Wallet to Sign"}
                 </NeonButton>
               </motion.div>
             )}
