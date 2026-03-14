@@ -1044,6 +1044,10 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             value: BigInt(tx.value),
             chain: defineChain(tx.chainId),
             client,
+            // Gas explícito para swap: execute() → clone → AerodromeAdapter.swap()
+            // → safeApprove(×2) → router ≈ 300-340k. Sem limite, eth_estimateGas
+            // pode falhar em RPC rate-limit e o fallback do thirdweb é muito baixo (OOG).
+            gas: tx.action === 'swap' ? 400000n : undefined,
           });
 
           const receipt = await sendAndConfirmTransaction({ transaction: preparedTx, account });
