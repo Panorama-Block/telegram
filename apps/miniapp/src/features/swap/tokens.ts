@@ -183,9 +183,9 @@ export const networks: Network[] = [
       { symbol: 'WETH', address: '0x4200000000000000000000000000000000000006', icon: 'https://assets.coingecko.com/coins/images/2518/small/weth.png', decimals: 18, name: 'Wrapped Ether' },
       { symbol: 'USDC', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6, name: 'USD Coin' },
       { symbol: 'USDT', address: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', icon: 'https://assets.coingecko.com/coins/images/325/small/Tether.png', decimals: 6, name: 'Tether USD' },
-      { symbol: 'cbBTC', address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', icon: 'https://assets.coingecko.com/coins/images/40489/small/cbBTC.png', decimals: 8, name: 'Coinbase Wrapped BTC' },
+      { symbol: 'cbBTC', address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', icon: 'https://assets.coingecko.com/coins/images/33030/small/cbtc.webp', decimals: 8, name: 'Coinbase Wrapped BTC' },
       { symbol: 'DAI', address: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', icon: 'https://assets.coingecko.com/coins/images/9956/small/Badge_Dai.png', decimals: 18, name: 'Dai Stablecoin' },
-      { symbol: 'AERO', address: '0x940181a94a35a4569e4529a3cdfb74e38fd98631', icon: 'https://assets.coingecko.com/coins/images/31745/small/token.png', decimals: 18, name: 'Aerodrome' },
+      { symbol: 'AERO', address: '0x940181a94a35a4569e4529a3cdfb74e38fd98631', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0x940181a94A35A4569E4529A3CDfB74e38FD98631/logo.png', decimals: 18, name: 'Aerodrome' },
     ],
   },
   {
@@ -212,3 +212,54 @@ export const networks: Network[] = [
     ],
   },
 ];
+
+// ─── Aerodrome supported pairs (Base, chainId 8453) ──────────────────────────
+// Confirmed on-chain via Aerodrome Factory.getPool() — only pairs with a real
+// pool are listed. Used to filter the "to" token list in the swap widget so
+// users never pick a token they can't actually swap to on Aerodrome.
+//
+// ETH (0xeeee...) is mapped to WETH (0x4200...) by the execution-layer, so
+// ETH pairs are identical to WETH pairs.
+
+const _ETH   = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+const _WETH  = "0x4200000000000000000000000000000000000006";
+const _USDC  = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
+const _USDT  = "0xfde4c96c8593536e31f229ea8f37b2ada2699bb2";
+const _cbBTC = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf";
+const _DAI   = "0x50c5725949a6f0c72e6c4a641f24049a917db0cb";
+const _AERO  = "0x940181a94a35a4569e4529a3cdfb74e38fd98631";
+
+// Confirmed pool pairs (bidirectional). ETH ≡ WETH for pool lookup purposes.
+const _AERODROME_PAIRS: [string, string][] = [
+  [_ETH,  _USDC], [_ETH,  _USDT], [_ETH,  _cbBTC], [_ETH,  _DAI], [_ETH,  _AERO],
+  [_WETH, _USDC], [_WETH, _USDT], [_WETH, _cbBTC], [_WETH, _DAI], [_WETH, _AERO],
+  [_USDC, _USDT], [_USDC, _cbBTC], [_USDC, _DAI], [_USDC, _AERO],
+  [_USDT, _DAI], [_USDT, _AERO],
+  [_cbBTC, _AERO],
+  [_DAI,  _AERO],
+];
+
+const _pairSet = new Set<string>();
+for (const [a, b] of _AERODROME_PAIRS) {
+  _pairSet.add(`${a}:${b}`);
+  _pairSet.add(`${b}:${a}`);
+}
+
+/**
+ * Returns true if Aerodrome has a confirmed pool for this pair on Base.
+ * Addresses are compared case-insensitively.
+ */
+export function aerodromeHasPair(addrA: string, addrB: string): boolean {
+  return _pairSet.has(`${addrA.toLowerCase()}:${addrB.toLowerCase()}`);
+}
+
+/**
+ * Given a "from" token address on Base, returns all Base token addresses
+ * that have a confirmed Aerodrome pool with it.
+ */
+export function getAerodromeCompatibleTokens(fromAddress: string): string[] {
+  const from = fromAddress.toLowerCase();
+  return Array.from(_pairSet)
+    .filter(key => key.startsWith(`${from}:`))
+    .map(key => key.split(":")[1]);
+}

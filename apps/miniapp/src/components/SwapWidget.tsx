@@ -14,12 +14,13 @@ import { NeonButton } from "@/components/ui/NeonButton";
 import { DataInput } from "@/components/ui/DataInput";
 import { cn } from "@/lib/utils";
 import { TokenSelectionModal } from "@/components/TokenSelectionModal";
+import { TokenIcon } from "@/components/TokenIcon";
 
 // API Integration - TON bridge uses separate API
 import { bridgeApi } from "@/features/swap/bridgeApi";
 // Backend centralizado — usado para swaps same-chain na Base via Execution Layer
 import { swapApi } from "@/features/swap/api";
-import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS } from "@/features/swap/tokens";
+import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS, networks, aerodromeHasPair } from "@/features/swap/tokens";
 
 const BASE_CHAIN_ID = 8453;
 
@@ -53,21 +54,6 @@ interface SwapWidgetProps {
 
 type ViewState = 'input' | 'routing' | 'details' | 'confirm';
 
-// Helper to get color based on network/token
-const getTokenColor = (token: any) => {
-  if (!token?.network) return 'bg-zinc-500';
-  if (token.network === 'TON') return 'bg-blue-400';
-  if (token.network === 'Avalanche') return 'bg-red-500';
-  if (token.network === 'Base') return 'bg-blue-500';
-  if (token.network === 'Binance Smart Chain' || token.network === 'BSC') return 'bg-yellow-500';
-  if (token.network === 'Optimism') return 'bg-red-500';
-  if (token.network === 'Polygon') return 'bg-purple-500';
-  if (token.network === 'Arbitrum') return 'bg-blue-600';
-  if (token.network === 'World Chain') return 'bg-zinc-500';
-  if (token.ticker === 'CONF') return 'bg-orange-500';
-  if (token.ticker === 'USDC') return 'bg-blue-400';
-  return 'bg-zinc-500';
-};
 
 const DEFAULT_SELL_TOKEN = { ticker: "ETH", name: "Ethereum", network: "Base", address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", balance: "0.00", icon: "https://assets.coingecko.com/coins/images/279/small/ethereum.png" };
 const DEFAULT_BUY_TOKEN = { ticker: "USDC", name: "USD Coin", network: "Base", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", balance: "0.00", icon: "https://assets.coingecko.com/coins/images/6319/small/usdc.png" };
@@ -234,6 +220,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
   const [viewState, setViewState] = useState<ViewState>(initialViewState || 'input');
   const [showTokenList, setShowTokenList] = useState(false);
+  const [filteredModalTokens, setFilteredModalTokens] = useState<any[] | undefined>(undefined);
   const [tosAccepted, setTosAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [refuelEnabled, setRefuelEnabled] = useState(true);
@@ -1271,6 +1258,32 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   // Handlers
   const openTokenList = (slot: 'sell' | 'buy') => {
     setActiveSlot(slot);
+
+    // When selecting the "to" token on Base (same-chain Aerodrome swap),
+    // only show tokens that have a confirmed Aerodrome pool with the "from" token.
+    const BASE_CHAIN_ID = 8453;
+    const fromIsBase = sellToken.network === 'Base';
+    if (slot === 'buy' && fromIsBase) {
+      const baseNetwork = networks.find(n => n.chainId === BASE_CHAIN_ID);
+      if (baseNetwork) {
+        const fromAddr = (sellToken.address || '').toLowerCase();
+        const compatible = baseNetwork.tokens
+          .filter(t => t.address.toLowerCase() !== fromAddr && aerodromeHasPair(fromAddr, t.address))
+          .map(t => ({
+            ticker: t.symbol,
+            name: t.name || t.symbol,
+            network: 'Base',
+            address: t.address,
+            balance: '0.00',
+            icon: t.icon,
+            decimals: t.decimals,
+          }));
+        setFilteredModalTokens(compatible.length > 0 ? compatible : undefined);
+      }
+    } else {
+      setFilteredModalTokens(undefined);
+    }
+
     setShowTokenList(true);
   };
 
@@ -1357,13 +1370,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                         onClick={() => openTokenList('sell')}
                         className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2.5 sm:px-4 py-2 sm:py-2.5 min-h-[40px] sm:min-h-[44px] hover:bg-zinc-900 active:bg-zinc-800 transition-colors group"
                       >
-                        {sellToken.icon ? (
-                          <img src={sellToken.icon} alt={sellToken.ticker} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover" />
-                        ) : (
-                          <div className={cn("w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[9px] sm:text-[10px] text-white font-bold", getTokenColor(sellToken))}>
-                            {sellToken.ticker?.[0]}
-                          </div>
-                        )}
+                        <TokenIcon src={sellToken.icon} ticker={sellToken.ticker} network={sellToken.network} className="w-5 h-5 sm:w-6 sm:h-6" textClassName="text-[9px] sm:text-[10px]" />
                         <span className="text-white font-medium text-sm sm:text-base">{sellToken.ticker}</span>
                         <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-zinc-500 group-hover:text-white transition-colors" />
                       </button>
@@ -1397,13 +1404,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                         onClick={() => openTokenList('buy')}
                         className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2.5 sm:px-4 py-2 sm:py-2.5 min-h-[40px] sm:min-h-[44px] hover:bg-zinc-900 active:bg-zinc-800 transition-colors group"
                       >
-                        {buyToken.icon ? (
-                          <img src={buyToken.icon} alt={buyToken.ticker} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover" />
-                        ) : (
-                          <div className={cn("w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[9px] sm:text-[10px] text-white font-bold", getTokenColor(buyToken))}>
-                            {buyToken.ticker?.[0]}
-                          </div>
-                        )}
+                        <TokenIcon src={buyToken.icon} ticker={buyToken.ticker} network={buyToken.network} className="w-5 h-5 sm:w-6 sm:h-6" textClassName="text-[9px] sm:text-[10px]" />
                         <span className="text-white font-medium text-sm sm:text-base">{buyToken.ticker}</span>
                         <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-zinc-500 group-hover:text-white transition-colors" />
                       </button>
@@ -1527,23 +1528,10 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           {/* From Token */}
-                          {sellToken.icon ? (
-                            <img src={sellToken.icon} alt={sellToken.ticker} className="w-6 h-6 rounded-full object-cover" />
-                          ) : (
-                            <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold", getTokenColor(sellToken))}>
-                              {sellToken.ticker?.[0]}
-                            </div>
-                          )}
+                          <TokenIcon src={sellToken.icon} ticker={sellToken.ticker} network={sellToken.network} className="w-6 h-6" textClassName="text-[10px]" />
                           <span className="font-medium text-white">{sellToken.ticker}</span>
                           <ArrowDown className="w-4 h-4 text-zinc-500 rotate-[-90deg]" />
-                          {/* To Token */}
-                          {buyToken.icon ? (
-                            <img src={buyToken.icon} alt={buyToken.ticker} className="w-6 h-6 rounded-full object-cover" />
-                          ) : (
-                            <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white font-bold", getTokenColor(buyToken))}>
-                              {buyToken.ticker?.[0]}
-                            </div>
-                          )}
+                          <TokenIcon src={buyToken.icon} ticker={buyToken.ticker} network={buyToken.network} className="w-6 h-6" textClassName="text-[10px]" />
                           <span className="font-medium text-white">{buyToken.ticker}</span>
                         </div>
                         <span className="bg-cyan-500/20 text-cyan-400 text-[10px] font-bold px-2 py-0.5 rounded border border-cyan-500/30">+ FAST</span>
@@ -1622,14 +1610,14 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-zinc-500">You sent</span>
                           <div className="flex items-center gap-2">
-                            {sellToken.icon && <img src={sellToken.icon} alt={sellToken.ticker} className="w-4 h-4 rounded-full" />}
+                            <TokenIcon src={sellToken.icon} ticker={sellToken.ticker} network={sellToken.network} className="w-4 h-4" textClassName="text-[8px]" />
                             <span className="text-white font-medium">{amount} {sellToken.ticker}</span>
                           </div>
                         </div>
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-zinc-500">You receive</span>
                           <div className="flex items-center gap-2">
-                            {buyToken.icon && <img src={buyToken.icon} alt={buyToken.ticker} className="w-4 h-4 rounded-full" />}
+                            <TokenIcon src={buyToken.icon} ticker={buyToken.ticker} network={buyToken.network} className="w-4 h-4" textClassName="text-[8px]" />
                             <span className="text-white font-medium">~{estimatedOutput} {buyToken.ticker}</span>
                           </div>
                         </div>
@@ -1814,7 +1802,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
               </>
             ) : sellToken.network === 'Base' ? (
               <>
-                <img src="https://assets.coingecko.com/coins/images/9576/small/AERO.png" alt="Aerodrome" className="w-7 h-7 object-contain rounded-full" />
+                <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0x940181a94A35A4569E4529A3CDfB74e38FD98631/logo.png" alt="Aerodrome" className="w-7 h-7 object-contain rounded-full" />
                 <span className="text-sm font-medium text-zinc-400">Powered by Aerodrome on Base</span>
               </>
             ) : (
@@ -1830,6 +1818,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             isOpen={showTokenList}
             onClose={() => setShowTokenList(false)}
             onSelect={handleTokenSelect}
+            customTokens={filteredModalTokens}
           />
 
         </GlassCard>

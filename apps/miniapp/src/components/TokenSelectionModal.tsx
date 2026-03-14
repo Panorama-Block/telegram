@@ -6,6 +6,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { networks, TON_CHAIN_ID } from "@/features/swap/tokens";
+import { TokenIcon } from "@/components/TokenIcon";
 import { formatAmountHuman, isNative } from "@/features/swap/utils";
 import { useActiveAccount } from "thirdweb/react";
 import { createThirdwebClient, defineChain, getContract } from "thirdweb";
@@ -26,6 +27,7 @@ interface UiToken {
   address: string;
   balance: string;
   icon?: string;
+  decimals?: number;
 }
 
 // Flatten the centralized tokens config into the UI format (without balance)
@@ -35,20 +37,11 @@ const BASE_TOKENS: Omit<UiToken, 'balance'>[] = networks.flatMap(net =>
     name: t.name || t.symbol,
     network: net.name,
     address: t.address,
-    icon: t.icon
+    icon: t.icon,
+    decimals: t.decimals,
   }))
 );
 
-const NETWORK_COLORS: Record<string, string> = {
-  'Avalanche': 'from-red-500 to-red-700',
-  'Base': 'from-blue-500 to-blue-700',
-  'Binance Smart Chain': 'from-yellow-400 to-yellow-600',
-  'Optimism': 'from-red-400 to-red-600',
-  'World Chain': 'from-zinc-400 to-zinc-600',
-  'Arbitrum': 'from-blue-400 to-blue-600',
-  'Polygon': 'from-purple-500 to-purple-700',
-  'Ethereum': 'from-indigo-400 to-indigo-600',
-};
 
 export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }: TokenSelectionModalProps) {
   const [activeNetwork, setActiveNetwork] = useState<string>('All Chains');
@@ -294,17 +287,13 @@ export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }:
                       className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors group"
                     >
                       <div className="flex items-center gap-3">
-                        {/* Token Icon or Fallback */}
-                        {token.icon ? (
-                             <img src={token.icon} alt={token.ticker} className="w-10 h-10 rounded-full object-cover" />
-                        ) : (
-                            <div className={cn(
-                            "w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs bg-gradient-to-br shadow-inner",
-                            NETWORK_COLORS[token.network] || 'from-zinc-600 to-zinc-800'
-                            )}>
-                            {token.ticker.substring(0, 2)}
-                            </div>
-                        )}
+                        <TokenIcon
+                          src={token.icon}
+                          ticker={token.ticker}
+                          network={token.network}
+                          className="w-10 h-10"
+                          textClassName="text-sm"
+                        />
 
                         <div className="text-left">
                           <div className="flex items-center gap-2">

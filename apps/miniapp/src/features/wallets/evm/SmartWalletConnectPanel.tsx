@@ -325,29 +325,6 @@ export function SmartWalletConnectPanel() {
           </Button>
         </div>
         
-        {/* Swap shortcut button - visible only when authenticated */}
-        {isAuthenticated && (
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={() => {
-              // Navigate to the swap page
-              window.location.href = '/miniapp/swap';
-            }}
-            style={{ 
-              width: '100%', 
-              padding: '12px 20px', 
-              fontSize: 16, 
-              fontWeight: 600,
-              backgroundColor: 'var(--tg-theme-button-color, #2481cc)',
-              color: 'var(--tg-theme-button-text-color, #ffffff)',
-              border: 'none',
-              borderRadius: 12,
-            }}
-          >
-            🚀 Go to Swap
-          </Button>
-        )}
       </Card>
     );
   }
