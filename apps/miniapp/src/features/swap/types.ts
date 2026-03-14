@@ -111,6 +111,7 @@ export type PrepareRequest = {
   fromToken: string;
   toToken: string;
   amount: string; // wei string
+  unit?: 'token' | 'wei'; // ALWAYS send 'wei' to avoid misinterpretation
   sender?: string;
   provider?: string; // Optional: force specific provider (from quote response)
 };
