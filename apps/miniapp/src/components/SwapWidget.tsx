@@ -89,6 +89,18 @@ const translateError = (message: string): string => {
     }
   }
 
+  // On-chain revert — thirdweb reports these as "Execution Reverted" with data "0x"
+  // The actual cause is usually slippage (price moved since the quote). Guide the user to retry.
+  const lower = message.toLowerCase();
+  if (lower.includes('execution reverted') || lower.includes('executionreverted')) {
+    return 'The price moved since your last quote. Please try again for an updated price.';
+  }
+
+  // User rejected the transaction in wallet
+  if (lower.includes('user rejected') || lower.includes('user denied') || lower.includes('rejected by user')) {
+    return 'Transaction cancelled.';
+  }
+
   return message;
 };
 
