@@ -10,7 +10,6 @@ import logo from '../../../public/panorama_block.svg'
 
 const NAV_LINKS = [
   { label: 'Home', href: '/chat' },
-  { label: 'Swap', href: '/swap' },
   { label: 'Lending', href: '/chat?open=lending' },
   { label: 'Staking', href: '/chat?open=staking' },
   { label: 'DCA', href: '/dca' },

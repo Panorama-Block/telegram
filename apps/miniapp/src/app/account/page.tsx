@@ -585,18 +585,6 @@ export default function AccountPage() {
                         <button
                           onClick={() => {
                             setExploreDropdownOpen(false);
-                            router.push('/swap');
-                          }}
-                          className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" stroke="#4BC3C5" fill="none" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                          </svg>
-                          Swap
-                        </button>
-                        <button
-                          onClick={() => {
-                            setExploreDropdownOpen(false);
                             router.push('/chat?open=lending');
                           }}
                           className="flex items-center gap-3 px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full text-left"
