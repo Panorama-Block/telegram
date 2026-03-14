@@ -123,21 +123,6 @@ export const defaultNavigationItems: NavigationItem[] = [
     )
   },
   {
-    key: 'swap',
-    label: 'Swap',
-    href: '/swap',
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-      </svg>
-    ),
-    activeIcon: (
-      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-        <path fillRule="evenodd" d="M7 2a1 1 0 00-.707 1.707L9.586 7H3a1 1 0 100 2h6.586l-3.293 3.293a1 1 0 001.414 1.414l5-5a1 1 0 000-1.414l-5-5A1 1 0 007 2zm10 10a1 1 0 00-.707 1.707L19.586 17H13a1 1 0 100 2h6.586l-3.293 3.293a1 1 0 001.414 1.414l5-5a1 1 0 000-1.414l-5-5A1 1 0 0017 12z" clipRule="evenodd" />
-      </svg>
-    )
-  },
-  {
     key: 'lending',
     label: 'Lending',
     href: '/chat?open=lending',
