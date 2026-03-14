@@ -17,7 +17,11 @@ import { TokenSelectionModal } from "@/components/TokenSelectionModal";
 
 // API Integration - TON bridge uses separate API
 import { bridgeApi } from "@/features/swap/bridgeApi";
+// Backend centralizado — usado para swaps same-chain na Base via Execution Layer
+import { swapApi } from "@/features/swap/api";
 import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS } from "@/features/swap/tokens";
+
+const BASE_CHAIN_ID = 8453;
 
 // Gateway integration for transaction history
 import { startSwapTracking, type SwapTracker } from "@/features/gateway";
@@ -564,7 +568,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         return;
       }
 
-      // EVM swap - use ThirdWeb SDK directly
+      // EVM swap
       // Get decimals - fallback to known values for common tokens
       const sellSymbol = (sellToken.ticker || sellToken.symbol || '').toUpperCase();
       const decimals = sellToken.decimals ||
@@ -574,6 +578,36 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
       console.log("[SwapWidget] Token decimals:", { symbol: sellSymbol, decimals, rawDecimals: sellToken.decimals });
 
+      // Base same-chain → Execution Layer (Aerodrome) via backend
+      if (fromChainId === BASE_CHAIN_ID && toChainId === BASE_CHAIN_ID) {
+        console.log("[SwapWidget] Base same-chain → chamando backend (Execution Layer / Aerodrome)");
+        const quoteRes = await swapApi.quote({
+          fromChainId,
+          toChainId,
+          fromToken: normalizeToApi(sellToken.address || 'native'),
+          toToken: normalizeToApi(buyToken.address || 'native'),
+          amount: weiAmount.toString(),
+          unit: 'wei',
+          smartAccountAddress: account?.address || '0x0000000000000000000000000000000000000000',
+        });
+
+        if (quoteRequestRef.current !== requestId) return;
+
+        if (!quoteRes.success || !quoteRes.quote) {
+          throw new Error(quoteRes.message || 'Quote failed');
+        }
+
+        console.log("[SwapWidget] Backend quote (Aerodrome):", quoteRes.quote);
+        setQuote({
+          estimatedReceiveAmount: quoteRes.quote.estimatedReceiveAmount,
+          originAmount: quoteRes.quote.amount,
+          exchangeRate: quoteRes.quote.exchangeRate,
+          provider: quoteRes.quote.provider,
+        });
+        return;
+      }
+
+      // Other EVM swaps → ThirdWeb SDK
       console.log("[SwapWidget] Getting quote from ThirdWeb SDK...", {
         fromChainId,
         toChainId,
@@ -952,6 +986,79 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
       const hashes: Array<{ hash: string, chainId: number }> = [];
 
+      // Base same-chain → Execution Layer (Aerodrome) via backend
+      if (fromChainId === BASE_CHAIN_ID && toChainId === BASE_CHAIN_ID) {
+        console.log("[SwapWidget] Base same-chain → preparando bundle via backend (Execution Layer / Aerodrome)");
+
+        const prepareRes = await swapApi.prepare({
+          fromChainId,
+          toChainId,
+          fromToken: originToken,
+          toToken: destinationToken,
+          amount: weiAmount.toString(),
+          unit: 'wei',
+          sender: account.address,
+          provider: (quote as any)?.provider,
+        });
+
+        if (!prepareRes.prepared) throw new Error(prepareRes.message || 'Prepare failed');
+
+        // Normalize to flat tx list (backend retorna transactions[] ou steps[])
+        const backendTxs: Array<{ to: string; data: string; value: string; chainId: number; action: string }> = [];
+        if (prepareRes.prepared.transactions?.length) {
+          prepareRes.prepared.transactions.forEach(tx => backendTxs.push({
+            to: tx.to, data: tx.data || '0x', value: String(tx.value || '0'),
+            chainId: tx.chainId || fromChainId,
+            action: (tx.data || '').startsWith('0x095ea7b3') ? 'approval' : 'swap',
+          }));
+        } else if (prepareRes.prepared.steps?.length) {
+          prepareRes.prepared.steps.forEach(step => step.transactions.forEach(tx => backendTxs.push({
+            to: tx.to, data: tx.data || '0x', value: String(tx.value || '0'),
+            chainId: tx.chainId || step.chainId || fromChainId,
+            action: (tx.data || '').startsWith('0x095ea7b3') ? 'approval' : 'swap',
+          })));
+        }
+
+        if (!backendTxs.length) throw new Error('No transactions returned from backend');
+
+        console.log(`[SwapWidget] Bundle Aerodrome: ${backendTxs.length} tx(s) — ${backendTxs.map(t => t.action).join(', ')}`);
+        setPreparing(false);
+        setExecuting(true);
+
+        let currentWalletChainIdBase: number | null = null;
+        for (const tx of backendTxs) {
+          console.log(`[SwapWidget] Executando ${tx.action} tx na chain ${tx.chainId}...`);
+
+          if (currentWalletChainIdBase !== tx.chainId) {
+            try {
+              await switchChain(defineChain(tx.chainId));
+              await new Promise(resolve => setTimeout(resolve, 500));
+              currentWalletChainIdBase = tx.chainId;
+            } catch {
+              throw new Error(`Please switch to chain ${tx.chainId} in your wallet`);
+            }
+          }
+
+          const preparedTx = prepareTransaction({
+            to: tx.to as `0x${string}`,
+            data: tx.data as `0x${string}`,
+            value: BigInt(tx.value),
+            chain: defineChain(tx.chainId),
+            client,
+          });
+
+          const receipt = await sendAndConfirmTransaction({ transaction: preparedTx, account });
+          console.log(`[SwapWidget] ${tx.action} confirmado:`, receipt.transactionHash);
+          hashes.push({ hash: receipt.transactionHash, chainId: tx.chainId });
+          if (tracker) tracker.addHash(receipt.transactionHash, tx.chainId, tx.action);
+        }
+
+        setTxHashes(hashes);
+        if (tracker) await tracker.markConfirmed(estimatedOutput);
+        return;
+      }
+
+      // Other EVM swaps → ThirdWeb SDK
       // Prepare swap - ThirdWeb will return all necessary transactions including approvals
       console.log("[SwapWidget] Preparing swap...");
 

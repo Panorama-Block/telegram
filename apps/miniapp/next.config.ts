@@ -228,6 +228,20 @@ const nextConfig: NextConfig = {
       });
     }
 
+    // DCA service proxy
+    const dcaBase = (process.env.DCA_API_BASE || 'http://localhost:3007').replace(/\/+$/, '');
+    console.log('[Next.js] DCA API proxy configured:', dcaBase);
+    rewrites.push({
+      source: "/api/dca/:path*",
+      destination: `${dcaBase}/:path*`,
+      basePath: false,
+    });
+    rewrites.push({
+      source: "/miniapp/api/dca/:path*",
+      destination: `${dcaBase}/:path*`,
+      basePath: false,
+    });
+
     return rewrites;
   },
 
