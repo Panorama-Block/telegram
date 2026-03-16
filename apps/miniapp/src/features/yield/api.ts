@@ -70,17 +70,11 @@ class YieldApiClient {
     this.activeWallet = activeWallet;
 
     const direct = process.env.NEXT_PUBLIC_YIELD_API_URL || process.env.VITE_YIELD_API_URL;
-    const isBrowser = typeof window !== 'undefined';
-    const isLocalHost =
-      isBrowser &&
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
     if (direct && direct.length > 0) {
       this.baseUrl = direct.replace(/\/+$/, '');
-    } else if (isLocalHost) {
-      // In local dev, bypass Next rewrite proxy for lower latency and fewer intermittent 5xx.
-      this.baseUrl = 'http://localhost:3011';
     } else {
+      // Always use the Next.js rewrite proxy to avoid CORS issues.
       this.baseUrl = '/api/yield';
     }
   }

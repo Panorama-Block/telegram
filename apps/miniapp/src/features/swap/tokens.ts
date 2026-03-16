@@ -186,6 +186,9 @@ export const networks: Network[] = [
       { symbol: 'cbBTC', address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', icon: 'https://assets.coingecko.com/coins/images/33030/small/cbtc.webp', decimals: 8, name: 'Coinbase Wrapped BTC' },
       { symbol: 'DAI', address: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', icon: 'https://assets.coingecko.com/coins/images/9956/small/Badge_Dai.png', decimals: 18, name: 'Dai Stablecoin' },
       { symbol: 'AERO', address: '0x940181a94a35a4569e4529a3cdfb74e38fd98631', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0x940181a94A35A4569E4529A3CDfB74e38FD98631/logo.png', decimals: 18, name: 'Aerodrome' },
+      { symbol: 'VIRTUAL', address: '0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b', icon: 'https://coin-images.coingecko.com/coins/images/34057/small/LOGOMARK.png', decimals: 18, name: 'Virtuals Protocol' },
+      { symbol: 'msETH', address: '0x7ba6f01772924a82d9626c126347a28299e98c98', icon: 'https://coin-images.coingecko.com/coins/images/67512/small/metronome_mseth.png', decimals: 18, name: 'Metronome Synth ETH' },
+      { symbol: 'EURC', address: '0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42', icon: 'https://coin-images.coingecko.com/coins/images/26045/small/EURC.png', decimals: 6, name: 'EURC' },
     ],
   },
   {
@@ -228,6 +231,9 @@ const _USDT  = "0xfde4c96c8593536e31f229ea8f37b2ada2699bb2";
 const _cbBTC = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf";
 const _DAI   = "0x50c5725949a6f0c72e6c4a641f24049a917db0cb";
 const _AERO  = "0x940181a94a35a4569e4529a3cdfb74e38fd98631";
+const _VIRTUAL = "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b";
+const _msETH = "0x7ba6f01772924a82d9626c126347a28299e98c98";
+const _EURC  = "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42";
 
 // Confirmed pool pairs (bidirectional). ETH ≡ WETH for pool lookup purposes.
 const _AERODROME_PAIRS: [string, string][] = [
@@ -237,6 +243,12 @@ const _AERODROME_PAIRS: [string, string][] = [
   [_USDT, _DAI], [_USDT, _AERO],
   [_cbBTC, _AERO],
   [_DAI,  _AERO],
+  // VIRTUAL pairs
+  [_ETH,  _VIRTUAL], [_WETH, _VIRTUAL], [_USDC, _VIRTUAL],
+  // msETH pairs
+  [_ETH,  _msETH], [_WETH, _msETH],
+  // EURC pairs
+  [_ETH,  _EURC], [_WETH, _EURC], [_USDC, _EURC],
 ];
 
 const _pairSet = new Set<string>();

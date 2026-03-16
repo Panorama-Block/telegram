@@ -21,6 +21,9 @@ const BASE_ICON_BY_SYMBOL: Record<string, string> = {
   cbBTC: 'https://assets.coingecko.com/coins/images/40489/small/cbBTC.png',
   cbETH: 'https://assets.coingecko.com/coins/images/40143/small/cbeth.png',
   wstETH: 'https://assets.coingecko.com/coins/images/18834/small/wstETH.png',
+  VIRTUAL: 'https://coin-images.coingecko.com/coins/images/34057/small/LOGOMARK.png',
+  msETH: 'https://coin-images.coingecko.com/coins/images/67512/small/metronome_mseth.png',
+  EURC: 'https://coin-images.coingecko.com/coins/images/26045/small/EURC.png',
 };
 
 const BASE_NAME_BY_SYMBOL: Record<string, string> = {
@@ -34,6 +37,9 @@ const BASE_NAME_BY_SYMBOL: Record<string, string> = {
   cbBTC: 'Coinbase Wrapped BTC',
   cbETH: 'Coinbase Wrapped ETH',
   wstETH: 'Wrapped stETH',
+  VIRTUAL: 'Virtuals Protocol',
+  msETH: 'Metronome Synth ETH',
+  EURC: 'EURC',
 };
 
 interface CatalogState {
