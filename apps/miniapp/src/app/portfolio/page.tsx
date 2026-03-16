@@ -33,7 +33,6 @@ import { useSmartWalletPortfolio } from "@/features/portfolio/useSmartWalletPort
 import { useStakingApi, type WithdrawalRequest } from "@/features/staking/api";
 import { useStakingData } from "@/features/staking/useStakingData";
 import { useLendingData } from "@/features/lending/useLendingData";
-import { useBaseStakingData } from "@/features/staking/useBaseStakingData";
 import { SmartWalletCard, SmartWalletIndicator } from "@/features/portfolio/SmartWalletCard";
 import { CreateSmartWalletModal } from "@/features/portfolio/CreateSmartWalletModal";
 import { DeleteWalletModal } from "@/features/portfolio/DeleteWalletModal";
@@ -168,17 +167,6 @@ export default function PortfolioPage() {
     lastFetchTime: lendingLastFetchTime,
   } = useLendingData();
 
-  // Base / Aerodrome Staking
-  const {
-    positions: basePositions,
-    portfolioAssets: basePortfolioAssets,
-    apr: baseApr,
-    loading: baseStakingLoading,
-    error: baseStakingError,
-    refresh: refreshBaseStaking,
-    lastFetchTime: baseStakingLastFetchTime,
-  } = useBaseStakingData();
-
   const [stakingWithdrawals, setStakingWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [stakingWithdrawalsLoading, setStakingWithdrawalsLoading] = useState(false);
   const [stakingWithdrawalsError, setStakingWithdrawalsError] = useState<string | null>(null);
@@ -214,8 +202,7 @@ export default function PortfolioPage() {
     if (viewMode !== 'main') return;
     refreshStakingWithdrawals();
     void refreshLendingPosition();
-    void refreshBaseStaking();
-  }, [refreshLendingPosition, refreshStakingWithdrawals, refreshBaseStaking, viewMode]);
+  }, [refreshLendingPosition, refreshStakingWithdrawals, viewMode]);
 
   // Determine which data to show based on view mode
   const isSmartWalletView = viewMode === 'smart' && hasSmartWallet;
@@ -617,12 +604,11 @@ export default function PortfolioPage() {
                   void refreshStaking();
                   void refreshStakingWithdrawals(true);
                   void refreshLendingPosition();
-                  void refreshBaseStaking();
                 }}
                 className="inline-flex items-center gap-2 text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors disabled:opacity-60"
-                disabled={stakingLoading || stakingWithdrawalsLoading || lendingLoading || baseStakingLoading}
+                disabled={stakingLoading || stakingWithdrawalsLoading || lendingLoading}
               >
-                {(stakingLoading || stakingWithdrawalsLoading || lendingLoading || baseStakingLoading) ? (
+                {(stakingLoading || stakingWithdrawalsLoading || lendingLoading) ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
                   <Scan className="w-3.5 h-3.5" />
@@ -633,17 +619,14 @@ export default function PortfolioPage() {
 
             {/* ═══════════ Liquid Staking ═══════════ */}
             {(() => {
-              const LIQUID_STAKING_COMING_SOON = true; // Remove this flag when the on-chain service is deployed
 
               const stakingCards = [
-                { id: 'aerodrome', name: 'Aerodrome', chain: 'Base', logo: 'https://assets.coingecko.com/coins/images/31745/small/token.png', chainLogo: 'https://assets.coingecko.com/asset_platforms/images/131/small/base.png', href: '/chat?open=staking', color: 'blue' as const },
                 { id: 'lido', name: 'Lido', chain: 'Ethereum', logo: 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png', chainLogo: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', href: '/chat?open=staking', color: 'sky' as const },
               ];
               const total = stakingCards.length;
               const idx = stakingSlide % total;
               const card = stakingCards[idx];
 
-              const isAerodromeComingSoon = LIQUID_STAKING_COMING_SOON && card.id === 'aerodrome';
 
               return (
                 <div className="mb-6">
@@ -679,13 +662,6 @@ export default function PortfolioPage() {
                       transition={{ duration: 0.25, ease: 'easeInOut' }}
                       className="p-5"
                     >
-                    {isAerodromeComingSoon && (
-                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#050505]/85 backdrop-blur-sm rounded-2xl">
-                        <Droplets className="w-7 h-7 text-blue-400/50 mb-2" />
-                        <span className="text-sm font-semibold text-white">Coming Soon</span>
-                        <span className="text-[11px] text-zinc-500 mt-1">On-chain integration not yet deployed</span>
-                      </div>
-                    )}
                     {/* Card header */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
@@ -708,13 +684,6 @@ export default function PortfolioPage() {
                         )}>
                           {stakingClaimable.count > 0 ? `${stakingClaimable.count} Claimable` : stakingPending.count > 0 ? `${stakingPending.count} Pending` : 'Active'}
                         </div>
-                      )}
-                      {card.id === 'aerodrome' && (
-                        basePositions.length > 0 ? (
-                          <div className="text-[11px] px-2 py-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 shrink-0">{basePositions.length} Active</div>
-                        ) : (
-                          <div className="text-[11px] px-2 py-1 rounded-lg border border-white/10 bg-white/5 text-zinc-500 shrink-0">No positions</div>
-                        )
                       )}
                     </div>
 
@@ -752,93 +721,11 @@ export default function PortfolioPage() {
                       </>
                     )}
 
-                    {/* ── Aerodrome content ── */}
-                    {card.id === 'aerodrome' && (
-                      <>
-                        {basePositions.length > 0 && (
-                          <div className="mt-4 space-y-3">
-                            {basePositions.map((pos) => {
-                              const portfolio = basePortfolioAssets.find((a) => a.poolId === pos.poolId);
-                              const tokenABal = portfolio ? parseFloat(portfolio.tokenA.balance) : 0;
-                              const tokenBBal = portfolio ? parseFloat(portfolio.tokenB.balance) : 0;
-                              // Use position earnedRewards (raw wei) or fall back to portfolio pendingRewards (formatted)
-                              const rewardsBig = safeParseBigInt(pos.earnedRewards);
-                              const hasRewardsFromPosition = rewardsBig != null && rewardsBig > 0n;
-                              const portfolioRewards = portfolio ? parseFloat(portfolio.pendingRewards) : 0;
-                              const hasRewards = hasRewardsFromPosition || portfolioRewards > 0;
-                              const rewardsLabel = hasRewardsFromPosition
-                                ? `${formatWei(pos.earnedRewards, pos.rewardToken.decimals)} ${pos.rewardToken.symbol}`
-                                : portfolioRewards > 0
-                                  ? `${portfolioRewards.toFixed(portfolioRewards < 0.001 ? 6 : 4)} ${portfolio!.rewardTokenSymbol}`
-                                  : '';
-                              const poolTokens = pos.poolName.match(/^(\w+)\/(\w+)/);
-                              const tA = poolTokens?.[1] ?? pos.tokenA.symbol;
-                              const tB = poolTokens?.[2] ?? pos.tokenB.symbol;
-                              return (
-                                <div key={pos.poolId} className="rounded-lg border border-white/5 bg-white/[0.02] p-3 space-y-3">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <Droplets className="w-3.5 h-3.5 text-blue-400" />
-                                      <span className="text-xs font-medium text-white">{pos.poolName}</span>
-                                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded border", pos.stable ? "text-cyan-400 border-cyan-500/20 bg-cyan-500/5" : "text-amber-400 border-amber-500/20 bg-amber-500/5")}>{pos.stable ? 'Stable' : 'Volatile'}</span>
-                                    </div>
-                                    <span className={cn("text-xs font-medium", Number.isFinite(baseApr) && baseApr! > 0 ? "text-emerald-400" : "text-zinc-500")}>
-                                      {Number.isFinite(baseApr) && baseApr! > 0 ? `${baseApr!.toFixed(2)}% APR` : ''}
-                                    </span>
-                                  </div>
-                                  {tokenABal > 0 || tokenBBal > 0 ? (
-                                    <div className="grid grid-cols-2 gap-2">
-                                      <div className="rounded-md bg-white/[0.03] px-2.5 py-2">
-                                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider">{tA}</div>
-                                        <div className="text-sm font-mono text-white mt-0.5">{tokenABal.toFixed(tokenABal < 0.01 ? 6 : 4)}</div>
-                                      </div>
-                                      <div className="rounded-md bg-white/[0.03] px-2.5 py-2">
-                                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider">{tB}</div>
-                                        <div className="text-sm font-mono text-white mt-0.5">{tokenBBal.toFixed(tokenBBal < 0.01 ? 6 : 2)}</div>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-xs text-zinc-500">Staked LP</span>
-                                      <span className="text-sm font-mono text-white">{formatWei(pos.stakedBalance)}</span>
-                                    </div>
-                                  )}
-                                  {hasRewards && (
-                                    <div className="flex items-center justify-between px-0.5">
-                                      <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Pending Rewards</span>
-                                      <span className="text-xs font-mono text-amber-400">{rewardsLabel}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {basePositions.length === 0 && !baseStakingLoading && (
-                          <div className="mt-4 text-center py-3">
-                            <p className="text-xs text-zinc-500">No active liquidity positions</p>
-                            <p className="text-[10px] text-zinc-600 mt-1">Stake in a pool to start earning AERO rewards</p>
-                          </div>
-                        )}
-                        {baseStakingLoading && basePositions.length === 0 && (
-                          <div className="mt-4 flex items-center justify-center gap-2 py-3 text-zinc-500 text-xs">
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            Loading...
-                          </div>
-                        )}
-                        {baseStakingError && <div className="mt-3 text-xs text-red-400">{baseStakingError}</div>}
-                      </>
-                    )}
-
                     {/* Manage button */}
                     <div className="mt-4">
                       <Link
                         href={card.href}
-                        className={cn(
-                          "inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border transition-colors",
-                          card.color === 'sky' && "bg-sky-500/10 hover:bg-sky-500/15 border-sky-500/20 text-sky-400",
-                          card.color === 'blue' && "bg-blue-500/10 hover:bg-blue-500/15 border-blue-500/20 text-blue-400",
-                        )}
+                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border transition-colors bg-sky-500/10 hover:bg-sky-500/15 border-sky-500/20 text-sky-400"
                       >
                         Manage Position <Droplets className="w-3 h-3" />
                       </Link>
