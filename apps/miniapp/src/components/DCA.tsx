@@ -200,14 +200,20 @@ export function DCA({ onClose }: DCAProps) {
   const [signStep, setSignStep] = useState<{ current: number; total: number } | null>(null);
 
   const handleSign = useCallback(async () => {
-    if (!account || !vaultBundle) return;
+    if (!account || !vaultBundle || !selectedAccount) return;
     setIsSigning(true);
     setError(null);
     try {
       const { sendAndConfirmTransaction, createThirdwebClient, defineChain, prepareTransaction } = await import("thirdweb");
+      const { smartWallet } = await import("thirdweb/wallets");
       const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID });
       const baseChain = defineChain(8453);
       await switchChain(baseChain);
+
+      // Connect the selected smart wallet with the EOA as personal signer
+      const wallet = smartWallet({ chain: baseChain, gasless: false });
+      const smartAccount = await wallet.connect({ client, personalAccount: account });
+
       for (let i = 0; i < vaultBundle.steps.length; i++) {
         const step = vaultBundle.steps[i];
         setSignStep({ current: i + 1, total: vaultBundle.steps.length });
@@ -218,7 +224,7 @@ export function DCA({ onClose }: DCAProps) {
           data: step.data as `0x${string}`,
           value: BigInt(step.value || "0"),
         });
-        await sendAndConfirmTransaction({ transaction: tx, account });
+        await sendAndConfirmTransaction({ transaction: tx, account: smartAccount });
       }
       setViewState("success");
     } catch (err: any) {
@@ -227,7 +233,7 @@ export function DCA({ onClose }: DCAProps) {
       setIsSigning(false);
       setSignStep(null);
     }
-  }, [account, vaultBundle, switchChain]);
+  }, [account, vaultBundle, selectedAccount, switchChain]);
 
   // Load user's smart accounts
   useEffect(() => {

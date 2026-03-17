@@ -35,6 +35,8 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { SeniorAppShell } from '@/components/layout';
 import { SwapWidget } from '@/components/SwapWidget';
 import { Staking } from '@/components/Staking';
+import { AvaxLiquidStaking } from '@/components/AvaxLiquidStaking';
+import { LiquidStakingRouter } from '@/components/LiquidStakingRouter';
 import { Yield } from '@/components/Yield';
 import { OnboardingModal } from '@/components/OnboardingModal';
 import { Droplets } from 'lucide-react';
@@ -421,7 +423,9 @@ export default function ChatPage() {
   const [lendingInsufficientBalance, setLendingInsufficientBalance] = useState(false);
 
   // Staking states
+  const [showStakingRouter, setShowStakingRouter] = useState(false);
   const [showStakingWidget, setShowStakingWidget] = useState(false);
+  const [showAvaxStakingWidget, setShowAvaxStakingWidget] = useState(false);
   const [currentStakingMetadata, setCurrentStakingMetadata] = useState<Record<string, unknown> | null>(null);
   const [stakingLoading, setStakingLoading] = useState(false);
   const [stakingError, setStakingError] = useState<string | null>(null);
@@ -1466,7 +1470,7 @@ export default function ChatPage() {
         setLendingModalOpen(true);
       } else if (openWidgetPlan.target === 'staking') {
         setCurrentStakingMetadata(openWidgetPlan.metadata ?? parseStakingQueryMetadata(searchParams));
-        setShowStakingWidget(true);
+        setShowStakingRouter(true);
       } else if (openWidgetPlan.target === 'yield') {
         setCurrentYieldMetadata(openWidgetPlan.metadata ?? parseYieldQueryMetadata(searchParams));
         setShowYieldWidget(true);
@@ -2678,11 +2682,9 @@ export default function ChatPage() {
 
                                             {/* Action Button */}
                                             <button
-                                              onClick={async () => {
-                                                // Auto-switch to Ethereum Mainnet before opening staking widget
-                                                await autoSwitchNetwork('ethereum');
+                                              onClick={() => {
                                                 setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
-                                                setShowStakingWidget(true);
+                                                setShowStakingRouter(true);
                                               }}
                                               disabled={stakingLoading}
                                               className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
@@ -2692,9 +2694,16 @@ export default function ChatPage() {
                                           </div>
 
                                           {/* Footer */}
-                                          <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                            <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
-                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Lido</span>
+                                          <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-3">
+                                            <div className="flex items-center gap-1.5">
+                                              <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-3.5 h-3.5 rounded-full" />
+                                              <span className="text-[9px] sm:text-[10px] text-zinc-500">Lido (ETH)</span>
+                                            </div>
+                                            <span className="text-zinc-600">·</span>
+                                            <div className="flex items-center gap-1.5">
+                                              <img src="https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" alt="AVAX" className="w-3.5 h-3.5 rounded-full" />
+                                              <span className="text-[9px] sm:text-[10px] text-zinc-500">Panorama (AVAX)</span>
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
@@ -2946,11 +2955,9 @@ export default function ChatPage() {
 
                                         {/* Action Button */}
                                         <button
-                                          onClick={async () => {
-                                            // Auto-switch to Ethereum Mainnet before opening staking widget
-                                            await autoSwitchNetwork('ethereum');
+                                          onClick={() => {
                                             setCurrentStakingMetadata(activeMessages.at(-1)?.metadata as Record<string, unknown>);
-                                            setShowStakingWidget(true);
+                                            setShowStakingRouter(true);
                                           }}
                                           disabled={stakingLoading}
                                           className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
@@ -2960,9 +2967,16 @@ export default function ChatPage() {
                                       </div>
 
                                       {/* Footer */}
-                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                        <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
-                                        <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Lido</span>
+                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-3">
+                                        <div className="flex items-center gap-1.5">
+                                          <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-3.5 h-3.5 rounded-full" />
+                                          <span className="text-[9px] sm:text-[10px] text-zinc-500">Lido (ETH)</span>
+                                        </div>
+                                        <span className="text-zinc-600">·</span>
+                                        <div className="flex items-center gap-1.5">
+                                          <img src="https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" alt="AVAX" className="w-3.5 h-3.5 rounded-full" />
+                                          <span className="text-[9px] sm:text-[10px] text-zinc-500">Panorama (AVAX)</span>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -3301,6 +3315,38 @@ export default function ChatPage() {
                 initialAmount={swapWidgetTokens.amount}
                 initialQuote={swapWidgetTokens.quote}
                 initialViewState={swapWidgetTokens.viewState}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Liquid Staking Protocol Picker */}
+          <AnimatePresence>
+            {showStakingRouter && (
+              <LiquidStakingRouter
+                onClose={() => setShowStakingRouter(false)}
+                onSelectLido={async () => {
+                  setShowStakingRouter(false);
+                  await autoSwitchNetwork('ethereum');
+                  setShowStakingWidget(true);
+                }}
+                onSelectAvax={() => {
+                  setShowStakingRouter(false);
+                  setShowAvaxStakingWidget(true);
+                }}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* AVAX Liquid Staking Modal */}
+          <AnimatePresence>
+            {showAvaxStakingWidget && (
+              <AvaxLiquidStaking
+                onClose={() => setShowAvaxStakingWidget(false)}
+                initialMode={
+                  parseStakingMode(currentStakingMetadata?.mode) ??
+                  parseStakingMode(currentStakingMetadata?.action) ??
+                  'stake'
+                }
               />
             )}
           </AnimatePresence>

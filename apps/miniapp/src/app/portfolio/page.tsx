@@ -32,6 +32,7 @@ import { usePortfolioData } from "@/features/portfolio/usePortfolioData";
 import { useSmartWalletPortfolio } from "@/features/portfolio/useSmartWalletPortfolio";
 import { useStakingApi, type WithdrawalRequest } from "@/features/staking/api";
 import { useStakingData } from "@/features/staking/useStakingData";
+import { useAvaxStakingApi, type AvaxStakingPosition } from "@/features/staking/avaxStakingApi";
 import { useLendingData } from "@/features/lending/useLendingData";
 import { SmartWalletCard, SmartWalletIndicator } from "@/features/portfolio/SmartWalletCard";
 import { CreateSmartWalletModal } from "@/features/portfolio/CreateSmartWalletModal";
@@ -167,6 +168,23 @@ export default function PortfolioPage() {
     lastFetchTime: lendingLastFetchTime,
   } = useLendingData();
 
+  // AVAX Liquid Staking
+  const avaxStakingApi = useAvaxStakingApi();
+  const [avaxPosition, setAvaxPosition] = useState<AvaxStakingPosition | null>(null);
+  const [avaxLoading, setAvaxLoading] = useState(false);
+
+  const refreshAvaxPosition = useCallback(async () => {
+    setAvaxLoading(true);
+    try {
+      const pos = await avaxStakingApi.getPosition();
+      setAvaxPosition(pos);
+    } catch {
+      // silently ignore — user may not have AVAX position
+    } finally {
+      setAvaxLoading(false);
+    }
+  }, [avaxStakingApi]);
+
   const [stakingWithdrawals, setStakingWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [stakingWithdrawalsLoading, setStakingWithdrawalsLoading] = useState(false);
   const [stakingWithdrawalsError, setStakingWithdrawalsError] = useState<string | null>(null);
@@ -202,7 +220,8 @@ export default function PortfolioPage() {
     if (viewMode !== 'main') return;
     refreshStakingWithdrawals();
     void refreshLendingPosition();
-  }, [refreshLendingPosition, refreshStakingWithdrawals, viewMode]);
+    void refreshAvaxPosition();
+  }, [refreshLendingPosition, refreshStakingWithdrawals, refreshAvaxPosition, viewMode]);
 
   // Determine which data to show based on view mode
   const isSmartWalletView = viewMode === 'smart' && hasSmartWallet;
@@ -604,6 +623,7 @@ export default function PortfolioPage() {
                   void refreshStaking();
                   void refreshStakingWithdrawals(true);
                   void refreshLendingPosition();
+                  void refreshAvaxPosition();
                 }}
                 className="inline-flex items-center gap-2 text-xs px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors disabled:opacity-60"
                 disabled={stakingLoading || stakingWithdrawalsLoading || lendingLoading}
@@ -621,7 +641,8 @@ export default function PortfolioPage() {
             {(() => {
 
               const stakingCards = [
-                { id: 'lido', name: 'Lido', chain: 'Ethereum', logo: 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png', chainLogo: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', href: '/chat?open=staking', color: 'sky' as const },
+                { id: 'lido',  name: 'Lido',     chain: 'Ethereum',  logo: 'https://assets.coingecko.com/coins/images/13442/small/steth_logo.png',  chainLogo: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',                                              href: '/chat?open=staking', color: 'sky'  as const },
+                { id: 'avax',  name: 'Panorama', chain: 'Avalanche', logo: 'https://assets.coingecko.com/coins/images/21630/small/benqi.png',         chainLogo: 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png', href: '/chat?open=staking', color: 'cyan' as const },
               ];
               const total = stakingCards.length;
               const idx = stakingSlide % total;
@@ -685,6 +706,22 @@ export default function PortfolioPage() {
                           {stakingClaimable.count > 0 ? `${stakingClaimable.count} Claimable` : stakingPending.count > 0 ? `${stakingPending.count} Pending` : 'Active'}
                         </div>
                       )}
+                      {card.id === 'avax' && avaxPosition && (
+                        <div className={cn(
+                          "text-[11px] px-2 py-1 rounded-lg border shrink-0",
+                          avaxPosition.pendingUnlocks.some(u => u.redeemable)
+                            ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
+                            : avaxPosition.pendingUnlocks.length > 0
+                              ? "text-blue-400 border-blue-500/30 bg-blue-500/10"
+                              : "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+                        )}>
+                          {avaxPosition.pendingUnlocks.some(u => u.redeemable)
+                            ? `${avaxPosition.pendingUnlocks.filter(u => u.redeemable).length} Redeemable`
+                            : avaxPosition.pendingUnlocks.length > 0
+                              ? `${avaxPosition.pendingUnlocks.length} Pending`
+                              : 'Active'}
+                        </div>
+                      )}
                     </div>
 
                     {/* ── Lido content ── */}
@@ -721,11 +758,53 @@ export default function PortfolioPage() {
                       </>
                     )}
 
+                    {/* ── AVAX / Panorama content ── */}
+                    {card.id === 'avax' && (
+                      <>
+                        <div className="mt-4">
+                          <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <Droplets className="w-3.5 h-3.5 text-cyan-400" />
+                              <span className="text-xs font-medium text-white">Liquid Staking (sAVAX)</span>
+                              {avaxLoading && <Loader2 className="w-3 h-3 animate-spin text-zinc-500 ml-auto" />}
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="rounded-md bg-white/[0.03] px-2.5 py-2">
+                                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">sAVAX Balance</div>
+                                <div className="text-sm font-mono text-white mt-0.5">
+                                  {avaxPosition ? formatWei(avaxPosition.sAvaxBalance) : '--'}
+                                </div>
+                              </div>
+                              <div className="rounded-md bg-white/[0.03] px-2.5 py-2">
+                                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Pending Unlocks</div>
+                                <div className="text-sm font-mono text-white mt-0.5">
+                                  {avaxPosition ? avaxPosition.pendingUnlocks.length : '--'}
+                                </div>
+                              </div>
+                            </div>
+                            {avaxPosition && avaxPosition.pendingUnlocks.some(u => u.redeemable) && (
+                              <div className="flex items-center justify-between px-0.5">
+                                <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Ready to Redeem</span>
+                                <span className="text-xs font-mono text-amber-400">
+                                  {avaxPosition.pendingUnlocks.filter(u => u.redeemable).length}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
                     {/* Manage button */}
                     <div className="mt-4">
                       <Link
                         href={card.href}
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border transition-colors bg-sky-500/10 hover:bg-sky-500/15 border-sky-500/20 text-sky-400"
+                        className={cn(
+                          "inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border transition-colors",
+                          card.id === 'avax'
+                            ? "bg-cyan-500/10 hover:bg-cyan-500/15 border-cyan-500/20 text-cyan-400"
+                            : "bg-sky-500/10 hover:bg-sky-500/15 border-sky-500/20 text-sky-400"
+                        )}
                       >
                         Manage Position <Droplets className="w-3 h-3" />
                       </Link>
