@@ -36,6 +36,7 @@ import { SeniorAppShell } from '@/components/layout';
 import { SwapWidget } from '@/components/SwapWidget';
 import { Staking } from '@/components/Staking';
 import { AvaxLiquidStaking } from '@/components/AvaxLiquidStaking';
+import { LiquidStakingRouter } from '@/components/LiquidStakingRouter';
 import { Yield } from '@/components/Yield';
 import { OnboardingModal } from '@/components/OnboardingModal';
 import { Droplets } from 'lucide-react';
@@ -422,6 +423,7 @@ export default function ChatPage() {
   const [lendingInsufficientBalance, setLendingInsufficientBalance] = useState(false);
 
   // Staking states
+  const [showStakingRouter, setShowStakingRouter] = useState(false);
   const [showStakingWidget, setShowStakingWidget] = useState(false);
   const [showAvaxStakingWidget, setShowAvaxStakingWidget] = useState(false);
   const [currentStakingMetadata, setCurrentStakingMetadata] = useState<Record<string, unknown> | null>(null);
@@ -1468,7 +1470,7 @@ export default function ChatPage() {
         setLendingModalOpen(true);
       } else if (openWidgetPlan.target === 'staking') {
         setCurrentStakingMetadata(openWidgetPlan.metadata ?? parseStakingQueryMetadata(searchParams));
-        setShowStakingWidget(true);
+        setShowStakingRouter(true);
       } else if (openWidgetPlan.target === 'yield') {
         setCurrentYieldMetadata(openWidgetPlan.metadata ?? parseYieldQueryMetadata(searchParams));
         setShowYieldWidget(true);
@@ -2678,30 +2680,17 @@ export default function ChatPage() {
                                               </div>
                                             )}
 
-                                            {/* Action Buttons — protocol selector */}
-                                            <div className="flex gap-2">
-                                              <button
-                                                onClick={async () => {
-                                                  await autoSwitchNetwork('ethereum');
-                                                  setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
-                                                  setShowStakingWidget(true);
-                                                }}
-                                                disabled={stakingLoading}
-                                                className="flex-1 py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                              >
-                                                {stakingLoading ? 'Loading...' : 'ETH (Lido)'}
-                                              </button>
-                                              <button
-                                                onClick={() => {
-                                                  setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
-                                                  setShowAvaxStakingWidget(true);
-                                                }}
-                                                disabled={stakingLoading}
-                                                className="flex-1 py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-cyan-500 text-black font-semibold text-xs sm:text-sm transition-all hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                                              >
-                                                AVAX (Panorama)
-                                              </button>
-                                            </div>
+                                            {/* Action Button */}
+                                            <button
+                                              onClick={() => {
+                                                setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
+                                                setShowStakingRouter(true);
+                                              }}
+                                              disabled={stakingLoading}
+                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                            >
+                                              {stakingLoading ? 'Loading...' : `Review ${action === 'unstake' ? 'Unstake' : 'Staking'}`}
+                                            </button>
                                           </div>
 
                                           {/* Footer */}
@@ -2964,30 +2953,17 @@ export default function ChatPage() {
                                           </div>
                                         )}
 
-                                        {/* Action Buttons — protocol selector */}
-                                        <div className="flex gap-2">
-                                          <button
-                                            onClick={async () => {
-                                              await autoSwitchNetwork('ethereum');
-                                              setCurrentStakingMetadata(activeMessages.at(-1)?.metadata as Record<string, unknown>);
-                                              setShowStakingWidget(true);
-                                            }}
-                                            disabled={stakingLoading}
-                                            className="flex-1 py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                          >
-                                            {stakingLoading ? 'Loading...' : 'ETH (Lido)'}
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              setCurrentStakingMetadata(activeMessages.at(-1)?.metadata as Record<string, unknown>);
-                                              setShowAvaxStakingWidget(true);
-                                            }}
-                                            disabled={stakingLoading}
-                                            className="flex-1 py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-cyan-500 text-black font-semibold text-xs sm:text-sm transition-all hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                                          >
-                                            AVAX (Panorama)
-                                          </button>
-                                        </div>
+                                        {/* Action Button */}
+                                        <button
+                                          onClick={() => {
+                                            setCurrentStakingMetadata(activeMessages.at(-1)?.metadata as Record<string, unknown>);
+                                            setShowStakingRouter(true);
+                                          }}
+                                          disabled={stakingLoading}
+                                          className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                        >
+                                          {stakingLoading ? 'Loading...' : `Review ${action === 'unstake' ? 'Unstake' : 'Staking'}`}
+                                        </button>
                                       </div>
 
                                       {/* Footer */}
@@ -3339,6 +3315,24 @@ export default function ChatPage() {
                 initialAmount={swapWidgetTokens.amount}
                 initialQuote={swapWidgetTokens.quote}
                 initialViewState={swapWidgetTokens.viewState}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Liquid Staking Protocol Picker */}
+          <AnimatePresence>
+            {showStakingRouter && (
+              <LiquidStakingRouter
+                onClose={() => setShowStakingRouter(false)}
+                onSelectLido={async () => {
+                  setShowStakingRouter(false);
+                  await autoSwitchNetwork('ethereum');
+                  setShowStakingWidget(true);
+                }}
+                onSelectAvax={() => {
+                  setShowStakingRouter(false);
+                  setShowAvaxStakingWidget(true);
+                }}
               />
             )}
           </AnimatePresence>
