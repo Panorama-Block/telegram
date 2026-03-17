@@ -19,6 +19,7 @@ export interface AvaxStakingPosition {
   userAddress: string;
   sAvaxBalance: string;
   exchangeRate: string;
+  apy: number | null;
   pendingUnlocks: AvaxUnlockRequest[];
 }
 
