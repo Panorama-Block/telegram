@@ -29,10 +29,15 @@ function isTxHash(value: string): value is Hex {
 
 function receiptStatusToOutcome(status: unknown): "confirmed" | "reverted" {
   // Common shapes:
-  // - "0x1" | "0x0"
-  // - 1 | 0
+  // - "0x1" | "0x0"      (raw JSON-RPC hex)
+  // - "success" | "reverted"  (viem / thirdweb style)
+  // - 1 | 0              (number)
   // - bigint(1) | bigint(0)
-  if (typeof status === "string") return status === "0x1" ? "confirmed" : "reverted";
+  if (typeof status === "string") {
+    if (status === "0x1" || status === "success") return "confirmed";
+    if (status === "0x0" || status === "reverted") return "reverted";
+    return "confirmed"; // unknown string — assume confirmed
+  }
   if (typeof status === "number") return status === 1 ? "confirmed" : "reverted";
   if (typeof status === "bigint") return status === 1n ? "confirmed" : "reverted";
   return "confirmed";
