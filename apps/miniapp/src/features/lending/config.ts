@@ -154,6 +154,8 @@ export const TOKEN_ICONS: Record<string, string> = {
   'USDt': 'https://assets.coingecko.com/coins/images/325/small/Tether.png',
   'AUSD': 'https://assets.coingecko.com/coins/images/38923/small/ausd_200x200.png',
   'EURC': 'https://assets.coingecko.com/coins/images/26045/small/eurc.png',
+  'VIRTUAL': 'https://coin-images.coingecko.com/coins/images/34057/small/LOGOMARK.png',
+  'msETH': 'https://coin-images.coingecko.com/coins/images/67512/small/metronome_mseth.png',
 };
 
 export const ERROR_MESSAGES = {

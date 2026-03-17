@@ -201,4 +201,7 @@ export const swapApi = {
     const qs = new URLSearchParams({ chainId: String(chainId) }).toString();
     return getJson<StatusResponse>(`/status/${hash}?${qs}`);
   },
+  pairs() {
+    return getJson<{ pairs: import('./types').SwapPair[] }>('/pairs');
+  },
 };
