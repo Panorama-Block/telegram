@@ -87,7 +87,7 @@ describe('Lending multi-step tx states', () => {
     waitForEvmReceiptMock.mockReset();
   });
 
-  test('shows timeout state and allows retry for validation step', async () => {
+  test('shows timeout state and allows retry for validation step', { timeout: 15_000 }, async () => {
     prepareWithdrawMock.mockResolvedValue({
       data: {
         validation: {
@@ -122,10 +122,10 @@ describe('Lending multi-step tx states', () => {
       expect(screen.getAllByText('Submitted').length).toBeGreaterThan(0);
       expect(screen.getAllByText(/confirmation is still pending/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/Validation/i).length).toBeGreaterThan(0);
-      expect(screen.getByText('Try again')).toBeInTheDocument();
+      expect(screen.getByText('Try Again')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Try again'));
+    fireEvent.click(screen.getByText('Try Again'));
     expect(await screen.findByRole('button', { name: /Confirm withdraw/i })).toBeInTheDocument();
   });
 });

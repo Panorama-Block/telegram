@@ -822,25 +822,26 @@ export function Lending({
     : null;
 
   const header = viewState === 'input' ? (
-    <div className="px-6 py-4 flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-          <Landmark className="w-5 h-5" />
-        </div>
+    <div className="flex items-center gap-3 px-4 py-3">
+      <div className="flex items-center gap-2 flex-1">
+        <Landmark className="w-5 h-5 text-cyan-400" />
         <div>
           <h2 className="text-lg font-display font-bold text-white">Lending</h2>
           <div className="text-[10px] font-medium text-zinc-500 uppercase tracking-widest">Benqi · Avalanche</div>
         </div>
       </div>
-      <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
+      <button onClick={onClose} className="p-3 min-h-[44px] min-w-[44px] flex items-center justify-center text-zinc-500 hover:text-white active:text-white hover:bg-white/10 active:bg-white/20 rounded-full transition-colors">
         <X className="w-5 h-5" />
       </button>
     </div>
   ) : viewState === 'review' ? (
-    <div className="px-6 py-4 flex items-center justify-between">
-      <h2 className="text-lg font-display font-bold text-white">Confirm {actionLabel.toLowerCase()}</h2>
+    <div className="flex items-center gap-3 px-4 py-3">
       <button onClick={() => setViewState('input')} className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors">
         <ArrowLeft className="w-5 h-5" />
+      </button>
+      <h2 className="text-lg font-display font-bold text-white flex-1">Confirm {actionLabel.toLowerCase()}</h2>
+      <button onClick={onClose} className="p-3 min-h-[44px] min-w-[44px] flex items-center justify-center text-zinc-500 hover:text-white active:text-white hover:bg-white/10 active:bg-white/20 rounded-full transition-colors">
+        <X className="w-5 h-5" />
       </button>
     </div>
   ) : null;

@@ -206,7 +206,7 @@ export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }:
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[60] flex items-start md:items-center justify-center pt-4 md:pt-0 p-4 pb-20 md:pb-4 bg-black/60 backdrop-blur-xl overflow-y-auto"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl overflow-y-auto"
           onClick={onClose}
         >
           <motion.div

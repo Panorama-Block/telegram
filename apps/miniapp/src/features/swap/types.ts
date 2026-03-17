@@ -150,3 +150,11 @@ export type StatusResponse = {
     userAddress?: string;
   };
 };
+
+export type SwapPair = {
+  id: string;
+  tokenIn: { symbol: string; address: string; decimals: number };
+  tokenOut: { symbol: string; address: string; decimals: number };
+  stable: boolean;
+  poolAddress?: string;
+};

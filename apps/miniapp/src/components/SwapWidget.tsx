@@ -20,7 +20,7 @@ import { TokenIcon } from "@/components/TokenIcon";
 import { bridgeApi } from "@/features/swap/bridgeApi";
 // Backend centralizado — usado para swaps same-chain na Base via Execution Layer
 import { swapApi } from "@/features/swap/api";
-import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS, networks, aerodromeHasPair } from "@/features/swap/tokens";
+import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS } from "@/features/swap/tokens";
 
 const BASE_CHAIN_ID = 8453;
 
@@ -1274,32 +1274,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   // Handlers
   const openTokenList = (slot: 'sell' | 'buy') => {
     setActiveSlot(slot);
-
-    // When selecting the "to" token on Base (same-chain Aerodrome swap),
-    // only show tokens that have a confirmed Aerodrome pool with the "from" token.
-    const BASE_CHAIN_ID = 8453;
-    const fromIsBase = sellToken.network === 'Base';
-    if (slot === 'buy' && fromIsBase) {
-      const baseNetwork = networks.find(n => n.chainId === BASE_CHAIN_ID);
-      if (baseNetwork) {
-        const fromAddr = (sellToken.address || '').toLowerCase();
-        const compatible = baseNetwork.tokens
-          .filter(t => t.address.toLowerCase() !== fromAddr && aerodromeHasPair(fromAddr, t.address))
-          .map(t => ({
-            ticker: t.symbol,
-            name: t.name || t.symbol,
-            network: 'Base',
-            address: t.address,
-            balance: '0.00',
-            icon: t.icon,
-            decimals: t.decimals,
-          }));
-        setFilteredModalTokens(compatible.length > 0 ? compatible : undefined);
-      }
-    } else {
-      setFilteredModalTokens(undefined);
-    }
-
+    setFilteredModalTokens(undefined);
     setShowTokenList(true);
   };
 

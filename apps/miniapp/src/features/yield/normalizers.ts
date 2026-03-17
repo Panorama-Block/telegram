@@ -30,6 +30,18 @@ const POOL_ALIAS_TO_CANONICAL: Record<string, string> = {
   'USDC-USDBC': 'usdc-usdbc-stable',
   'USDC/USDBC': 'usdc-usdbc-stable',
   'USDC-USDBC-STABLE': 'usdc-usdbc-stable',
+
+  'VIRTUAL-WETH': 'virtual-weth-volatile',
+  'VIRTUAL/WETH': 'virtual-weth-volatile',
+  'VIRTUAL-WETH-VOLATILE': 'virtual-weth-volatile',
+
+  'MSETH-WETH': 'mseth-weth-stable',
+  'MSETH/WETH': 'mseth-weth-stable',
+  'MSETH-WETH-STABLE': 'mseth-weth-stable',
+
+  'EURC-WETH': 'eurc-weth-volatile',
+  'EURC/WETH': 'eurc-weth-volatile',
+  'EURC-WETH-VOLATILE': 'eurc-weth-volatile',
 };
 
 const YIELD_ACTION_LABELS: Record<YieldAction, string> = {
