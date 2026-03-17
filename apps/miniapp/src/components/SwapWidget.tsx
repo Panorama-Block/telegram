@@ -101,8 +101,21 @@ const translateError = (message: string): string => {
     return 'Transaction cancelled.';
   }
 
+  // ThirdWeb epoch error — either in-app wallet session OR backend API key expired
+  if (lower.includes('token expired') && lower.includes('epoch')) {
+    return '__SESSION_EXPIRED__';
+  }
+
+  // Backend service unavailable (e.g. ThirdWeb secret key expired, mapped by backend)
+  if (lower.includes('quote service is temporarily unavailable')) {
+    return '__SERVICE_UNAVAILABLE__';
+  }
+
   return message;
 };
+
+const isSessionExpiredError = (msg: string | null) => msg === '__SESSION_EXPIRED__';
+const isServiceUnavailableError = (msg: string | null) => msg === '__SERVICE_UNAVAILABLE__';
 
 const getBaseChainId = (networkName: string): number => {
   switch (networkName) {
@@ -1249,6 +1262,16 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
     }
   }
 
+  // Derive which DEX/provider served the quote so we can show a transparency badge
+  const dexSource = useMemo<'aerodrome' | 'uniswap' | 'thirdweb' | null>(() => {
+    if (!quote?.provider) return null;
+    const p = (quote.provider as string).toLowerCase();
+    if (p.includes('aerodrome') || p.includes('aero')) return 'aerodrome';
+    if (p.includes('uniswap')) return 'uniswap';
+    if (p.includes('thirdweb')) return 'thirdweb';
+    return null;
+  }, [quote]);
+
   // Formatting View Data
   const estimatedOutput = useMemo(() => {
     if (!quote) return "0.00";
@@ -1402,6 +1425,27 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                     }
                   />
 
+                  {/* DEX Route Badge — shown only when a quote is available for Base same-chain swaps */}
+                  {dexSource && !quoting && (
+                    <div className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium w-fit",
+                      dexSource === 'aerodrome'
+                        ? "bg-cyan-500/10 border border-cyan-500/30 text-cyan-400"
+                        : "bg-amber-500/10 border border-amber-500/30 text-amber-400"
+                    )}>
+                      {dexSource === 'aerodrome' ? (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+                      ) : (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      )}
+                      {dexSource === 'aerodrome'
+                        ? 'Via Aerodrome'
+                        : dexSource === 'uniswap'
+                          ? 'Via Uniswap (Fallback)'
+                          : 'Via ThirdWeb Bridge'}
+                    </div>
+                  )}
+
                   {/* Insufficient balance warning */}
                   {insufficientBalance && (
                     <div className="bg-red-500/10 border border-red-500/40 rounded-xl p-3 mt-2">
@@ -1436,9 +1480,39 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
                   {/* Quote Error */}
                   {quoteError && crossChainSupport.supported && (
-                    <div className="text-red-400 text-xs px-2 mt-2">
-                      {quoteError}
-                    </div>
+                    isServiceUnavailableError(quoteError) ? (
+                      <div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3 mt-2">
+                        <div className="flex items-start gap-2">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-zinc-400 flex-shrink-0 mt-0.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                          </svg>
+                          <div>
+                            <p className="text-xs font-semibold text-zinc-300 mb-1">Service temporarily unavailable</p>
+                            <p className="text-[11px] text-zinc-500 leading-relaxed">
+                              The quote service is under maintenance. Please try again in a few minutes.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : isSessionExpiredError(quoteError) ? (
+                      <div className="bg-zinc-800/60 border border-zinc-700 rounded-xl p-3 mt-2">
+                        <div className="flex items-start gap-2">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-zinc-400 flex-shrink-0 mt-0.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                          </svg>
+                          <div>
+                            <p className="text-xs font-semibold text-zinc-300 mb-1">Quote temporarily unavailable</p>
+                            <p className="text-[11px] text-zinc-500 leading-relaxed">
+                              The quote service is restarting. Please try again in a few minutes.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-red-400 text-xs px-2 mt-2">
+                        {quoteError}
+                      </div>
+                    )
                   )}
 
                   {/* Refuel Toggle for Bridge */}
@@ -1514,6 +1588,16 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                         <Check className="w-4 h-4" />
                         Best price route
                       </div>
+                      {dexSource && (
+                        <span className={cn(
+                          "text-[10px] font-semibold px-2 py-0.5 rounded-full border",
+                          dexSource === 'aerodrome'
+                            ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-400"
+                            : "bg-amber-500/15 border-amber-500/40 text-amber-400"
+                        )}>
+                          {dexSource === 'aerodrome' ? 'Aerodrome' : dexSource === 'uniswap' ? 'Uniswap (Fallback)' : 'ThirdWeb'}
+                        </span>
+                      )}
                     </div>
                     <div className="p-4 space-y-4">
                       <div className="flex items-center justify-between">
@@ -1700,9 +1784,16 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                       </div>
 
                       {executionError && (
-                        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-200 text-xs mb-4">
-                          {executionError}
-                        </div>
+                        isSessionExpiredError(executionError) ? (
+                          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs mb-4 flex items-center gap-2">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="flex-shrink-0"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                            Session expired — please close and reconnect your wallet to continue.
+                          </div>
+                        ) : (
+                          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-200 text-xs mb-4">
+                            {executionError}
+                          </div>
+                        )
                       )}
 
                       <div className="mt-auto">
@@ -1792,10 +1883,22 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                 <span className="text-sm font-medium text-zinc-400">Powered by Avax</span>
               </>
             ) : sellToken.network === 'Base' ? (
-              <>
-                <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0x940181a94A35A4569E4529A3CDfB74e38FD98631/logo.png" alt="Aerodrome" className="w-7 h-7 object-contain rounded-full" />
-                <span className="text-sm font-medium text-zinc-400">Powered by Aerodrome on Base</span>
-              </>
+              dexSource === 'uniswap' ? (
+                <>
+                  <img src="/miniapp/icons/uni_logo.png" alt="Uniswap" className="w-7 h-7 object-contain" />
+                  <span className="text-sm font-medium text-zinc-400">Powered by Uniswap on Base</span>
+                </>
+              ) : dexSource === 'thirdweb' ? (
+                <>
+                  <img src="/miniapp/icons/thirdweb_logo.png" alt="Thirdweb" className="w-7 h-7 object-contain rounded-full" />
+                  <span className="text-sm font-medium text-zinc-400">Powered by ThirdWeb on Base</span>
+                </>
+              ) : (
+                <>
+                  <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0x940181a94A35A4569E4529A3CDfB74e38FD98631/logo.png" alt="Aerodrome" className="w-7 h-7 object-contain rounded-full" />
+                  <span className="text-sm font-medium text-zinc-400">Powered by Aerodrome on Base</span>
+                </>
+              )
             ) : (
               <>
                 <img src="/miniapp/icons/uni_logo.png" alt="Uniswap" className="w-7 h-7 object-contain" />
@@ -1810,6 +1913,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             onClose={() => setShowTokenList(false)}
             onSelect={handleTokenSelect}
             customTokens={filteredModalTokens}
+            defaultNetwork={activeSlot === 'sell' ? sellToken.network : buyToken.network}
           />
 
         </GlassCard>

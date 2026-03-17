@@ -18,6 +18,7 @@ interface TokenSelectionModalProps {
   onClose: () => void;
   onSelect: (token: any) => void;
   customTokens?: UiToken[];
+  defaultNetwork?: string;
 }
 
 interface UiToken {
@@ -43,12 +44,20 @@ const BASE_TOKENS: Omit<UiToken, 'balance'>[] = networks.flatMap(net =>
 );
 
 
-export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }: TokenSelectionModalProps) {
-  const [activeNetwork, setActiveNetwork] = useState<string>('All Chains');
+export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens, defaultNetwork }: TokenSelectionModalProps) {
+  const [activeNetwork, setActiveNetwork] = useState<string>(defaultNetwork || 'All Chains');
   const [searchQuery, setSearchQuery] = useState("");
   const [balances, setBalances] = useState<Record<string, string>>({});
   const [loadingBalances, setLoadingBalances] = useState(false);
   const fetchIdRef = useRef(0);
+
+  // Reset to defaultNetwork (and clear search) each time the modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setActiveNetwork(defaultNetwork || 'All Chains');
+      setSearchQuery('');
+    }
+  }, [isOpen, defaultNetwork]);
 
   const account = useActiveAccount();
   const tonAddress = useTonAddress();
@@ -168,19 +177,31 @@ export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }:
     return () => { cancelled = true; };
   }, [isOpen, account?.address, tonAddress]);
 
-  // Merge balances into tokens and sort (tokens with balance first)
+  // Stable network pill order — TON and Base always first, rest follow config order
+  const networkPills = useMemo(() => {
+    const PINNED = ['All Chains', 'TON', 'Base'];
+    const rest = networks.map(n => n.name).filter(n => !PINNED.slice(1).includes(n));
+    return [...PINNED, ...rest];
+  }, []);
+
+  // Merge balances into tokens — only sort after loading is done to avoid mid-fetch reorders
   const tokensWithBalance: UiToken[] = useMemo(() => {
     if (customTokens) return customTokens;
 
-    return BASE_TOKENS.map(t => ({
+    const withBalance = BASE_TOKENS.map(t => ({
       ...t,
       balance: balances[`${t.network}:${t.address}`] || "0.00",
-    })).sort((a, b) => {
+    }));
+
+    // Keep static order while loading to prevent jarring reorder during fetch
+    if (loadingBalances) return withBalance;
+
+    return withBalance.sort((a, b) => {
       const balA = parseFloat(a.balance) || 0;
       const balB = parseFloat(b.balance) || 0;
       return balB - balA;
     });
-  }, [balances, customTokens]);
+  }, [balances, customTokens, loadingBalances]);
 
   const filteredTokens = useMemo(() => {
     return tokensWithBalance.filter(token => {
@@ -256,7 +277,7 @@ export function TokenSelectionModal({ isOpen, onClose, onSelect, customTokens }:
             {/* Network Pills */}
             <div className="px-4 pb-2 overflow-x-auto scrollbar-hide shrink-0">
               <div className="flex gap-2 pb-2">
-                {Array.from(new Set(['All Chains', ...tokensWithBalance.map(t => t.network)])).map((network) => (
+                {networkPills.map((network) => (
                   <button
                     key={network}
                     onClick={() => setActiveNetwork(network)}
