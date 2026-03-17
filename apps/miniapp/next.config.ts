@@ -256,7 +256,8 @@ const nextConfig: NextConfig = {
 
   env: {
     VITE_GATEWAY_BASE: process.env.PUBLIC_GATEWAY_URL || "",
-    VITE_SWAP_API_BASE: process.env.SWAP_API_BASE || "",
+    VITE_SWAP_API_BASE: "",
+    NEXT_PUBLIC_SWAP_API_BASE: "",
     VITE_AUTH_API_BASE: process.env.AUTH_API_BASE || "",
     VITE_LENDING_API_BASE: process.env.VITE_LENDING_API_BASE || "",
     VITE_THIRDWEB_CLIENT_ID:

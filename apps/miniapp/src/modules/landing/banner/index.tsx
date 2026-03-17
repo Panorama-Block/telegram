@@ -18,23 +18,22 @@ interface Agent {
 
 const data: Agent[] = [
   { chainWatcherAgent: { title: 'Chain Watcher Agent', prompts: [
-    'Identify newly minted tokens on Solana with daily volume above $10K',
     'Compare the borrow APY of USDC between Aave and Morpho on Ethereum',
+    'Which Avalanche protocols have the highest yields?',
   ]}},
   { stakeAgent: { title: '(Re)Stake Agent', prompts: [
-    'Stake all idle SOL on Marinade every friday at 2pm UTC',
     'Convert 50% of LST portfolio (stETH, ETHx, rsETH) into ezETH and restake on Renzo',
+    'Optimize my yield strategy for $1,000 in stablecoins',
   ]}},
   { swapAgent: { title: 'Swap Agent', prompts: [
-    'Swap half my USDC holdings on Base to BERA tokens on BeraChain',
-    'Execute a cross-chain swap of 200 USDC from Ethereum to SONIC',
+    'Find low-risk yield opportunities across Base and Avalanche',
+    'Analyze liquidity flows into Avalanche DeFi',
   ]}},
   { dcaAgent: { title: 'DCA Agent', prompts: [
-    'DCA $1000 into SOL and ETH, split 70/30, every two weeks',
+    'DCA $100 per week into ETH on Base',
     'Double DCA allocation during market dips greater than 7% in a 24h',
   ]}},
   { crossTraderAgent: { title: 'Cross Trader Agent', prompts: [
-    'Mirror the trades of wallet 0xABCD across Solana and Base, but cap each trade at $500',
     'Set limit orders to buy ETH on Base at $2500 and sell at $2800 with a stop loss at $2400',
   ]}},
   { portfolioScannerAgent: { title: 'Portfolio Scanner Agent', prompts: [
@@ -43,7 +42,6 @@ const data: Agent[] = [
   ]}},
   { reportAgent: { title: 'Report Agent', prompts: [
     'Chart weekly LP APY changes on WBTC/USDC pool on Uniswap-Ethereum',
-    'Compile daily wallet inflows from cross-chain bridges between Ethereum and Solana',
   ]}},
 ]
 

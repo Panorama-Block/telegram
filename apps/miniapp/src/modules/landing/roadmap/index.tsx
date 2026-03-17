@@ -2,31 +2,35 @@ import React from 'react'
 
 const data = [
   {
-    title: 'Phase 1 — Launch',
+    title: 'Phase 1 — Telegram Launch',
     items: [
-      'Deploy DeFi agents in Telegram with swaps, staking, lending and cross-chain intents.',
-      'Ship Mini App + gateway with secure auth and in-app wallet.',
+      'Launch AI DeFi agents on Telegram for swaps, lending, staking, and yield.',
+      'Introduce Unified Yield Discovery across V2, V3, and V4 pools.',
+      'Deploy Telegram Mini App with secure wallet gateway.',
     ],
   },
   {
-    title: 'Phase 2 — Expansion',
+    title: 'Phase 2 — Cross-Chain Strategies',
     items: [
-      'Add chains (Solana, Sonic, Bera) and new yield primitives.',
-      'Composable strategies with risk profiles and guardrails.',
+      'Expand integrations across major DeFi ecosystems.',
+      'Launch composable yield strategies executed via AI prompts.',
+      'Release strategy templates for retail users.',
     ],
   },
   {
-    title: 'Phase 3 — Orchestration',
+    title: 'Phase 3 — AI Strategy Orchestration',
     items: [
-      'Multi-agent coordination for multi-step flows and portfolio balancing.',
-      'Adaptive routing with live pricing, gas, and slippage controls.',
+      'Enable multi-agent execution for advanced DeFi strategies.',
+      'Intelligent routing optimizing yield, fees, and liquidity.',
+      'Automated portfolio strategies and cross-chain allocation.',
     ],
   },
   {
-    title: 'Phase 4 — Enterprise',
+    title: 'Phase 4 — Infrastructure & Institutional',
     items: [
-      'Institutional features: treasury automations, staking ops, compliance hooks.',
-      'Mobile super-app experience with offline-safe sessions.',
+      'Launch B2B infrastructure layer for companies and institutions.',
+      'Non-custodial wallet infrastructure for secure blockchain access.',
+      'Policy engine for controlled and automated on-chain operations.',
     ],
   },
 ]

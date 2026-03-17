@@ -455,7 +455,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                             transition={{ duration: 0.2 }}
                             className="overflow-hidden"
                           >
-                            <div className={cn('space-y-1 overflow-y-auto custom-scrollbar pr-1', chatSearchQuery.trim() ? 'max-h-[320px]' : 'max-h-[200px]')}>
+                            <div className={cn('space-y-1 overflow-y-auto custom-scrollbar pr-1', chatSearchQuery.trim() ? 'max-h-[320px]' : 'max-h-[112px]')}>
                               {isLoadingConversations ? (
                                 <div className="px-4 py-3 text-xs text-zinc-500 flex items-center gap-2">
                                   <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -476,7 +476,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                                     const title = convId ? resolveConversationTitle(convId, conversation.title) : conversation.title;
                                     return title?.toLowerCase().includes(chatSearchQuery.toLowerCase());
                                   })
-                                  .slice(0, chatSearchQuery.trim() ? 20 : 8);
+                                  .slice(0, 20);
 
                                 if (filtered.length === 0) {
                                   return (

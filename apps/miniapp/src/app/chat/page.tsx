@@ -25,7 +25,7 @@ import { swapApi } from '@/features/swap/api';
 import { bridgeApi } from '@/features/swap/bridgeApi';
 import { Lending } from '@/components/Lending';
 import { useLendingApi } from '@/features/lending';
-import { normalizeToApi, formatAmountHuman, toFixedFloor } from '@/features/swap/utils';
+import { normalizeToApi, formatAmountHuman, toFixedFloor, parseAmountToWei } from '@/features/swap/utils';
 import { networks, Token, TON_CHAIN_ID } from '@/features/swap/tokens';
 import { useActiveAccount, useActiveWallet } from 'thirdweb/react';
 import { useLogout } from '@/shared/hooks/useLogout';
@@ -34,6 +34,7 @@ import type { QuoteResponse } from '@/features/swap/types';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { SeniorAppShell } from '@/components/layout';
 import { SwapWidget } from '@/components/SwapWidget';
+import { resolveProvider } from '@/shared/utils/swapProvider';
 import { Staking } from '@/components/Staking';
 import { AvaxLiquidStaking } from '@/components/AvaxLiquidStaking';
 import { LiquidStakingRouter } from '@/components/LiquidStakingRouter';
@@ -543,9 +544,9 @@ export default function ChatPage() {
 
   const trendingPrompts = [
     { icon: <ArrowLeftRight className="w-4 h-4" />, text: 'Swap 0.1 ETH to USDC on Base' },
-    { icon: <TrendingUp className="w-4 h-4" />, text: 'Run a 2-leg yield strategy on Base network' },
-    { icon: <Landmark className="w-4 h-4" />, text: 'Borrow 5 AVAX tokens on Benqi' },
-    { icon: <PieChart className="w-4 h-4" />, text: 'Buy ETH every Sunday morning for me' },
+    { icon: <ArrowLeftRight className="w-4 h-4" />, text: 'Bridge USDC from Base to Avalanche' },
+    { icon: <TrendingUp className="w-4 h-4" />, text: 'Find the highest APR pools on Base' },
+    { icon: <Landmark className="w-4 h-4" />, text: 'Supply my AVAX for lending on Avalanche' },
   ];
 
   const debug = useCallback(
@@ -1625,6 +1626,7 @@ export default function ChatPage() {
     try {
       setSwapLoading(true);
       setSwapError(null);
+      setSwapQuote(null);
       console.log('🔄 Fetching quote...');
 
       const userAddress = localStorage.getItem('userAddress');
@@ -1652,29 +1654,71 @@ export default function ChatPage() {
           console.error('❌ Quote failed:', errorMsg);
           setSwapError(errorMsg);
         }
+      } else if (fromNetwork.chainId !== toNetwork.chainId) {
+        // Cross-chain EVM: ThirdWeb handles it in SwapWidget — skip quote here
+        console.log('🌉 Cross-chain EVM detected, deferring quote to SwapWidget (ThirdWeb)');
       } else {
-        console.log('🔄 Using Swap API for EVM swap');
-      const quoteResponse = await swapApi.quote({
-        fromChainId: fromNetwork.chainId,
-        toChainId: toNetwork.chainId,
-        fromToken: normalizeToApi(fromToken.address),
-        toToken: normalizeToApi(toToken.address),
-        amount: String(amount),
-        unit: 'token',
-        smartAccountAddress: effectiveAddress || undefined,
-      });
+        // Same-chain EVM
+        const sellSymbol = (fromToken.symbol || '').toUpperCase();
+        const decimals = fromToken.decimals ||
+          (sellSymbol === 'USDC' || sellSymbol === 'USDT' ? 6 :
+           sellSymbol === 'WBTC' ? 8 : 18);
 
-        if (quoteResponse.success && quoteResponse.quote) {
+        if (fromNetwork.chainId === 8453) {
+          // Base same-chain → Execution Layer (Aerodrome) via backend
+          console.log('🔄 Using Swap API for Base swap (Aerodrome)');
+          const quoteResponse = await swapApi.quote({
+            fromChainId: fromNetwork.chainId,
+            toChainId: toNetwork.chainId,
+            fromToken: normalizeToApi(fromToken.address),
+            toToken: normalizeToApi(toToken.address),
+            amount: String(amount),
+            unit: 'token',
+            smartAccountAddress: effectiveAddress || undefined,
+          });
+
+          if (quoteResponse.success && quoteResponse.quote) {
+            setSwapQuote({
+              success: true,
+              quote: quoteResponse.quote,
+              approval: quoteResponse.approval
+            });
+            console.log('✅ Quote received successfully (Aerodrome)');
+          } else {
+            const errorMsg = quoteResponse.message || 'Failed to get quote';
+            console.error('❌ Quote failed:', errorMsg);
+            setSwapError(errorMsg);
+          }
+        } else {
+          // Non-Base same-chain → ThirdWeb Bridge.Sell.quote (Uniswap routing)
+          if (!client) {
+            setSwapError('ThirdWeb client not initialized');
+            return;
+          }
+          console.log('🔄 Using ThirdWeb for non-Base same-chain swap');
+          const weiAmount = parseAmountToWei(String(amount), decimals);
+          const { Bridge } = await import('thirdweb');
+          const quoteResult = await Bridge.Sell.quote({
+            originChainId: fromNetwork.chainId,
+            originTokenAddress: normalizeToApi(fromToken.address) as `0x${string}`,
+            destinationChainId: toNetwork.chainId,
+            destinationTokenAddress: normalizeToApi(toToken.address) as `0x${string}`,
+            amount: weiAmount,
+            client,
+          });
+          console.log('✅ ThirdWeb quote received:', quoteResult);
           setSwapQuote({
             success: true,
-            quote: quoteResponse.quote,
-            approval: quoteResponse.approval
+            quote: {
+              fromChainId: fromNetwork.chainId,
+              toChainId: toNetwork.chainId,
+              fromToken: normalizeToApi(fromToken.address),
+              toToken: normalizeToApi(toToken.address),
+              amount: weiAmount.toString(),
+              estimatedReceiveAmount: quoteResult.destinationAmount.toString(),
+              provider: 'thirdweb',
+            },
           });
-          console.log('✅ Quote received successfully');
-        } else {
-          const errorMsg = quoteResponse.message || 'Failed to get quote';
-          console.error('❌ Quote failed:', errorMsg);
-          setSwapError(errorMsg);
         }
       }
     } catch (error) {
@@ -2251,9 +2295,9 @@ export default function ChatPage() {
                             >
                               {[
                                 { label: 'Swap 0.1 ETH to USDC on Base', prompt: 'Swap 0.1 ETH to USDC on Base' },
-                                { label: 'Swap 50 USDC to SOL on Solana', prompt: 'Swap 50 USDC to SOL on Solana' },
-                                { label: 'What are the top trending tokens?', prompt: 'What are the top trending tokens today?' },
-                                { label: 'Market analysis of Bitcoin', prompt: 'Give me a market analysis of Bitcoin' },
+                                { label: 'Bridge USDC from Base to Avalanche', prompt: 'Bridge USDC from Base to Avalanche' },
+                                { label: 'Find the highest APR pools on Base', prompt: 'Find the highest APR pools on Base' },
+                                { label: 'Supply my AVAX for lending on Avalanche', prompt: 'Supply my AVAX for lending on Avalanche' },
                               ].map((item) => (
                                 <motion.button
                                   key={item.label}
@@ -2317,12 +2361,13 @@ export default function ChatPage() {
                                     const fromIcon = getTokenIcon(fromToken);
                                     const toIcon = getTokenIcon(toToken);
                                     const poweredBy = getSwapPoweredBy(fromNetwork, toNetwork);
+                                    const dexSource = resolveProvider(swapQuote?.quote?.provider);
                                     const toNetworkObj = getNetworkByName(toNetwork);
                                     const toTokenObj = toNetworkObj ? getTokenBySymbol(toToken, toNetworkObj.chainId) : null;
                                     const toDecimals = toTokenObj?.decimals ?? 18;
 
                                     return (
-                                      <div className="mt-3 sm:mt-4 w-full max-w-[588px] sm:max-w-2xl">
+                                      <div className="mt-3 sm:mt-4 w-[480px] max-w-full">
                                         {/* Swap Card */}
                                         <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
                                           {/* Gradient Glow */}
@@ -2397,29 +2442,34 @@ export default function ChatPage() {
                                               </div>
                                             </div>
 
-                                            {/* Error Message */}
-                                            {swapError && !swapLoading && (
-                                              <div className="p-2 sm:p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl">
-                                                <p className="text-[10px] sm:text-xs text-red-300">{swapError}</p>
-                                              </div>
-                                            )}
-
-                                            {/* Insufficient Balance Warning */}
-                                            {swapInsufficientBalance && !swapLoading && (
-                                              <div className="bg-red-500/10 border border-red-500/40 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
-                                                <div className="flex items-start gap-2">
-                                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400 flex-shrink-0 mt-0.5">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                                  </svg>
-                                                  <div>
-                                                    <p className="text-xs font-semibold text-red-400 mb-0.5">Insufficient Balance</p>
-                                                    <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-relaxed">
-                                                      You have {swapSellBalance ?? '0'} {fromToken} but trying to swap {String(message.metadata?.amount)} {fromToken}
-                                                    </p>
+                                            {/* Notification zone — fixed height to keep card size uniform */}
+                                            <div className="min-h-[52px] flex flex-col justify-center">
+                                              {swapError && !swapLoading ? (
+                                                <div className="p-2 sm:p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl">
+                                                  <p className="text-[10px] sm:text-xs text-red-300">{swapError}</p>
+                                                </div>
+                                              ) : swapInsufficientBalance && !swapLoading ? (
+                                                <div className="bg-red-500/10 border border-red-500/40 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                                                  <div className="flex items-start gap-2">
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400 flex-shrink-0 mt-0.5">
+                                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                    </svg>
+                                                    <div>
+                                                      <p className="text-xs font-semibold text-red-400 mb-0.5">Insufficient Balance</p>
+                                                      <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-relaxed">
+                                                        You have {swapSellBalance ?? '0'} {fromToken} but trying to swap {String(message.metadata?.amount)} {fromToken}
+                                                      </p>
+                                                    </div>
                                                   </div>
                                                 </div>
-                                              </div>
-                                            )}
+                                              ) : dexSource === 'uniswap' && fromNetwork === 'base' && !swapLoading && swapQuote?.quote ? (
+                                                <div className="p-2 sm:p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg sm:rounded-xl">
+                                                  <p className="text-[10px] sm:text-xs text-amber-300">
+                                                    <span className="font-semibold">Note:</span> Primary route unavailable. This quote is being processed via <span className="font-semibold">Uniswap (Fallback)</span> due to current liquidity conditions.
+                                                  </p>
+                                                </div>
+                                              ) : null}
+                                            </div>
 
                                             {/* Action Button */}
                                             <button
@@ -2436,17 +2486,48 @@ export default function ChatPage() {
                                                   setShowSwapWidget(true);
                                                 }
                                               }}
-                                              disabled={swapLoading || !swapQuote?.quote}
+                                              disabled={swapLoading || (!swapQuote?.quote && !isCrossChainSwap(fromNetwork, toNetwork))}
                                               className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                                             >
                                               {swapLoading ? 'Getting best price...' : 'Review Swap'}
                                             </button>
                                           </div>
 
-                                          {/* Footer */}
+                                          {/* Footer — mirrors SwapWidget provider logic */}
                                           <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                            <img src={poweredBy.logo} alt={poweredBy.name} className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-contain" />
-                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by {poweredBy.name}</span>
+                                            {isCrossChainSwap(fromNetwork, toNetwork) ? (
+                                              <>
+                                                <img src="/miniapp/icons/thirdweb_logo.png" alt="Thirdweb" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-contain" />
+                                                <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by ThirdWeb</span>
+                                              </>
+                                            ) : fromNetwork === 'avalanche' ? (
+                                              <>
+                                                <img src="https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" alt="Avalanche" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-contain" />
+                                                <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Avalanche</span>
+                                              </>
+                                            ) : fromNetwork === 'base' ? (
+                                              dexSource === 'uniswap' ? (
+                                                <>
+                                                  <img src="/miniapp/icons/uni_logo.png" alt="Uniswap" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-contain" />
+                                                  <span className="text-[9px] sm:text-[10px] text-amber-500/80">Powered by Uniswap on Base</span>
+                                                </>
+                                              ) : dexSource === 'thirdweb' ? (
+                                                <>
+                                                  <img src="/miniapp/icons/thirdweb_logo.png" alt="Thirdweb" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-contain" />
+                                                  <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by ThirdWeb on Base</span>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0x940181a94A35A4569E4529A3CDfB74e38FD98631/logo.png" alt="Aerodrome" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-contain" />
+                                                  <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Aerodrome on Base</span>
+                                                </>
+                                              )
+                                            ) : (
+                                              <>
+                                                <img src="/miniapp/icons/uni_logo.png" alt="Uniswap" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-contain" />
+                                                <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Uniswap</span>
+                                              </>
+                                            )}
                                           </div>
                                         </div>
                                       </div>
@@ -2464,7 +2545,7 @@ export default function ChatPage() {
                                       : null;
 
                                     return (
-                                      <div className="mt-3 sm:mt-4 w-full max-w-[588px] sm:max-w-2xl">
+                                      <div className="mt-3 sm:mt-4 w-[480px] max-w-full">
                                         {/* Lending Card */}
                                         <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
                                           {/* Gradient Glow */}
@@ -2581,7 +2662,7 @@ export default function ChatPage() {
                                     const balanceToken = action === 'unstake' ? 'stETH' : 'ETH';
 
                                     return (
-                                      <div className="mt-3 sm:mt-4 w-full max-w-[588px] sm:max-w-2xl">
+                                      <div className="mt-3 sm:mt-4 w-[480px] max-w-full">
                                         {/* Staking Card */}
                                         <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
                                           {/* Gradient Glow */}
@@ -2723,7 +2804,7 @@ export default function ChatPage() {
                                       : '--';
 
                                     return (
-                                      <div className="mt-3 sm:mt-4 w-full max-w-[588px] sm:max-w-2xl">
+                                      <div className="mt-3 sm:mt-4 w-[480px] max-w-full">
                                         <div className="relative rounded-xl sm:rounded-2xl bg-[#0A0A0A] border border-white/10 overflow-hidden shadow-xl">
                                           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-16 bg-cyan-500/10 blur-[40px] pointer-events-none" />
                                           <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/5 flex items-center gap-2">
