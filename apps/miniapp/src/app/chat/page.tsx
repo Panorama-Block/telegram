@@ -35,6 +35,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { SeniorAppShell } from '@/components/layout';
 import { SwapWidget } from '@/components/SwapWidget';
 import { Staking } from '@/components/Staking';
+import { AvaxLiquidStaking } from '@/components/AvaxLiquidStaking';
 import { Yield } from '@/components/Yield';
 import { OnboardingModal } from '@/components/OnboardingModal';
 import { Droplets } from 'lucide-react';
@@ -422,6 +423,7 @@ export default function ChatPage() {
 
   // Staking states
   const [showStakingWidget, setShowStakingWidget] = useState(false);
+  const [showAvaxStakingWidget, setShowAvaxStakingWidget] = useState(false);
   const [currentStakingMetadata, setCurrentStakingMetadata] = useState<Record<string, unknown> | null>(null);
   const [stakingLoading, setStakingLoading] = useState(false);
   const [stakingError, setStakingError] = useState<string | null>(null);
@@ -2676,25 +2678,43 @@ export default function ChatPage() {
                                               </div>
                                             )}
 
-                                            {/* Action Button */}
-                                            <button
-                                              onClick={async () => {
-                                                // Auto-switch to Ethereum Mainnet before opening staking widget
-                                                await autoSwitchNetwork('ethereum');
-                                                setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
-                                                setShowStakingWidget(true);
-                                              }}
-                                              disabled={stakingLoading}
-                                              className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                            >
-                                              {stakingLoading ? 'Loading...' : `Review ${action === 'unstake' ? 'Unstake' : 'Staking'}`}
-                                            </button>
+                                            {/* Action Buttons — protocol selector */}
+                                            <div className="flex gap-2">
+                                              <button
+                                                onClick={async () => {
+                                                  await autoSwitchNetwork('ethereum');
+                                                  setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
+                                                  setShowStakingWidget(true);
+                                                }}
+                                                disabled={stakingLoading}
+                                                className="flex-1 py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                              >
+                                                {stakingLoading ? 'Loading...' : 'ETH (Lido)'}
+                                              </button>
+                                              <button
+                                                onClick={() => {
+                                                  setCurrentStakingMetadata(message.metadata as Record<string, unknown>);
+                                                  setShowAvaxStakingWidget(true);
+                                                }}
+                                                disabled={stakingLoading}
+                                                className="flex-1 py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-cyan-500 text-black font-semibold text-xs sm:text-sm transition-all hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                                              >
+                                                AVAX (Panorama)
+                                              </button>
+                                            </div>
                                           </div>
 
                                           {/* Footer */}
-                                          <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                            <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
-                                            <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Lido</span>
+                                          <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-3">
+                                            <div className="flex items-center gap-1.5">
+                                              <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-3.5 h-3.5 rounded-full" />
+                                              <span className="text-[9px] sm:text-[10px] text-zinc-500">Lido (ETH)</span>
+                                            </div>
+                                            <span className="text-zinc-600">·</span>
+                                            <div className="flex items-center gap-1.5">
+                                              <img src="https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" alt="AVAX" className="w-3.5 h-3.5 rounded-full" />
+                                              <span className="text-[9px] sm:text-[10px] text-zinc-500">Panorama (AVAX)</span>
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
@@ -2944,25 +2964,43 @@ export default function ChatPage() {
                                           </div>
                                         )}
 
-                                        {/* Action Button */}
-                                        <button
-                                          onClick={async () => {
-                                            // Auto-switch to Ethereum Mainnet before opening staking widget
-                                            await autoSwitchNetwork('ethereum');
-                                            setCurrentStakingMetadata(activeMessages.at(-1)?.metadata as Record<string, unknown>);
-                                            setShowStakingWidget(true);
-                                          }}
-                                          disabled={stakingLoading}
-                                          className="w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                                        >
-                                          {stakingLoading ? 'Loading...' : `Review ${action === 'unstake' ? 'Unstake' : 'Staking'}`}
-                                        </button>
+                                        {/* Action Buttons — protocol selector */}
+                                        <div className="flex gap-2">
+                                          <button
+                                            onClick={async () => {
+                                              await autoSwitchNetwork('ethereum');
+                                              setCurrentStakingMetadata(activeMessages.at(-1)?.metadata as Record<string, unknown>);
+                                              setShowStakingWidget(true);
+                                            }}
+                                            disabled={stakingLoading}
+                                            className="flex-1 py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-xs sm:text-sm transition-all hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          >
+                                            {stakingLoading ? 'Loading...' : 'ETH (Lido)'}
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setCurrentStakingMetadata(activeMessages.at(-1)?.metadata as Record<string, unknown>);
+                                              setShowAvaxStakingWidget(true);
+                                            }}
+                                            disabled={stakingLoading}
+                                            className="flex-1 py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-cyan-500 text-black font-semibold text-xs sm:text-sm transition-all hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          >
+                                            AVAX (Panorama)
+                                          </button>
+                                        </div>
                                       </div>
 
                                       {/* Footer */}
-                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-2">
-                                        <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
-                                        <span className="text-[9px] sm:text-[10px] text-zinc-500">Powered by Lido</span>
+                                      <div className="relative z-10 px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/5 flex items-center justify-center gap-3">
+                                        <div className="flex items-center gap-1.5">
+                                          <img src="https://assets.coingecko.com/coins/images/13573/small/Lido_DAO.png" alt="Lido" className="w-3.5 h-3.5 rounded-full" />
+                                          <span className="text-[9px] sm:text-[10px] text-zinc-500">Lido (ETH)</span>
+                                        </div>
+                                        <span className="text-zinc-600">·</span>
+                                        <div className="flex items-center gap-1.5">
+                                          <img src="https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" alt="AVAX" className="w-3.5 h-3.5 rounded-full" />
+                                          <span className="text-[9px] sm:text-[10px] text-zinc-500">Panorama (AVAX)</span>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -3301,6 +3339,20 @@ export default function ChatPage() {
                 initialAmount={swapWidgetTokens.amount}
                 initialQuote={swapWidgetTokens.quote}
                 initialViewState={swapWidgetTokens.viewState}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* AVAX Liquid Staking Modal */}
+          <AnimatePresence>
+            {showAvaxStakingWidget && (
+              <AvaxLiquidStaking
+                onClose={() => setShowAvaxStakingWidget(false)}
+                initialMode={
+                  parseStakingMode(currentStakingMetadata?.mode) ??
+                  parseStakingMode(currentStakingMetadata?.action) ??
+                  'stake'
+                }
               />
             )}
           </AnimatePresence>
