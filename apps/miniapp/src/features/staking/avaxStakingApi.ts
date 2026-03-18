@@ -18,7 +18,9 @@ export interface AvaxUnlockRequest {
 export interface AvaxStakingPosition {
   userAddress: string;
   sAvaxBalance: string;
+  avaxEquivalent?: string;
   exchangeRate: string;
+  apy: number | null;
   pendingUnlocks: AvaxUnlockRequest[];
 }
 
@@ -30,11 +32,11 @@ export interface AvaxStakingTx {
 }
 
 /* ------------------------------------------------------------------ */
-/*  API Client                                                         */
+/*  API Client — calls execution layer directly via Next.js proxy     */
+/*  /api/liquid-staking/benqi/* → execution_service/avax/liquid-staking/*  */
 /* ------------------------------------------------------------------ */
 
-// Routes through the Next.js /api/lending proxy → lending-service → execution layer
-const LENDING_API = '/api/lending';
+const API_BASE = '/api/liquid-staking/benqi';
 
 export class AvaxStakingApiClient {
   private userAddress: string | null;
@@ -45,7 +47,7 @@ export class AvaxStakingApiClient {
 
   async getPosition(): Promise<AvaxStakingPosition | null> {
     if (!this.userAddress) return null;
-    const res = await fetch(`${LENDING_API}/liquid-staking/position/${this.userAddress}`);
+    const res = await fetch(`${API_BASE}/position/${this.userAddress}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -54,39 +56,42 @@ export class AvaxStakingApiClient {
 
   async prepareStake(amountWei: string): Promise<AvaxStakingTx | null> {
     if (!this.userAddress) throw new Error('Wallet not connected');
-    const res = await fetch(`${LENDING_API}/liquid-staking/prepare-stake`, {
+    const res = await fetch(`${API_BASE}/prepare-stake`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: this.userAddress, amount: amountWei }),
+      body: JSON.stringify({ userAddress: this.userAddress, amount: amountWei }),
     });
     const json = await res.json();
-    if (!res.ok || json.data?.error) throw new Error(json.data?.error ?? `HTTP ${res.status}`);
-    return (json.data?.stake ?? null) as AvaxStakingTx | null;
+    if (!res.ok || json.error) throw new Error(json.error ?? `HTTP ${res.status}`);
+    // Execution layer returns { bundle: { steps: [...] }, metadata }
+    const steps: AvaxStakingTx[] = json.bundle?.steps ?? [];
+    return steps[0] ?? null;
   }
 
   async prepareRequestUnlock(sAvaxAmountWei: string): Promise<AvaxStakingTx | null> {
     if (!this.userAddress) throw new Error('Wallet not connected');
-    const res = await fetch(`${LENDING_API}/liquid-staking/prepare-request-unlock`, {
+    const res = await fetch(`${API_BASE}/prepare-request-unlock`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: this.userAddress, sAvaxAmount: sAvaxAmountWei }),
+      body: JSON.stringify({ userAddress: this.userAddress, sAvaxAmount: sAvaxAmountWei }),
     });
     const json = await res.json();
-    if (!res.ok || json.data?.error) throw new Error(json.data?.error ?? `HTTP ${res.status}`);
-    const steps: AvaxStakingTx[] = json.data?.bundle?.steps ?? [];
+    if (!res.ok || json.error) throw new Error(json.error ?? `HTTP ${res.status}`);
+    const steps: AvaxStakingTx[] = json.bundle?.steps ?? [];
     return steps[0] ?? null;
   }
 
   async prepareRedeem(userUnlockIndex: number): Promise<AvaxStakingTx | null> {
     if (!this.userAddress) throw new Error('Wallet not connected');
-    const res = await fetch(`${LENDING_API}/liquid-staking/prepare-redeem`, {
+    const res = await fetch(`${API_BASE}/prepare-redeem`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: this.userAddress, userUnlockIndex }),
+      body: JSON.stringify({ userAddress: this.userAddress, userUnlockIndex }),
     });
     const json = await res.json();
-    if (!res.ok || json.data?.error) throw new Error(json.data?.error ?? `HTTP ${res.status}`);
-    return (json.data?.redeem ?? null) as AvaxStakingTx | null;
+    if (!res.ok || json.error) throw new Error(json.error ?? `HTTP ${res.status}`);
+    const steps: AvaxStakingTx[] = json.bundle?.steps ?? [];
+    return steps[0] ?? null;
   }
 }
 

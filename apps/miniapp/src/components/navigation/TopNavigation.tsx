@@ -39,7 +39,7 @@ export function TopNavigation({
   }
 
   const handleBack = () => {
-    router.back()
+    router.push('/chat?new=true')
   }
 
   const handleProfile = () => {

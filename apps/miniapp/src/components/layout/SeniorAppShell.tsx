@@ -238,13 +238,8 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
   const handleNewChat = useCallback(() => {
     setIsSidebarOpen(false);
 
-    if (isChatRoute) {
-      // Force URL state so chat page enters pending new chat mode and clears any conversation_id.
-      router.replace('/chat?new=true');
-    } else {
-      // Navigate to chat with new=true to show welcome screen
-      router.push('/chat?new=true');
-    }
+    // Always navigate to a fresh chat with welcome screen
+    router.push('/chat?new=true');
   }, [isChatRoute, router]);
 
   const handleSelectConversation = useCallback((conversationInput: unknown) => {
