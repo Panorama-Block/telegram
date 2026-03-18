@@ -1085,7 +1085,7 @@ class LendingApiClient {
         headers,
         body: JSON.stringify({
           ...authData,
-          amount: amountInWei,
+          qTokenAmount: amountInWei,
           qTokenAddress: tokenAddress,
         })
       });
