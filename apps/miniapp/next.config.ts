@@ -207,6 +207,20 @@ const nextConfig: NextConfig = {
         destination: `${yieldBase}/:path*`,
         basePath: false,
       });
+
+      // Liquid Staking (Benqi/sAVAX on Avalanche) — routes directly to execution layer
+      // /api/liquid-staking/benqi/* → execution_service/avax/liquid-staking/*
+      console.log('[Next.js] Liquid Staking (Benqi) proxy configured:', yieldBase);
+      rewrites.push({
+        source: "/api/liquid-staking/benqi/:path*",
+        destination: `${yieldBase}/avax/liquid-staking/:path*`,
+        basePath: false,
+      });
+      rewrites.push({
+        source: "/miniapp/api/liquid-staking/benqi/:path*",
+        destination: `${yieldBase}/avax/liquid-staking/:path*`,
+        basePath: false,
+      });
     }
 
     if (!swapBase) {
