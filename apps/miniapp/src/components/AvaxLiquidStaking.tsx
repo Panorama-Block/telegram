@@ -224,6 +224,7 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
   /* ---------------------------------------------------------------- */
   /*  Derived values                                                   */
   /* ---------------------------------------------------------------- */
+  // Unstake: sAVAX → AVAX  (avaxOut = sAvaxAmount * exchangeRate / 1e18)
   const estimatedAvax = useMemo(() => {
     if (!unlockAmount || !exchangeRate) return '0.00';
     try {
@@ -232,6 +233,16 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
       return formatWei(avaxWei.toString(), 18, 4);
     } catch { return '0.00'; }
   }, [unlockAmount, exchangeRate]);
+
+  // Stake: AVAX → sAVAX  (sAvaxOut = avaxAmount * 1e18 / exchangeRate)
+  const estimatedSAvax = useMemo(() => {
+    if (!stakeAmount || !exchangeRate) return '0.00';
+    try {
+      const avaxWei = parseToWei(stakeAmount);
+      const sAvaxWei = (BigInt(avaxWei) * BigInt(10 ** 18)) / BigInt(exchangeRate);
+      return formatWei(sAvaxWei.toString(), 18, 4);
+    } catch { return '0.00'; }
+  }, [stakeAmount, exchangeRate]);
 
   /* ---------------------------------------------------------------- */
   /*  Stable token pills (defined outside render to keep identity)    */
@@ -357,7 +368,7 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
 
             <DataInput
               label="You receive"
-              value={stakeAmount || '0.00'}
+              value={estimatedSAvax}
               readOnly
               className="text-zinc-400"
               rightElement={sAvaxPill}
