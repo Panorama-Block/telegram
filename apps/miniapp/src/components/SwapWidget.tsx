@@ -1118,7 +1118,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             value: BigInt(tx.value),
             chain: defineChain(tx.chainId),
             client,
-            gas: tx.action === 'swap' ? 400000n : undefined,
+            // 700k: cobre CREATE2 BeaconProxy + initializeFull + swapExactAVAXForTokens
+            // na primeira TX do usuário. ThirdWeb cai para 400k sem isso (OOG).
+            gas: 700000n,
           });
 
           const receipt = await sendAndConfirmTransaction({ transaction: preparedTx, account });
