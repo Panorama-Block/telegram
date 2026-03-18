@@ -1050,6 +1050,7 @@ class LendingApiClient {
         headers,
         body: JSON.stringify({
           ...authData,
+          userAddress: authData.address,
           amount: amountInWei,
           qTokenAddress: tokenAddress,
         })
@@ -1085,6 +1086,7 @@ class LendingApiClient {
         headers,
         body: JSON.stringify({
           ...authData,
+          userAddress: authData.address,
           qTokenAmount: amountInWei,
           qTokenAddress: tokenAddress,
         })
@@ -1120,6 +1122,7 @@ class LendingApiClient {
         headers,
         body: JSON.stringify({
           ...authData,
+          userAddress: authData.address,
           amount: amountInWei,
           qTokenAddress: tokenAddress,
         })
@@ -1155,6 +1158,7 @@ class LendingApiClient {
         headers,
         body: JSON.stringify({
           ...authData,
+          userAddress: authData.address,
           amount: amountInWei,
           qTokenAddress: tokenAddress,
         })
