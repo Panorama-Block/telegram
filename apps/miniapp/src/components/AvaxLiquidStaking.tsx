@@ -148,7 +148,7 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
         setSAvaxBalance(pos.sAvaxBalance);
         setExchangeRate(pos.exchangeRate);
         setApy(pos.apy ?? null);
-        setPendingUnlocks(pos.pendingUnlocks);
+        setPendingUnlocks(pos.pendingUnlocks ?? []);
       }
     } catch (e) {
       console.warn('[AvaxLiquidStaking] getPosition failed:', e);
