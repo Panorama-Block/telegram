@@ -87,7 +87,7 @@ export default function HomePage() {
   }, [userId]);
 
   const handleNewChat = () => {
-    router.push('/chat?new=true');
+    router.push('/newchat');
   };
 
   const handleContinueChat = (conversationId: string) => {

@@ -11,7 +11,7 @@ export default function Page() {
   useEffect(() => {
     const token = localStorage.getItem('authToken')
     if (token) {
-      router.replace('/chat')
+      router.replace('/chat?new=true')
     } else {
       setChecked(true)
     }
