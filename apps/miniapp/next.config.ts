@@ -113,8 +113,8 @@ const nextConfig: NextConfig = {
 
   async rewrites() {
     const isDev = process.env.NODE_ENV !== "production";
-    // Prefer host-mapped localhost ports during local dev (Docker service names are not reachable from the browser/Next proxy).
-    // In production, fail fast if lending base is missing; never fall back to generic gateway URL for /api/lending/*.
+
+    // Resolve all service base URLs upfront (needed for correct rule ordering below)
     const lendingResolution = resolveLendingBaseForRewrite(process.env, isDev);
     const lendingBase = lendingResolution.base;
 
@@ -131,6 +131,14 @@ const nextConfig: NextConfig = {
       "";
     const swapBase = normalizeDevServiceBase(swapBaseRaw, "http://localhost:3002", isDev);
 
+    // yieldBase = execution service (Avalanche: avax/lending, avax/liquid-staking, avax/swap)
+    const yieldBaseRaw =
+      process.env.VITE_YIELD_API_URL ||
+      process.env.NEXT_PUBLIC_YIELD_API_URL ||
+      process.env.YIELD_SERVICE_URL ||
+      "";
+    const yieldBase = normalizeDevServiceBase(yieldBaseRaw, "http://localhost:3011", isDev);
+
     const rewrites = [];
 
     // Gateway proxy — evita CORS ao chamar o DB Gateway direto do browser
@@ -143,6 +151,21 @@ const nextConfig: NextConfig = {
       destination: `${gatewayBase}/:path*`,
       basePath: false,
     });
+
+    // Avax lending (Benqi prepare-supply/redeem/borrow/repay) → execution service.
+    // MUST come BEFORE the generic /api/lending/:path* rule (Next.js first-match wins).
+    if (yieldBase) {
+      rewrites.push({
+        source: "/api/lending/avax/:path*",
+        destination: `${yieldBase}/avax/:path*`,
+        basePath: false,
+      });
+      rewrites.push({
+        source: "/miniapp/api/lending/avax/:path*",
+        destination: `${yieldBase}/avax/:path*`,
+        basePath: false,
+      });
+    }
 
     if (!lendingBase) {
       if (lendingResolution.errors.length > 0) {
@@ -184,13 +207,6 @@ const nextConfig: NextConfig = {
         basePath: false,
       });
     }
-
-    const yieldBaseRaw =
-      process.env.VITE_YIELD_API_URL ||
-      process.env.NEXT_PUBLIC_YIELD_API_URL ||
-      process.env.YIELD_SERVICE_URL ||
-      "";
-    const yieldBase = normalizeDevServiceBase(yieldBaseRaw, "http://localhost:3011", isDev);
 
     if (!yieldBase) {
       console.warn('[Next.js] Yield API base URL not configured, proxy will not work');

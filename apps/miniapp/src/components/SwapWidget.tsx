@@ -20,6 +20,7 @@ import { TokenIcon } from "@/components/TokenIcon";
 import { bridgeApi } from "@/features/swap/bridgeApi";
 // Backend centralizado — usado para swaps same-chain na Base via Execution Layer
 import { swapApi } from "@/features/swap/api";
+import { prepareAvaxSwap } from "@/features/swap/avaxSwapApi";
 import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS } from "@/features/swap/tokens";
 
 const BASE_CHAIN_ID = 8453;
@@ -1061,6 +1062,65 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             // → safeApprove(×2) → router ≈ 300-340k. Sem limite, eth_estimateGas
             // pode falhar em RPC rate-limit e o fallback do thirdweb é muito baixo (OOG).
             gas: tx.action === 'swap' ? 400000n : undefined,
+          });
+
+          const receipt = await sendAndConfirmTransaction({ transaction: preparedTx, account });
+          console.log(`[SwapWidget] ${tx.action} confirmado:`, receipt.transactionHash);
+          hashes.push({ hash: receipt.transactionHash, chainId: tx.chainId });
+          if (tracker) tracker.addHash(receipt.transactionHash, tx.chainId, tx.action);
+        }
+
+        setTxHashes(hashes);
+        if (tracker) await tracker.markConfirmed(estimatedOutput);
+        return;
+      }
+
+      // Avalanche same-chain → Execution Layer (TraderJoe) via backend
+      if (fromChainId === 43114 && toChainId === 43114) {
+        console.log("[SwapWidget] Avalanche same-chain → preparando bundle via backend (Execution Layer / TraderJoe)");
+
+        const avaxPrepare = await prepareAvaxSwap({
+          userAddress: account.address,
+          tokenIn: originToken,
+          tokenOut: destinationToken,
+          amountIn: weiAmount.toString(),
+        });
+
+        // backend retorna steps como PreparedTransaction[] (flat, sem nested transactions)
+        const backendTxs: Array<{ to: string; data: string; value: string; chainId: number; action: string }> = [];
+        avaxPrepare.bundle.steps.forEach(step => backendTxs.push({
+          to: step.to, data: step.data || '0x', value: String(step.value || '0'),
+          chainId: step.chainId || 43114,
+          action: (step.data || '').startsWith('0x095ea7b3') ? 'approval' : 'swap',
+        }));
+
+        if (!backendTxs.length) throw new Error('No transactions returned from avax-swap backend');
+
+        console.log(`[SwapWidget] Bundle TraderJoe: ${backendTxs.length} tx(s) — ${backendTxs.map(t => t.action).join(', ')}`);
+        setPreparing(false);
+        setExecuting(true);
+
+        let currentChain: number | null = null;
+        for (const tx of backendTxs) {
+          if (currentChain !== tx.chainId) {
+            try {
+              await switchChain(defineChain(tx.chainId));
+              await new Promise(resolve => setTimeout(resolve, 500));
+              currentChain = tx.chainId;
+            } catch {
+              throw new Error(`Please switch to chain ${tx.chainId} in your wallet`);
+            }
+          }
+
+          const preparedTx = prepareTransaction({
+            to: tx.to as `0x${string}`,
+            data: tx.data as `0x${string}`,
+            value: BigInt(tx.value),
+            chain: defineChain(tx.chainId),
+            client,
+            // 700k: cobre CREATE2 BeaconProxy + initializeFull + swapExactAVAXForTokens
+            // na primeira TX do usuário. ThirdWeb cai para 400k sem isso (OOG).
+            gas: 700000n,
           });
 
           const receipt = await sendAndConfirmTransaction({ transaction: preparedTx, account });

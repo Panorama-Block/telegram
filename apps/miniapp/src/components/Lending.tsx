@@ -507,25 +507,32 @@ export function Lending({
         return await lendingApi.prepareRepay(qTokenAddress, opAmount, decimals);
       })();
 
-      const data = prepared?.data;
-      if (!data) throw new Error('Failed to prepare transaction.');
-
-      const validationTx = data.validation;
-      const actionTx = data.supply || data.withdraw || data.borrow || data.repay;
-
+      // Suporte ao formato novo (TransactionBundle) e antigo ({ data: { validation, withdraw } })
       const toPreparedTx = (txLike: any) => {
         if (!txLike?.to || !txLike?.data) return null;
         return {
           to: txLike.to,
           data: txLike.data,
           value: txLike.value || '0',
-          gasLimit: txLike.gasLimit || txLike.gas,
+          gasLimit: txLike.gasLimit || txLike.gas || 700000,
           gasPrice: txLike.gasPrice,
           chainId: 43114,
         };
       };
 
-      const txs = [toPreparedTx(validationTx), toPreparedTx(actionTx)].filter(Boolean) as any[];
+      let txs: any[];
+      if (prepared?.bundle?.steps?.length) {
+        // Formato novo: { bundle: { steps: [{ to, data, value, chainId }] } }
+        txs = prepared.bundle.steps.map(toPreparedTx).filter(Boolean);
+      } else {
+        // Formato legado: { data: { validation, supply|withdraw|borrow|repay } }
+        const data = prepared?.data;
+        if (!data) throw new Error('Failed to prepare transaction.');
+        const validationTx = data.validation;
+        const actionTx = data.supply || data.withdraw || data.borrow || data.repay;
+        txs = [toPreparedTx(validationTx), toPreparedTx(actionTx)].filter(Boolean);
+      }
+
       if (txs.length === 0) throw new Error('No valid transaction payload from backend.');
 
       const stepLabels = txs.length > 1 ? ['Validation', actionLabel] : [actionLabel];
