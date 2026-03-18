@@ -68,20 +68,20 @@ export const API_ENDPOINTS = {
   CALCULATE_TAX: '/validation/calculate',
   
   /** Prepare supply transaction */
-  PREPARE_SUPPLY: '/benqi-validation/validateAndSupply',
-  
+  PREPARE_SUPPLY: '/avax/lending/prepare-supply',
+
   /** Prepare withdraw transaction */
-  PREPARE_WITHDRAW: '/benqi-validation/validateAndWithdraw',
-  
+  PREPARE_WITHDRAW: '/avax/lending/prepare-redeem',
+
   /** Prepare borrow transaction */
-  PREPARE_BORROW: '/benqi-validation/validateAndBorrow',
-  
+  PREPARE_BORROW: '/avax/lending/prepare-borrow',
+
   /** Prepare repay transaction */
-  PREPARE_REPAY: '/benqi-validation/validateAndRepay',
-  
+  PREPARE_REPAY: '/avax/lending/prepare-repay',
+
   /** Get supply quote */
   SUPPLY_QUOTE: '/benqi-validation/getValidationAndSupplyQuote',
-  
+
   /** Get borrow quote */
   BORROW_QUOTE: '/benqi-validation/getValidationAndBorrowQuote',
 
