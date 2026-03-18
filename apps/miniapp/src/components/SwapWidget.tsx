@@ -1086,14 +1086,13 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           amountIn: weiAmount.toString(),
         });
 
+        // backend retorna steps como PreparedTransaction[] (flat, sem nested transactions)
         const backendTxs: Array<{ to: string; data: string; value: string; chainId: number; action: string }> = [];
-        avaxPrepare.bundle.steps.forEach(step =>
-          step.transactions.forEach(tx => backendTxs.push({
-            to: tx.to, data: tx.data || '0x', value: String(tx.value || '0'),
-            chainId: tx.chainId || 43114,
-            action: (tx.data || '').startsWith('0x095ea7b3') ? 'approval' : 'swap',
-          }))
-        );
+        avaxPrepare.bundle.steps.forEach(step => backendTxs.push({
+          to: step.to, data: step.data || '0x', value: String(step.value || '0'),
+          chainId: step.chainId || 43114,
+          action: (step.data || '').startsWith('0x095ea7b3') ? 'approval' : 'swap',
+        }));
 
         if (!backendTxs.length) throw new Error('No transactions returned from avax-swap backend');
 

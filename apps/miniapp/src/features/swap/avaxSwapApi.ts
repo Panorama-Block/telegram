@@ -38,7 +38,7 @@ export async function prepareAvaxSwap(params: AvaxSwapPrepareParams) {
   }
 
   return res.json() as Promise<{
-    bundle: { steps: Array<{ transactions: Array<{ to: string; data: string; value: string; chainId: number }> }> };
+    bundle: { steps: Array<{ to: string; data: string; value: string; chainId: number; description?: string }>; totalSteps: number; summary: string };
     metadata: { amountOut: string; amountOutMin: string; swapType: string };
   }>;
 }
