@@ -90,6 +90,14 @@ export const notificationApi = {
   },
 
   /**
+   * Dismiss all notifications for a user
+   */
+  async dismissAll(userId: string): Promise<void> {
+    const visible = await this.list(userId, { take: 100 });
+    await Promise.all(visible.data.map((n) => this.dismiss(n.id)));
+  },
+
+  /**
    * Count unread notifications
    */
   async getUnreadCount(userId: string): Promise<number> {

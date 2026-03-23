@@ -84,6 +84,7 @@ export function NotificationCenter() {
     markRead,
     markAllRead,
     dismiss,
+    dismissAll,
   } = useNotifications({ userId, autoRefresh: true, refreshInterval: open ? 8000 : 30000 });
 
   // Refresh immediately when dropdown opens
@@ -139,15 +140,26 @@ export function NotificationCenter() {
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-pano-border">
               <h3 className="text-sm font-semibold text-pano-text-primary">Notifications</h3>
-              {unreadCount > 0 && (
-                <button
-                  onClick={markAllRead}
-                  className="flex items-center gap-1 text-xs text-pano-text-muted hover:text-pano-text-primary transition-colors"
-                >
-                  <CheckCheck className="w-3.5 h-3.5" />
-                  Mark all read
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                {unreadCount > 0 && (
+                  <button
+                    onClick={markAllRead}
+                    className="flex items-center gap-1 text-xs text-pano-text-muted hover:text-pano-text-primary transition-colors"
+                  >
+                    <CheckCheck className="w-3.5 h-3.5" />
+                    Mark all read
+                  </button>
+                )}
+                {notifications.length > 0 && (
+                  <button
+                    onClick={dismissAll}
+                    className="flex items-center gap-1 text-xs text-pano-text-muted hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Clear all
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Body */}
