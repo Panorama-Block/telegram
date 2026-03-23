@@ -146,6 +146,7 @@ export default function PortfolioPage() {
 
   const [viewMode, setViewMode] = useState<ViewMode>('main');
   const [activeTab, setActiveTab] = useState<TabMode>('assets');
+  const [desktopRightTab, setDesktopRightTab] = useState<'assets' | 'history'>('assets');
   const [historyRange, setHistoryRange] = useState<TimeRange>('1W');
   const [stakingSlide, setStakingSlide] = useState(0);
   const [lendingSlide, setLendingSlide] = useState(0);
@@ -434,14 +435,14 @@ export default function PortfolioPage() {
 
   return (
     <ProtectedRoute>
-    <div className="min-h-[100dvh] bg-[#050505] relative overflow-x-hidden flex flex-col text-foreground font-sans safe-area-pb">
+    <div className="h-[100dvh] bg-[#050505] relative overflow-hidden flex flex-col text-foreground font-sans safe-area-pb">
       {/* Ambient gradient */}
-      <div className="absolute top-0 inset-x-0 h-[400px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-500/8 via-transparent to-transparent blur-3xl pointer-events-none z-0" />
+      <div className="absolute top-0 inset-x-0 h-[200px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-500/8 via-transparent to-transparent blur-3xl pointer-events-none z-0" />
 
       {/* Navigation Header */}
-      <div className="relative z-20 px-4 py-4 flex justify-between items-center max-w-2xl mx-auto w-full">
+      <div className="relative z-20 px-4 py-2.5 flex justify-between items-center max-w-2xl mx-auto w-full">
         <Link href="/chat?new=true" className="flex items-center gap-2 text-zinc-400 hover:text-white active:text-white transition-colors group">
-          <div className="p-2.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-full bg-white/5 border border-white/10 group-hover:bg-white/10 group-active:bg-white/15 transition-colors">
+          <div className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-full bg-white/5 border border-white/10 group-hover:bg-white/10 group-active:bg-white/15 transition-colors">
             <ArrowLeft className="w-4 h-4" />
           </div>
           <span className="font-medium text-sm hidden xs:inline">Back to Chat</span>
@@ -452,18 +453,19 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      <div className="relative z-10 flex-1 px-4 pb-12 max-w-2xl mx-auto w-full space-y-4">
+      <div className="relative z-10 flex-1 px-3 pb-2 max-w-2xl lg:max-w-7xl mx-auto w-full flex flex-col gap-2 min-h-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:grid-rows-[auto_1fr]">
+        {/* Desktop layout: Left col = Hero (row1) + Positions (row2), Right col = Assets|History (row-span-2) */}
 
 
         {/* ─── 1. UNIFIED HERO CARD ────────────────────────────────── */}
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-          <div className="relative overflow-hidden rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="shrink-0 lg:col-start-1 lg:row-start-1">
+          <div className="relative overflow-hidden rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-4 pb-3">
             <div className="absolute -top-16 -right-16 w-52 h-52 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-purple-500/6 rounded-full blur-3xl pointer-events-none" />
             <div className="relative">
 
               {/* Label + Refresh */}
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-1">
                 <span className="text-[11px] text-zinc-500 uppercase tracking-widest font-medium">Total Portfolio</span>
                 <button
                   onClick={handleRefresh}
@@ -479,7 +481,7 @@ export default function PortfolioPage() {
 
               {/* Net Worth Value */}
               <div className="mb-1">
-                <span className="text-4xl font-bold text-white tracking-tight">
+                <span className="text-3xl font-bold text-white tracking-tight">
                   {currentLoading && currentStats.netWorthRaw === 0
                     ? <span className="text-zinc-600 animate-pulse">$-,---.--</span>
                     : currentStats.netWorth
@@ -488,7 +490,7 @@ export default function PortfolioPage() {
               </div>
 
               {/* P&L from history (real) or fallback */}
-              <div className="flex items-center gap-2 mb-5">
+              <div className="flex items-center gap-2 mb-2">
                 {historyPnl ? (
                   <>
                     <span className={cn(
@@ -518,13 +520,13 @@ export default function PortfolioPage() {
               </div>
 
               {/* Performance Chart */}
-              <div className="mb-2">
+              <div className="mb-1">
                 {balanceHistory.length >= 2 ? (
-                  <div className="h-[120px] w-full -mx-2">
+                  <div className="h-[64px] w-full -mx-2">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart
                         data={balanceHistory}
-                        margin={{ top: 4, right: 8, left: 8, bottom: 0 }}
+                        margin={{ top: 2, right: 4, left: 4, bottom: 0 }}
                       >
                         <defs>
                           <linearGradient id="perfGrad" x1="0" y1="0" x2="0" y2="1">
@@ -539,13 +541,6 @@ export default function PortfolioPage() {
                           </linearGradient>
                         </defs>
                         <YAxis domain={['auto', 'auto']} hide />
-                        <XAxis
-                          dataKey="date"
-                          tick={{ fill: '#52525b', fontSize: 10 }}
-                          axisLine={false}
-                          tickLine={false}
-                          interval="preserveStartEnd"
-                        />
                         <Tooltip
                           content={({ active, payload }) => {
                             if (!active || !payload?.length) return null;
@@ -564,19 +559,19 @@ export default function PortfolioPage() {
                           type="monotone"
                           dataKey="value"
                           stroke={historyPnl?.isPositive === false ? '#ef4444' : '#06b6d4'}
-                          strokeWidth={2}
+                          strokeWidth={1.5}
                           fill="url(#perfGrad)"
                           dot={false}
-                          activeDot={{ r: 4, strokeWidth: 0, fill: historyPnl?.isPositive === false ? '#ef4444' : '#06b6d4' }}
+                          activeDot={{ r: 3, strokeWidth: 0, fill: historyPnl?.isPositive === false ? '#ef4444' : '#06b6d4' }}
                           isAnimationActive={false}
                         />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <div className="h-[120px] flex items-center justify-center">
+                  <div className="h-[64px] flex items-center justify-center">
                     {historyLoading ? (
-                      <Loader2 className="w-5 h-5 animate-spin text-zinc-700" />
+                      <Loader2 className="w-4 h-4 animate-spin text-zinc-700" />
                     ) : (
                       <span className="text-[11px] text-zinc-700">Connect a wallet to see performance</span>
                     )}
@@ -584,7 +579,7 @@ export default function PortfolioPage() {
                 )}
 
                 {/* Time range selector */}
-                <div className="flex gap-1.5 mt-2">
+                <div className="flex gap-1.5 mt-1">
                   {(['1W', '1M'] as const).map(r => (
                     <button
                       key={r}
@@ -603,27 +598,24 @@ export default function PortfolioPage() {
               </div>
 
               {/* Divider */}
-              <div className="border-t border-white/5 my-4" />
-
-              {/* Allocation section */}
-              <div className="text-[11px] text-zinc-500 uppercase tracking-widest font-medium mb-3">Allocation</div>
+              <div className="border-t border-white/5 my-2" />
 
               {currentStats.allocation.every(a => a.value === 0) ? (
-                <div className="flex items-center justify-center h-16 text-zinc-600 text-xs">
+                <div className="flex items-center justify-center h-10 text-zinc-600 text-xs">
                   No assets to display
                 </div>
               ) : (
-                <div className="flex items-center gap-5">
+                <div className="flex items-center gap-3">
                   {/* Donut */}
-                  <div className="w-[88px] h-[88px] shrink-0">
+                  <div className="w-[60px] h-[60px] shrink-0">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
                           data={currentStats.allocation.filter(a => a.value > 0)}
                           cx="50%"
                           cy="50%"
-                          innerRadius={26}
-                          outerRadius={40}
+                          innerRadius={18}
+                          outerRadius={28}
                           dataKey="value"
                           strokeWidth={0}
                           paddingAngle={2}
@@ -654,7 +646,7 @@ export default function PortfolioPage() {
                   </div>
 
                   {/* Legend */}
-                  <div className="flex-1 min-w-0 space-y-2">
+                  <div className="flex-1 min-w-0 space-y-1">
                     {currentStats.allocation.map((item) => (
                       <div key={item.label} className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
@@ -671,7 +663,7 @@ export default function PortfolioPage() {
                     ))}
 
                     {/* Staking / Lending strip */}
-                    <div className="flex items-center gap-3 pt-2 border-t border-white/5 mt-1">
+                    <div className="flex items-center gap-3 pt-1 border-t border-white/5 mt-0.5">
                       <div className="flex items-center gap-1.5">
                         <Droplets className="w-3 h-3 text-sky-400" />
                         <span className="text-[11px] text-zinc-500 font-mono">
@@ -700,7 +692,7 @@ export default function PortfolioPage() {
         </motion.div>
 
         {/* ─── 3. TAB NAVIGATION ──────────────────────────────────── */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }} className="shrink-0 order-2 lg:hidden">
           <div className="flex gap-1 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {(
               [
@@ -715,7 +707,7 @@ export default function PortfolioPage() {
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all shrink-0",
+                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all shrink-0",
                   activeTab === tab.key
                     ? "bg-white/10 text-white"
                     : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
@@ -733,26 +725,223 @@ export default function PortfolioPage() {
           </div>
         </motion.div>
 
-        {/* ─── 4. TAB CONTENT ─────────────────────────────────────── */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
-          >
+        {/* ─── 4. DESKTOP POSITIONS PANEL (bottom-left, detailed) ──────────── */}
+        <div className="hidden lg:flex lg:flex-col lg:gap-2 lg:col-start-1 lg:row-start-2 lg:min-h-0 lg:overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <div className="text-[11px] text-zinc-500 uppercase tracking-widest font-medium px-1">Positions</div>
+          <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-3 space-y-2 flex-1 min-h-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
 
-            {/* ══ ASSETS TAB ════════════════════════════════════════ */}
-            {activeTab === 'assets' && (
-              <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-5 space-y-1">
+            {/* Lido */}
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="relative shrink-0">
+                    <img src="https://assets.coingecko.com/coins/images/13442/small/steth_logo.png" alt="Lido" className="w-7 h-7 rounded-lg" />
+                    <img src="https://assets.coingecko.com/coins/images/279/small/ethereum.png" alt="ETH" className="w-3.5 h-3.5 rounded-full absolute -bottom-0.5 -right-0.5 ring-1 ring-[#0A0A0A]" />
+                  </div>
+                  <div>
+                    <span className="text-xs text-white font-medium">Lido</span>
+                    <span className="text-[10px] text-zinc-500 ml-1.5">Ethereum</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {Number.isFinite(lidoApy) && (
+                    <span className="text-[10px] text-emerald-400 font-medium bg-emerald-500/10 px-1.5 py-0.5 rounded-md">{lidoApy!.toFixed(2)}% APY</span>
+                  )}
+                  <div className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded-md border",
+                    stakingClaimable.count > 0
+                      ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
+                      : "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+                  )}>
+                    {stakingClaimable.count > 0
+                      ? `${stakingClaimable.count} Claimable`
+                      : stakingPending.count > 0 ? `${stakingPending.count} Pending` : 'Active'}
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">stETH</div>
+                  <div className="text-sm font-mono text-white">{formatWei(stakingPosition?.stETHBalance)}</div>
+                </div>
+                <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">wstETH</div>
+                  <div className="text-sm font-mono text-white">{formatWei(stakingPosition?.wstETHBalance)}</div>
+                </div>
+              </div>
+              <Link href="/chat?open=staking" className="inline-flex items-center gap-1.5 mt-2 text-xs px-2.5 py-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/15 border border-sky-500/20 text-sky-400 transition-colors">
+                Manage <Droplets className="w-3 h-3" />
+              </Link>
+            </div>
+
+            {/* sAVAX */}
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="relative shrink-0">
+                    <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/avalanchec/assets/0x2b2C81e08f1Af8835a78Bb2A90AE924ACE0eA4bE/logo.png" alt="sAVAX" className="w-7 h-7 rounded-full" />
+                    <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/avalanchec/info/logo.png" alt="AVAX" className="w-3.5 h-3.5 rounded-full absolute -bottom-0.5 -right-0.5 ring-1 ring-[#0A0A0A]" />
+                  </div>
+                  <div>
+                    <span className="text-xs text-white font-medium">BenQi · sAVAX</span>
+                    <span className="text-[10px] text-zinc-500 ml-1.5">Avalanche</span>
+                  </div>
+                </div>
+                {avaxPosition && (
+                  <div className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded-md border",
+                    avaxPosition.pendingUnlocks.some(u => u.redeemable)
+                      ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
+                      : avaxPosition.pendingUnlocks.length > 0
+                        ? "text-blue-400 border-blue-500/30 bg-blue-500/10"
+                        : "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+                  )}>
+                    {avaxPosition.pendingUnlocks.some(u => u.redeemable)
+                      ? `${avaxPosition.pendingUnlocks.filter(u => u.redeemable).length} Redeemable`
+                      : avaxPosition.pendingUnlocks.length > 0
+                        ? `${avaxPosition.pendingUnlocks.length} Pending`
+                        : 'Active'}
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">sAVAX</div>
+                  <div className="text-sm font-mono text-white">{avaxPosition ? formatWei(avaxPosition.sAvaxBalance) : '--'}</div>
+                </div>
+                <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">Pending</div>
+                  <div className="text-sm font-mono text-white">{avaxPosition ? avaxPosition.pendingUnlocks.length : '--'}</div>
+                </div>
+              </div>
+              <Link href="/chat?open=staking" className="inline-flex items-center gap-1.5 mt-2 text-xs px-2.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/20 text-cyan-400 transition-colors">
+                Manage <Droplets className="w-3 h-3" />
+              </Link>
+            </div>
+
+            {/* Benqi Lending */}
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="relative shrink-0">
+                    <img src="https://s2.coinmarketcap.com/static/img/coins/64x64/9288.png" alt="Benqi" className="w-7 h-7 rounded-lg" />
+                    <img src="https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" alt="AVAX" className="w-3.5 h-3.5 rounded-full absolute -bottom-0.5 -right-0.5 ring-1 ring-[#0A0A0A]" />
+                  </div>
+                  <div>
+                    <span className="text-xs text-white font-medium">Benqi</span>
+                    <span className="text-[10px] text-zinc-500 ml-1.5">Lending</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {Number.isFinite(lendingPositionApy) && (
+                    <span className="text-[10px] text-emerald-400 font-medium bg-emerald-500/10 px-1.5 py-0.5 rounded-md">{lendingPositionApy!.toFixed(2)}% APY</span>
+                  )}
+                  <span className={cn(
+                    "text-[10px] font-medium px-1.5 py-0.5 rounded-md border",
+                    lendingHealthLabel.tone === 'green' && "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+                    lendingHealthLabel.tone === 'yellow' && "text-yellow-400 border-yellow-500/30 bg-yellow-500/10",
+                    lendingHealthLabel.tone === 'red' && "text-red-400 border-red-500/30 bg-red-500/10",
+                    lendingHealthLabel.tone === 'zinc' && "text-zinc-400 border-white/10 bg-white/5",
+                  )}>
+                    {lendingHealthLabel.text}
+                  </span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">Supplied</div>
+                  <div className="text-sm font-mono text-white">
+                    {lendingSuppliedRows.length === 0
+                      ? '–'
+                      : lendingSuppliedRows.slice(0, 2).map(r => `${r.amount} ${r.symbol}`).join(', ')}
+                    {lendingSuppliedRows.length > 2 ? ` +${lendingSuppliedRows.length - 2}` : ''}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">Borrowed</div>
+                  <div className="text-sm font-mono text-white">
+                    {lendingBorrowedRows.length === 0
+                      ? '–'
+                      : lendingBorrowedRows.slice(0, 2).map(r => `${r.amount} ${r.symbol}`).join(', ')}
+                    {lendingBorrowedRows.length > 2 ? ` +${lendingBorrowedRows.length - 2}` : ''}
+                  </div>
+                </div>
+              </div>
+              <Link href="/chat?open=lending" className="inline-flex items-center gap-1.5 mt-2 text-xs px-2.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 transition-colors">
+                Manage <Landmark className="w-3 h-3" />
+              </Link>
+            </div>
+
+            {/* DCA */}
+            {hasSmartWallet && (
+              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-cyan-500/10 flex items-center justify-center">
+                      <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                    </div>
+                    <span className="text-xs text-white font-medium">DCA Strategies</span>
+                  </div>
+                  <span className="text-[10px] text-cyan-400 bg-cyan-500/10 px-1.5 py-0.5 rounded-md font-medium">{activeStrategiesCount} active</span>
+                </div>
+                {strategies.length > 0 && (
+                  <div className="space-y-1 mt-2">
+                    {strategies.slice(0, 3).map((s, i) => {
+                      const from = getTokenSymbol(s.fromToken);
+                      const to = getTokenSymbol(s.toToken);
+                      return (
+                        <div key={s.strategyId || i} className="flex items-center justify-between text-xs py-1">
+                          <span className="text-zinc-300">{s.amount} {from} → {to}</span>
+                          <span className={cn("text-[10px]", s.isActive ? "text-emerald-400" : "text-zinc-500")}>{s.isActive ? 'Active' : 'Paused'}</span>
+                        </div>
+                      );
+                    })}
+                    {strategies.length > 3 && (
+                      <div className="text-[10px] text-zinc-500">+{strategies.length - 3} more</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ─── 5. TAB CONTENT ─────────────────────────────────────── */}
+
+        {/* ══ DESKTOP RIGHT COLUMN: Assets | History toggle (row-span-2) ══ */}
+        <div className="hidden lg:flex lg:flex-col lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:min-h-0">
+          {/* Desktop mini-tab toggle */}
+          <div className="flex items-center gap-1 mb-2 px-1">
+            {(['assets', 'history'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setDesktopRightTab(tab)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+                  desktopRightTab === tab
+                    ? "bg-white/10 text-white"
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
+                )}
+              >
+                {tab === 'assets' ? <Wallet className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                {tab === 'assets' ? 'Assets' : 'History'}
+              </button>
+            ))}
+          </div>
+
+          {/* Assets content (desktop right) */}
+          <div className={cn(
+            "flex-1 min-h-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+            desktopRightTab !== 'assets' && "hidden"
+          )}>
+              <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-3 space-y-0 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {currentLoading && currentAssets.length === 0 && (
-                  <div className="py-14 text-center text-zinc-600 text-sm flex items-center justify-center gap-2">
+                  <div className="py-8 text-center text-zinc-600 text-sm flex items-center justify-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" /> Scanning wallets...
                   </div>
                 )}
                 {currentAssets.length === 0 && !currentLoading && (
-                  <div className="py-14 text-center text-zinc-600 text-sm">
+                  <div className="py-8 text-center text-zinc-600 text-sm">
                     {isSmartWalletView
                       ? 'No assets in Smart Wallet.'
                       : account
@@ -763,9 +952,9 @@ export default function PortfolioPage() {
                 {currentAssets.map((asset) => (
                   <div
                     key={`${asset.network}-${asset.symbol}-${asset.address}`}
-                    className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors"
+                    className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/[0.03] transition-colors"
                   >
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold text-white bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10 shrink-0">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10 shrink-0">
                       {asset.icon
                         ? <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
                         : asset.symbol[0]
@@ -774,11 +963,11 @@ export default function PortfolioPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-sm text-white font-medium">{asset.symbol}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 border border-white/5 text-zinc-500">
+                        <span className="text-[10px] px-1 py-px rounded-full bg-white/5 border border-white/5 text-zinc-500">
                           {asset.network}
                         </span>
                         {asset.protocol !== 'Wallet' && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/10 text-cyan-500/80">
+                          <span className="text-[10px] px-1 py-px rounded-full bg-cyan-500/10 border border-cyan-500/10 text-cyan-500/80">
                             {asset.protocol}
                             {asset.protocol === 'Lido' && Number.isFinite(lidoApy) && ` · ${lidoApy!.toFixed(2)}%`}
                           </span>
@@ -793,408 +982,21 @@ export default function PortfolioPage() {
                   </div>
                 ))}
               </div>
-            )}
+          </div>
 
-            {/* ══ STAKING TAB ═══════════════════════════════════════ */}
-            {activeTab === 'staking' && (
-              <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-500">Updated {formatLastUpdated(stakingLastUpdated)}</span>
-                  <button
-                    type="button"
-                    onClick={() => { void refreshStaking(); void refreshStakingWithdrawals(true); void refreshAvaxPosition(); }}
-                    disabled={stakingLoading || stakingWithdrawalsLoading}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors disabled:opacity-50"
-                  >
-                    {(stakingLoading || stakingWithdrawalsLoading)
-                      ? <Loader2 className="w-3 h-3 animate-spin" />
-                      : <Scan className="w-3 h-3" />
-                    }
-                    Refresh
-                  </button>
-                </div>
-
-                {/* Lido */}
-                <GlassCard className="p-5 bg-white/[0.03] border-white/5">
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="relative shrink-0">
-                        <img src="https://assets.coingecko.com/coins/images/13442/small/steth_logo.png" alt="Lido" className="w-9 h-9 rounded-lg" />
-                        <img src="https://assets.coingecko.com/coins/images/279/small/ethereum.png" alt="ETH" className="w-4 h-4 rounded-full absolute -bottom-1 -right-1 ring-2 ring-[#0A0A0A]" />
-                      </div>
-                      <div>
-                        <div className="text-white font-medium">Lido</div>
-                        <div className="text-xs text-zinc-500">Ethereum</div>
-                      </div>
-                    </div>
-                    <div className={cn(
-                      "text-[11px] px-2 py-1 rounded-lg border shrink-0",
-                      stakingClaimable.count > 0
-                        ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
-                        : "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
-                    )}>
-                      {stakingClaimable.count > 0
-                        ? `${stakingClaimable.count} Claimable`
-                        : stakingPending.count > 0 ? `${stakingPending.count} Pending` : 'Active'}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Droplets className="w-3.5 h-3.5 text-sky-400" />
-                      <span className="text-xs font-medium text-white">Liquid Staking</span>
-                      {Number.isFinite(lidoApy) && (
-                        <span className="text-xs font-medium ml-auto text-emerald-400">{lidoApy!.toFixed(2)}% APY</span>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-lg bg-white/[0.03] px-3 py-2.5">
-                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">stETH</div>
-                        <div className="text-sm font-mono text-white">{formatWei(stakingPosition?.stETHBalance)}</div>
-                      </div>
-                      <div className="rounded-lg bg-white/[0.03] px-3 py-2.5">
-                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">wstETH</div>
-                        <div className="text-sm font-mono text-white">{formatWei(stakingPosition?.wstETHBalance)}</div>
-                      </div>
-                    </div>
-                    {stakingPending.count > 0 && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Pending Withdrawals</span>
-                        <span className="text-xs font-mono text-amber-400">{stakingPending.count}</span>
-                      </div>
-                    )}
-                  </div>
-                  {(stakingError || stakingWithdrawalsError) && (
-                    <div className="mt-3 text-xs text-red-400">{stakingError || stakingWithdrawalsError}</div>
-                  )}
-                  <Link href="/chat?open=staking" className="inline-flex items-center gap-1.5 mt-4 text-xs px-3 py-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/15 border border-sky-500/20 text-sky-400 transition-colors">
-                    Manage Position <Droplets className="w-3 h-3" />
-                  </Link>
-                </GlassCard>
-
-                {/* AVAX / sAVAX */}
-                <GlassCard className="p-5 bg-white/[0.03] border-white/5">
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="relative shrink-0">
-                        <img
-                          src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/avalanchec/assets/0x2b2C81e08f1Af8835a78Bb2A90AE924ACE0eA4bE/logo.png"
-                          alt="sAVAX"
-                          className="w-9 h-9 rounded-full"
-                        />
-                        <img
-                          src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/avalanchec/info/logo.png"
-                          alt="AVAX"
-                          className="w-4 h-4 rounded-full absolute -bottom-1 -right-1 ring-2 ring-[#0A0A0A]"
-                        />
-                      </div>
-                      <div>
-                        <div className="text-white font-medium">BenQi · sAVAX</div>
-                        <div className="text-xs text-zinc-500">Avalanche</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {avaxLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-500" />}
-                      {avaxPosition && (
-                        <div className={cn(
-                          "text-[11px] px-2 py-1 rounded-lg border shrink-0",
-                          avaxPosition.pendingUnlocks.some(u => u.redeemable)
-                            ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
-                            : avaxPosition.pendingUnlocks.length > 0
-                              ? "text-blue-400 border-blue-500/30 bg-blue-500/10"
-                              : "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
-                        )}>
-                          {avaxPosition.pendingUnlocks.some(u => u.redeemable)
-                            ? `${avaxPosition.pendingUnlocks.filter(u => u.redeemable).length} Redeemable`
-                            : avaxPosition.pendingUnlocks.length > 0
-                              ? `${avaxPosition.pendingUnlocks.length} Pending`
-                              : 'Active'}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Droplets className="w-3.5 h-3.5 text-cyan-400" />
-                      <span className="text-xs font-medium text-white">Liquid Staking (sAVAX)</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-lg bg-white/[0.03] px-3 py-2.5">
-                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">sAVAX Balance</div>
-                        <div className="text-sm font-mono text-white">{avaxPosition ? formatWei(avaxPosition.sAvaxBalance) : '--'}</div>
-                      </div>
-                      <div className="rounded-lg bg-white/[0.03] px-3 py-2.5">
-                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Pending Unlocks</div>
-                        <div className="text-sm font-mono text-white">{avaxPosition ? avaxPosition.pendingUnlocks.length : '--'}</div>
-                      </div>
-                    </div>
-                    {avaxPosition?.pendingUnlocks.some(u => u.redeemable) && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Ready to Redeem</span>
-                        <span className="text-xs font-mono text-amber-400">
-                          {avaxPosition.pendingUnlocks.filter(u => u.redeemable).length}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <Link href="/chat?open=staking" className="inline-flex items-center gap-1.5 mt-4 text-xs px-3 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/20 text-cyan-400 transition-colors">
-                    Manage Position <Droplets className="w-3 h-3" />
-                  </Link>
-                </GlassCard>
-              </div>
-            )}
-
-            {/* ══ LENDING TAB ═══════════════════════════════════════ */}
-            {activeTab === 'lending' && (
-              <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-500">Updated {formatLastUpdated(lendingLastFetchTime)}</span>
-                  <button
-                    type="button"
-                    onClick={() => void refreshLendingPosition()}
-                    disabled={lendingLoading}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors disabled:opacity-50"
-                  >
-                    {lendingLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Scan className="w-3 h-3" />}
-                    Refresh
-                  </button>
-                </div>
-
-                {/* Benqi */}
-                <GlassCard className="p-5 bg-white/[0.03] border-white/5">
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="relative shrink-0">
-                        <img src="https://s2.coinmarketcap.com/static/img/coins/64x64/9288.png" alt="Benqi" className="w-9 h-9 rounded-lg" />
-                        <img src="https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" alt="AVAX" className="w-4 h-4 rounded-full absolute -bottom-1 -right-1 ring-2 ring-[#0A0A0A]" />
-                      </div>
-                      <div>
-                        <div className="text-white font-medium">Benqi</div>
-                        <div className="text-xs text-zinc-500">Avalanche</div>
-                      </div>
-                    </div>
-                    <div className={cn(
-                      "text-[11px] px-2 py-1 rounded-lg border shrink-0",
-                      lendingHealthLabel.tone === 'green' && "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
-                      lendingHealthLabel.tone === 'yellow' && "text-yellow-400 border-yellow-500/30 bg-yellow-500/10",
-                      lendingHealthLabel.tone === 'red' && "text-red-400 border-red-500/30 bg-red-500/10",
-                      lendingHealthLabel.tone === 'zinc' && "text-zinc-400 border-white/10 bg-white/5",
-                    )}>
-                      {lendingHealthLabel.text}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Landmark className="w-3.5 h-3.5 text-emerald-400" />
-                      <span className="text-xs font-medium text-white">Lending</span>
-                      {Number.isFinite(lendingPositionApy) && (
-                        <span className="text-xs font-medium ml-auto text-emerald-400">{lendingPositionApy!.toFixed(2)}% APY</span>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-lg bg-white/[0.03] px-3 py-2.5">
-                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Supplied</div>
-                        <div className="text-sm font-mono text-white">
-                          {lendingSuppliedRows.length === 0
-                            ? '–'
-                            : lendingSuppliedRows.slice(0, 2).map(r => `${r.amount} ${r.symbol}`).join(', ')}
-                          {lendingSuppliedRows.length > 2 ? ` +${lendingSuppliedRows.length - 2}` : ''}
-                        </div>
-                      </div>
-                      <div className="rounded-lg bg-white/[0.03] px-3 py-2.5">
-                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Borrowed</div>
-                        <div className="text-sm font-mono text-white">
-                          {lendingBorrowedRows.length === 0
-                            ? '–'
-                            : lendingBorrowedRows.slice(0, 2).map(r => `${r.amount} ${r.symbol}`).join(', ')}
-                          {lendingBorrowedRows.length > 2 ? ` +${lendingBorrowedRows.length - 2}` : ''}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Health Factor</span>
-                      <span className={cn(
-                        "text-xs font-medium",
-                        lendingHealthLabel.tone === 'green' && "text-emerald-400",
-                        lendingHealthLabel.tone === 'yellow' && "text-yellow-400",
-                        lendingHealthLabel.tone === 'red' && "text-red-400",
-                        lendingHealthLabel.tone === 'zinc' && "text-zinc-400",
-                      )}>
-                        {lendingHealthLabel.text}
-                      </span>
-                    </div>
-                  </div>
-                  {lendingError && <div className="mt-3 text-xs text-red-400">{lendingError}</div>}
-                  <Link href="/chat?open=lending" className="inline-flex items-center gap-1.5 mt-4 text-xs px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 transition-colors">
-                    Manage Position <Landmark className="w-3 h-3" />
-                  </Link>
-                </GlassCard>
-              </div>
-            )}
-
-            {/* ══ DCA TAB ═══════════════════════════════════════════ */}
-            {activeTab === 'dca' && (
-              <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-5 space-y-3">
-                <SmartWalletCard
-                  smartAccount={selectedAccount}
-                  smartAccounts={smartAccounts}
-                  hasSmartWallet={hasSmartWallet}
-                  loading={smartLoading || isDeleting}
-                  isSelected={isSmartWalletView}
-                  balance={smartStats.netWorth}
-                  activeStrategies={activeStrategiesCount}
-                  onSelect={handleSmartWalletCardClick}
-                  onCreateWallet={() => setShowCreateModal(true)}
-                  onDeposit={() => setShowDepositModal(true)}
-                  onWithdraw={() => setShowWithdrawModal(true)}
-                  onDelete={handleDeleteWallet}
-                  onSelectAccount={selectAccount}
-                />
-                {!hasSmartWallet && (
-                  <div className="py-12 text-center">
-                    <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-3">
-                      <Zap className="w-5 h-5 text-zinc-600" />
-                    </div>
-                    <p className="text-sm text-zinc-500 mb-4">Create a Smart Wallet to enable DCA strategies</p>
-                    <button
-                      onClick={() => setShowCreateModal(true)}
-                      className="px-4 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-sm hover:bg-cyan-500/15 transition-colors"
-                    >
-                      Create Smart Wallet
-                    </button>
-                  </div>
-                )}
-                {hasSmartWallet && strategies.length === 0 && (
-                  <div className="py-12 text-center">
-                    <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-3">
-                      <Zap className="w-5 h-5 text-zinc-600" />
-                    </div>
-                    <p className="text-sm text-zinc-500">No DCA strategies yet.</p>
-                    <p className="text-xs text-zinc-600 mt-1">Ask Zico to set one up for you.</p>
-                  </div>
-                )}
-                {hasSmartWallet && strategies.length > 0 && (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-zinc-500">
-                        {strategies.filter(s => s.isActive).length} active · {strategies.length} total
-                      </span>
-                    </div>
-                    {strategies.map((strategy, i) => {
-                      const isExpanded = expandedStrategy === strategy.strategyId;
-                      const isLoading = strategyActionLoading === strategy.strategyId;
-                      const fromSymbol = getTokenSymbol(strategy.fromToken);
-                      const toSymbol = getTokenSymbol(strategy.toToken);
-                      return (
-                        <GlassCard
-                          key={strategy.strategyId || i}
-                          className={cn("p-4 bg-[#0A0A0A]/60 transition-all", isExpanded && "ring-1 ring-cyan-500/30")}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
-                              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center text-xs font-bold text-cyan-400 border border-cyan-500/20 shrink-0">
-                                {fromSymbol.slice(0, 2)}
-                              </div>
-                              <div className="min-w-0">
-                                <div className="text-sm font-medium text-white truncate">
-                                  {strategy.amount} {fromSymbol} → {toSymbol}
-                                </div>
-                                <div className="text-xs text-zinc-500 flex items-center gap-2 flex-wrap">
-                                  <span className="flex items-center gap-1">
-                                    <Calendar className="w-3 h-3" />
-                                    <span className="capitalize">{strategy.interval}</span>
-                                  </span>
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
-                                    {new Date(strategy.nextExecution * 1000).toLocaleDateString()}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <div className={cn(
-                                "px-2 py-0.5 rounded-full text-[10px] font-medium border",
-                                strategy.isActive
-                                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                                  : "bg-zinc-500/10 border-zinc-500/20 text-zinc-400"
-                              )}>
-                                {strategy.isActive ? 'Active' : 'Paused'}
-                              </div>
-                              <button
-                                onClick={() => setExpandedStrategy(isExpanded ? null : strategy.strategyId || null)}
-                                className="p-1.5 text-zinc-500 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-                              >
-                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                              </button>
-                            </div>
-                          </div>
-
-                          {isExpanded && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
-                              className="mt-4 pt-4 border-t border-white/5"
-                            >
-                              <div className="grid grid-cols-2 gap-3 mb-4">
-                                {[
-                                  { label: 'Amount',         value: `${strategy.amount} ${fromSymbol}`,                                                                       cls: '' },
-                                  { label: 'Frequency',      value: strategy.interval,                                                                                         cls: 'capitalize' },
-                                  { label: 'Last Executed',  value: strategy.lastExecuted > 0 ? new Date(strategy.lastExecuted * 1000).toLocaleDateString() : 'Never',        cls: '' },
-                                  { label: 'Next Execution', value: new Date(strategy.nextExecution * 1000).toLocaleDateString(),                                               cls: '' },
-                                ].map(({ label, value, cls }) => (
-                                  <div key={label}>
-                                    <div className="text-[10px] text-zinc-500 uppercase mb-1">{label}</div>
-                                    <div className={cn("text-sm text-white", cls)}>{value}</div>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => handleToggleStrategy(strategy)}
-                                  disabled={isLoading}
-                                  className={cn(
-                                    "flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
-                                    strategy.isActive
-                                      ? "bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 border border-yellow-500/20"
-                                      : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20",
-                                    isLoading && "opacity-50 cursor-not-allowed"
-                                  )}
-                                >
-                                  {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : strategy.isActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                                  {strategy.isActive ? 'Pause' : 'Resume'}
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteStrategy(strategy)}
-                                  disabled={isLoading}
-                                  className={cn(
-                                    "flex items-center gap-1.5 px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-xs font-medium transition-colors",
-                                    isLoading && "opacity-50 cursor-not-allowed"
-                                  )}
-                                >
-                                  {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                                  Delete
-                                </button>
-                              </div>
-                            </motion.div>
-                          )}
-                        </GlassCard>
-                      );
-                    })}
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* ══ HISTORY TAB ═══════════════════════════════════════ */}
-            {activeTab === 'history' && (
-              <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-5 space-y-1">
+          {/* History content (desktop right) */}
+          <div className={cn(
+            "flex-1 min-h-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+            desktopRightTab !== 'history' && "hidden"
+          )}>
+              <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-3 space-y-0 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {txLoading && transactions.length === 0 && (
-                  <div className="py-14 text-center text-zinc-600 text-sm flex items-center justify-center gap-2">
+                  <div className="py-8 text-center text-zinc-600 text-sm flex items-center justify-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" /> Loading...
                   </div>
                 )}
                 {!txLoading && transactions.length === 0 && (
-                  <div className="py-14 text-center text-zinc-600 text-sm">
+                  <div className="py-8 text-center text-zinc-600 text-sm">
                     {isGatewayHistoryUnavailable
                       ? 'History unavailable (gateway offline).'
                       : txError
@@ -1208,14 +1010,14 @@ export default function PortfolioPage() {
                     ? getExplorerUrl(primaryHash.chainId, primaryHash.hash)
                     : null;
                   return (
-                    <div key={tx.id} className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.03] transition-colors">
+                    <div key={tx.id} className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/[0.03] transition-colors">
                       <div className={cn(
-                        "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
+                        "w-6 h-6 rounded-full flex items-center justify-center shrink-0",
                         tx.status === 'confirmed' ? "bg-emerald-500/10 text-emerald-400" :
                         tx.status === 'failed'    ? "bg-red-500/10 text-red-400" :
                                                     "bg-yellow-500/10 text-yellow-400"
                       )}>
-                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                        <ArrowRightLeft className="w-3 h-3" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-white">
@@ -1263,10 +1065,545 @@ export default function PortfolioPage() {
                   </button>
                 )}
               </div>
-            )}
+          </div>
+        </div>
 
-          </motion.div>
-        </AnimatePresence>
+        {/* ══ ASSETS ══ (mobile-only tab) */}
+        <div className={cn(
+          "order-3 lg:hidden flex-1 min-h-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+          activeTab !== 'assets' && "hidden"
+        )}>
+              <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-3 space-y-0">
+                {currentLoading && currentAssets.length === 0 && (
+                  <div className="py-8 text-center text-zinc-600 text-sm flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Scanning wallets...
+                  </div>
+                )}
+                {currentAssets.length === 0 && !currentLoading && (
+                  <div className="py-8 text-center text-zinc-600 text-sm">
+                    {isSmartWalletView
+                      ? 'No assets in Smart Wallet.'
+                      : account
+                        ? 'No assets found. Try refreshing.'
+                        : 'Connect a wallet to see your assets.'}
+                  </div>
+                )}
+                {currentAssets.map((asset) => (
+                  <div
+                    key={`${asset.network}-${asset.symbol}-${asset.address}`}
+                    className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/[0.03] transition-colors"
+                  >
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10 shrink-0">
+                      {asset.icon
+                        ? <img src={asset.icon} alt={asset.symbol} className="w-full h-full rounded-full object-cover" />
+                        : asset.symbol[0]
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm text-white font-medium">{asset.symbol}</span>
+                        <span className="text-[10px] px-1 py-px rounded-full bg-white/5 border border-white/5 text-zinc-500">
+                          {asset.network}
+                        </span>
+                        {asset.protocol !== 'Wallet' && (
+                          <span className="text-[10px] px-1 py-px rounded-full bg-cyan-500/10 border border-cyan-500/10 text-cyan-500/80">
+                            {asset.protocol}
+                            {asset.protocol === 'Lido' && Number.isFinite(lidoApy) && ` · ${lidoApy!.toFixed(2)}%`}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-zinc-500 font-mono">{asset.balance}</span>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm text-white font-mono">{asset.value}</div>
+                      <div className="text-[11px] text-zinc-600 font-mono">{asset.price}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+        </div>
+
+        {/* ══ STAKING (mobile-only tab) ═══════════════════════════ */}
+        <div className={cn(
+          "order-3 lg:hidden",
+          activeTab !== 'staking' && "hidden"
+        )}>
+              <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-500">Updated {formatLastUpdated(stakingLastUpdated)}</span>
+                  <button
+                    type="button"
+                    onClick={() => { void refreshStaking(); void refreshStakingWithdrawals(true); void refreshAvaxPosition(); }}
+                    disabled={stakingLoading || stakingWithdrawalsLoading}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors disabled:opacity-50"
+                  >
+                    {(stakingLoading || stakingWithdrawalsLoading)
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <Scan className="w-3 h-3" />
+                    }
+                    Refresh
+                  </button>
+                </div>
+
+                {/* Lido */}
+                <GlassCard className="p-3 bg-white/[0.03] border-white/5">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="relative shrink-0">
+                        <img src="https://assets.coingecko.com/coins/images/13442/small/steth_logo.png" alt="Lido" className="w-7 h-7 rounded-lg" />
+                        <img src="https://assets.coingecko.com/coins/images/279/small/ethereum.png" alt="ETH" className="w-3.5 h-3.5 rounded-full absolute -bottom-1 -right-1 ring-2 ring-[#0A0A0A]" />
+                      </div>
+                      <div>
+                        <div className="text-white font-medium">Lido</div>
+                        <div className="text-xs text-zinc-500">Ethereum</div>
+                      </div>
+                    </div>
+                    <div className={cn(
+                      "text-[11px] px-2 py-1 rounded-lg border shrink-0",
+                      stakingClaimable.count > 0
+                        ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
+                        : "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+                    )}>
+                      {stakingClaimable.count > 0
+                        ? `${stakingClaimable.count} Claimable`
+                        : stakingPending.count > 0 ? `${stakingPending.count} Pending` : 'Active'}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Droplets className="w-3.5 h-3.5 text-sky-400" />
+                      <span className="text-xs font-medium text-white">Liquid Staking</span>
+                      {Number.isFinite(lidoApy) && (
+                        <span className="text-xs font-medium ml-auto text-emerald-400">{lidoApy!.toFixed(2)}% APY</span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">stETH</div>
+                        <div className="text-sm font-mono text-white">{formatWei(stakingPosition?.stETHBalance)}</div>
+                      </div>
+                      <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">wstETH</div>
+                        <div className="text-sm font-mono text-white">{formatWei(stakingPosition?.wstETHBalance)}</div>
+                      </div>
+                    </div>
+                    {stakingPending.count > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Pending Withdrawals</span>
+                        <span className="text-xs font-mono text-amber-400">{stakingPending.count}</span>
+                      </div>
+                    )}
+                  </div>
+                  {(stakingError || stakingWithdrawalsError) && (
+                    <div className="mt-3 text-xs text-red-400">{stakingError || stakingWithdrawalsError}</div>
+                  )}
+                  <Link href="/chat?open=staking" className="inline-flex items-center gap-1.5 mt-2 text-xs px-2.5 py-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/15 border border-sky-500/20 text-sky-400 transition-colors">
+                    Manage Position <Droplets className="w-3 h-3" />
+                  </Link>
+                </GlassCard>
+
+                {/* AVAX / sAVAX */}
+                <GlassCard className="p-3 bg-white/[0.03] border-white/5">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="relative shrink-0">
+                        <img
+                          src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/avalanchec/assets/0x2b2C81e08f1Af8835a78Bb2A90AE924ACE0eA4bE/logo.png"
+                          alt="sAVAX"
+                          className="w-7 h-7 rounded-full"
+                        />
+                        <img
+                          src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/avalanchec/info/logo.png"
+                          alt="AVAX"
+                          className="w-3.5 h-3.5 rounded-full absolute -bottom-1 -right-1 ring-2 ring-[#0A0A0A]"
+                        />
+                      </div>
+                      <div>
+                        <div className="text-white font-medium">BenQi · sAVAX</div>
+                        <div className="text-xs text-zinc-500">Avalanche</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {avaxLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-500" />}
+                      {avaxPosition && (
+                        <div className={cn(
+                          "text-[11px] px-2 py-1 rounded-lg border shrink-0",
+                          avaxPosition.pendingUnlocks.some(u => u.redeemable)
+                            ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
+                            : avaxPosition.pendingUnlocks.length > 0
+                              ? "text-blue-400 border-blue-500/30 bg-blue-500/10"
+                              : "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+                        )}>
+                          {avaxPosition.pendingUnlocks.some(u => u.redeemable)
+                            ? `${avaxPosition.pendingUnlocks.filter(u => u.redeemable).length} Redeemable`
+                            : avaxPosition.pendingUnlocks.length > 0
+                              ? `${avaxPosition.pendingUnlocks.length} Pending`
+                              : 'Active'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Droplets className="w-3.5 h-3.5 text-cyan-400" />
+                      <span className="text-xs font-medium text-white">Liquid Staking (sAVAX)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">sAVAX Balance</div>
+                        <div className="text-sm font-mono text-white">{avaxPosition ? formatWei(avaxPosition.sAvaxBalance) : '--'}</div>
+                      </div>
+                      <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">Pending Unlocks</div>
+                        <div className="text-sm font-mono text-white">{avaxPosition ? avaxPosition.pendingUnlocks.length : '--'}</div>
+                      </div>
+                    </div>
+                    {avaxPosition?.pendingUnlocks.some(u => u.redeemable) && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Ready to Redeem</span>
+                        <span className="text-xs font-mono text-amber-400">
+                          {avaxPosition.pendingUnlocks.filter(u => u.redeemable).length}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <Link href="/chat?open=staking" className="inline-flex items-center gap-1.5 mt-2 text-xs px-2.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/20 text-cyan-400 transition-colors">
+                    Manage Position <Droplets className="w-3 h-3" />
+                  </Link>
+                </GlassCard>
+              </div>
+        </div>
+
+        {/* ══ LENDING (mobile-only tab) ═══════════════════════════ */}
+        <div className={cn(
+          "order-3 lg:hidden",
+          activeTab !== 'lending' && "hidden"
+        )}>
+              <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-500">Updated {formatLastUpdated(lendingLastFetchTime)}</span>
+                  <button
+                    type="button"
+                    onClick={() => void refreshLendingPosition()}
+                    disabled={lendingLoading}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors disabled:opacity-50"
+                  >
+                    {lendingLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Scan className="w-3 h-3" />}
+                    Refresh
+                  </button>
+                </div>
+
+                {/* Benqi */}
+                <GlassCard className="p-3 bg-white/[0.03] border-white/5">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="relative shrink-0">
+                        <img src="https://s2.coinmarketcap.com/static/img/coins/64x64/9288.png" alt="Benqi" className="w-7 h-7 rounded-lg" />
+                        <img src="https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png" alt="AVAX" className="w-3.5 h-3.5 rounded-full absolute -bottom-1 -right-1 ring-2 ring-[#0A0A0A]" />
+                      </div>
+                      <div>
+                        <div className="text-white font-medium">Benqi</div>
+                        <div className="text-xs text-zinc-500">Avalanche</div>
+                      </div>
+                    </div>
+                    <div className={cn(
+                      "text-[11px] px-2 py-1 rounded-lg border shrink-0",
+                      lendingHealthLabel.tone === 'green' && "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+                      lendingHealthLabel.tone === 'yellow' && "text-yellow-400 border-yellow-500/30 bg-yellow-500/10",
+                      lendingHealthLabel.tone === 'red' && "text-red-400 border-red-500/30 bg-red-500/10",
+                      lendingHealthLabel.tone === 'zinc' && "text-zinc-400 border-white/10 bg-white/5",
+                    )}>
+                      {lendingHealthLabel.text}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Landmark className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-xs font-medium text-white">Lending</span>
+                      {Number.isFinite(lendingPositionApy) && (
+                        <span className="text-xs font-medium ml-auto text-emerald-400">{lendingPositionApy!.toFixed(2)}% APY</span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">Supplied</div>
+                        <div className="text-sm font-mono text-white">
+                          {lendingSuppliedRows.length === 0
+                            ? '–'
+                            : lendingSuppliedRows.slice(0, 2).map(r => `${r.amount} ${r.symbol}`).join(', ')}
+                          {lendingSuppliedRows.length > 2 ? ` +${lendingSuppliedRows.length - 2}` : ''}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-white/[0.03] px-2 py-1.5">
+                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-0.5">Borrowed</div>
+                        <div className="text-sm font-mono text-white">
+                          {lendingBorrowedRows.length === 0
+                            ? '–'
+                            : lendingBorrowedRows.slice(0, 2).map(r => `${r.amount} ${r.symbol}`).join(', ')}
+                          {lendingBorrowedRows.length > 2 ? ` +${lendingBorrowedRows.length - 2}` : ''}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Health Factor</span>
+                      <span className={cn(
+                        "text-xs font-medium",
+                        lendingHealthLabel.tone === 'green' && "text-emerald-400",
+                        lendingHealthLabel.tone === 'yellow' && "text-yellow-400",
+                        lendingHealthLabel.tone === 'red' && "text-red-400",
+                        lendingHealthLabel.tone === 'zinc' && "text-zinc-400",
+                      )}>
+                        {lendingHealthLabel.text}
+                      </span>
+                    </div>
+                  </div>
+                  {lendingError && <div className="mt-3 text-xs text-red-400">{lendingError}</div>}
+                  <Link href="/chat?open=lending" className="inline-flex items-center gap-1.5 mt-2 text-xs px-2.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 transition-colors">
+                    Manage Position <Landmark className="w-3 h-3" />
+                  </Link>
+                </GlassCard>
+              </div>
+        </div>
+
+        {/* ══ DCA (mobile-only tab) ═══════════════════════════════ */}
+        <div className={cn(
+          "order-3 lg:hidden",
+          activeTab !== 'dca' && "hidden"
+        )}>
+              <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-3 space-y-2">
+                <SmartWalletCard
+                  smartAccount={selectedAccount}
+                  smartAccounts={smartAccounts}
+                  hasSmartWallet={hasSmartWallet}
+                  loading={smartLoading || isDeleting}
+                  isSelected={isSmartWalletView}
+                  balance={smartStats.netWorth}
+                  activeStrategies={activeStrategiesCount}
+                  onSelect={handleSmartWalletCardClick}
+                  onCreateWallet={() => setShowCreateModal(true)}
+                  onDeposit={() => setShowDepositModal(true)}
+                  onWithdraw={() => setShowWithdrawModal(true)}
+                  onDelete={handleDeleteWallet}
+                  onSelectAccount={selectAccount}
+                />
+                {!hasSmartWallet && (
+                  <div className="py-6 text-center">
+                    <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-2">
+                      <Zap className="w-4 h-4 text-zinc-600" />
+                    </div>
+                    <p className="text-sm text-zinc-500 mb-3">Create a Smart Wallet to enable DCA strategies</p>
+                    <button
+                      onClick={() => setShowCreateModal(true)}
+                      className="px-4 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-sm hover:bg-cyan-500/15 transition-colors"
+                    >
+                      Create Smart Wallet
+                    </button>
+                  </div>
+                )}
+                {hasSmartWallet && strategies.length === 0 && (
+                  <div className="py-6 text-center">
+                    <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-2">
+                      <Zap className="w-4 h-4 text-zinc-600" />
+                    </div>
+                    <p className="text-sm text-zinc-500">No DCA strategies yet.</p>
+                    <p className="text-xs text-zinc-600 mt-1">Ask Zico to set one up for you.</p>
+                  </div>
+                )}
+                {hasSmartWallet && strategies.length > 0 && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-zinc-500">
+                        {strategies.filter(s => s.isActive).length} active · {strategies.length} total
+                      </span>
+                    </div>
+                    {strategies.map((strategy, i) => {
+                      const isExpanded = expandedStrategy === strategy.strategyId;
+                      const isLoading = strategyActionLoading === strategy.strategyId;
+                      const fromSymbol = getTokenSymbol(strategy.fromToken);
+                      const toSymbol = getTokenSymbol(strategy.toToken);
+                      return (
+                        <GlassCard
+                          key={strategy.strategyId || i}
+                          className={cn("p-4 bg-[#0A0A0A]/60 transition-all", isExpanded && "ring-1 ring-cyan-500/30")}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center text-[10px] font-bold text-cyan-400 border border-cyan-500/20 shrink-0">
+                                {fromSymbol.slice(0, 2)}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium text-white truncate">
+                                  {strategy.amount} {fromSymbol} → {toSymbol}
+                                </div>
+                                <div className="text-xs text-zinc-500 flex items-center gap-2 flex-wrap">
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="w-3 h-3" />
+                                    <span className="capitalize">{strategy.interval}</span>
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {new Date(strategy.nextExecution * 1000).toLocaleDateString()}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <div className={cn(
+                                "px-2 py-0.5 rounded-full text-[10px] font-medium border",
+                                strategy.isActive
+                                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                  : "bg-zinc-500/10 border-zinc-500/20 text-zinc-400"
+                              )}>
+                                {strategy.isActive ? 'Active' : 'Paused'}
+                              </div>
+                              <button
+                                onClick={() => setExpandedStrategy(isExpanded ? null : strategy.strategyId || null)}
+                                className="p-1.5 text-zinc-500 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                              >
+                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </button>
+                            </div>
+                          </div>
+
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="mt-2 pt-2 border-t border-white/5"
+                            >
+                              <div className="grid grid-cols-2 gap-2 mb-3">
+                                {[
+                                  { label: 'Amount',         value: `${strategy.amount} ${fromSymbol}`,                                                                       cls: '' },
+                                  { label: 'Frequency',      value: strategy.interval,                                                                                         cls: 'capitalize' },
+                                  { label: 'Last Executed',  value: strategy.lastExecuted > 0 ? new Date(strategy.lastExecuted * 1000).toLocaleDateString() : 'Never',        cls: '' },
+                                  { label: 'Next Execution', value: new Date(strategy.nextExecution * 1000).toLocaleDateString(),                                               cls: '' },
+                                ].map(({ label, value, cls }) => (
+                                  <div key={label}>
+                                    <div className="text-[10px] text-zinc-500 uppercase mb-1">{label}</div>
+                                    <div className={cn("text-sm text-white", cls)}>{value}</div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleToggleStrategy(strategy)}
+                                  disabled={isLoading}
+                                  className={cn(
+                                    "flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
+                                    strategy.isActive
+                                      ? "bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 border border-yellow-500/20"
+                                      : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20",
+                                    isLoading && "opacity-50 cursor-not-allowed"
+                                  )}
+                                >
+                                  {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : strategy.isActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                                  {strategy.isActive ? 'Pause' : 'Resume'}
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteStrategy(strategy)}
+                                  disabled={isLoading}
+                                  className={cn(
+                                    "flex items-center gap-1.5 px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-xs font-medium transition-colors",
+                                    isLoading && "opacity-50 cursor-not-allowed"
+                                  )}
+                                >
+                                  {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                  Delete
+                                </button>
+                              </div>
+                            </motion.div>
+                          )}
+                        </GlassCard>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+        </div>
+
+        {/* ══ HISTORY (mobile-only tab) ════════ */}
+        <div className={cn(
+          "order-3 lg:hidden flex-1 min-h-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+          activeTab !== 'history' && "hidden"
+        )}>
+              <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-3 space-y-0">
+                {txLoading && transactions.length === 0 && (
+                  <div className="py-8 text-center text-zinc-600 text-sm flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading...
+                  </div>
+                )}
+                {!txLoading && transactions.length === 0 && (
+                  <div className="py-8 text-center text-zinc-600 text-sm">
+                    {isGatewayHistoryUnavailable
+                      ? 'History unavailable (gateway offline).'
+                      : txError
+                        ? <span className="text-red-400/70">{txError.message}</span>
+                        : 'No activity yet.'}
+                  </div>
+                )}
+                {transactions.map((tx) => {
+                  const primaryHash = tx.txHashes?.[0];
+                  const explorerUrl = primaryHash
+                    ? getExplorerUrl(primaryHash.chainId, primaryHash.hash)
+                    : null;
+                  return (
+                    <div key={tx.id} className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/[0.03] transition-colors">
+                      <div className={cn(
+                        "w-6 h-6 rounded-full flex items-center justify-center shrink-0",
+                        tx.status === 'confirmed' ? "bg-emerald-500/10 text-emerald-400" :
+                        tx.status === 'failed'    ? "bg-red-500/10 text-red-400" :
+                                                    "bg-yellow-500/10 text-yellow-400"
+                      )}>
+                        <ArrowRightLeft className="w-3 h-3" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-white">
+                          {tx.fromAmountDisplay} {tx.fromAssetSymbol}
+                          <span className="text-zinc-600 mx-1">&rarr;</span>
+                          {tx.toAmountDisplay ? `${tx.toAmountDisplay} ` : ''}{tx.toAssetSymbol || ''}
+                        </div>
+                        <div className="text-[11px] text-zinc-600">
+                          <span className="capitalize">{tx.action}</span>
+                          <span className="mx-1">&middot;</span>
+                          {new Date(tx.createdAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className={cn(
+                          "px-2 py-0.5 rounded-full text-[10px] font-medium",
+                          tx.status === 'confirmed' ? "bg-emerald-500/10 text-emerald-400" :
+                          tx.status === 'failed'    ? "bg-red-500/10 text-red-400" :
+                                                      "bg-yellow-500/10 text-yellow-400"
+                        )}>
+                          {tx.status}
+                        </div>
+                        {explorerUrl && (
+                          <a
+                            href={explorerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {hasMoreTx && transactions.length > 0 && (
+                  <button
+                    onClick={loadMoreTx}
+                    disabled={txLoading}
+                    className="w-full mt-2 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                  >
+                    {txLoading ? 'Loading...' : 'Load more'}
+                  </button>
+                )}
+              </div>
+        </div>
 
       </div>
     </div>
