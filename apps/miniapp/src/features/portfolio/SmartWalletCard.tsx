@@ -69,7 +69,7 @@ export function SmartWalletCard({
   // Loading state
   if (loading) {
     return (
-      <GlassCard className="h-full p-4 sm:p-6 flex flex-col justify-center bg-[#0A0A0A]/60 relative overflow-hidden">
+      <GlassCard className="h-full p-3 flex flex-col justify-center bg-[#0A0A0A]/60 relative overflow-hidden">
         <div className="flex items-center justify-center gap-2">
           <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 animate-spin" />
           <span className="text-xs sm:text-sm text-zinc-400">Loading Smart Wallet...</span>
@@ -82,14 +82,14 @@ export function SmartWalletCard({
   if (!hasSmartWallet) {
     return (
       <GlassCard
-        className="h-full p-4 sm:p-6 flex flex-col justify-center bg-[#0A0A0A]/60 relative overflow-hidden group hover:bg-[#0A0A0A]/80 transition-colors cursor-pointer"
+        className="h-full p-3 flex flex-col justify-center bg-[#0A0A0A]/60 relative overflow-hidden group hover:bg-[#0A0A0A]/80 transition-colors cursor-pointer"
         onClick={onCreateWallet}
       >
         <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
 
         <div className="relative z-10">
-          <div className="flex flex-col items-center text-center gap-2 sm:gap-3">
-            <div className="p-2.5 sm:p-3 rounded-xl bg-cyan-500/10 text-cyan-400 group-hover:bg-cyan-500/20 transition-colors">
+          <div className="flex flex-col items-center text-center gap-1.5">
+            <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 group-hover:bg-cyan-500/20 transition-colors">
               <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
@@ -255,7 +255,7 @@ export function SmartWalletCard({
         className="cursor-pointer flex-1 flex flex-col justify-center"
         onClick={onSelect}
       >
-        <div className="text-xl sm:text-2xl font-bold font-display text-white mb-1">
+        <div className="text-lg font-bold font-display text-white mb-1">
           {balance}
         </div>
 
@@ -276,7 +276,7 @@ export function SmartWalletCard({
       </div>
 
       {/* Quick action buttons */}
-      <div className="flex gap-1.5 sm:gap-2 mt-2 sm:mt-3">
+      <div className="flex gap-1.5 mt-1.5">
         <button
           onClick={onDeposit}
           className="flex-1 flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-[10px] sm:text-xs font-medium transition-colors"
