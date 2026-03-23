@@ -179,6 +179,7 @@ export function Yield({
     positions,
     portfolio,
     loading,
+    userLoading,
     error: dataError,
     refresh,
   } = useYieldData();
@@ -757,8 +758,9 @@ export function Yield({
   ) : null;
 
   const footer = (
-    <div className="py-4 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
-      <span className="text-[10px] sm:text-xs font-medium text-zinc-500">Powered on Base</span>
+    <div className="py-4 flex items-center justify-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
+      <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0x940181a94A35A4569E4529A3CDfB74e38FD98631/logo.png" alt="Aerodrome" className="w-5 h-5 rounded-full object-contain" />
+      <span className="text-[10px] sm:text-xs font-medium text-zinc-500">Powered by Aerodrome on Base</span>
     </div>
   );
 
@@ -781,6 +783,7 @@ export function Yield({
             userPositions={positions}
             portfolio={portfolio}
             loading={loading}
+            userLoading={userLoading}
             error={dataError}
             onRetry={() => { void refresh(); }}
             onSelectPool={handleSelectPool}

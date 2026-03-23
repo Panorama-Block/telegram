@@ -92,6 +92,7 @@ interface YieldSelectViewProps {
   userPositions: UserPosition[];
   portfolio?: Portfolio | null;
   loading: boolean;
+  userLoading?: boolean;
   error?: string | null;
   onRetry?: () => void;
   onSelectPool: (poolId: string) => void;
@@ -105,6 +106,7 @@ export function YieldSelectView({
   userPositions,
   portfolio,
   loading,
+  userLoading = false,
   error,
   onRetry,
   onSelectPool,
@@ -255,9 +257,10 @@ export function YieldSelectView({
         {/* ── POSITIONS TAB ── */}
         {tab === 'positions' && (
           <>
-            {loading && !hasPositions ? (
-              <div className="flex items-center justify-center py-12">
+            {(loading || userLoading) && !hasPositions ? (
+              <div className="flex flex-col items-center justify-center py-14 gap-3">
                 <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+                <p className="text-xs text-zinc-500">Loading positions...</p>
               </div>
             ) : !hasPositions ? (
               <div className="flex flex-col items-center justify-center py-14 gap-3 text-center">
