@@ -122,7 +122,7 @@ export function YieldInputView({
   const totalLpDisplay = formatWeiDisplay(totalLpWei, 18, 8);
   const stakedLpDisplay = formatWeiDisplay(stakedLpWei, 18, 8);
   const walletLpDisplay = formatWeiDisplay(walletLpWei, 18, 8);
-  const maxExitAmount = totalLpWei > 0n ? formatAmountHuman(totalLpWei, 18, 18) : '';
+  const maxExitAmount = totalLpWei > 0n ? formatAmountHuman(totalLpWei, 18, 10) : '';
   const earnedRewards = userPosition?.earnedRewards;
   const hasRewards = earnedRewards ? parseFloat(earnedRewards) > 0 : false;
 
