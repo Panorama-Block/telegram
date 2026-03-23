@@ -306,6 +306,10 @@ const nextConfig: NextConfig = {
     VITE_AGENTS_API_BASE: process.env.AGENTS_API_BASE || "",
     NEXT_PUBLIC_AGENTS_API_BASE: process.env.AGENTS_API_BASE || "",
     VITE_TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || "",
+    VITE_TON_TWA_RETURN_URL:
+      process.env.TON_TWA_RETURN_URL ||
+      process.env.PUBLIC_WEBAPP_URL ||
+      "",
     AGENTS_API_BASE: process.env.AGENTS_API_BASE || "",
     AGENTS_RESPONSE_MESSAGE_PATH: process.env.AGENTS_RESPONSE_MESSAGE_PATH || "",
     AGENTS_DEBUG_SHAPE: process.env.AGENTS_DEBUG_SHAPE || "false",

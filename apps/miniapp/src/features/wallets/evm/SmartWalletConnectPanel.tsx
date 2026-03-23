@@ -78,29 +78,36 @@ export function SmartWalletConnectPanel() {
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const mode = isTelegram ? 'redirect' : 'popup';
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    const telegramAuthOptions = ['telegram', 'email'] as const;
 
     if (isiOS) {
-      return [
-        inAppWallet({
-          auth: {
-            options: ['email', 'passkey', 'guest'],
-            mode,
-            redirectUrl,
-          },
-        }),
-      ];
-    }
-
-    return [
-      inAppWallet({
+      return [inAppWallet({
         auth: {
-          options: ['google', 'telegram', 'email'],
+          options: isTelegram ? telegramAuthOptions : ['email', 'passkey', 'guest'],
           mode,
           redirectUrl,
         },
-      }),
-      createWallet('io.metamask', { preferDeepLink: true }),
-    ];
+      })];
+    }
+
+    return isTelegram
+      ? [inAppWallet({
+          auth: {
+            options: telegramAuthOptions,
+            mode,
+            redirectUrl,
+          },
+        })]
+      : [
+          inAppWallet({
+            auth: {
+              options: ['google', 'telegram', 'email'],
+              mode,
+              redirectUrl,
+            },
+          }),
+          createWallet('io.metamask', { preferDeepLink: true }),
+        ];
   }, []);
 
   const addressFromToken = useMemo(() => getAddressFromToken(), []);

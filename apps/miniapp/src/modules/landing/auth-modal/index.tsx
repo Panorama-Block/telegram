@@ -9,11 +9,12 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import zicoBlue from '../../../../public/icons/zico_blue.svg';
 import '../../../shared/ui/loader.css';
-import { TonConnectButton } from '@tonconnect/ui-react';
+import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
 import { isTelegramWebApp, detectTelegram } from '@/lib/isTelegram';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { clearAuthWalletBinding, persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 import { linkTelegramIdentityIfAvailable } from '@/shared/lib/telegram-link';
+import { TonConnectActionButton, WalletEntryActions } from '@/shared/components/WalletEntryActions';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -28,6 +29,8 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const router = useRouter();
   const account = useActiveAccount();
   const activeWallet = useActiveWallet();
+  const tonWallet = useTonWallet();
+  const [tonConnectUI] = useTonConnectUI();
   const { disconnect } = useDisconnect();
   const [isTelegram, setIsTelegram] = useState(false);
 
@@ -47,6 +50,8 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isTonModalOpening, setIsTonModalOpening] = useState(false);
+  const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
 
   const client = useMemo(() => {
     const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
@@ -68,46 +73,81 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const mode = isTelegram ? 'redirect' : 'popup';
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    const telegramAuthOptions = ['telegram', 'email'] as const;
 
     if (isiOS) {
-      return [
-        inAppWallet({
+      return [inAppWallet({
+        auth: {
+          options: isTelegram ? telegramAuthOptions : ['email', 'passkey', 'guest'],
+          mode,
+          redirectUrl,
+        },
+      })];
+    }
+    return isTelegram
+      ? [inAppWallet({
           auth: {
-            options: ['email', 'passkey', 'guest'],
+            options: telegramAuthOptions,
             mode,
             redirectUrl,
           },
-        }),
-      ];
-    }
-    return [
-      inAppWallet({ auth: { options: ['google', 'telegram', 'email'], mode, redirectUrl } }),
-      createWallet('io.metamask', { preferDeepLink: true }),
-    ];
-  }, []);
-
-  const openGoogleInBrowser = useCallback(() => {
-    try {
-      const WebApp = (window as any).Telegram?.WebApp;
-      const url = `${window.location.origin}/miniapp/auth/external?strategy=google`;
-      if (WebApp?.openLink) {
-        WebApp.openLink(url, { try_instant_view: false });
-      } else {
-        window.open(url, '_blank');
-      }
-    } catch {
-      window.open(`${window.location.origin}/miniapp/auth/external?strategy=google`, '_blank');
-    }
+        })]
+      : [
+          inAppWallet({
+            auth: {
+              options: ['google', 'telegram', 'email'],
+              mode,
+              redirectUrl,
+            },
+          }),
+          createWallet('io.metamask', { preferDeepLink: true }),
+        ];
   }, []);
 
   const [statusMessage, setStatusMessage] = useState<string>('');
 
+  useEffect(() => {
+    const prepareAuth = async () => {
+      if (!authApiBase) return;
+      tonConnectUI.setConnectRequestParameters({ state: 'loading' });
+      try {
+        const response = await fetch(`${authApiBase}/auth/ton/payload`, { method: 'POST' });
+        const { payload } = await response.json();
+
+        tonConnectUI.setConnectRequestParameters({
+          state: 'ready',
+          value: { tonProof: payload },
+        });
+      } catch (err) {
+        console.error('[AuthModal] Failed to prepare TonConnect proof payload', err);
+        tonConnectUI.setConnectRequestParameters(null);
+      }
+    };
+
+    if (!tonWallet) {
+      prepareAuth();
+    }
+  }, [authApiBase, tonConnectUI, tonWallet]);
+
+  const handleTonConnect = useCallback(async () => {
+    try {
+      setIsTonModalOpening(true);
+      await tonConnectUI.openModal();
+    } catch (err) {
+      console.error('[AuthModal] Failed to open TON Connect modal', err);
+    } finally {
+      setIsTonModalOpening(false);
+    }
+  }, [tonConnectUI]);
+
   const authenticateWithBackend = useCallback(async () => {
-    if (!account || !client) {
+    const currentAddress = account?.address || tonWallet?.account.address;
+    const isTon = !!tonWallet?.account.address && !account?.address;
+
+    if (!currentAddress || !client) {
       return;
     }
 
-    const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
     if (!authApiBase) {
       throw new Error('VITE_AUTH_API_BASE not configured');
     }
@@ -116,6 +156,64 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       setIsAuthenticating(true);
       setError(null);
       setStatusMessage('Initializing authentication...');
+
+      if (isTon) {
+        const proof = tonWallet.connectItems?.tonProof;
+
+        if (proof && 'proof' in proof) {
+          try {
+            setStatusMessage('Verifying connection proof...');
+
+            const verifyResponse = await fetch(`${authApiBase}/auth/ton/verify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                address: tonWallet.account.address,
+                network: tonWallet.account.chain,
+                public_key: tonWallet.account.publicKey,
+                proof: {
+                  ...proof.proof,
+                  state_init: tonWallet.account.walletStateInit,
+                },
+              }),
+            });
+
+            if (!verifyResponse.ok) {
+              const errorText = await verifyResponse.text();
+              throw new Error(errorText || 'Wallet verification failed');
+            }
+
+            const { token } = await verifyResponse.json();
+            localStorage.setItem('authToken', token);
+            localStorage.setItem('authPayload', JSON.stringify({
+              address: tonWallet.account.address,
+              walletType: 'ton',
+            }));
+            localStorage.setItem('userAddress', tonWallet.account.address.toLowerCase());
+            localStorage.setItem('walletAddress', tonWallet.account.address.toLowerCase());
+            await linkTelegramIdentityIfAvailable(authApiBase, tonWallet.account.address, {
+              address: tonWallet.account.address,
+              source: 'miniapp:landing-auth-modal-ton',
+            });
+
+            setIsAuthenticated(true);
+            setStatusMessage('Success! Redirecting...');
+
+            setTimeout(() => {
+              router.push('/newchat');
+            }, 500);
+            return;
+          } catch (err) {
+            console.error('[AUTH MODAL] TON proof verification failed', err);
+            setError('Wallet verification failed.');
+          } finally {
+            setIsAuthenticating(false);
+          }
+        }
+
+        setStatusMessage('Please connect your TON wallet to sign the proof...');
+        return;
+      }
 
       // 0. Extract and save wallet auth token for persistence
       setStatusMessage('Checking wallet session...');
@@ -160,7 +258,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
       // 1. Get payload from backend
       setStatusMessage('Requesting login payload...');
-      const normalizedAddress = account.address;
+      const normalizedAddress = account!.address;
       const loginPayload = { address: normalizedAddress };
 
       console.log('🔍 [AUTH MODAL] Authenticating with:', authApiBase);
@@ -185,8 +283,8 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       const { payload } = await loginResponse.json();
 
       // Ensure the addresses match
-      if (account.address.toLowerCase() !== payload.address.toLowerCase()) {
-        throw new Error(`Wallet address (${account.address}) does not match payload (${payload.address})`);
+      if (account!.address.toLowerCase() !== payload.address.toLowerCase()) {
+        throw new Error(`Wallet address (${account!.address}) does not match payload (${payload.address})`);
       }
 
       // 2. Sign the payload using Thirdweb
@@ -195,8 +293,8 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
       try {
         const signResult = await signLoginPayload({
-          account: account,
-          payload: payload
+          account: account!,
+          payload: payload,
         });
 
         if (typeof signResult === 'string') {
@@ -261,10 +359,10 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       localStorage.setItem('authPayload', JSON.stringify(payload));
       localStorage.setItem('authSignature', signature);
       localStorage.setItem('authToken', authToken);
-      persistAuthWalletBinding({ activeWallet, account });
-      await linkTelegramIdentityIfAvailable(authApiBase, address || payload.address || account.address, {
+      persistAuthWalletBinding({ activeWallet, account: account! });
+      await linkTelegramIdentityIfAvailable(authApiBase, address || payload.address || account!.address, {
         sessionId: sessionId || null,
-        address: address || account.address || null,
+        address: address || account!.address || null,
         source: 'miniapp:landing-auth-modal',
       });
 
@@ -322,18 +420,19 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     } finally {
       setIsAuthenticating(false);
     }
-  }, [account, client, activeWallet, router]);
+  }, [account, client, activeWallet, authApiBase, disconnect, router, tonWallet]);
 
   // prevent infinite retries: only one auto-attempt per account address
   const lastTriedAddressRef = useRef<string | null>(null);
 
   // Automatically authenticate when the account is connected
   useEffect(() => {
-    if (!account || !client || isAuthenticated || isAuthenticating) return;
-    if (lastTriedAddressRef.current === account.address) return;
-    lastTriedAddressRef.current = account.address;
+    const currentAddress = account?.address || tonWallet?.account.address;
+    if (!currentAddress || !client || isAuthenticated || isAuthenticating) return;
+    if (lastTriedAddressRef.current === currentAddress) return;
+    lastTriedAddressRef.current = currentAddress;
     authenticateWithBackend();
-  }, [account, client, isAuthenticated, isAuthenticating, authenticateWithBackend]);
+  }, [account, tonWallet, client, isAuthenticated, isAuthenticating, authenticateWithBackend]);
 
   async function handleDisconnect() {
     setError(null);
@@ -342,6 +441,9 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       console.log('[AUTH MODAL] Disconnecting and clearing all session data...');
       if (activeWallet) {
         await disconnect(activeWallet);
+      }
+      if (tonWallet) {
+        await tonConnectUI.disconnect();
       }
       setIsAuthenticated(false);
 
@@ -362,145 +464,182 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     }
   }
 
-  const connected = Boolean(account?.address);
+  const connected = Boolean(account?.address || tonWallet?.account.address);
+  const connectedAddress = account?.address || tonWallet?.account.address;
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Overlay */}
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Modal */}
-      <div className="relative bg-[#202020]/80 backdrop-blur-lg border border-white/10 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-xl shadow-black/50">
-        {/* Close button */}
+      <div className="relative mx-4 w-full max-w-sm overflow-hidden rounded-[28px] border border-white/12 bg-[#071012]/90 p-8 shadow-xl shadow-black/60 backdrop-blur-xl">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(70,235,244,0.16)_0%,_rgba(8,24,28,0.08)_30%,_rgba(0,0,0,0)_68%)]" />
+        <div className="absolute inset-0 opacity-15 [background-image:linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] [background-size:22px_22px]" />
+
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+          className="absolute right-4 top-4 z-10 text-gray-400 transition-colors hover:text-white"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
 
-        {/* Header */}
-        <div className="text-center mb-6">
-          <div className="flex justify-center mb-4">
-            <Image
-              src={zicoBlue}
-              alt="Zico"
-              width={80}
-              height={80}
-              className="w-20 h-20"
-            />
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Connect Your Wallet</h2>
-          <p className="text-gray-400 text-sm">
-            Get started with AI-powered DeFi tools
-          </p>
-        </div>
-
-        {/* Content */}
-        <div className="space-y-4">
-          {typeof window !== 'undefined' && (window as any).Telegram?.WebApp && /iPhone|iPad|iPod/i.test(navigator.userAgent) && (
-            <div className="text-yellow-300/90 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-sm">
-              On iOS (Telegram), Google blocks sign-in inside webviews. Use Email/Passkey or
-              <button
-                onClick={openGoogleInBrowser}
-                className="ml-1 underline text-yellow-300 hover:text-yellow-200"
-              >
-                open in browser
-              </button>
-              .
-            </div>
-          )}
-          {!connected ? (
-            isTelegram ? (
-              <div className="flex justify-center w-full">
-                <TonConnectButton className="w-full" />
-              </div>
-            ) : client ? (
-              <ConnectButton
-                client={client}
-                wallets={wallets}
-                connectModal={{ size: 'compact' }}
-                connectButton={{
-                  label: 'Connect Wallet',
-                  style: {
-                    width: '100%',
-                    padding: '12px 20px',
-                    borderRadius: 6,
-                    fontWeight: 600,
-                    fontSize: 16,
-                    background: '#ffffff',
-                    color: '#000000',
-                    border: 'none',
-                    cursor: 'pointer',
-                  },
-                }}
-                theme="dark"
+        <div className="relative z-10">
+          <div className="mb-8 flex justify-center">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-cyan-400/20 blur-3xl" />
+              <div className="absolute -inset-4 rounded-full bg-cyan-500/10 blur-[80px]" />
+              <Image
+                src={zicoBlue}
+                alt="Zico"
+                width={80}
+                height={80}
+                className="relative h-20 w-20"
               />
-            ) : (
-              <div className="text-red-400 text-sm p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-                Missing THIRDWEB client configuration.
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {typeof window !== 'undefined' && (window as any).Telegram?.WebApp && /iPhone|iPad|iPod/i.test(navigator.userAgent) && (
+              <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-300/90">
+                Inside Telegram, thirdweb login is limited to Telegram and Email.
               </div>
-            )
-          ) : (
-            <div className="space-y-4">
-              <div className="border border-white/10 bg-black/40 backdrop-blur-md rounded-xl p-4">
-                <p className="text-xs text-white mb-1">Connected wallet</p>
-                <p className="font-mono text-sm text-white font-semibold">
-                  {shortAddress(account!.address)}
-                </p>
-                <div className="text-sm mt-2">
-                  {isAuthenticating ? (
-                    <div className="flex flex-col gap-2 text-white">
-                      <div className="flex items-center gap-2">
-                        <div className="loader-inline-sm" />
-                        <span>Authenticating...</span>
-                      </div>
-                      {statusMessage && (
-                        <p className="text-xs text-cyan-400 animate-pulse">{statusMessage}</p>
-                      )}
-                    </div>
-                  ) : isAuthenticated ? (
-                    <div className="flex items-center gap-2 text-white">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>Authenticated! Redirecting...</span>
-                    </div>
+            )}
+            {!connected ? (
+              isTelegram ? (
+                <WalletEntryActions
+                  variant="modal"
+                  evmAction={client ? (
+                    <ConnectButton
+                      client={client}
+                      wallets={wallets}
+                      connectModal={{ size: 'compact' }}
+                      connectButton={{
+                        label: 'Connect Wallet',
+                        className: 'font-mono',
+                        style: {
+                          width: '100%',
+                          minHeight: '54px',
+                          padding: '14px 20px',
+                          borderRadius: 16,
+                          fontWeight: 600,
+                          fontSize: 17,
+                          fontFamily: 'var(--font-geist-mono, monospace)',
+                          background: '#f8f5f0',
+                          color: '#111111',
+                          border: '1px solid rgba(255,255,255,0.85)',
+                          cursor: 'pointer',
+                          boxShadow: '0 10px 30px rgba(0,0,0,0.24)',
+                        },
+                      }}
+                      theme="dark"
+                    />
                   ) : (
-                    <span className="text-white">Waiting for authentication</span>
+                    <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+                      Missing THIRDWEB client configuration.
+                    </div>
                   )}
+                  tonAction={(
+                    <TonConnectActionButton
+                      onClick={handleTonConnect}
+                      loading={isTonModalOpening}
+                      disabled={isAuthenticating}
+                    />
+                  )}
+                />
+              ) : client ? (
+                <WalletEntryActions
+                  variant="modal"
+                  evmAction={(
+                    <ConnectButton
+                      client={client}
+                      wallets={wallets}
+                      connectModal={{ size: 'compact' }}
+                      connectButton={{
+                        label: 'Connect Wallet',
+                        className: 'font-mono',
+                        style: {
+                          width: '100%',
+                          minHeight: '54px',
+                          padding: '14px 20px',
+                          borderRadius: 16,
+                          fontWeight: 600,
+                          fontSize: 17,
+                          fontFamily: 'var(--font-geist-mono, monospace)',
+                          background: '#f8f5f0',
+                          color: '#111111',
+                          border: '1px solid rgba(255,255,255,0.85)',
+                          cursor: 'pointer',
+                          boxShadow: '0 10px 30px rgba(0,0,0,0.24)',
+                        },
+                      }}
+                      theme="dark"
+                    />
+                  )}
+                />
+              ) : (
+                <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+                  Missing THIRDWEB client configuration.
                 </div>
+              )
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-white/10 bg-black/35 p-4 backdrop-blur-md">
+                  <p className="mb-1 text-xs text-white/75">Connected wallet</p>
+                  <p className="font-mono text-sm font-semibold text-white">
+                    {connectedAddress ? shortAddress(connectedAddress) : 'Unknown wallet'}
+                  </p>
+                  <div className="mt-3 text-sm">
+                    {isAuthenticating ? (
+                      <div className="flex flex-col gap-2 text-white">
+                        <div className="flex items-center gap-2">
+                          <div className="loader-inline-sm" />
+                          <span>Authenticating...</span>
+                        </div>
+                        {statusMessage && (
+                          <p className="animate-pulse text-xs text-cyan-300">{statusMessage}</p>
+                        )}
+                      </div>
+                    ) : isAuthenticated ? (
+                      <div className="flex items-center gap-2 text-white">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>Authenticated! Redirecting...</span>
+                      </div>
+                    ) : (
+                      <span className="text-white">Waiting for authentication</span>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleDisconnect}
+                  className="w-full rounded-2xl border border-white/60 bg-white/92 px-4 py-3 font-medium text-black transition-all hover:bg-white"
+                >
+                  Disconnect
+                </button>
               </div>
+            )}
 
-              <button
-                onClick={handleDisconnect}
-                className="w-full px-4 py-3 rounded-lg bg-white text-black border-none hover:bg-gray-100 transition-all font-medium"
-              >
-                Disconnect
-              </button>
+            {error && (
+              <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+                {error}
+              </div>
+            )}
+
+            <div className="mt-4 break-all rounded bg-black/50 p-2 font-mono text-[10px] text-gray-400">
+              <p>Debug Info:</p>
+              <p>isTelegram state: {String(isTelegram)}</p>
+              <p>window.Telegram: {typeof window !== 'undefined' ? typeof (window as any).Telegram : 'undefined'}</p>
+              <p>WebApp: {typeof window !== 'undefined' && (window as any).Telegram?.WebApp ? 'Present' : 'Missing'}</p>
+              <p>UserAgent: {typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A'}</p>
             </div>
-          )}
-
-          {error && (
-            <div className="text-red-400 text-sm p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-              {error}
-            </div>
-          )}
-
-          {/* Debug Info */}
-          <div className="mt-4 p-2 bg-black/50 rounded text-[10px] font-mono text-gray-400 break-all">
-            <p>Debug Info:</p>
-            <p>isTelegram state: {String(isTelegram)}</p>
-            <p>window.Telegram: {typeof window !== 'undefined' ? typeof (window as any).Telegram : 'undefined'}</p>
-            <p>WebApp: {typeof window !== 'undefined' && (window as any).Telegram?.WebApp ? 'Present' : 'Missing'}</p>
-            <p>UserAgent: {typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A'}</p>
           </div>
         </div>
       </div>
