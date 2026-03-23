@@ -11,11 +11,12 @@ import zicoBlue from '../../../public/icons/zico_blue.svg';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { DEBUG } from '@/shared/config/debug';
 import '@/shared/ui/loader.css';
-import { TonConnectButton, useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
+import { useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 import { isTelegramWebApp, detectTelegram } from '@/lib/isTelegram';
 import { useLogout } from '@/shared/hooks/useLogout';
-import { clearAuthWalletBinding, persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
+import { persistAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 import { linkTelegramIdentityIfAvailable } from '@/shared/lib/telegram-link';
+import { TonConnectActionButton, WalletEntryActions } from '@/shared/components/WalletEntryActions';
 
 export default function NewChatPage() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function NewChatPage() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isTonModalOpening, setIsTonModalOpening] = useState(false);
   const hasTriedAutoConnectRef = useRef(false);
   const hasTriedManualConnectRef = useRef(false);
   const connectButtonRef = useRef<HTMLDivElement>(null);
@@ -97,23 +99,35 @@ export default function NewChatPage() {
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const mode = isTelegram ? 'redirect' : 'popup';
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    const telegramAuthOptions = ['telegram', 'email'] as const;
 
     if (isiOS) {
-      return [
-        inAppWallet({
+      return [inAppWallet({
+        auth: {
+          options: isTelegram ? telegramAuthOptions : ['google', 'telegram', 'email', 'passkey'],
+          mode,
+          redirectUrl,
+        },
+      })];
+    }
+    return isTelegram
+      ? [inAppWallet({
           auth: {
-            options: ['google', 'telegram', 'email', 'passkey'],
+            options: telegramAuthOptions,
             mode,
             redirectUrl,
           },
-        }),
-        createWallet('io.metamask', { preferDeepLink: true }),
-      ];
-    }
-    return [
-      inAppWallet({ auth: { options: ['google', 'telegram', 'email'], mode, redirectUrl } }),
-      createWallet('io.metamask', { preferDeepLink: true }),
-    ];
+        })]
+      : [
+          inAppWallet({
+            auth: {
+              options: ['google', 'telegram', 'email'],
+              mode,
+              redirectUrl,
+            },
+          }),
+          createWallet('io.metamask', { preferDeepLink: true }),
+        ];
   }, []);
 
   // Auto-connect wallet on mount if not connected
@@ -134,7 +148,7 @@ export default function NewChatPage() {
           // The ConnectButton will handle this
           setIsConnecting(false);
         }
-      } catch (err) {
+      } catch {
         console.log('[NEWCHAT] AutoConnect not available, user needs to connect manually');
       } finally {
         setIsConnecting(false);
@@ -156,10 +170,50 @@ export default function NewChatPage() {
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [account, tonWallet, isConnecting, hasTriedAutoConnectRef.current]);
+  }, [account, tonWallet, isConnecting]);
 
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [showRetryPrompt, setShowRetryPrompt] = useState(false);
+
+  const handleTonConnect = useCallback(async () => {
+    try {
+      setIsTonModalOpening(true);
+      await tonConnectUI.openModal();
+    } catch (err) {
+      console.error('[NewChat] Failed to open TON Connect modal', err);
+    } finally {
+      setIsTonModalOpening(false);
+    }
+  }, [tonConnectUI]);
+
+  const thirdwebConnectButton = client ? (
+    <ConnectButton
+      client={client}
+      wallets={wallets}
+      connectModal={{ size: 'compact' }}
+      connectButton={{
+        label: 'Connect Wallet',
+        className: 'font-mono',
+        style: {
+          minHeight: '54px',
+          padding: '14px 20px',
+          borderRadius: '16px',
+          fontWeight: 600,
+          fontSize: '17px',
+          fontFamily: 'var(--font-geist-mono, monospace)',
+          background: '#f8f5f0',
+          color: '#111111',
+          border: '1px solid rgba(255,255,255,0.85)',
+          cursor: 'pointer',
+          width: '100%',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.24)',
+        },
+      }}
+      theme="dark"
+    />
+  ) : (
+    <div className="text-xs text-red-400">Missing THIRDWEB_CLIENT_ID</div>
+  );
 
   // Authenticate with backend
   const authenticateWithBackend = useCallback(async () => {
@@ -236,45 +290,6 @@ export default function NewChatPage() {
         }
         setStatusMessage('Please connect your TON wallet to sign the proof...');
         return; // End of TON flow when proof is missing
-
-        setStatusMessage('Verifying TON signature...');
-
-        const verifyResponse = await fetch(`${authApiBase}/auth/ton/verify`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            address: currentAddress,
-            payload: proofPayload,
-            signature,
-            publicKey,
-            timestamp: signedTimestamp,
-            domain,
-            payloadMeta: { type: 'text', text: proofPayload }
-          })
-        });
-
-        if (!verifyResponse.ok) {
-          const errText = await verifyResponse.text();
-          throw new Error(`TON Verification failed: ${errText}`);
-        }
-
-        const verifyResult = await verifyResponse.json();
-        const { token: authToken } = verifyResult;
-
-        setStatusMessage('Saving session...');
-        localStorage.setItem('authPayload', JSON.stringify({ address: currentAddress, chain: 'ton' }));
-        localStorage.setItem('authSignature', signature);
-        localStorage.setItem('authToken', authToken);
-        clearAuthWalletBinding();
-
-        setIsAuthenticated(true);
-        setStatusMessage('Success! Redirecting to chat...');
-
-        setTimeout(() => {
-          router.push('/chat?new=true');
-        }, 500);
-
-        return; // End of TON flow
       }
 
       // --- EVM Authentication Flow (Thirdweb) ---
@@ -413,7 +428,7 @@ export default function NewChatPage() {
     } finally {
       setIsAuthenticating(false);
     }
-  }, [account, client, activeWallet, router, tonWallet, tonConnectUI]);
+  }, [account, client, activeWallet, authApiBase, router, tonWallet]);
 
   // Auto-authenticate when account is connected
   useEffect(() => {
@@ -443,6 +458,19 @@ export default function NewChatPage() {
     return '';
   };
 
+  const connected = Boolean(account?.address || tonWallet?.account.address);
+  const showFreshConnect = isTelegramEnv && (isConnecting || (isAuthenticating && statusMessage.toLowerCase().includes('ton')));
+  const showConnectOptions = !isAuthenticating && !connected;
+
+  useEffect(() => {
+    if (!showFreshConnect) {
+      setShowRetryPrompt(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowRetryPrompt(true), 15000);
+    return () => clearTimeout(timer);
+  }, [showFreshConnect]);
+
   // Show error state
   if (error) {
     return (
@@ -463,28 +491,16 @@ export default function NewChatPage() {
     );
   }
 
-  const connected = Boolean(account?.address || tonWallet?.account.address);
-  const showFreshConnect = isTelegramEnv && (isConnecting || (isAuthenticating && statusMessage.toLowerCase().includes('ton')));
-
-  useEffect(() => {
-    if (!showFreshConnect) {
-      setShowRetryPrompt(false);
-      return;
-    }
-    const timer = setTimeout(() => setShowRetryPrompt(true), 15000);
-    return () => clearTimeout(timer);
-  }, [showFreshConnect]);
-
   return (
-    <div className="fixed inset-0 bg-pano-bg-primary flex items-center justify-center overflow-hidden">
-      {/* Main content */}
-      <div className="flex flex-col items-center justify-center gap-6">
-        {/* Logo with glow effects - same style as landing */}
+    <div className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[#040707]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(70,235,244,0.18)_0%,_rgba(7,18,20,0.12)_26%,_rgba(0,0,0,0)_56%)]" />
+      <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] [background-size:28px_28px]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.34)_0%,rgba(0,0,0,0.84)_100%)]" />
+
+      <div className="relative flex w-full max-w-[360px] flex-col items-center justify-center gap-8 px-6">
         <div className="relative">
-          {/* Multiple layered blur effects for stronger glow */}
-          <div className="absolute inset-0 bg-cyan-400/30 blur-3xl rounded-full animate-pulse" />
-          <div className="absolute inset-0 bg-cyan-500/20 blur-2xl rounded-full" style={{ animationDelay: '0.5s' }} />
-          <div className="absolute -inset-4 bg-cyan-500/15 blur-3xl rounded-full animate-pulse" style={{ animationDelay: '1s' }} />
+          <div className="absolute inset-0 rounded-full bg-cyan-400/25 blur-3xl" />
+          <div className="absolute -inset-6 rounded-full bg-cyan-500/10 blur-[90px]" />
           <Image
             src={zicoBlue}
             alt="Zico Blue"
@@ -494,13 +510,14 @@ export default function NewChatPage() {
           />
         </div>
 
-        {/* Label text */}
-        <div className="text-center">
-          <p className="text-white text-lg font-medium">
-            {getLabelText()}
-          </p>
+        <div className="min-h-[52px] text-center">
+          {!showConnectOptions && (
+            <p className="text-lg font-medium text-white">
+              {getLabelText()}
+            </p>
+          )}
           {statusMessage && isAuthenticating && (
-            <p className="text-cyan-400 text-sm mt-2 animate-pulse font-mono">
+            <p className="mt-2 font-mono text-sm text-cyan-300 animate-pulse">
               {statusMessage}
             </p>
           )}
@@ -518,52 +535,38 @@ export default function NewChatPage() {
                 }
               }}
               disabled={isLoggingOut}
-              className="mt-2 px-4 py-2 rounded-lg bg-white/10 text-white/80 text-xs font-semibold hover:bg-white/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-2 rounded-lg bg-white/10 px-4 py-2 text-xs font-semibold text-white/80 transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoggingOut ? 'Resetting...' : "Didn't get the confirmation? Tap here"}
             </button>
           )}
         </div>
 
-        {/* Loading indicator or Connect Button */}
         {isAuthenticating ? (
           <div className="flex items-center gap-2">
             <div className="loader-inline-sm" />
           </div>
         ) : !connected ? (
-          <div ref={connectButtonRef} className="mt-4 w-full flex flex-col items-center">
+          <div ref={connectButtonRef} className="mt-2 flex w-full flex-col items-center">
             {isTelegramEnv ? (
-              <div className="w-full max-w-[280px] flex justify-center items-center">
-                <TonConnectButton className="w-full" />
-              </div>
-            ) : client ? (
-              <ConnectButton
-                client={client}
-                wallets={wallets}
-                connectModal={{ size: 'compact' }}
-                connectButton={{
-                  label: 'Connect Wallet',
-                  style: {
-                    padding: '12px 24px',
-                    borderRadius: '8px',
-                    fontWeight: 600,
-                    fontSize: '16px',
-                    background: '#ffffff',
-                    color: '#000000',
-                    border: 'none',
-                    cursor: 'pointer',
-                  },
-                }}
-                theme="dark"
+              <WalletEntryActions
+                variant="page"
+                evmAction={thirdwebConnectButton}
+                tonAction={(
+                  <TonConnectActionButton
+                    onClick={handleTonConnect}
+                    loading={isTonModalOpening}
+                    disabled={isAuthenticating || isConnecting}
+                  />
+                )}
               />
             ) : (
-              <div className="text-xs text-red-400">Missing THIRDWEB_CLIENT_ID</div>
+              <WalletEntryActions variant="page" evmAction={thirdwebConnectButton} />
             )}
 
-            {/* Debug Info */}
             {DEBUG &&
-              <div className="mt-8 p-3 bg-black/50 rounded-lg text-[10px] font-mono text-gray-400 break-all max-w-xs text-left">
-                <p className="font-bold mb-1 text-gray-300">Debug Info:</p>
+              <div className="mt-8 max-w-xs break-all rounded-lg bg-black/50 p-3 text-left font-mono text-[10px] text-gray-400">
+                <p className="mb-1 font-bold text-gray-300">Debug Info:</p>
                 <p>isTelegram state: <span className={isTelegram ? "text-green-400" : "text-yellow-400"}>{String(isTelegram)}</span></p>
                 <p>window.Telegram: {typeof window !== 'undefined' ? typeof (window as any).Telegram : 'undefined'}</p>
                 <p>WebApp: {typeof window !== 'undefined' && (window as any).Telegram?.WebApp ? 'Present' : 'Missing'}</p>
