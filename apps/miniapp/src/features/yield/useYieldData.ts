@@ -242,6 +242,7 @@ export function useYieldData() {
     if (userAddress) {
       userCache.delete(userAddress);
     }
+    lastUserFetchRef.current = 0;
     poolsCache = null;
     await fetchPools(true);
     await fetchUserData();

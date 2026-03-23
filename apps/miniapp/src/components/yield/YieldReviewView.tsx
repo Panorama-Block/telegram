@@ -3,6 +3,7 @@ import { AlertCircle, Check, Loader2 } from 'lucide-react';
 import { NeonButton } from '@/components/ui/NeonButton';
 import { getYieldStepStatusClass, getYieldStepStatusLabel, type YieldTxStage, type YieldTxStep } from '@/components/yield/yieldTxState';
 import type { YieldAction, YieldPoolWithAPR, YieldPrepareResponse } from '@/features/yield/types';
+import { formatAmountHuman } from '@/features/swap/utils';
 
 const ACTION_LABELS: Record<YieldAction, string> = {
   enter: 'Enter Position',
@@ -176,7 +177,9 @@ export function YieldReviewView({
               {estimatedLiquidity && (
                 <div className="flex justify-between text-sm">
                   <span className="text-zinc-500">Estimated LP output</span>
-                  <span className="text-cyan-300 font-mono">{estimatedLiquidity}</span>
+                  <span className="text-cyan-300 font-mono">
+                    {formatAmountHuman(BigInt(estimatedLiquidity), 18, 8)} LP
+                  </span>
                 </div>
               )}
             </>
@@ -190,8 +193,10 @@ export function YieldReviewView({
               </div>
               {lpAmount && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-zinc-500">Prepared LP (wei)</span>
-                  <span className="text-cyan-300 font-mono">{lpAmount}</span>
+                  <span className="text-zinc-500">LP to remove</span>
+                  <span className="text-cyan-300 font-mono">
+                    {formatAmountHuman(BigInt(lpAmount), 18, 8)} LP
+                  </span>
                 </div>
               )}
             </>

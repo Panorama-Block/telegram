@@ -188,6 +188,7 @@ export function Yield({
   const [viewState, setViewState] = useState<ViewState>(
     initialAction && initialPoolId ? 'input' : 'select',
   );
+  const [selectTab, setSelectTab] = useState<'pools' | 'positions' | undefined>(undefined);
 
   const [action, setAction] = useState<YieldAction>(initialAction ?? 'enter');
   const [poolId, setPoolId] = useState<string | null>(normalizePoolId(initialPoolId) ?? null);
@@ -205,6 +206,7 @@ export function Yield({
   const [error, setError] = useState<string | null>(null);
   const [liveWalletBalances, setLiveWalletBalances] = useState<Record<string, string>>({});
   const [liveWalletLpBalanceWei, setLiveWalletLpBalanceWei] = useState<string>('0');
+  const [isNavigatingToPositions, setIsNavigatingToPositions] = useState(false);
 
   const isMountedRef = useRef(true);
   const isExecutingRef = useRef(false);
@@ -696,13 +698,21 @@ export function Yield({
     setViewState('review');
   }, [prepareResponse]);
 
-  const handleViewPosition = useCallback(() => {
-    setAction('exit');
-    setViewState('input');
+  const handleViewPosition = useCallback(async () => {
+    setIsNavigatingToPositions(true);
+    try {
+      await new Promise((r) => setTimeout(r, 1500));
+      await refresh();
+    } finally {
+      setIsNavigatingToPositions(false);
+    }
+    setSelectTab('positions');
+    setPoolId(null);
     setReviewPool(null);
     setError(null);
     resetTransactionState();
-  }, [resetTransactionState]);
+    setViewState('select');
+  }, [resetTransactionState, refresh]);
 
   const handleNewPosition = useCallback(() => {
     setAction('enter');
@@ -712,6 +722,7 @@ export function Yield({
     setExitAmount('');
     setReviewPool(null);
     setError(null);
+    setSelectTab(undefined);
     resetTransactionState();
     setViewState('select');
   }, [resetTransactionState]);
@@ -765,14 +776,17 @@ export function Yield({
       <AnimatePresence mode="wait">
         {viewState === 'select' && (
           <YieldSelectView
+            key={selectTab ?? 'default'}
             pools={pools}
             userPositions={positions}
+            portfolio={portfolio}
             loading={loading}
             error={dataError}
             onRetry={() => { void refresh(); }}
             onSelectPool={handleSelectPool}
             onQuickClaim={handleQuickClaim}
             onQuickExit={handleQuickExit}
+            initialTab={selectTab}
           />
         )}
 
@@ -825,7 +839,8 @@ export function Yield({
             error={error}
             onClose={onClose}
             onRetry={handleRetry}
-            onViewPosition={handleViewPosition}
+            onViewPosition={() => { void handleViewPosition(); }}
+            isNavigatingToPositions={isNavigatingToPositions}
             onNewPosition={handleNewPosition}
           />
         )}

@@ -25,6 +25,7 @@ interface YieldStatusViewProps {
   onClose: () => void;
   onRetry: () => void;
   onViewPosition: () => void;
+  isNavigatingToPositions?: boolean;
   onNewPosition: () => void;
 }
 
@@ -36,6 +37,7 @@ export function YieldStatusView({
   onClose,
   onRetry,
   onViewPosition,
+  isNavigatingToPositions = false,
   onNewPosition,
 }: YieldStatusViewProps) {
   const isSuccess = txStage === 'confirmed';
@@ -137,7 +139,14 @@ export function YieldStatusView({
 
         {isSuccess ? (
           <div className="space-y-2">
-            <NeonButton onClick={onViewPosition}>View Position</NeonButton>
+            <NeonButton onClick={onViewPosition} disabled={isNavigatingToPositions}>
+              {isNavigatingToPositions ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading positions...
+                </span>
+              ) : 'View Position'}
+            </NeonButton>
             <NeonButton
               onClick={onNewPosition}
               className="bg-white/10 hover:bg-white/15 shadow-none text-white"
