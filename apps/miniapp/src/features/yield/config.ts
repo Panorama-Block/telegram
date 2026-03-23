@@ -9,7 +9,7 @@ export const AERO_ICON = 'https://assets.coingecko.com/coins/images/31745/small/
 /** Re-export shared token icons and add Base-specific ones */
 export const TOKEN_ICONS: Record<string, string> = {
   ...SHARED_TOKEN_ICONS,
-  USDbC: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
+  USDbC: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA/logo.png',
   wstETH: 'https://assets.coingecko.com/coins/images/18834/small/wstETH.png',
   VIRTUAL: 'https://coin-images.coingecko.com/coins/images/34057/small/LOGOMARK.png',
   msETH: 'https://coin-images.coingecko.com/coins/images/67512/small/metronome_mseth.png',

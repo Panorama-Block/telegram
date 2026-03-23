@@ -183,7 +183,7 @@ export function YieldSelectView({
             ) : pools.length === 0 ? (
               <div className="text-center py-12 text-zinc-500 text-sm">No pools available</div>
             ) : (
-              pools.map((pool) => {
+              pools.filter((pool) => !pool.stable || pool.id === 'usdc-usdbc-stable').map((pool) => {
                 const userPos = userPositions.find((p) => p.poolId === pool.id);
                 const hasPosition = !!userPos;
                 return (
