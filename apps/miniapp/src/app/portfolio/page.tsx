@@ -46,9 +46,11 @@ import { useActiveAccount } from "thirdweb/react";
 import { shortenAddress } from "thirdweb/utils";
 import { isGatewayUnavailableError, useTransactionHistory } from "@/features/gateway";
 import { formatAmountHuman } from "@/features/swap/utils";
+import { useYieldData } from "@/features/yield/useYieldData";
+import { TOKEN_ICONS } from "@/features/yield/config";
 
 type ViewMode = 'main' | 'smart';
-type TabMode = 'assets' | 'staking' | 'lending' | 'dca' | 'history';
+type TabMode = 'assets' | 'yield' | 'staking' | 'lending' | 'dca' | 'history';
 
 const ALLOCATION_COLORS: Record<string, string> = {
   'Blue Chips':  '#6366f1',  // indigo-500
@@ -177,6 +179,14 @@ export default function PortfolioPage() {
     fetchPosition: refreshLendingPosition,
     lastFetchTime: lendingLastFetchTime,
   } = useLendingData();
+
+  // Aerodrome Yield (Base)
+  const {
+    pools: yieldPools,
+    positions: yieldPositions,
+    loading: yieldLoading,
+    refresh: refreshYield,
+  } = useYieldData();
 
   // AVAX Liquid Staking
   const avaxStakingApi = useAvaxStakingApi();
@@ -697,6 +707,7 @@ export default function PortfolioPage() {
             {(
               [
                 { key: 'assets',  label: 'Assets',  icon: <Wallet className="w-3.5 h-3.5" /> },
+                { key: 'yield',   label: 'Yield',   icon: <TrendingUp className="w-3.5 h-3.5" /> },
                 { key: 'staking', label: 'Staking', icon: <Droplets className="w-3.5 h-3.5" /> },
                 { key: 'lending', label: 'Lending', icon: <Landmark className="w-3.5 h-3.5" /> },
                 { key: 'dca',     label: 'DCA',     icon: <Zap className="w-3.5 h-3.5" /> },
@@ -715,6 +726,11 @@ export default function PortfolioPage() {
               >
                 {tab.icon}
                 {tab.label}
+                {tab.key === 'yield' && yieldPositions.length > 0 && (
+                  <span className="ml-0.5 text-[10px] bg-cyan-500/20 text-cyan-400 px-1.5 py-0.5 rounded-full font-medium">
+                    {yieldPositions.length}
+                  </span>
+                )}
                 {tab.key === 'dca' && activeStrategiesCount > 0 && (
                   <span className="ml-0.5 text-[10px] bg-cyan-500/20 text-cyan-400 px-1.5 py-0.5 rounded-full font-medium">
                     {activeStrategiesCount}
@@ -903,6 +919,49 @@ export default function PortfolioPage() {
                 )}
               </div>
             )}
+            {/* Aerodrome Yield */}
+            {yieldPositions.length > 0 && (
+              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+                      <TrendingUp className="w-4 h-4 text-cyan-400" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium text-white">Aerodrome Yield</div>
+                      <div className="text-[10px] text-zinc-500">Base — {yieldPositions.length} position{yieldPositions.length > 1 ? 's' : ''}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  {yieldPositions.slice(0, 3).map((pos) => {
+                    const pool = yieldPools.find(p => p.id === pos.poolId);
+                    return (
+                      <div key={pos.poolId} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex -space-x-1">
+                            {TOKEN_ICONS[pos.tokenA.symbol] && (
+                              <img src={TOKEN_ICONS[pos.tokenA.symbol]} alt="" className="w-4 h-4 rounded-full ring-1 ring-black" />
+                            )}
+                            {TOKEN_ICONS[pos.tokenB.symbol] && (
+                              <img src={TOKEN_ICONS[pos.tokenB.symbol]} alt="" className="w-4 h-4 rounded-full ring-1 ring-black" />
+                            )}
+                          </div>
+                          <span className="text-zinc-300">{pos.tokenA.symbol}/{pos.tokenB.symbol}</span>
+                        </div>
+                        {pool?.estimatedAPR && (
+                          <span className="text-emerald-400 font-mono">{parseFloat(pool.estimatedAPR.replace('%', '')).toFixed(1)}%</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {yieldPositions.length > 3 && (
+                    <div className="text-[10px] text-zinc-500">+{yieldPositions.length - 3} more</div>
+                  )}
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
 
@@ -1272,6 +1331,111 @@ export default function PortfolioPage() {
                   </Link>
                 </GlassCard>
               </div>
+        </div>
+
+        {/* ══ YIELD / AERODROME POSITIONS (mobile-only tab) ═══════════════ */}
+        <div className={cn(
+          "order-3 lg:hidden",
+          activeTab !== 'yield' && "hidden"
+        )}>
+          <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-zinc-500">Aerodrome Finance — Base</span>
+              <button
+                type="button"
+                onClick={() => void refreshYield()}
+                disabled={yieldLoading}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors disabled:opacity-50"
+              >
+                {yieldLoading
+                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                  : <Scan className="w-3 h-3" />
+                }
+                Refresh
+              </button>
+            </div>
+
+            {yieldLoading && yieldPositions.length === 0 ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
+              </div>
+            ) : yieldPositions.length === 0 ? (
+              <div className="text-center py-8 space-y-2">
+                <TrendingUp className="w-6 h-6 mx-auto text-zinc-600" />
+                <p className="text-sm text-zinc-500">No yield positions yet</p>
+                <Link href="/chat?open=yield" className="inline-flex text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
+                  Browse pools to earn yield
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {yieldPositions.map((pos) => {
+                  const hasRewards = parseFloat(pos.earnedRewards) > 0;
+                  const pool = yieldPools.find(p => p.id === pos.poolId);
+                  return (
+                    <GlassCard key={pos.poolId} className="p-3 bg-white/[0.03] border-white/5">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex -space-x-1.5">
+                            {TOKEN_ICONS[pos.tokenA.symbol] && (
+                              <img src={TOKEN_ICONS[pos.tokenA.symbol]} alt="" className="w-6 h-6 rounded-full ring-1 ring-black" />
+                            )}
+                            {TOKEN_ICONS[pos.tokenB.symbol] && (
+                              <img src={TOKEN_ICONS[pos.tokenB.symbol]} alt="" className="w-6 h-6 rounded-full ring-1 ring-black" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-sm text-white font-medium">{pos.tokenA.symbol} / {pos.tokenB.symbol}</div>
+                            {pool?.estimatedAPR && (
+                              <div className="text-[11px] text-emerald-400 font-medium">
+                                {parseFloat(pool.estimatedAPR.replace('%', '')).toFixed(1)}% APR
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${
+                          pos.stable
+                            ? 'text-blue-300 bg-blue-500/10 border-blue-500/20'
+                            : 'text-orange-300 bg-orange-500/10 border-orange-500/20'
+                        }`}>
+                          {pos.stable ? 'Stable' : 'Volatile'}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-zinc-500">Staked LP</span>
+                          <span className="text-white font-mono">
+                            {(() => {
+                              const n = parseFloat(pos.stakedBalance) / 1e18;
+                              if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+                              if (n >= 1) return n.toFixed(2);
+                              return n.toFixed(6);
+                            })()}
+                          </span>
+                        </div>
+                        {hasRewards && (
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-zinc-500">Rewards</span>
+                            <span className="text-cyan-400 font-mono">
+                              {(parseFloat(pos.earnedRewards) / 10 ** pos.rewardToken.decimals).toFixed(4)} {pos.rewardToken.symbol}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <Link
+                        href={`/chat?open=yield&pool=${pos.poolId}`}
+                        className="inline-flex items-center gap-1.5 mt-2 text-xs px-2.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/20 text-cyan-400 transition-colors"
+                      >
+                        Manage <TrendingUp className="w-3 h-3" />
+                      </Link>
+                    </GlassCard>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ══ LENDING (mobile-only tab) ═══════════════════════════ */}
