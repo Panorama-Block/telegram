@@ -97,6 +97,10 @@ export function ClientProviders({ children }: ClientProvidersProps) {
         }
 
         const manifestUrl = `${window.location.origin}/miniapp/api/tonconnect-manifest`;
+        const publicWebappUrl = (process.env.VITE_TON_TWA_RETURN_URL || '').trim();
+        const telegramBotUsername = (process.env.VITE_TELEGRAM_BOT_USERNAME || '').replace(/^@/, '').trim();
+        const twaReturnUrl = (publicWebappUrl
+          || (telegramBotUsername ? `https://t.me/${telegramBotUsername}` : undefined)) as `${string}://${string}` | undefined;
         const thirdwebClientId = THIRDWEB_CLIENT_ID;
 
         // Create providers component
@@ -159,7 +163,10 @@ export function ClientProviders({ children }: ClientProvidersProps) {
           return (
             <AuthProvider>
               <TransactionSettingsProvider>
-                <tonConnect.TonConnectUIProvider manifestUrl={manifestUrl}>
+                <tonConnect.TonConnectUIProvider
+                  manifestUrl={manifestUrl}
+                  actionsConfiguration={twaReturnUrl ? { twaReturnUrl } : undefined}
+                >
                   <TonAutoConnect />
                   <thirdwebReact.ThirdwebProvider>
                     <ChatProvider>

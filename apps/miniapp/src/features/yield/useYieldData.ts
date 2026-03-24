@@ -58,6 +58,7 @@ export function useYieldData() {
     userAddress && userCache.get(userAddress)?.portfolio ? userCache.get(userAddress)!.portfolio : null
   ));
   const [loading, setLoading] = useState(poolsCache == null);
+  const [userLoading, setUserLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const lastFetchRef = useRef(0);
@@ -174,6 +175,7 @@ export function useYieldData() {
     if (userInFlightRef.current) return userInFlightRef.current;
 
     const run = (async () => {
+      setUserLoading(true);
       try {
         const [pos, port] = await Promise.all([
           yieldApi.getPosition(userAddress).catch(() => []),
@@ -231,6 +233,7 @@ export function useYieldData() {
         console.error('[YIELD] Error fetching user data:', err);
       } finally {
         lastUserFetchRef.current = Date.now();
+        setUserLoading(false);
       }
     })().finally(() => { userInFlightRef.current = null; });
 
@@ -242,6 +245,7 @@ export function useYieldData() {
     if (userAddress) {
       userCache.delete(userAddress);
     }
+    lastUserFetchRef.current = 0;
     poolsCache = null;
     await fetchPools(true);
     await fetchUserData();
@@ -272,6 +276,7 @@ export function useYieldData() {
     positions,
     portfolio,
     loading,
+    userLoading,
     error,
     refresh,
   };

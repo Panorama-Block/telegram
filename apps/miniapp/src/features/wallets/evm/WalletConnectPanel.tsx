@@ -70,46 +70,36 @@ export function WalletConnectPanel() {
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const mode = isTelegram ? 'redirect' : 'popup';
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    const telegramAuthOptions = ['telegram', 'email'] as const;
 
     if (isiOS) {
-      // iOS WebView: prefer email/passkey/guest only
-      return [
-        inAppWallet({
-          auth: {
-            options: ['email', 'passkey', 'guest'],
-            mode,
-            redirectUrl,
-          },
-        }),
-      ];
-    }
-
-    return [
-      inAppWallet({
+      return [inAppWallet({
         auth: {
-          options: ['google', 'telegram', 'email', 'guest'],
+          options: isTelegram ? telegramAuthOptions : ['email', 'passkey', 'guest'],
           mode,
           redirectUrl,
         },
-      }),
-      createWallet('io.metamask', { preferDeepLink: true }),
-    ];
-  }, []);
-
-  // moved below to avoid "used before declaration" TS error
-
-  const openGoogleInBrowser = useCallback(() => {
-    try {
-      const WebApp = (window as any).Telegram?.WebApp;
-      const url = `${window.location.origin}/miniapp/auth/external?strategy=google`;
-      if (WebApp?.openLink) {
-        WebApp.openLink(url, { try_instant_view: false });
-      } else {
-        window.open(url, '_blank');
-      }
-    } catch {
-      window.open(`${window.location.origin}/miniapp/auth/external?strategy=google`, '_blank');
+      })];
     }
+
+    return isTelegram
+      ? [inAppWallet({
+          auth: {
+            options: telegramAuthOptions,
+            mode,
+            redirectUrl,
+          },
+        })]
+      : [
+          inAppWallet({
+            auth: {
+              options: ['google', 'telegram', 'email', 'guest'],
+              mode,
+              redirectUrl,
+            },
+          }),
+          createWallet('io.metamask', { preferDeepLink: true }),
+        ];
   }, []);
 
   const authenticateWithBackend = useCallback(async (overrideAccount?: { address: string } | null) => {
@@ -324,59 +314,12 @@ export function WalletConnectPanel() {
     <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {typeof window !== 'undefined' && (window as any).Telegram?.WebApp && /iPhone|iPad|iPod/i.test(navigator.userAgent) && (
         <div style={{ fontSize: 13, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', padding: 12, borderRadius: 8 }}>
-          On iOS (Telegram), Google blocks sign-in inside webviews. Use Email/Passkey or
-          <button
-            onClick={openGoogleInBrowser}
-            style={{ marginLeft: 6, color: '#fbbf24', textDecoration: 'underline', background: 'transparent', border: 'none', cursor: 'pointer' }}
-          >
-            open in browser
-          </button>
-          .
-          <div style={{ marginTop: 8 }}>
-            <button
-              onClick={connectGuest}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 8,
-                border: '1px solid rgba(251,191,36,0.6)',
-                background: 'transparent',
-                color: '#fbbf24',
-                cursor: 'pointer',
-              }}
-            >
-              Continue as guest
-            </button>
-          </div>
+          Inside Telegram, thirdweb login is limited to Telegram and Email.
         </div>
       )}
       {typeof window !== 'undefined' && (window as any).Telegram?.WebApp && /Android/i.test(navigator.userAgent) && (
         <div style={{ fontSize: 13, color: '#93c5fd', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.3)', padding: 12, borderRadius: 8 }}>
-          On Android (Telegram), connect using the MetaMask app, or
-          <button
-            onClick={openGoogleInBrowser}
-            style={{ marginLeft: 6, color: '#93c5fd', textDecoration: 'underline', background: 'transparent', border: 'none', cursor: 'pointer' }}
-          >
-            open Google in browser
-          </button>
-          :
-          <button
-            onClick={() => {
-              try {
-                const WebApp = (window as any).Telegram?.WebApp;
-                const url = `${window.location.origin}/miniapp/auth/wallet-external?wallet=metamask`;
-                if (WebApp?.openLink) {
-                  WebApp.openLink(url, { try_instant_view: false });
-                } else {
-                  window.open(url, '_blank');
-                }
-              } catch {
-                window.open(`${window.location.origin}/miniapp/auth/wallet-external?wallet=metamask`, '_blank');
-              }
-            }}
-            style={{ marginLeft: 6, color: '#93c5fd', textDecoration: 'underline', background: 'transparent', border: 'none', cursor: 'pointer' }}
-          >
-            Open MetaMask
-          </button>
+          Inside Telegram, thirdweb login is limited to Telegram and Email.
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>

@@ -41,6 +41,7 @@ export interface UserPosition {
   tokenB: TokenInfo;
   stable: boolean;
   stakedBalance: string;
+  walletLpBalance: string;
   earnedRewards: string;
   rewardToken: TokenInfo;
 }

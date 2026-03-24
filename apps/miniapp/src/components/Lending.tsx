@@ -502,7 +502,26 @@ export function Lending({
 
       const prepared = await (async () => {
         if (mode === 'supply' && flow === 'open') return await lendingApi.prepareSupply(qTokenAddress, opAmount, decimals);
-        if (mode === 'supply' && flow === 'close') return await lendingApi.prepareWithdraw(qTokenAddress, opAmount, decimals);
+        if (mode === 'supply' && flow === 'close') {
+          // Calcula qTokenAmount proporcional para evitar TransferFromFailed no contrato.
+          // O contrato precisa de unidades de qToken (8 decimais), não de underlying wei.
+          let qTokenOverride: string | undefined;
+          const pos = activePositionRow as any;
+          // Suporta tanto 'qTokenBalanceWei' (lending-service) quanto 'qTokenBalance' (execution-layer)
+          const qTokenBalStr: string | undefined = pos?.qTokenBalanceWei || pos?.qTokenBalance;
+          const suppliedWStr: string | undefined = pos?.suppliedWei;
+          if (qTokenBalStr && suppliedWStr) {
+            const qTokenBal = BigInt(qTokenBalStr);
+            const suppliedW = BigInt(suppliedWStr);
+            if (suppliedW > 0n && qTokenBal > 0n) {
+              const opWei = parseAmountToWei(opAmount, decimals);
+              qTokenOverride = ((opWei * qTokenBal) / suppliedW).toString();
+            } else if (qTokenBal > 0n) {
+              qTokenOverride = qTokenBalStr;
+            }
+          }
+          return await lendingApi.prepareWithdraw(qTokenAddress, opAmount, decimals, qTokenOverride);
+        }
         if (mode === 'borrow' && flow === 'open') return await lendingApi.prepareBorrow(qTokenAddress, opAmount, decimals);
         return await lendingApi.prepareRepay(qTokenAddress, opAmount, decimals);
       })();
@@ -696,7 +715,7 @@ export function Lending({
     } finally {
       txActionInFlightRef.current = false;
     }
-  }, [account, actionLabel, activeAction, activeMarket, amount, canReview, fetchPosition, flow, lendingApi, mode, previewHuman, rateLimit, waitForReceipt]);
+  }, [account, actionLabel, activeAction, activeMarket, activePositionRow, amount, canReview, fetchPosition, flow, lendingApi, mode, previewHuman, rateLimit, waitForReceipt]);
 
   useEffect(() => {
     if (txStage !== 'timeout') {

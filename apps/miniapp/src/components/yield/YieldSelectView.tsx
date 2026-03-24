@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, TrendingUp, Gift, Layers, BarChart3 } from 'lucide-react';
 import { TOKEN_ICONS, AERO_ICON } from '@/features/yield/config';
-import type { YieldPoolWithAPR, UserPosition } from '@/features/yield/types';
+import type { YieldPoolWithAPR, UserPosition, Portfolio } from '@/features/yield/types';
 
 type Tab = 'positions' | 'pools';
 
@@ -21,10 +21,46 @@ function formatStakedLP(wei: string): string {
     if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
     if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
     if (num >= 1) return num.toFixed(2);
-    return num.toFixed(6);
+    if (num >= 0.000001) return num.toFixed(6);
+    if (num > 0) return '< 0.000001';
+    return '0';
   } catch {
     return '0';
   }
+}
+
+const STABLECOINS = new Set(['USDC', 'USDbC', 'USDT', 'DAI', 'LUSD', 'crvUSD']);
+
+function estimatePositionUsd(
+  tokenASymbol: string, tokenABalance: string,
+  tokenBSymbol: string, tokenBBalance: string,
+): string | null {
+  const a = parseFloat(tokenABalance);
+  const b = parseFloat(tokenBBalance);
+  if (!isFinite(a) || !isFinite(b)) return null;
+  const aIsStable = STABLECOINS.has(tokenASymbol);
+  const bIsStable = STABLECOINS.has(tokenBSymbol);
+  // For volatile pools, each side is ~50% of value
+  if (aIsStable && !bIsStable) return `~$${(a * 2).toFixed(2)}`;
+  if (bIsStable && !aIsStable) return `~$${(b * 2).toFixed(2)}`;
+  if (aIsStable && bIsStable) return `~$${(a + b).toFixed(2)}`;
+  return null;
+}
+
+function estimatePositionUsdFromShare(
+  stakedBalance: string,
+  totalStaked: string,
+  totalLiquidityUsd: string | null,
+): string | null {
+  if (!totalLiquidityUsd) return null;
+  const staked = parseFloat(stakedBalance);
+  const total = parseFloat(totalStaked);
+  const tvl = parseFloat(totalLiquidityUsd);
+  if (!isFinite(staked) || !isFinite(total) || !isFinite(tvl) || total <= 0) return null;
+  const usd = (staked / total) * tvl;
+  if (usd >= 0.01) return `~$${usd.toFixed(2)}`;
+  if (usd > 0) return '< $0.01';
+  return null;
 }
 
 function formatUsd(value: string | null | undefined): string {
@@ -56,23 +92,29 @@ function getTokenIcon(symbol: string): string | undefined {
 interface YieldSelectViewProps {
   pools: YieldPoolWithAPR[];
   userPositions: UserPosition[];
+  portfolio?: Portfolio | null;
   loading: boolean;
+  userLoading?: boolean;
   error?: string | null;
   onRetry?: () => void;
   onSelectPool: (poolId: string) => void;
   onQuickClaim: (poolId: string) => void;
   onQuickExit: (poolId: string) => void;
+  initialTab?: 'pools' | 'positions';
 }
 
 export function YieldSelectView({
   pools,
   userPositions,
+  portfolio,
   loading,
+  userLoading = false,
   error,
   onRetry,
   onSelectPool,
   onQuickClaim,
   onQuickExit,
+  initialTab,
 }: YieldSelectViewProps) {
   const hasPositions = userPositions.length > 0;
   const [activeTab, setActiveTab] = useState<Tab>(hasPositions ? 'positions' : 'pools');

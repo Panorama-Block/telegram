@@ -1330,3 +1330,52 @@ textarea:focus-visible {
 html {
   color-scheme: dark;
 }
+
+.newchat-login-option,
+.newchat-login-option > * {
+  width: 100%;
+}
+
+.newchat-evm-button button,
+.newchat-ton-button button,
+.newchat-ton-button [role='button'] {
+  width: 100% !important;
+  min-height: 52px !important;
+  border-radius: 9999px !important;
+  padding: 12px 20px !important;
+  font-family: var(--font-sans) !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  letter-spacing: -0.01em !important;
+  transition:
+    transform var(--pano-transition-fast),
+    box-shadow var(--pano-transition-fast),
+    filter var(--pano-transition-fast) !important;
+}
+
+.newchat-evm-button button {
+  background: linear-gradient(135deg, #1fb6ff 0%, #1182d8 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(123, 219, 255, 0.55) !important;
+  box-shadow: 0 10px 24px rgba(17, 130, 216, 0.28) !important;
+}
+
+.newchat-ton-button button,
+.newchat-ton-button [role='button'] {
+  box-shadow: 0 10px 24px rgba(17, 130, 216, 0.18) !important;
+}
+
+.newchat-evm-button button:hover,
+.newchat-ton-button button:hover,
+.newchat-ton-button [role='button']:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+
+.newchat-evm-button button:focus-visible,
+.newchat-ton-button button:focus-visible,
+.newchat-ton-button [role='button']:focus-visible {
+  outline: 2px solid rgba(103, 232, 249, 0.9) !important;
+  outline-offset: 3px !important;
+}

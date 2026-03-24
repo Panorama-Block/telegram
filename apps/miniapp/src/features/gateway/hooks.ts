@@ -396,6 +396,7 @@ interface UseNotificationsResult {
   markRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
   dismiss: (id: string) => Promise<void>;
+  dismissAll: () => Promise<void>;
 }
 
 export function useNotifications({
@@ -468,6 +469,16 @@ export function useNotifications({
     }
   }, []);
 
+  const dismissAll = useCallback(async () => {
+    if (!userId) return;
+    try {
+      await notificationApi.dismissAll(userId);
+      setNotifications([]);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to clear all notifications'));
+    }
+  }, [userId]);
+
   useEffect(() => {
     if (userId) {
       refresh();
@@ -491,5 +502,6 @@ export function useNotifications({
     markRead,
     markAllRead,
     dismiss,
+    dismissAll,
   };
 }

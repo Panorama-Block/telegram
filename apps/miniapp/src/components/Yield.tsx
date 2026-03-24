@@ -179,6 +179,7 @@ export function Yield({
     positions,
     portfolio,
     loading,
+    userLoading,
     error: dataError,
     refresh,
   } = useYieldData();
@@ -188,6 +189,7 @@ export function Yield({
   const [viewState, setViewState] = useState<ViewState>(
     initialAction && initialPoolId ? 'input' : 'select',
   );
+  const [selectTab, setSelectTab] = useState<'pools' | 'positions' | undefined>(undefined);
 
   const [action, setAction] = useState<YieldAction>(initialAction ?? 'enter');
   const [poolId, setPoolId] = useState<string | null>(normalizePoolId(initialPoolId) ?? null);
@@ -205,6 +207,7 @@ export function Yield({
   const [error, setError] = useState<string | null>(null);
   const [liveWalletBalances, setLiveWalletBalances] = useState<Record<string, string>>({});
   const [liveWalletLpBalanceWei, setLiveWalletLpBalanceWei] = useState<string>('0');
+  const [isNavigatingToPositions, setIsNavigatingToPositions] = useState(false);
 
   const isMountedRef = useRef(true);
   const isExecutingRef = useRef(false);
@@ -696,13 +699,21 @@ export function Yield({
     setViewState('review');
   }, [prepareResponse]);
 
-  const handleViewPosition = useCallback(() => {
-    setAction('exit');
-    setViewState('input');
+  const handleViewPosition = useCallback(async () => {
+    setIsNavigatingToPositions(true);
+    try {
+      await new Promise((r) => setTimeout(r, 1500));
+      await refresh();
+    } finally {
+      setIsNavigatingToPositions(false);
+    }
+    setSelectTab('positions');
+    setPoolId(null);
     setReviewPool(null);
     setError(null);
     resetTransactionState();
-  }, [resetTransactionState]);
+    setViewState('select');
+  }, [resetTransactionState, refresh]);
 
   const handleNewPosition = useCallback(() => {
     setAction('enter');
@@ -712,6 +723,7 @@ export function Yield({
     setExitAmount('');
     setReviewPool(null);
     setError(null);
+    setSelectTab(undefined);
     resetTransactionState();
     setViewState('select');
   }, [resetTransactionState]);
@@ -746,8 +758,9 @@ export function Yield({
   ) : null;
 
   const footer = (
-    <div className="py-4 flex items-center justify-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
-      <span className="text-[10px] sm:text-xs font-medium text-zinc-500">Powered on Base</span>
+    <div className="py-4 flex items-center justify-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
+      <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0x940181a94A35A4569E4529A3CDfB74e38FD98631/logo.png" alt="Aerodrome" className="w-5 h-5 rounded-full object-contain" />
+      <span className="text-[10px] sm:text-xs font-medium text-zinc-500">Powered by Aerodrome on Base</span>
     </div>
   );
 
@@ -765,14 +778,18 @@ export function Yield({
       <AnimatePresence mode="wait">
         {viewState === 'select' && (
           <YieldSelectView
+            key={selectTab ?? 'default'}
             pools={pools}
             userPositions={positions}
+            portfolio={portfolio}
             loading={loading}
+            userLoading={userLoading}
             error={dataError}
             onRetry={() => { void refresh(); }}
             onSelectPool={handleSelectPool}
             onQuickClaim={handleQuickClaim}
             onQuickExit={handleQuickExit}
+            initialTab={selectTab}
           />
         )}
 
@@ -825,7 +842,8 @@ export function Yield({
             error={error}
             onClose={onClose}
             onRetry={handleRetry}
-            onViewPosition={handleViewPosition}
+            onViewPosition={() => { void handleViewPosition(); }}
+            isNavigatingToPositions={isNavigatingToPositions}
             onNewPosition={handleNewPosition}
           />
         )}
