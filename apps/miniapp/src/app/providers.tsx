@@ -145,9 +145,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
                     await connector?.restoreConnection?.();
                   }
 
-                  if (tonConnectUI.account?.address) {
-                    console.log('[TonConnect] session restored:', tonConnectUI.account.address);
-                  }
+                  // TonConnect session restored successfully
                 } catch (err) {
                   console.warn('[TonConnect] connection restore failed:', err);
                 }

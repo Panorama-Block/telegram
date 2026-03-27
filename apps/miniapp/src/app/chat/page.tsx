@@ -12,7 +12,8 @@ declare global {
     };
   }
 }
-import { GlobalLoader, TransactionSettingsProvider } from '@/shared/ui';
+import { GlobalLoader } from '@/shared/ui';
+import { TransactionSettingsProvider } from '@/context/TransactionSettingsContext';
 import MarkdownMessage from '@/shared/ui/MarkdownMessage';
 import Image from 'next/image';
 import '../../shared/ui/loader.css';
