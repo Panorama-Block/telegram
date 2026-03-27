@@ -232,7 +232,6 @@ export function usePortfolioData() {
                balanceRaw = result.value;
                balanceStr = result.displayValue;
              } catch (e) {
-               // console.warn('Native fetch failed', e);
              }
           } else {
              // ERC20 Balance
@@ -251,7 +250,6 @@ export function usePortfolioData() {
                 const decimal = token.decimals || 18;
                 balanceStr = toTokens(balanceRaw, decimal);
              } catch (e) {
-                // console.warn('ERC20 fetch failed', e);
              }
           }
 

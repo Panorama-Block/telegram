@@ -62,6 +62,17 @@ export interface FetchMessagesResponse {
 }
 
 export class AgentsClient {
+  private static readonly MIME_TO_EXT: Record<string, string> = {
+    'audio/webm': 'webm',
+    'audio/mp3': 'mp3',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'audio/ogg': 'ogg',
+    'audio/flac': 'flac',
+    'audio/mp4': 'm4a',
+    'audio/aac': 'aac',
+  };
+
   private baseUrl?: string;
   private messagePath?: string;
   private debugShape: boolean = false;
@@ -332,13 +343,6 @@ export class AgentsClient {
     }
 
     const data = (await res.json()) as any;
-    console.info('[CHAT TRACE][AgentsClient] listConversations:raw', {
-      userId,
-      type: Array.isArray(data) ? 'array' : typeof data,
-      keys: data && typeof data === 'object' ? Object.keys(data) : [],
-      conversation_ids_count: Array.isArray(data?.conversation_ids) ? data.conversation_ids.length : null,
-      conversations_count: Array.isArray(data?.conversations) ? data.conversations.length : null,
-    });
     // Handle both old (list of strings) and new (list of objects) formats for backward compatibility
     let conversations: Conversation[] = [];
 
@@ -381,11 +385,6 @@ export class AgentsClient {
       });
     }
 
-    console.info('[CHAT TRACE][AgentsClient] listConversations:parsed', {
-      userId,
-      count: conversations.length,
-      ids: conversations.map((item) => item.id),
-    });
     this.logDebug('listConversations:success', { userId, count: conversations.length });
     return conversations;
   }
@@ -460,11 +459,7 @@ export class AgentsClient {
   async chatStream(req: ChatRequest, opts: ChatOptions = {}): Promise<Response> {
     this.ensureConfigured();
 
-    const headers: Record<string, string> = {
-      'content-type': 'application/json',
-      ...(opts.headers ?? {}),
-    };
-    if (opts.jwt) headers['authorization'] = `Bearer ${opts.jwt}`;
+    const headers = this.buildHeaders(opts);
 
     const body: Record<string, unknown> = {
       message: {
@@ -571,17 +566,7 @@ export class AgentsClient {
     const formData = new FormData();
 
     // Determine file extension from blob type
-    const mimeToExt: Record<string, string> = {
-      'audio/webm': 'webm',
-      'audio/mp3': 'mp3',
-      'audio/mpeg': 'mp3',
-      'audio/wav': 'wav',
-      'audio/ogg': 'ogg',
-      'audio/flac': 'flac',
-      'audio/mp4': 'm4a',
-      'audio/aac': 'aac',
-    };
-    const ext = mimeToExt[audioFile.type] || 'webm';
+    const ext = AgentsClient.MIME_TO_EXT[audioFile.type] || 'webm';
     const filename = `recording.${ext}`;
 
     formData.append('audio', audioFile, filename);
@@ -631,17 +616,7 @@ export class AgentsClient {
 
     const formData = new FormData();
 
-    const mimeToExt: Record<string, string> = {
-      'audio/webm': 'webm',
-      'audio/mp3': 'mp3',
-      'audio/mpeg': 'mp3',
-      'audio/wav': 'wav',
-      'audio/ogg': 'ogg',
-      'audio/flac': 'flac',
-      'audio/mp4': 'm4a',
-      'audio/aac': 'aac',
-    };
-    const ext = mimeToExt[audioFile.type] || 'webm';
+    const ext = AgentsClient.MIME_TO_EXT[audioFile.type] || 'webm';
     const filename = `recording.${ext}`;
 
     formData.append('audio', audioFile, filename);
