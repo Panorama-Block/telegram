@@ -171,7 +171,7 @@ export class BaseStakingApiClient {
     slippageBps?: number;
   }): Promise<BaseTransactionBundle> {
     if (!this.userAddress) throw new Error('Wallet not connected');
-    const res = await this.fetchJson<{ bundle: { steps: BaseTxStep[]; totalSteps: number; summary?: string }; metadata?: unknown }>('/staking/prepare-enter', {
+    const res = await this.fetchJson<{ bundle: { steps: BaseTxStep[]; totalSteps: number; summary?: string }; metadata?: Record<string, unknown> }>('/staking/prepare-enter', {
       method: 'POST',
       body: JSON.stringify({
         userAddress: this.userAddress,
@@ -185,14 +185,14 @@ export class BaseStakingApiClient {
       steps: res.bundle.steps,
       totalSteps: res.bundle.totalSteps,
       poolId: params.poolId,
-      poolName: '',
+      poolName: (res.metadata as Record<string, unknown>)?.poolName as string ?? params.poolId,
       action: 'enter',
     };
   }
 
   async prepareExit(poolId: string): Promise<BaseTransactionBundle> {
     if (!this.userAddress) throw new Error('Wallet not connected');
-    const res = await this.fetchJson<{ bundle: { steps: BaseTxStep[]; totalSteps: number; summary?: string }; metadata?: unknown }>('/staking/prepare-exit', {
+    const res = await this.fetchJson<{ bundle: { steps: BaseTxStep[]; totalSteps: number; summary?: string }; metadata?: Record<string, unknown> }>('/staking/prepare-exit', {
       method: 'POST',
       body: JSON.stringify({
         userAddress: this.userAddress,
@@ -203,14 +203,14 @@ export class BaseStakingApiClient {
       steps: res.bundle.steps,
       totalSteps: res.bundle.totalSteps,
       poolId,
-      poolName: '',
+      poolName: (res.metadata as Record<string, unknown>)?.poolName as string ?? poolId,
       action: 'exit',
     };
   }
 
   async prepareClaim(poolId: string): Promise<BaseTransactionBundle> {
     if (!this.userAddress) throw new Error('Wallet not connected');
-    const res = await this.fetchJson<{ bundle: { steps: BaseTxStep[]; totalSteps: number }; metadata?: unknown }>('/staking/prepare-claim', {
+    const res = await this.fetchJson<{ bundle: { steps: BaseTxStep[]; totalSteps: number }; metadata?: Record<string, unknown> }>('/staking/prepare-claim', {
       method: 'POST',
       body: JSON.stringify({
         userAddress: this.userAddress,
@@ -221,7 +221,7 @@ export class BaseStakingApiClient {
       steps: res.bundle.steps,
       totalSteps: res.bundle.totalSteps,
       poolId,
-      poolName: '',
+      poolName: (res.metadata as Record<string, unknown>)?.poolName as string ?? poolId,
       action: 'claim',
     };
   }

@@ -15,6 +15,15 @@ import type {
   PreparedTransaction,
   TransactionExecutionStatus,
 } from './types';
+import {
+  YieldPoolSchema,
+  PoolProtocolInfoSchema,
+  UserPositionSchema,
+  PortfolioSchema,
+  YieldPrepareResponseSchema,
+  validateResponse,
+} from '@/shared/lib/responseSchemas';
+import { z } from 'zod';
 
 type SwitchChainFn = (chain: ReturnType<typeof defineChain>) => Promise<void>;
 
@@ -288,22 +297,38 @@ class YieldApiClient {
 
   async getPools(): Promise<YieldPool[]> {
     const data = await this.fetchJson<{ pools: YieldPool[] }>(API_ENDPOINTS.POOLS);
-    return data.pools;
+    const { data: validated } = validateResponse(
+      z.object({ pools: z.array(YieldPoolSchema) }),
+      data,
+      'YieldPools',
+    );
+    return validated.pools;
   }
 
   async getProtocolInfo(): Promise<{ pools: PoolProtocolInfo[]; updatedAt: string }> {
-    return this.fetchJson(API_ENDPOINTS.PROTOCOL_INFO);
+    const data = await this.fetchJson<{ pools: PoolProtocolInfo[]; updatedAt: string }>(API_ENDPOINTS.PROTOCOL_INFO);
+    return validateResponse(
+      z.object({ pools: z.array(PoolProtocolInfoSchema), updatedAt: z.string() }),
+      data,
+      'ProtocolInfo',
+    ).data;
   }
 
   async getPosition(userAddress: string): Promise<UserPosition[]> {
     const data = await this.fetchJson<{ positions: UserPosition[] }>(
       `${API_ENDPOINTS.POSITION}/${userAddress}`,
     );
-    return data.positions;
+    const { data: validated } = validateResponse(
+      z.object({ positions: z.array(UserPositionSchema) }),
+      data,
+      'UserPositions',
+    );
+    return validated.positions;
   }
 
   async getPortfolio(userAddress: string): Promise<Portfolio> {
-    return this.fetchJson<Portfolio>(`${API_ENDPOINTS.PORTFOLIO}/${userAddress}`);
+    const raw = await this.fetchJson<Portfolio>(`${API_ENDPOINTS.PORTFOLIO}/${userAddress}`);
+    return validateResponse(PortfolioSchema, raw, 'Portfolio').data;
   }
 
   // ── Transaction Preparation ──
@@ -315,10 +340,11 @@ class YieldApiClient {
     amountB: string;
     slippageBps?: number;
   }): Promise<YieldPrepareResponse> {
-    return this.fetchJson<YieldPrepareResponse>(API_ENDPOINTS.PREPARE_ENTER, {
+    const raw = await this.fetchJson<YieldPrepareResponse>(API_ENDPOINTS.PREPARE_ENTER, {
       method: 'POST',
       body: JSON.stringify(params),
     });
+    return validateResponse(YieldPrepareResponseSchema, raw, 'YieldPrepareEnter').data;
   }
 
   async prepareExit(params: {
@@ -326,20 +352,22 @@ class YieldApiClient {
     poolId: string;
     amount?: string;
   }): Promise<YieldPrepareResponse> {
-    return this.fetchJson<YieldPrepareResponse>(API_ENDPOINTS.PREPARE_EXIT, {
+    const raw = await this.fetchJson<YieldPrepareResponse>(API_ENDPOINTS.PREPARE_EXIT, {
       method: 'POST',
       body: JSON.stringify(params),
     });
+    return validateResponse(YieldPrepareResponseSchema, raw, 'YieldPrepareExit').data;
   }
 
   async prepareClaim(params: {
     userAddress: string;
     poolId: string;
   }): Promise<YieldPrepareResponse> {
-    return this.fetchJson<YieldPrepareResponse>(API_ENDPOINTS.PREPARE_CLAIM, {
+    const raw = await this.fetchJson<YieldPrepareResponse>(API_ENDPOINTS.PREPARE_CLAIM, {
       method: 'POST',
       body: JSON.stringify(params),
     });
+    return validateResponse(YieldPrepareResponseSchema, raw, 'YieldPrepareClaim').data;
   }
 
   // ── Transaction Tracking ──

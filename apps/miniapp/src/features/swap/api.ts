@@ -7,6 +7,12 @@ import type {
   UserFacingErrorDetails,
   UserFacingErrorResponse,
 } from './types';
+import {
+  QuoteResponseSchema,
+  PrepareResponseSchema,
+  StatusResponseSchema,
+  validateResponse,
+} from '@/shared/lib/responseSchemas';
 
 export class SwapApiError extends Error {
   readonly url: string;
@@ -180,7 +186,7 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 export const swapApi = {
-  quote(body: QuoteRequest) {
+  async quote(body: QuoteRequest) {
     // Runtime guardrails: prevent the common "wei passed as token" bug from silently producing nonsense quotes.
     try {
       const amount = String(body.amount ?? '').trim();
@@ -192,14 +198,17 @@ export const swapApi = {
       }
     } catch {}
     // baseUrl() already resolves to ".../swap" (or "/swap" on same origin)
-    return postJson<QuoteResponse>('/quote', body);
+    const raw = await postJson<QuoteResponse>('/quote', body);
+    return validateResponse(QuoteResponseSchema, raw, 'QuoteResponse').data;
   },
-  prepare(body: PrepareRequest) {
-    return postJson<PrepareResponse>('/tx', body);
+  async prepare(body: PrepareRequest) {
+    const raw = await postJson<PrepareResponse>('/tx', body);
+    return validateResponse(PrepareResponseSchema, raw, 'PrepareResponse').data;
   },
-  status(hash: string, chainId: number) {
+  async status(hash: string, chainId: number) {
     const qs = new URLSearchParams({ chainId: String(chainId) }).toString();
-    return getJson<StatusResponse>(`/status/${hash}?${qs}`);
+    const raw = await getJson<StatusResponse>(`/status/${hash}?${qs}`);
+    return validateResponse(StatusResponseSchema, raw, 'StatusResponse').data;
   },
   pairs() {
     return getJson<{ pairs: import('./types').SwapPair[] }>('/pairs');
