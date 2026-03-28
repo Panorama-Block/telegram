@@ -13,6 +13,7 @@ import {
   StatusResponseSchema,
   validateResponse,
 } from '@/shared/lib/responseSchemas';
+import { generateTraceId } from '@/shared/lib/fetchWithAuth';
 
 export class SwapApiError extends Error {
   readonly url: string;
@@ -139,14 +140,15 @@ async function handleJsonResponse<T>(
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const url = `${baseUrl()}${path}`;
-  
+
   const authToken = localStorage.getItem('authToken');
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
-  
-  
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    'X-Trace-Id': generateTraceId(),
+  };
+
   if (authToken) {
     headers['Authorization'] = `Bearer ${authToken}`;
-  } else {
   }
   
   try {
@@ -168,7 +170,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 async function getJson<T>(path: string): Promise<T> {
   const url = `${baseUrl()}${path}`;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { 'X-Trace-Id': generateTraceId() };
   const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
   if (authToken) {
     headers['Authorization'] = `Bearer ${authToken}`;

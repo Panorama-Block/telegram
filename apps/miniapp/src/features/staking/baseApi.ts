@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { useActiveAccount } from 'thirdweb/react';
+import { generateTraceId } from '@/shared/lib/fetchWithAuth';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -98,7 +99,7 @@ export class BaseStakingApiClient {
     const timer = setTimeout(() => controller.abort(), 15000);
     try {
       const res = await fetch(url, {
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Trace-Id': generateTraceId() },
         signal: controller.signal,
         ...init,
       });
