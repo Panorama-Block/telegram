@@ -14,6 +14,7 @@ export const useBaseStakingData = () => {
   const [apr, setApr] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dataStale, setDataStale] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState(0);
   const lastFetchRef = useRef(0);
   const lastApiRef = useRef(api);
@@ -34,7 +35,7 @@ export const useBaseStakingData = () => {
       const now = Date.now();
       if (!force && now - lastFetchRef.current < MIN_FETCH_INTERVAL) return;
 
-      setLoading(true);
+      setLoading(positionsRef.current.length === 0);
       setError(null);
       try {
         // Fetch protocol info first — this doesn't need a wallet
@@ -61,8 +62,12 @@ export const useBaseStakingData = () => {
         }
         lastFetchRef.current = now;
         setLastFetchTime(now);
+        setDataStale(false);
       } catch (err) {
-        // Don't reset existing data on error
+        // Don't reset existing data on error — mark as stale instead
+        if (positionsRef.current.length > 0) {
+          setDataStale(true);
+        }
         setError(err instanceof Error ? err.message : 'Failed to load Base staking data');
       } finally {
         setLoading(false);
@@ -83,6 +88,7 @@ export const useBaseStakingData = () => {
     protocolInfo,
     apr,
     loading,
+    dataStale,
     error,
     refresh,
     lastFetchTime,
