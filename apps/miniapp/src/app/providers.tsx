@@ -5,6 +5,7 @@ import { AuthProvider } from '@/shared/contexts/AuthContext';
 import { ChatProvider } from '@/shared/contexts/ChatContext';
 import { TransactionSettingsProvider } from '@/context/TransactionSettingsContext';
 import { AuthGuard } from '@/shared/ui/AuthGuard';
+import { ErrorBoundary } from '@/shared/lib/ErrorBoundary';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
 interface ClientProvidersProps {
@@ -175,7 +176,9 @@ export function ClientProviders({ children }: ClientProvidersProps) {
                       {WalletIdentityProvider && (
                         <WalletIdentityProvider>
                           <AuthGuard>
+                            <ErrorBoundary section="App">
                             {children}
+                            </ErrorBoundary>
                             {/* PWA Components */}
                             {PWAInstallPrompt && (
                               <PWAInstallPrompt
