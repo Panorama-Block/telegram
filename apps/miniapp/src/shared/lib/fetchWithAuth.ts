@@ -12,6 +12,17 @@
 
 const AUTH_API_BASE = (typeof process !== 'undefined' ? process.env.VITE_AUTH_API_BASE || '' : '').replace(/\/+$/, '');
 
+/**
+ * Generate a trace ID for request tracing across frontend and backend.
+ * Uses crypto.randomUUID when available, falls back to Math.random.
+ */
+export function generateTraceId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 let isRefreshing = false;
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -84,8 +95,15 @@ export async function fetchWithAuth(
 ): Promise<Response> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
 
+  // Inject trace ID for request correlation
+  const headers = new Headers(init.headers);
+  if (!headers.has('X-Trace-Id')) {
+    headers.set('X-Trace-Id', generateTraceId());
+  }
+  const tracedInit = { ...init, headers };
+
   // First attempt
-  const requestInit = token ? injectAuthHeader(init, token) : init;
+  const requestInit = token ? injectAuthHeader(tracedInit, token) : tracedInit;
   const response = await fetch(input, requestInit);
 
   if (response.status !== 401 || !token) {
@@ -102,6 +120,6 @@ export async function fetchWithAuth(
     return response; // return original 401
   }
 
-  // Retry with new token
-  return fetch(input, injectAuthHeader(init, newToken));
+  // Retry with new token (keep same trace ID)
+  return fetch(input, injectAuthHeader(tracedInit, newToken));
 }

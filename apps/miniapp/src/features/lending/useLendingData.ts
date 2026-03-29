@@ -11,6 +11,7 @@ export const useLendingData = () => {
   const [userPosition, setUserPosition] = useState<LendingAccountPositionsResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [dataStale, setDataStale] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
   const hasInitializedRef = useRef(false);
   const lastFetchTimeRef = useRef(0);
@@ -28,7 +29,7 @@ export const useLendingData = () => {
     }
 
     const run = (async () => {
-      setLoading(true);
+      setLoading(tokens.length === 0);
       setError(null);
 
       try {
@@ -87,8 +88,12 @@ export const useLendingData = () => {
         const fetchedAt = Date.now();
         lastFetchTimeRef.current = fetchedAt;
         setLastFetchTime(fetchedAt);
+        setDataStale(false);
       } catch (err) {
         console.error('[LENDING] Error fetching data:', err);
+        if (tokens.length > 0) {
+          setDataStale(true);
+        }
         setError(err instanceof Error ? err.message : 'Failed to load lending data');
       } finally {
         setLoading(false);
@@ -133,6 +138,7 @@ export const useLendingData = () => {
     tokens,
     userPosition,
     loading,
+    dataStale,
     error,
     refresh,
     clearCacheAndRefresh,

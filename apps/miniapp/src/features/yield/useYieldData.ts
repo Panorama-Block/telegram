@@ -60,6 +60,7 @@ export function useYieldData() {
   const [loading, setLoading] = useState(poolsCache == null);
   const [userLoading, setUserLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [portfolioStale, setPortfolioStale] = useState(false);
 
   const lastFetchRef = useRef(0);
   const poolsRef = useRef<YieldPoolWithAPR[]>(poolsCache?.pools ?? []);
@@ -183,7 +184,9 @@ export function useYieldData() {
         ]);
 
         let nextPortfolio = port;
-        // Guard against transient RPC failures that sometimes return "0" for all token balances.
+        let isStale = false;
+
+        // Detect transient RPC failures that return "0" for all token balances.
         if (nextPortfolio?.walletBalances) {
           const values = Object.values(nextPortfolio.walletBalances);
           const allZero = values.length > 0 && values.every((value) => {
@@ -194,22 +197,13 @@ export function useYieldData() {
           if (allZero) {
             const cachedNonZero = lastNonZeroPortfolioByUser.get(userAddress);
             if (cachedNonZero) {
+              console.warn('[YIELD] All-zero balances detected, using last known portfolio (stale)');
               nextPortfolio = cachedNonZero;
+              isStale = true;
             }
-            try {
-              const retried = await yieldApi.getPortfolio(userAddress);
-              const retriedValues = Object.values(retried.walletBalances ?? {});
-              const hasNonZero = retriedValues.some((value) => {
-                const numeric = Number.parseFloat(value);
-                return Number.isFinite(numeric) && numeric > 0;
-              });
-              if (hasNonZero) {
-                nextPortfolio = retried;
-                lastNonZeroPortfolioByUser.set(userAddress, retried);
-              }
-            } catch {
-              // Keep original response if retry fails.
-            }
+            // No hidden retry — surface the staleness to the UI instead
+          } else {
+            lastNonZeroPortfolioByUser.set(userAddress, nextPortfolio);
           }
         } else if (nextPortfolio) {
           const values = Object.values(nextPortfolio.walletBalances ?? {});
@@ -221,6 +215,8 @@ export function useYieldData() {
             lastNonZeroPortfolioByUser.set(userAddress, nextPortfolio);
           }
         }
+
+        setPortfolioStale(isStale);
 
         setPositions(pos);
         setPortfolio(nextPortfolio);
@@ -275,6 +271,7 @@ export function useYieldData() {
     protocolInfo,
     positions,
     portfolio,
+    portfolioStale,
     loading,
     userLoading,
     error,

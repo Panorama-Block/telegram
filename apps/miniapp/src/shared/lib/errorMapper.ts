@@ -27,14 +27,32 @@ const ERROR_MAP: Record<string, string> = {
   'TOO_MANY_REQUESTS': 'Too many requests. Please wait a moment.',
 
   // Network
-  'RPC_ERROR': 'Network error. The blockchain node is temporarily unavailable.',
+  'RPC_ERROR': 'Network is busy. Please try again in a moment.',
   'NETWORK_ERROR': 'Connection error. Please check your internet connection.',
   'SERVICE_UNAVAILABLE': 'Service is temporarily unavailable. Please try again later.',
   'TIMEOUT': 'Request timed out. Please try again.',
+  'EXECUTION_TIMEOUT': 'Request timed out. The network may be congested — please try again.',
 
   // Validation contract
   'TAX_TRANSFER_FAILED': 'Validation fee transfer failed. Please try again.',
   'NO_AVAX_SENT': 'No AVAX was sent with the transaction.',
+
+  // Staking / Liquidity
+  'POOL_NOT_FOUND': 'Pool not found. It may have been removed or is temporarily unavailable.',
+  'GAUGE_NOT_FOUND': 'Staking gauge not found for this pool.',
+  'NO_LP_POSITION': 'You don\'t have a position in this pool.',
+  'INSUFFICIENT_LP_BALANCE': 'Insufficient LP balance for this withdrawal amount.',
+  'NO_LIQUIDITY': 'Not enough liquidity available. Try a smaller amount.',
+  'NO_REWARDS': 'No rewards available to claim yet.',
+  'EXECUTOR_NOT_CONFIGURED': 'Service configuration error. Please try again later.',
+
+  // DCA
+  'ORDER_NOT_FOUND': 'DCA order not found.',
+  'ORDER_UNAUTHORIZED': 'This order does not belong to your wallet.',
+  'ORDER_INACTIVE': 'This order is already cancelled.',
+
+  // Queue / Rate limiting
+  'QUEUE_FULL': 'Too many pending requests. Please wait for current operations to complete.',
 
   // Lending specific
   'HEALTH_FACTOR_TOO_LOW': 'This operation would put your position at risk of liquidation.',
@@ -80,7 +98,9 @@ export function mapError(error: unknown, fallback?: string): string {
     const status = (error as any).status;
     if (status === 401 || status === 403) return ERROR_MAP.UNAUTHORIZED;
     if (status === 429) return ERROR_MAP.RATE_LIMITED;
+    if (status === 502) return ERROR_MAP.RPC_ERROR;
     if (status === 503) return ERROR_MAP.SERVICE_UNAVAILABLE;
+    if (status === 504) return ERROR_MAP.EXECUTION_TIMEOUT;
   }
 
   return fallback || 'Something went wrong. Please try again.';
