@@ -18,6 +18,14 @@ const EnvSchema = z.object({
   DEFAULT_WALLET_ADDRESS: z.string().optional(),
   AGENTS_RESPONSE_MESSAGE_PATH: z.string().optional(),
   AGENTS_DEBUG_SHAPE: z.coerce.boolean().optional().default(false),
+
+  // Backend service URLs (Phase 1+)
+  SWAP_API_BASE: z.string().url().optional().default('http://localhost:3002'),
+  DCA_API_BASE: z.string().url().optional().default('http://localhost:3003'),
+  LIDO_API_BASE: z.string().url().optional().default('http://localhost:3004'),
+  BRIDGE_API_BASE: z.string().url().optional().default('http://localhost:3005'),
+  LENDING_API_BASE: z.string().url().optional().default('http://localhost:3007'),
+  EXECUTION_LAYER_BASE: z.string().url().optional().default('http://localhost:3010'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
