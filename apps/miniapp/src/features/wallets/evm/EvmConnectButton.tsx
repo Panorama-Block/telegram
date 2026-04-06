@@ -25,13 +25,13 @@ export function EvmConnectButton() {
     const telegramAuthOptions = ['telegram', 'email'] as const;
 
     if (isiOS) {
-      return [inAppWallet({
-        auth: {
-          options: isTelegram ? telegramAuthOptions : ['email', 'passkey', 'guest'],
-          mode,
-          redirectUrl,
-        },
-      })];
+      if (isTelegram) {
+        return [inAppWallet({ auth: { options: telegramAuthOptions, mode, redirectUrl } })];
+      }
+      return [
+        inAppWallet({ auth: { options: ['google', 'email', 'passkey'], mode, redirectUrl } }),
+        createWallet('io.metamask', { preferDeepLink: true }),
+      ];
     }
 
     return isTelegram
