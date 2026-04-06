@@ -102,13 +102,13 @@ export default function NewChatPage() {
     const telegramAuthOptions = ['telegram', 'email'] as const;
 
     if (isiOS) {
-      return [inAppWallet({
-        auth: {
-          options: isTelegram ? telegramAuthOptions : ['google', 'telegram', 'email', 'passkey'],
-          mode,
-          redirectUrl,
-        },
-      })];
+      if (isTelegram) {
+        return [inAppWallet({ auth: { options: telegramAuthOptions, mode, redirectUrl } })];
+      }
+      return [
+        inAppWallet({ auth: { options: ['google', 'telegram', 'email', 'passkey'], mode, redirectUrl } }),
+        createWallet('io.metamask', { preferDeepLink: true }),
+      ];
     }
     return isTelegram
       ? [inAppWallet({

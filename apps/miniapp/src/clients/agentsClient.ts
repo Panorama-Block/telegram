@@ -62,6 +62,17 @@ export interface FetchMessagesResponse {
 }
 
 export class AgentsClient {
+  private static readonly MIME_TO_EXT: Record<string, string> = {
+    'audio/webm': 'webm',
+    'audio/mp3': 'mp3',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'audio/ogg': 'ogg',
+    'audio/flac': 'flac',
+    'audio/mp4': 'm4a',
+    'audio/aac': 'aac',
+  };
+
   private baseUrl?: string;
   private messagePath?: string;
   private debugShape: boolean = false;
@@ -348,6 +359,7 @@ export class AgentsClient {
       Array.isArray(data?.conversation_ids) ? data.conversation_ids :
       null;
 
+
     let conversations: Conversation[] = [];
     if (items && items.length > 0) {
       conversations = typeof items[0] === 'string'
@@ -429,11 +441,7 @@ export class AgentsClient {
   async chatStream(req: ChatRequest, opts: ChatOptions = {}): Promise<Response> {
     this.ensureConfigured();
 
-    const headers: Record<string, string> = {
-      'content-type': 'application/json',
-      ...(opts.headers ?? {}),
-    };
-    if (opts.jwt) headers['authorization'] = `Bearer ${opts.jwt}`;
+    const headers = this.buildHeaders(opts);
 
     const body: Record<string, unknown> = {
       message: {
@@ -540,17 +548,7 @@ export class AgentsClient {
     const formData = new FormData();
 
     // Determine file extension from blob type
-    const mimeToExt: Record<string, string> = {
-      'audio/webm': 'webm',
-      'audio/mp3': 'mp3',
-      'audio/mpeg': 'mp3',
-      'audio/wav': 'wav',
-      'audio/ogg': 'ogg',
-      'audio/flac': 'flac',
-      'audio/mp4': 'm4a',
-      'audio/aac': 'aac',
-    };
-    const ext = mimeToExt[audioFile.type] || 'webm';
+    const ext = AgentsClient.MIME_TO_EXT[audioFile.type] || 'webm';
     const filename = `recording.${ext}`;
 
     formData.append('audio', audioFile, filename);
@@ -600,17 +598,7 @@ export class AgentsClient {
 
     const formData = new FormData();
 
-    const mimeToExt: Record<string, string> = {
-      'audio/webm': 'webm',
-      'audio/mp3': 'mp3',
-      'audio/mpeg': 'mp3',
-      'audio/wav': 'wav',
-      'audio/ogg': 'ogg',
-      'audio/flac': 'flac',
-      'audio/mp4': 'm4a',
-      'audio/aac': 'aac',
-    };
-    const ext = mimeToExt[audioFile.type] || 'webm';
+    const ext = AgentsClient.MIME_TO_EXT[audioFile.type] || 'webm';
     const filename = `recording.${ext}`;
 
     formData.append('audio', audioFile, filename);

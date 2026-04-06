@@ -91,16 +91,6 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     isCreatingConversation
   } = useChat();
 
-  useEffect(() => {
-    console.info('[CHAT TRACE][SeniorAppShell] history:render-source', {
-      count: conversations.length,
-      ids: conversations.map((conversation) => conversation.id),
-      activeConversationId,
-      isLoadingConversations,
-      showChatHistory,
-    });
-  }, [conversations, activeConversationId, isLoadingConversations, showChatHistory]);
-
   // Modal states
   const [showSwap, setShowSwap] = useState(false);
   const [showDCA, setShowDCA] = useState(false);

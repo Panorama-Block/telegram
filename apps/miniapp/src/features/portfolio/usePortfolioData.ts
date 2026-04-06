@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { mapError, isRetryableError } from '@/shared/lib/errorMapper';
 import { useActiveAccount } from "thirdweb/react";
 import { createThirdwebClient, defineChain, getContract, readContract, toTokens } from "thirdweb";
 import { getWalletBalance } from "thirdweb/wallets";
@@ -170,8 +171,11 @@ export function usePortfolioData() {
   const tonAddress = useTonAddress();
   const [assets, setAssets] = useState<PortfolioAsset[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isStale, setIsStale] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [prices, setPrices] = useState<Record<string, number>>(FALLBACK_PRICES);
+  const hasDataRef = useRef(false);
 
   const tonNetwork: TonNetworkHint = useMemo(() => {
     const chain: any = (tonWallet as any)?.account?.chain;
@@ -197,8 +201,10 @@ export function usePortfolioData() {
     if (!client) return;
 
     setLoading(true);
+    setError(null);
     const newAssets: PortfolioAsset[] = [];
 
+    try {
     // Fetch real prices first
     const currentPrices = await fetchRealPrices();
     setPrices(currentPrices);
@@ -232,7 +238,6 @@ export function usePortfolioData() {
                balanceRaw = result.value;
                balanceStr = result.displayValue;
              } catch (e) {
-               // console.warn('Native fetch failed', e);
              }
           } else {
              // ERC20 Balance
@@ -251,7 +256,6 @@ export function usePortfolioData() {
                 const decimal = token.decimals || 18;
                 balanceStr = toTokens(balanceRaw, decimal);
              } catch (e) {
-                // console.warn('ERC20 fetch failed', e);
              }
           }
 
@@ -359,8 +363,21 @@ export function usePortfolioData() {
     newAssets.sort((a, b) => b.valueRaw - a.valueRaw);
 
     setAssets(newAssets);
-    setLoading(false);
+    hasDataRef.current = true;
+    setIsStale(false);
     setLastUpdated(new Date());
+    } catch (err) {
+      const msg = mapError(err);
+      setError(msg);
+      // If we already have data, mark it stale and keep it visible
+      if (hasDataRef.current && isRetryableError(err)) {
+        setIsStale(true);
+      } else if (!hasDataRef.current) {
+        setAssets([]);
+      }
+    } finally {
+      setLoading(false);
+    }
 
   }, [account, tonAddress, tonNetwork, client]);
 
@@ -397,6 +414,8 @@ export function usePortfolioData() {
     assets,
     stats,
     loading,
+    error,
+    isStale,
     refresh: fetchPortfolio,
     lastUpdated
   };

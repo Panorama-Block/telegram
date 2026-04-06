@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useStakingApi, StakingToken, StakingPosition } from './api';
+import { mapError, isRetryableError } from '@/shared/lib/errorMapper';
 
 export const useStakingData = () => {
   const stakingApi = useStakingApi();
@@ -7,8 +8,10 @@ export const useStakingData = () => {
   const [userPosition, setUserPosition] = useState<StakingPosition | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isStale, setIsStale] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
   const lastFetchTimeRef = useRef<number>(0);
+  const hasDataRef = useRef(false);
 
   // Minimum interval between fetches (2 minutes)
   const MIN_FETCH_INTERVAL = 2 * 60 * 1000;
@@ -26,8 +29,6 @@ export const useStakingData = () => {
     setError(null);
 
     try {
-      console.log('Fetching staking data...');
-
       const [availableTokens, position] = await Promise.all([
         stakingApi.getTokens(),
         stakingApi.getUserPosition(),
@@ -35,13 +36,16 @@ export const useStakingData = () => {
 
       setTokens(availableTokens);
       setUserPosition(position);
+      hasDataRef.current = true;
+      setIsStale(false);
       lastFetchTimeRef.current = now;
       setLastFetchTime(now);
-
-      console.log('Staking data fetched successfully', { tokens: availableTokens.length, hasPosition: !!position });
     } catch (err) {
-      console.error('Error fetching staking data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load staking data');
+      const msg = mapError(err);
+      setError(msg);
+      if (hasDataRef.current && isRetryableError(err)) {
+        setIsStale(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -70,6 +74,7 @@ export const useStakingData = () => {
     userPosition,
     loading,
     error,
+    isStale,
     refresh,
     clearCacheAndRefresh,
     lastFetchTime
