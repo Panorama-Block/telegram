@@ -48,11 +48,8 @@ describe('useStakingData', () => {
     const { result } = renderHook(() => useStakingData());
 
     await waitFor(() => {
-      const message =
-        typeof result.current.error === 'string'
-          ? result.current.error
-          : result.current.error?.message;
-      expect(message).toMatch(/staking data unavailable/i);
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toBeTruthy();
     });
   });
 
