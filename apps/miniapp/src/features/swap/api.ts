@@ -7,6 +7,13 @@ import type {
   UserFacingErrorDetails,
   UserFacingErrorResponse,
 } from './types';
+import {
+  QuoteResponseSchema,
+  PrepareResponseSchema,
+  StatusResponseSchema,
+  validateResponse,
+} from '@/shared/lib/responseSchemas';
+import { generateTraceId } from '@/shared/lib/fetchWithAuth';
 
 export class SwapApiError extends Error {
   readonly url: string;
@@ -133,14 +140,15 @@ async function handleJsonResponse<T>(
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const url = `${baseUrl()}${path}`;
-  
+
   const authToken = localStorage.getItem('authToken');
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
-  
-  
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    'X-Trace-Id': generateTraceId(),
+  };
+
   if (authToken) {
     headers['Authorization'] = `Bearer ${authToken}`;
-  } else {
   }
   
   try {
@@ -162,7 +170,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 async function getJson<T>(path: string): Promise<T> {
   const url = `${baseUrl()}${path}`;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { 'X-Trace-Id': generateTraceId() };
   const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
   if (authToken) {
     headers['Authorization'] = `Bearer ${authToken}`;
@@ -180,7 +188,7 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 export const swapApi = {
-  quote(body: QuoteRequest) {
+  async quote(body: QuoteRequest) {
     // Runtime guardrails: prevent the common "wei passed as token" bug from silently producing nonsense quotes.
     try {
       const amount = String(body.amount ?? '').trim();
@@ -192,14 +200,17 @@ export const swapApi = {
       }
     } catch {}
     // baseUrl() already resolves to ".../swap" (or "/swap" on same origin)
-    return postJson<QuoteResponse>('/quote', body);
+    const raw = await postJson<QuoteResponse>('/quote', body);
+    return validateResponse(QuoteResponseSchema, raw, 'QuoteResponse').data;
   },
-  prepare(body: PrepareRequest) {
-    return postJson<PrepareResponse>('/tx', body);
+  async prepare(body: PrepareRequest) {
+    const raw = await postJson<PrepareResponse>('/tx', body);
+    return validateResponse(PrepareResponseSchema, raw, 'PrepareResponse').data;
   },
-  status(hash: string, chainId: number) {
+  async status(hash: string, chainId: number) {
     const qs = new URLSearchParams({ chainId: String(chainId) }).toString();
-    return getJson<StatusResponse>(`/status/${hash}?${qs}`);
+    const raw = await getJson<StatusResponse>(`/status/${hash}?${qs}`);
+    return validateResponse(StatusResponseSchema, raw, 'StatusResponse').data;
   },
   pairs() {
     return getJson<{ pairs: import('./types').SwapPair[] }>('/pairs');

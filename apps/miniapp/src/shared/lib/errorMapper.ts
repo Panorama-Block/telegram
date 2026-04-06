@@ -31,6 +31,7 @@ const ERROR_MAP: Record<string, string> = {
   'NETWORK_ERROR': 'No connection. Please check your internet and try again.',
   'SERVICE_UNAVAILABLE': 'Service temporarily unavailable. Hang tight.',
   'TIMEOUT': 'Connection timed out. Retrying...',
+  'EXECUTION_TIMEOUT': 'Request timed out. The network may be congested — please try again.',
   'GATEWAY_TIMEOUT': 'Server took too long to respond. Retrying...',
   'BAD_GATEWAY': 'Service temporarily unavailable. Please try again shortly.',
   'INTERNAL_SERVER_ERROR': 'Something went wrong on our end. Please try again.',
@@ -40,6 +41,23 @@ const ERROR_MAP: Record<string, string> = {
   // Validation contract
   'TAX_TRANSFER_FAILED': 'Validation fee transfer failed. Please try again.',
   'NO_AVAX_SENT': 'No AVAX was sent with the transaction.',
+
+  // Staking / Liquidity
+  'POOL_NOT_FOUND': 'Pool not found. It may have been removed or is temporarily unavailable.',
+  'GAUGE_NOT_FOUND': 'Staking gauge not found for this pool.',
+  'NO_LP_POSITION': 'You don\'t have a position in this pool.',
+  'INSUFFICIENT_LP_BALANCE': 'Insufficient LP balance for this withdrawal amount.',
+  'NO_LIQUIDITY': 'Not enough liquidity available. Try a smaller amount.',
+  'NO_REWARDS': 'No rewards available to claim yet.',
+  'EXECUTOR_NOT_CONFIGURED': 'Service configuration error. Please try again later.',
+
+  // DCA
+  'ORDER_NOT_FOUND': 'DCA order not found.',
+  'ORDER_UNAUTHORIZED': 'This order does not belong to your wallet.',
+  'ORDER_INACTIVE': 'This order is already cancelled.',
+
+  // Queue / Rate limiting
+  'QUEUE_FULL': 'Too many pending requests. Please wait for current operations to complete.',
 
   // Lending specific
   'HEALTH_FACTOR_TOO_LOW': 'This operation would put your position at risk of liquidation.',

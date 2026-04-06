@@ -188,17 +188,12 @@ export class AgentsClient {
       const ch0 = data.choices[0];
       message = AgentsClient.joinContent(ch0?.message?.content ?? ch0?.text ?? '');
     }
-    if (!message && data?.output) {
-      const out = data.output;
-      message = AgentsClient.joinContent(out?.message ?? out?.text ?? out?.content);
-    }
-    if (!message && data?.data) {
-      const out = data.data;
-      message = AgentsClient.joinContent(out?.message ?? out?.text ?? out?.content);
-    }
-    if (!message && data?.result) {
-      const out = data.result;
-      message = AgentsClient.joinContent(out?.message ?? out?.text ?? out?.content);
+    // Check nested wrappers (output, data, result) for message content
+    for (const key of ['output', 'data', 'result'] as const) {
+      if (!message && data?.[key]) {
+        const out = data[key];
+        message = AgentsClient.joinContent(out?.message ?? out?.text ?? out?.content);
+      }
     }
 
     const requires_action = Boolean(data?.requires_action);
@@ -343,46 +338,33 @@ export class AgentsClient {
     }
 
     const data = (await res.json()) as any;
-    // Handle both old (list of strings) and new (list of objects) formats for backward compatibility
+    this.logDebug('listConversations:raw', {
+      userId,
+      type: Array.isArray(data) ? 'array' : typeof data,
+      keys: data && typeof data === 'object' ? Object.keys(data) : [],
+    });
+
+    const parseItem = (item: any): Conversation => {
+      const rawId = item.conversationId || item.id;
+      const id = (typeof rawId === 'object' && rawId !== null && rawId.id)
+        ? String(rawId.id)
+        : String(rawId);
+      return { id, title: item.title, updated_at: item.updatedAt || item.updated_at };
+    };
+
+    // Normalize: extract the items array from whichever response shape we get
+    const items: any[] | null =
+      Array.isArray(data) ? data :
+      Array.isArray(data?.conversations) ? data.conversations :
+      Array.isArray(data?.conversation_ids) ? data.conversation_ids :
+      null;
+
+
     let conversations: Conversation[] = [];
-
-    // Check if data is array of strings (old format)
-    if (Array.isArray(data)) {
-      if (data.length > 0 && typeof data[0] === 'string') {
-        conversations = data.map((id: string) => ({ id, title: 'Chat' }));
-      } else if (data.length > 0 && typeof data[0] === 'object') {
-        conversations = data.map((item: any) => {
-          const rawId = item.conversationId || item.id;
-          const id = (typeof rawId === 'object' && rawId !== null && rawId.id)
-            ? String(rawId.id)
-            : String(rawId);
-
-          return {
-            id,
-            title: item.title,
-            updated_at: item.updatedAt || item.updated_at
-          };
-        });
-      } else {
-        conversations = [];
-      }
-    } else if (data?.conversation_ids && Array.isArray(data.conversation_ids)) {
-      // Old wrapper format
-      conversations = data.conversation_ids.map((id: string) => ({ id, title: 'Chat' }));
-    } else if (data?.conversations && Array.isArray(data.conversations)) {
-      // New wrapper format
-      conversations = data.conversations.map((item: any) => {
-        const rawId = item.conversationId || item.id;
-        const id = (typeof rawId === 'object' && rawId !== null && rawId.id)
-          ? String(rawId.id)
-          : String(rawId);
-
-        return {
-          id,
-          title: item.title,
-          updated_at: item.updatedAt || item.updated_at
-        };
-      });
+    if (items && items.length > 0) {
+      conversations = typeof items[0] === 'string'
+        ? items.map((id: string) => ({ id, title: 'Chat' }))
+        : items.map(parseItem);
     }
 
     this.logDebug('listConversations:success', { userId, count: conversations.length });
