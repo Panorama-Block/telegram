@@ -58,7 +58,10 @@ jobs:
         env:
           IMAGE: ${{ steps.image.outputs.image }}
         run: |
-          docker build -f Dockerfile -t "$IMAGE" .
+          docker build \
+            --build-arg BUILD_MINIAPP=false \
+            -f Dockerfile \
+            -t "$IMAGE" .
           docker push "$IMAGE"
 
       - name: Resolve Telegram gateway VM public IP
