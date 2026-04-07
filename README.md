@@ -208,7 +208,9 @@ Cross-chain portfolio aggregation with net worth tracking, 24h PnL, allocation b
 
 ### Infrastructure
 ```
-Backend Services:   Azure Container Apps (Lending, Lido/Staking microservices)
+Telegram Gateway:   Azure VM (dedicated gateway/bot/webhook edge in step 1)
+MiniApp Hosting:    Existing host remains unchanged in step 1
+Backend Services:   Existing backend VM + managed PostgreSQL on Azure
 Auth:               Dual-path — TON Proof (Ed25519) + EVM SIWE (Thirdweb)
 PWA:                Service Worker + offline indicator + install prompts
 Testing:            Vitest + Testing Library + MSW (API mocking)

@@ -58,6 +58,28 @@ export async function registerMetricsRoutes(app: FastifyInstance) {
   app.get('/metrics', async () => {
     const uptime = Date.now() - metrics.startTime;
     const redis = getRedisClient();
+
+    if (!redis) {
+      return {
+        status: 'healthy',
+        uptime: Math.floor(uptime / 1000),
+        metrics: {
+          total_messages: metrics.totalMessages,
+          unique_users: metrics.totalUsers.size,
+          unique_chats: metrics.totalChats.size,
+          total_actions: metrics.totalActions,
+          total_errors: metrics.totalErrors,
+          identity_resolves: metrics.identityResolves,
+          api_calls: metrics.apiCalls,
+        },
+        services: {
+          redis: 'disabled',
+          auth_api: process.env['AUTH_API_BASE'] ? 'configured' : 'not_configured',
+          agents_api: process.env['AGENTS_API_BASE'] ? 'configured' : 'not_configured',
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
     
     try {
       // Tentar conectar ao Redis para verificar status
@@ -112,11 +134,15 @@ export async function registerMetricsRoutes(app: FastifyInstance) {
     const services = [];
 
     // Verificar Redis
-    try {
-      await redis.ping();
-      services.push({ name: 'redis', status: 'healthy' });
-    } catch (err) {
-      services.push({ name: 'redis', status: 'unhealthy', error: (err as Error).message });
+    if (!redis) {
+      services.push({ name: 'redis', status: 'disabled' });
+    } else {
+      try {
+        await redis.ping();
+        services.push({ name: 'redis', status: 'healthy' });
+      } catch (err) {
+        services.push({ name: 'redis', status: 'unhealthy', error: (err as Error).message });
+      }
     }
 
     // Verificar configuração APIs externas
@@ -132,7 +158,7 @@ export async function registerMetricsRoutes(app: FastifyInstance) {
       services.push({ name: 'agents_api', status: 'not_configured' });
     }
 
-    const allHealthy = services.every(s => s.status === 'healthy' || s.status === 'configured');
+    const allHealthy = services.every(s => s.status === 'healthy' || s.status === 'configured' || s.status === 'disabled');
 
     return {
       status: allHealthy ? 'healthy' : 'degraded',
