@@ -27,6 +27,23 @@ type HttpsConfig = {
 
 const GATEWAY_LOG_PREFIX = '[Gateway Service]';
 
+function appendPath(basePathname: string, segment?: string): string {
+  const base = (basePathname || '').replace(/\/+$/, '');
+  if (!segment) return base || '/';
+  const cleanSegment = segment.replace(/^\/+/, '');
+  if (!base || base === '/') return `/${cleanSegment}`;
+  return `${base}/${cleanSegment}`;
+}
+
+function buildPublicMiniappUrl(baseUrl: string, requestUrl: string): string {
+  const url = new URL(baseUrl);
+  const [pathnamePart, searchPart] = requestUrl.split('?', 2);
+  const relativePath = (pathnamePart ?? '/miniapp').replace(/^\/miniapp\/?/, '');
+  url.pathname = appendPath(url.pathname, relativePath);
+  url.search = searchPart ? `?${searchPart}` : '';
+  return url.toString();
+}
+
 function loadHttpsConfig(env: Env): HttpsConfig | null {
   try {
     const certPath = env.FULLCHAIN || '/etc/letsencrypt/live/api.panoramablock.com/fullchain.pem';
@@ -131,13 +148,26 @@ export async function createServer(): Promise<FastifyInstance> {
   // Proxy to Next.js miniapp server
   const NEXTJS_PORT = process.env.NEXTJS_PORT || '7777';
   const NEXTJS_URL = `http://localhost:${NEXTJS_PORT}`;
+  const shouldProxyMiniapp = env.NEXTJS_PROXY_ENABLED;
+  const publicMiniappUrl = env.PUBLIC_WEBAPP_URL || null;
 
   app.all('/miniapp', async (req, reply) => {
+    if (!shouldProxyMiniapp && publicMiniappUrl) {
+      return reply.redirect(302, buildPublicMiniappUrl(publicMiniappUrl, req.url));
+    }
     const suffix = req.url.slice('/miniapp'.length);
     return reply.redirect(302, `/miniapp/${suffix}`);
   });
 
   app.all('/miniapp/*', async (req, reply) => {
+    if (!shouldProxyMiniapp) {
+      if (publicMiniappUrl) {
+        return reply.redirect(302, buildPublicMiniappUrl(publicMiniappUrl, req.url));
+      }
+
+      return reply.code(503).send({ error: 'Miniapp proxy is disabled and no public miniapp URL is configured.' });
+    }
+
     try {
       const targetUrl = `${NEXTJS_URL}${req.url}`;
       const response = await fetch(targetUrl, {
@@ -159,7 +189,7 @@ export async function createServer(): Promise<FastifyInstance> {
     }
   });
 
-  app.log.info({ NEXTJS_URL }, 'Miniapp proxying to Next.js server');
+  app.log.info({ NEXTJS_URL, shouldProxyMiniapp, publicMiniappUrl }, 'Miniapp routing configured');
 
   // ===== SWAP SERVICE PROXY =====
   const SWAP_SERVICE_URL = process.env.SWAP_SERVICE_URL || 'http://localhost:3002';

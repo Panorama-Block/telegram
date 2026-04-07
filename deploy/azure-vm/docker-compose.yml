@@ -1,0 +1,25 @@
+name: telegram-gateway
+
+services:
+  gateway:
+    image: ${GHCR_REGISTRY:-ghcr.io}/${GHCR_NAMESPACE}/telegram-gateway:${IMAGE_TAG}
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-7778}
+      NEXTJS_PROXY_ENABLED: ${NEXTJS_PROXY_ENABLED:-false}
+    ports:
+      - "127.0.0.1:${PORT:-7778}:${PORT:-7778}"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:' + (process.env.PORT || '7778') + '/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped

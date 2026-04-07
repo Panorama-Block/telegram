@@ -16,7 +16,10 @@
 
 - Fastify server with CORS, rate limiting, and optional HTTPS (Let's Encrypt). Reference: `telegram/apps/gateway/src/server.ts:1`.
 - Dynamic TonConnect manifest at `GET /miniapp/manifest.json`, using computed host/proxy origin. Reference: `telegram/apps/gateway/src/server.ts:99`.
-- MiniApp proxy forwarding `/miniapp/*` to local Next server (`NEXTJS_URL`). Reference: `telegram/apps/gateway/src/server.ts:131`.
+- MiniApp routing supports two modes:
+  - local proxy forwarding `/miniapp/*` to a local Next server (`NEXTJS_URL`)
+  - redirect mode to `PUBLIC_WEBAPP_URL` when `NEXTJS_PROXY_ENABLED=false` for the dedicated Telegram VM rollout
+  Reference: `telegram/apps/gateway/src/server.ts:147`.
 - Swap proxy forwarding `/swap/*` to `SWAP_SERVICE_URL` (default `http://localhost:3302`). Reference: `telegram/apps/gateway/src/server.ts:163`.
 - Telegram bot (grammy) initialized with webhook at `/telegram/webhook`; `/start` exposes WebApp button to open MiniApp. References: `telegram/apps/gateway/src/handlers/commands.ts:5`, `telegram/apps/gateway/src/server.ts:222`.
 - Telegram auth bridge endpoint `POST /auth/telegram/verify` delegating signature verification to backend `auth-service`. References: `telegram/apps/gateway/src/routes/auth.ts`, `telegram/apps/gateway/src/services/authService.ts`.
@@ -41,6 +44,7 @@
 - Structured logging in proxy/webhook/auth critical paths.
 - HTTPS/HTTP split handling and certificate logs in gateway.
 - MiniApp keeps API clients and types modular, uses `localStorage` JWT token, and detects Telegram WebView for OAuth behavior.
+- In the step-1 Azure VM rollout, the Telegram gateway runs as a dedicated edge service while the MiniApp host remains separate.
 
 ## Main Flows
 
@@ -75,6 +79,7 @@
 
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`
 - `PUBLIC_GATEWAY_URL`, `PUBLIC_WEBAPP_URL`
+- `NEXTJS_PROXY_ENABLED`
 - `SWAP_SERVICE_URL`, `AUTH_API_BASE`, `AGENTS_API_BASE`
 
 ### MiniApp
