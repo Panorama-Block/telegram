@@ -86,7 +86,7 @@ jobs:
           AGENTS_API_BASE=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name agents-api-base --query value -o tsv)
           TELEGRAM_BOT_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name telegram-bot-token --query value -o tsv)
           TELEGRAM_WEBHOOK_SECRET=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name telegram-webhook-secret --query value -o tsv)
-          DEFAULT_WALLET_ADDRESS=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name default-wallet-address --query value -o tsv)
+          DEFAULT_WALLET_ADDRESS=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name default-wallet-address --query value -o tsv 2>/dev/null || true)
           LETSENCRYPT_EMAIL=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name letsencrypt-email --query value -o tsv)
           APP_DOMAIN=$(python3 -c "from urllib.parse import urlparse; import sys; print(urlparse(sys.argv[1]).netloc)" "$PUBLIC_GATEWAY_URL")
           cat > .deploy-tmp/.env.production <<EOF
