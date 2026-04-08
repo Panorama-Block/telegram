@@ -21,7 +21,7 @@ const EnvSchema = z.object({
 
   // Backend service URLs (Phase 1+)
   SWAP_API_BASE: z.string().url().optional().default('http://localhost:3002'),
-  DCA_API_BASE: z.string().url().optional().default('http://localhost:3003'),
+  DCA_API_BASE: z.string().url().optional().default('http://localhost:3008'),
   LIDO_API_BASE: z.string().url().optional().default('http://localhost:3004'),
   BRIDGE_API_BASE: z.string().url().optional().default('http://localhost:3005'),
   LENDING_API_BASE: z.string().url().optional().default('http://localhost:3007'),
@@ -31,7 +31,12 @@ const EnvSchema = z.object({
 export type Env = z.infer<typeof EnvSchema>;
 
 export function parseEnv(env = process.env): Env {
-  const result = EnvSchema.safeParse(env);
+  // Strip empty strings so Zod treats them as missing (optional/default kicks in)
+  const cleaned: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(env)) {
+    cleaned[key] = value === '' ? undefined : value;
+  }
+  const result = EnvSchema.safeParse(cleaned);
   if (!result.success) {
     const formatted = result.error.format();
     throw new Error(`Invalid environment: ${JSON.stringify(formatted)}`);

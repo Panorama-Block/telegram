@@ -1,13 +1,15 @@
 import { Bot, session } from 'grammy';
 import { hydrate } from '@grammyjs/hydrate';
 import { autoRetry } from '@grammyjs/auto-retry';
-import { conversations } from '@grammyjs/conversations';
+import { conversations, createConversation } from '@grammyjs/conversations';
 
 import { parseEnv } from '../env.js';
 import type { BotContext } from './context.js';
 import { defaultSession } from './context.js';
 import { createSessionStorage } from './session.js';
 import { typingMiddleware } from '../middleware/typing.js';
+import { rateLimitMiddleware } from '../middleware/rateLimit.js';
+import { errorBoundaryMiddleware } from '../middleware/errorBoundary.js';
 import { handleCallbackQuery } from '../callbacks/router.js';
 import { handleStart } from '../commands/start.js';
 import { handleMenu, sendMenu } from '../commands/menu.js';
@@ -17,6 +19,14 @@ import { handleSettings } from '../commands/settings.js';
 import { handlePortfolio } from '../commands/portfolio.js';
 import { handleTextMessage } from './chatHandler.js';
 import { t } from '../i18n/index.js';
+import { handleAlert, handleAlertCreate, handleAlertClearAll, handleAlertText } from '../commands/alert.js';
+import {
+  swapConversation,
+  stakeConversation,
+  lendConversation,
+  dcaConversation,
+  bridgeConversation,
+} from '../conversations/index.js';
 
 export function createBot(): Bot<BotContext> {
   const env = parseEnv();
@@ -34,19 +44,29 @@ export function createBot(): Bot<BotContext> {
     storage: createSessionStorage(),
   }));
 
-  // ── Conversations plugin (for Phase 3 wizards) ──────────
+  // ── Error boundary & rate limiting ───────────────────────
+  bot.use(errorBoundaryMiddleware);
+  bot.use(rateLimitMiddleware);
+
+  // ── Conversations plugin (Phase 3 wizards) ───────────────
   bot.use(conversations());
+  bot.use(createConversation(swapConversation, 'swap'));
+  bot.use(createConversation(stakeConversation, 'stake'));
+  bot.use(createConversation(lendConversation, 'lend'));
+  bot.use(createConversation(dcaConversation, 'dca'));
+  bot.use(createConversation(bridgeConversation, 'bridge'));
 
   // ── Commands ─────────────────────────────────────────────
   bot.command('start', handleStart);
   bot.command('menu', handleMenu);
   bot.command('wallet', handleWallet);
-  bot.command('swap', placeholderCommand('swap'));
-  bot.command('stake', placeholderCommand('stake'));
-  bot.command('lend', placeholderCommand('lend'));
-  bot.command('dca', placeholderCommand('dca'));
-  bot.command('bridge', placeholderCommand('bridge'));
+  bot.command('swap', enterConversationCommand('swap'));
+  bot.command('stake', enterConversationCommand('stake'));
+  bot.command('lend', enterConversationCommand('lend'));
+  bot.command('dca', enterConversationCommand('dca'));
+  bot.command('bridge', enterConversationCommand('bridge'));
   bot.command('portfolio', handlePortfolio);
+  bot.command('alert', handleAlert);
   bot.command('settings', handleSettings);
   bot.command('help', handleHelp);
 
@@ -68,6 +88,22 @@ export function createBot(): Bot<BotContext> {
       return;
     }
 
+    // Alert callbacks
+    if (data === 'show_alerts') {
+      await ctx.answerCallbackQuery();
+      await handleAlert(ctx);
+      return;
+    }
+    if (data === 'alert_create') {
+      await handleAlertCreate(ctx);
+      return;
+    }
+    if (data === 'alert_clear_all') {
+      await ctx.answerCallbackQuery();
+      await handleAlertClearAll(ctx);
+      return;
+    }
+
     // Chat AI callback
     if (data === 'chat_ai') {
       await ctx.answerCallbackQuery();
@@ -86,12 +122,18 @@ export function createBot(): Bot<BotContext> {
 
   // ── Reply keyboard text matching ─────────────────────────
   // When user taps persistent reply keyboard buttons
-  bot.hears(/^🔄 Swap$/i, placeholderCommand('swap'));
-  bot.hears(/^📈 Stake$/i, placeholderCommand('stake'));
+  bot.hears(/^🔄 Swap$/i, enterConversationCommand('swap'));
+  bot.hears(/^📈 Stake$/i, enterConversationCommand('stake'));
   bot.hears(/^📊 (Portfolio|Portfólio)$/i, handlePortfolio);
 
-  // ── Text messages (AI chat) ──────────────────────────────
-  // Typing middleware only for text messages to agents
+  // ── Text messages ────────────────────────────────────────
+  // Alert text commands (e.g. "alert ETH above 4000")
+  bot.hears(/^alert\s/i, async (ctx) => {
+    const handled = await handleAlertText(ctx);
+    if (!handled) await handleTextMessage(ctx);
+  });
+
+  // AI chat (typing middleware + agent forwarding)
   bot.on('message:text', typingMiddleware, handleTextMessage);
 
   // ── Error handler ────────────────────────────────────────
@@ -117,6 +159,7 @@ export async function registerCommands(bot: Bot<BotContext>): Promise<void> {
     { command: 'dca', description: 'DCA strategies' },
     { command: 'bridge', description: 'Bridge cross-chain' },
     { command: 'portfolio', description: 'View your positions' },
+    { command: 'alert', description: 'Price alerts' },
     { command: 'settings', description: 'Language & preferences' },
     { command: 'help', description: 'Show help' },
   ]);
@@ -124,16 +167,10 @@ export async function registerCommands(bot: Bot<BotContext>): Promise<void> {
 }
 
 /**
- * Placeholder for commands that will be implemented in Phase 3.
+ * Enter a conversation wizard from a /command.
  */
-function placeholderCommand(operation: string) {
+function enterConversationCommand(name: string) {
   return async (ctx: BotContext) => {
-    const strings = t(ctx.session.language);
-    await ctx.reply(
-      `🚧 <b>${operation.charAt(0).toUpperCase() + operation.slice(1)}</b> wizard coming soon!\n\n` +
-      `For now, describe what you want in chat and I'll help via AI.\n` +
-      `Example: "swap 1 ETH to USDC"`,
-      { parse_mode: 'HTML' },
-    );
+    await ctx.conversation.enter(name);
   };
 }

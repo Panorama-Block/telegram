@@ -12,6 +12,7 @@ import { registerMetricsRoutes } from './routes/metrics.js';
 import { registerErrorHandler } from './middleware/errorHandler.js';
 import { createBot, registerCommands } from './bot/index.js';
 import { disconnectRedis } from './bot/session.js';
+import { initServices, startServices, stopServices } from './services/index.js';
 
 type HttpsConfig = {
   options: {
@@ -217,6 +218,22 @@ export async function createServer(): Promise<FastifyInstance> {
 
   // Routes
   app.get('/healthz', async () => ({ status: 'ok' }));
+  app.get('/healthz/services', async () => {
+    try {
+      const { getServices: getSvc } = await import('./services/index.js');
+      const services = getSvc();
+      return {
+        status: 'ok',
+        services: {
+          txTracker: 'running',
+          balanceWatcher: 'running',
+          priceAlerts: 'running',
+        },
+      };
+    } catch {
+      return { status: 'not_initialized' };
+    }
+  });
   await registerAuthRoutes(app);
   await registerMetricsRoutes(app);
 
@@ -225,7 +242,11 @@ export async function createServer(): Promise<FastifyInstance> {
 
   await bot.init();
   await registerCommands(bot);
-  console.log('🤖 Bot initialized with plugins and commands!');
+
+  // Initialize and start background services (tx tracking, balance watcher, price alerts)
+  initServices(bot.api);
+  startServices();
+  console.log('🤖 Bot initialized with plugins, commands, and background services!');
 
   // Webhook handler — processes updates directly
   const handleWebhook = async (req: FastifyRequest, reply: FastifyReply) => {
@@ -279,6 +300,7 @@ export async function start() {
   process.once('SIGTERM', async () => {
     console.log(`${GATEWAY_LOG_PREFIX} SIGTERM received, shutting down gracefully...`);
     try {
+      stopServices();
       await app.close();
       await disconnectRedis();
       console.log(`${GATEWAY_LOG_PREFIX} Server closed`);

@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import type { BotContext } from '../bot/context.js';
 import { t } from '../i18n/index.js';
 import { DcaClient } from '../clients/dcaClient.js';
+import { getServices } from '../services/index.js';
 
 const dcaClient = new DcaClient();
 
@@ -44,6 +45,16 @@ export async function sendWalletInfo(ctx: BotContext, createIfMissing: boolean):
       ctx.session.onboardingComplete = true;
 
       await ctx.reply(strings.wallet_created(result.smartAccountAddress), { parse_mode: 'HTML' });
+
+      // Start watching balance for deposit detection
+      try {
+        const chatId = ctx.chat?.id;
+        if (chatId) {
+          const { balanceWatcher } = getServices();
+          await balanceWatcher.watch(chatId, result.smartAccountAddress);
+        }
+      } catch {}
+
     } catch (error) {
       console.error('[Wallet] Failed to create smart account:', error);
       await ctx.reply(strings.error_generic, { parse_mode: 'HTML' });
