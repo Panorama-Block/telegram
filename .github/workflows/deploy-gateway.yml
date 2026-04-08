@@ -1,4 +1,4 @@
-name: Deploy Telegram Gateway To Azure VM
+name: Build And Publish Telegram Gateway Image
 
 on:
   workflow_dispatch:
@@ -16,30 +16,17 @@ permissions:
   contents: read
 
 env:
-  RG: rg-panorama-dev
-  PROJECT_NAME: panorama
-  ENVIRONMENT_NAME: dev
   IMAGE_TAG: ${{ github.sha }}
-  DEPLOY_PATH: /opt/telegram-gateway/current
-  KEY_VAULT_NAME: ${{ secrets.AZURE_KEY_VAULT_NAME }}
 
 jobs:
-  deploy:
+  publish:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
       packages: write
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Azure login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -53,98 +40,17 @@ jobs:
         run: |
           OWNER_LOWER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
           echo "image=ghcr.io/${OWNER_LOWER}/telegram-gateway:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "namespace=${OWNER_LOWER}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push gateway image
         env:
           IMAGE: ${{ steps.image.outputs.image }}
+          IMAGE_LATEST: ghcr.io/${{ steps.image.outputs.namespace }}/telegram-gateway:latest
         run: |
           docker build \
             --build-arg BUILD_MINIAPP=false \
             -f Dockerfile \
-            -t "$IMAGE" .
+            -t "$IMAGE" \
+            -t "$IMAGE_LATEST" .
           docker push "$IMAGE"
-
-      - name: Resolve Telegram gateway VM public IP
-        id: vm_host
-        run: |
-          PIP_NAME="${PROJECT_NAME}-${ENVIRONMENT_NAME}-telegram-gateway-pip"
-          VM_HOST=$(az network public-ip show \
-            --resource-group "$RG" \
-            --name "$PIP_NAME" \
-            --query ipAddress \
-            -o tsv)
-          echo "host=${VM_HOST}" >> "$GITHUB_OUTPUT"
-
-      - name: Render runtime env
-        run: |
-          rm -rf .deploy-tmp
-          mkdir -p .deploy-tmp
-          PUBLIC_GATEWAY_URL=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name public-gateway-url --query value -o tsv)
-          PUBLIC_WEBAPP_URL=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name public-webapp-url --query value -o tsv)
-          WEBSITE_URL=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name website-url --query value -o tsv)
-          AUTH_API_BASE=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name auth-api-base --query value -o tsv)
-          AGENTS_API_BASE=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name agents-api-base --query value -o tsv)
-          TELEGRAM_BOT_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name telegram-bot-token --query value -o tsv)
-          TELEGRAM_WEBHOOK_SECRET=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name telegram-webhook-secret --query value -o tsv)
-          DEFAULT_WALLET_ADDRESS=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name default-wallet-address --query value -o tsv 2>/dev/null || true)
-          LETSENCRYPT_EMAIL=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name letsencrypt-email --query value -o tsv)
-          APP_DOMAIN=$(python3 -c "from urllib.parse import urlparse; import sys; print(urlparse(sys.argv[1]).netloc)" "$PUBLIC_GATEWAY_URL")
-          cat > .deploy-tmp/.env.production <<EOF
-          APP_DOMAIN=${APP_DOMAIN}
-          LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
-          GHCR_REGISTRY=ghcr.io
-          GHCR_USERNAME=${{ secrets.GHCR_USERNAME }}
-          GHCR_PASSWORD=${{ secrets.GHCR_PASSWORD }}
-          GHCR_NAMESPACE=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_TAG=${IMAGE_TAG}
-          NODE_ENV=production
-          PORT=7778
-          NEXTJS_PROXY_ENABLED=false
-          TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-          TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
-          PUBLIC_GATEWAY_URL=${PUBLIC_GATEWAY_URL}
-          PUBLIC_WEBAPP_URL=${PUBLIC_WEBAPP_URL}
-          WEBSITE_URL=${WEBSITE_URL}
-          AUTH_API_BASE=${AUTH_API_BASE}
-          AGENTS_API_BASE=${AGENTS_API_BASE}
-          DEFAULT_WALLET_ADDRESS=${DEFAULT_WALLET_ADDRESS}
-          AGENTS_REQUEST_TIMEOUT_MS=45000
-          DEFAULT_CHAIN_ID=8453
-          AGENTS_DEBUG_SHAPE=false
-          EOF
-
-      - name: Prepare deploy bundle
-        run: |
-          mkdir -p .deploy-tmp/scripts
-          cp deploy/azure-vm/docker-compose.yml .deploy-tmp/docker-compose.yml
-          cp deploy/azure-vm/Caddyfile .deploy-tmp/Caddyfile
-          cp deploy/azure-vm/scripts/deploy.sh .deploy-tmp/scripts/deploy.sh
-          chmod +x .deploy-tmp/scripts/deploy.sh
-
-      - name: Copy bundle to VM
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ steps.vm_host.outputs.host }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          source: ".deploy-tmp/.env.production,.deploy-tmp/docker-compose.yml,.deploy-tmp/Caddyfile,.deploy-tmp/scripts"
-          target: "${{ env.DEPLOY_PATH }}"
-          strip_components: 1
-
-      - name: Deploy gateway on VM
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ steps.vm_host.outputs.host }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          script: |
-            cd ${{ env.DEPLOY_PATH }}
-            chmod +x ./scripts/deploy.sh
-            APP_DIR=/opt/telegram-gateway ./scripts/deploy.sh
-
-      - name: Report cutover endpoints
-        env:
-          VM_HOST: ${{ steps.vm_host.outputs.host }}
-        run: |
-          echo "Gateway VM deployed at: ${VM_HOST}"
-          echo "Validate /healthz and update the Telegram webhook after DNS is pointed to the dedicated subdomain."
+          docker push "$IMAGE_LATEST"
