@@ -19,6 +19,7 @@ const publicRoutes = [
   '/auth/external',
   '/auth/wallet-external',
   '/swap/external',
+  '/connect-external',
   '/newchat',
 ];
 

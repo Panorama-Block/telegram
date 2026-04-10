@@ -41,6 +41,17 @@ export function ClientProviders({ children }: ClientProvidersProps) {
 
         WebApp?.ready?.();
 
+        // Install window.open shim for Telegram webview — MUST be before
+        // any wallet SDK (Thirdweb/WalletConnect) initializes.
+        try {
+          const { installTelegramWindowOpenShim } = await import(
+            '@/shared/lib/telegramWindowOpenShim'
+          );
+          installTelegramWindowOpenShim();
+        } catch (e) {
+          console.warn('[Providers] Failed to install Telegram shim:', e);
+        }
+
         // Consume start_param (deep link) to recover sessions created outside the app
         try {
           const isTelegram = (WebApp as any)?.initDataUnsafe;
