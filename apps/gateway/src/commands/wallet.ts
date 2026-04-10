@@ -4,6 +4,7 @@ import type { BotContext } from '../bot/context.js';
 import { t } from '../i18n/index.js';
 import { DcaClient } from '../clients/dcaClient.js';
 import { getServices } from '../services/index.js';
+import { parseEnv } from '../env.js';
 
 const dcaClient = new DcaClient();
 
@@ -20,15 +21,14 @@ export async function handleWallet(ctx: BotContext): Promise<void> {
 export async function sendWalletInfo(ctx: BotContext, createIfMissing: boolean): Promise<void> {
   const strings = t(ctx.session.language);
 
+  // Show status of both wallet modes
+  if (!createIfMissing) {
+    await sendWalletStatus(ctx);
+    return;
+  }
+
   // No smart account yet
   if (!ctx.session.smartAccountAddress) {
-    if (!createIfMissing) {
-      await ctx.reply(strings.wallet_not_linked, { parse_mode: 'HTML',
-        reply_markup: new InlineKeyboard()
-          .text(strings.btn_create_wallet, 'create_wallet'),
-      });
-      return;
-    }
 
     // Create smart account
     await ctx.reply(strings.wallet_creating, { parse_mode: 'HTML' });
@@ -64,6 +64,73 @@ export async function sendWalletInfo(ctx: BotContext, createIfMissing: boolean):
 
   // Send QR code with the smart account address
   await sendQrCode(ctx, ctx.session.smartAccountAddress!);
+}
+
+/**
+ * Show the unified wallet status: PanoramaBlock Wallet + External Wallet.
+ * Lets the user pick which mode is active and trigger connect/create flows.
+ */
+export async function sendWalletStatus(ctx: BotContext): Promise<void> {
+  const strings = t(ctx.session.language);
+  const lang = ctx.session.language;
+  const mode = ctx.session.walletMode ?? 'smart';
+
+  const smart = ctx.session.smartAccountAddress;
+  const ext = ctx.session.externalWallet;
+
+  const smartLine = smart
+    ? `🔐 <b>PanoramaBlock Wallet</b>${mode === 'smart' ? ' ✅' : ''}\n<code>${smart}</code>`
+    : lang === 'pt'
+      ? '🔐 <b>PanoramaBlock Wallet</b>\n<i>Não criada</i>'
+      : '🔐 <b>PanoramaBlock Wallet</b>\n<i>Not created</i>';
+
+  const extLine = ext
+    ? `🔗 <b>External Wallet</b>${mode === 'external' ? ' ✅' : ''}\n<code>${ext.address}</code>\n🌐 ${chainName(ext.chainId)}`
+    : lang === 'pt'
+      ? '🔗 <b>External Wallet</b>\n<i>Não conectada</i>'
+      : '🔗 <b>External Wallet</b>\n<i>Not connected</i>';
+
+  const title = lang === 'pt' ? '👛 <b>Suas Carteiras</b>' : '👛 <b>Your Wallets</b>';
+  const body = `${title}\n\n${smartLine}\n\n${extLine}`;
+
+  const kb = new InlineKeyboard();
+
+  if (!smart) {
+    kb.text(strings.btn_create_wallet, 'create_wallet').row();
+  } else if (mode !== 'smart') {
+    kb.text(lang === 'pt' ? '🔐 Usar PanoramaBlock' : '🔐 Use PanoramaBlock', 'wallet_use_smart').row();
+  }
+
+  // External wallet connect (opens miniapp)
+  const env = (() => {
+    try { return parseEnv(); } catch { return null; }
+  })();
+  const gatewayBase = env?.PUBLIC_GATEWAY_URL?.replace(/\/+$/, '');
+  if (gatewayBase) {
+    const url = `${gatewayBase}/miniapp/connect-external`;
+    const label = ext
+      ? lang === 'pt' ? '🔗 Reconectar External' : '🔗 Reconnect External'
+      : lang === 'pt' ? '🔗 Conectar Carteira Externa' : '🔗 Connect External Wallet';
+    kb.webApp(label, url).row();
+  }
+
+  if (ext && mode !== 'external') {
+    kb.text(lang === 'pt' ? '🔗 Usar External' : '🔗 Use External', 'wallet_use_external').row();
+  }
+
+  kb.text(strings.btn_back, 'open_menu');
+
+  await ctx.reply(body, { parse_mode: 'HTML', reply_markup: kb });
+}
+
+function chainName(chainId: number): string {
+  switch (chainId) {
+    case 1: return 'Ethereum';
+    case 10: return 'Optimism';
+    case 8453: return 'Base';
+    case 42161: return 'Arbitrum';
+    default: return `Chain ${chainId}`;
+  }
 }
 
 /**

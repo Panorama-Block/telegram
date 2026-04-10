@@ -11,16 +11,16 @@ export const pt: I18nStrings = {
     '• 🔁 Automatizar estratégias DCA\n' +
     '• 💰 Emprestar & tomar emprestado\n' +
     '• 📊 Acompanhar seu portfólio\n\n' +
-    'Vamos configurar sua smart wallet!',
+    'Vamos configurar sua PanoramaBlock Wallet!',
   btn_english: '🇺🇸 English',
   btn_portuguese: '🇧🇷 Português',
-  btn_create_wallet: '🔐 Criar Smart Wallet',
+  btn_create_wallet: '🔐 Criar PanoramaBlock Wallet',
   btn_skip: '⏭️ Pular por Agora',
 
   // Wallet creation
-  wallet_creating: '🔐 Criando sua Smart Account...',
+  wallet_creating: '🔐 Criando sua PanoramaBlock Wallet...',
   wallet_created: (address: string) =>
-    `✅ Smart Account criada!\nEndereço: <code>${address}</code>\nRede: Base`,
+    `✅ PanoramaBlock Wallet criada!\nEndereço: <code>${address}</code>\nRede: Base`,
   wallet_fund_prompt:
     '📱 Escaneie o QR code ou copie o endereço abaixo\npara depositar ETH ou tokens:\n\nRedes suportadas: Base, Ethereum, Arbitrum',
   btn_copy_address: '📋 Copiar Endereço',
@@ -31,7 +31,7 @@ export const pt: I18nStrings = {
   // Welcome back
   welcome_back: '👋 Bem-vindo de volta!',
   wallet_status: (address: string, balance: string) =>
-    `💰 Smart Account: <code>${address}</code>\n💵 Saldo: ${balance}`,
+    `💰 PanoramaBlock Wallet: <code>${address}</code>\n💵 Saldo: ${balance}`,
 
   // Menu
   menu_title: '🏠 Panorama Block',
@@ -41,6 +41,7 @@ export const pt: I18nStrings = {
   btn_dca: '🔁 DCA',
   btn_bridge: '🌉 Bridge',
   btn_portfolio: '📊 Portfólio',
+  btn_wallet: '👛 Carteira',
   btn_settings: '⚙️ Config',
   btn_help: '❓ Ajuda',
   btn_chat_ai: '💬 Falar com IA',
@@ -49,8 +50,8 @@ export const pt: I18nStrings = {
   btn_open_miniapp: '🚀 Abrir MiniApp',
 
   // Wallet command
-  wallet_title: '🔐 Sua Smart Account',
-  wallet_not_linked: '⚠️ Nenhuma smart account encontrada.\nUse /start para criar uma.',
+  wallet_title: '🔐 Sua PanoramaBlock Wallet',
+  wallet_not_linked: '⚠️ Nenhuma PanoramaBlock Wallet encontrada.\nUse /start para criar uma.',
   btn_unlink: '🔓 Desconectar',
   btn_view_portfolio: '📊 Ver Portfólio',
 
@@ -67,7 +68,7 @@ export const pt: I18nStrings = {
     '<b>Comandos Disponíveis:</b>\n\n' +
     '/start - Configurar carteira\n' +
     '/menu - Menu principal\n' +
-    '/wallet - Ver smart account\n' +
+    '/wallet - Ver PanoramaBlock Wallet\n' +
     '/swap - Trocar tokens\n' +
     '/stake - Fazer staking\n' +
     '/lend - Operações de lending\n' +
@@ -91,14 +92,14 @@ export const pt: I18nStrings = {
   intent_success: '✅ Transação enviada com sucesso!',
   intent_tx_hash: (hash: string) => `🔗 Tx: <code>${hash}</code>`,
   intent_failed: '❌ Transação falhou. Tente novamente ou ajuste os parâmetros.',
-  intent_no_wallet: '⚠️ Você precisa de uma smart account com fundos primeiro.',
+  intent_no_wallet: '⚠️ Você precisa de uma PanoramaBlock Wallet com fundos primeiro.',
   btn_execute_in_chat: '⚡ Executar no Chat',
   btn_view_tx: '🔍 Ver Transação',
 
   // Wizard shared
   wizard_cancelled: '❌ Operação cancelada.',
   wizard_timeout: '⏰ Sessão expirou. Comece novamente quando quiser.',
-  wizard_no_wallet: '⚠️ Você precisa de uma smart account primeiro. Use /start para criar.',
+  wizard_no_wallet: '⚠️ Você precisa de uma PanoramaBlock Wallet primeiro. Use /start para criar.',
   wizard_select_token: '🪙 Selecione um token ou digite o símbolo:',
   wizard_enter_amount: '💰 Digite a quantidade:',
   wizard_invalid_amount: '⚠️ Digite um número válido (ex: 0.5 ou 100).',

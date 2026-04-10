@@ -49,6 +49,30 @@ export async function handleCallbackQuery(ctx: BotContext): Promise<void> {
       return;
     }
 
+    // Switch active wallet mode
+    if (data === 'wallet_use_smart') {
+      if (!ctx.session.smartAccountAddress) {
+        await ctx.answerCallbackQuery({ text: 'No PanoramaBlock Wallet yet' });
+        return;
+      }
+      ctx.session.walletMode = 'smart';
+      await ctx.answerCallbackQuery({ text: '✅ PanoramaBlock Wallet active' });
+      const { sendWalletStatus } = await import('../commands/wallet.js');
+      await sendWalletStatus(ctx);
+      return;
+    }
+    if (data === 'wallet_use_external') {
+      if (!ctx.session.externalWallet) {
+        await ctx.answerCallbackQuery({ text: 'No external wallet connected' });
+        return;
+      }
+      ctx.session.walletMode = 'external';
+      await ctx.answerCallbackQuery({ text: '✅ External wallet active' });
+      const { sendWalletStatus } = await import('../commands/wallet.js');
+      await sendWalletStatus(ctx);
+      return;
+    }
+
     // Skip onboarding
     if (data === 'skip_onboarding') {
       ctx.session.onboardingComplete = true;
@@ -67,6 +91,13 @@ export async function handleCallbackQuery(ctx: BotContext): Promise<void> {
     if (data === 'open_menu') {
       await ctx.answerCallbackQuery();
       await sendMenu(ctx);
+      return;
+    }
+
+    // Wallet
+    if (data === 'open_wallet') {
+      await ctx.answerCallbackQuery();
+      await sendWalletInfo(ctx, false);
       return;
     }
 

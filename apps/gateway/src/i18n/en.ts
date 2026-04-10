@@ -9,16 +9,16 @@ export const en = {
     '• 🔁 Automate DCA strategies\n' +
     '• 💰 Lend & borrow assets\n' +
     '• 📊 Track your portfolio\n\n' +
-    "Let's set up your smart wallet!",
+    "Let's set up your PanoramaBlock Wallet!",
   btn_english: '🇺🇸 English',
   btn_portuguese: '🇧🇷 Português',
-  btn_create_wallet: '🔐 Create Smart Wallet',
+  btn_create_wallet: '🔐 Create PanoramaBlock Wallet',
   btn_skip: '⏭️ Skip for Now',
 
   // Wallet creation
-  wallet_creating: '🔐 Creating your Smart Account...',
+  wallet_creating: '🔐 Creating your PanoramaBlock Wallet...',
   wallet_created: (address: string) =>
-    `✅ Smart Account created!\nAddress: <code>${address}</code>\nNetwork: Base`,
+    `✅ PanoramaBlock Wallet created!\nAddress: <code>${address}</code>\nNetwork: Base`,
   wallet_fund_prompt:
     '📱 Scan this QR code or copy the address below\nto deposit ETH or tokens:\n\nSupported networks: Base, Ethereum, Arbitrum',
   btn_copy_address: '📋 Copy Address',
@@ -29,7 +29,7 @@ export const en = {
   // Welcome back
   welcome_back: '👋 Welcome back!',
   wallet_status: (address: string, balance: string) =>
-    `💰 Smart Account: <code>${address}</code>\n💵 Balance: ${balance}`,
+    `💰 PanoramaBlock Wallet: <code>${address}</code>\n💵 Balance: ${balance}`,
 
   // Menu
   menu_title: '🏠 Panorama Block',
@@ -39,6 +39,7 @@ export const en = {
   btn_dca: '🔁 DCA',
   btn_bridge: '🌉 Bridge',
   btn_portfolio: '📊 Portfolio',
+  btn_wallet: '👛 Wallet',
   btn_settings: '⚙️ Settings',
   btn_help: '❓ Help',
   btn_chat_ai: '💬 Chat with AI',
@@ -47,8 +48,8 @@ export const en = {
   btn_open_miniapp: '🚀 Open MiniApp',
 
   // Wallet command
-  wallet_title: '🔐 Your Smart Account',
-  wallet_not_linked: '⚠️ No smart account found.\nUse /start to create one.',
+  wallet_title: '🔐 Your PanoramaBlock Wallet',
+  wallet_not_linked: '⚠️ No PanoramaBlock Wallet found.\nUse /start to create one.',
   btn_unlink: '🔓 Unlink Wallet',
   btn_view_portfolio: '📊 View Portfolio',
 
@@ -65,7 +66,7 @@ export const en = {
     '<b>Available Commands:</b>\n\n' +
     '/start - Set up your wallet\n' +
     '/menu - Open main menu\n' +
-    '/wallet - View smart account\n' +
+    '/wallet - View PanoramaBlock Wallet\n' +
     '/swap - Swap tokens\n' +
     '/stake - Stake ETH/AVAX\n' +
     '/lend - Lending operations\n' +
@@ -89,14 +90,14 @@ export const en = {
   intent_success: '✅ Transaction submitted successfully!',
   intent_tx_hash: (hash: string) => `🔗 Tx: <code>${hash}</code>`,
   intent_failed: '❌ Transaction failed. Please try again or adjust parameters.',
-  intent_no_wallet: '⚠️ You need a funded smart account first.',
+  intent_no_wallet: '⚠️ You need a funded PanoramaBlock Wallet first.',
   btn_execute_in_chat: '⚡ Execute in Chat',
   btn_view_tx: '🔍 View Transaction',
 
   // Wizard shared
   wizard_cancelled: '❌ Operation cancelled.',
   wizard_timeout: '⏰ Session timed out. Start again when ready.',
-  wizard_no_wallet: '⚠️ You need a smart account first. Use /start to create one.',
+  wizard_no_wallet: '⚠️ You need a PanoramaBlock Wallet first. Use /start to create one.',
   wizard_select_token: '🪙 Select a token or type a token symbol:',
   wizard_enter_amount: '💰 Enter the amount:',
   wizard_invalid_amount: '⚠️ Please enter a valid number (e.g. 0.5 or 100).',

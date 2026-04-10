@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { parseEnv, type Env } from './env.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
+import { registerWalletRoutes } from './routes/wallet.js';
 import { registerErrorHandler } from './middleware/errorHandler.js';
 import { createBot, registerCommands } from './bot/index.js';
 import { disconnectRedis } from './bot/session.js';
@@ -261,7 +262,10 @@ export async function createServer(): Promise<FastifyInstance> {
   };
 
   app.post('/telegram/webhook', handleWebhook);
-  
+
+  // External wallet routes (PR1: connect flow from miniapp)
+  await registerWalletRoutes(app, bot.api);
+
   return app;
 }
 

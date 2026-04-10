@@ -25,6 +25,8 @@ export async function sendMenu(ctx: BotContext): Promise<void> {
     .text(strings.btn_bridge, 'bridge_start')
     .text(strings.btn_portfolio, 'portfolio_view')
     .row()
+    .text(strings.btn_wallet, 'open_wallet')
+    .row()
     .text(strings.btn_settings, 'settings_lang')
     .text(strings.btn_help, 'show_help');
 
