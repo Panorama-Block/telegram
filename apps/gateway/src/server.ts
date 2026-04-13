@@ -1,6 +1,5 @@
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyReply, FastifyRequest, FastifyServerOptions } from 'fastify';
-import { Bot, webhookCallback } from 'grammy';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { fileURLToPath } from 'node:url';
@@ -10,8 +9,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { parseEnv, type Env } from './env.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
-import { registerCommandHandlers } from './handlers/commands.js';
+import { registerWalletRoutes } from './routes/wallet.js';
 import { registerErrorHandler } from './middleware/errorHandler.js';
+import { createBot, registerCommands } from './bot/index.js';
+import { disconnectRedis } from './bot/session.js';
+import { initServices, startServices, stopServices } from './services/index.js';
 
 type HttpsConfig = {
   options: {
@@ -247,80 +249,53 @@ export async function createServer(): Promise<FastifyInstance> {
 
   // Routes
   app.get('/healthz', async () => ({ status: 'ok' }));
+  app.get('/healthz/services', async () => {
+    try {
+      const { getServices: getSvc } = await import('./services/index.js');
+      const services = getSvc();
+      return {
+        status: 'ok',
+        services: {
+          txTracker: 'running',
+          balanceWatcher: 'running',
+          priceAlerts: 'running',
+        },
+      };
+    } catch {
+      return { status: 'not_initialized' };
+    }
+  });
   await registerAuthRoutes(app);
   await registerMetricsRoutes(app);
 
-  // Telegram Bot via webhook
-  const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
-  registerCommandHandlers(bot);
+  // Telegram Bot via webhook (new modular setup)
+  const bot = createBot();
 
-  // Inicializar o bot
   await bot.init();
-  console.log('🤖 Bot initialized successfully!');
+  await registerCommands(bot);
 
-  // Handler customizado que ignora verificação de secret
-  const handleWebhookCustom = async (req: FastifyRequest, reply: FastifyReply) => {
+  // Initialize and start background services (tx tracking, balance watcher, price alerts)
+  initServices(bot.api);
+  startServices();
+  console.log('🤖 Bot initialized with plugins, commands, and background services!');
+
+  // Webhook handler — processes updates directly
+  const handleWebhook = async (req: FastifyRequest, reply: FastifyReply) => {
     try {
-      // Processar a mensagem diretamente sem verificação de secret
       const body = req.body as any;
-      
-      console.log('🎯 [CUSTOM WEBHOOK] Processing message directly...');
-      console.log('📨 Message:', body.message?.text);
-      console.log('👤 From:', body.message?.from?.username);
-      
-      // Processar o update diretamente
       await bot.handleUpdate(body);
-      
       reply.status(200).send({ ok: true });
     } catch (error) {
-      console.error('❌ [CUSTOM WEBHOOK] Error:', error);
+      console.error('[Webhook] Error:', error);
       reply.status(500).send({ error: 'Internal server error' });
     }
   };
 
-  // Função para processar o webhook
-  const handleWebhook = async (req: FastifyRequest, reply: FastifyReply) => {
-    const reqId = `req-${Math.random().toString(36).substr(2, 9)}`;
-    
-    console.log('🚀 [WEBHOOK] Request received!');
-    console.log('📡 URL:', req.url);
-    console.log('📡 Method:', req.method);
-    console.log('📡 Headers:', JSON.stringify(req.headers, null, 2));
+  app.post('/telegram/webhook', handleWebhook);
 
+  // External wallet routes (PR1: connect flow from miniapp)
+  await registerWalletRoutes(app, bot.api);
 
-    try {
-
-      app.log.info({ reqId }, 'calling webhook callback...');
-      const result = await webhookCallback(bot, 'fastify')(req, reply);
-      
-      app.log.info({
-        reqId,
-        res: {
-          statusCode: reply.statusCode,
-        },
-        responseTime: reply.getResponseTime()
-      }, 'request completed');
-      
-      return result;
-    } catch (error: any) {
-      app.log.error({
-        reqId,
-        error: {
-          message: error.message,
-          stack: error.stack,
-          name: error.name,
-          code: error.code,
-          statusCode: error.statusCode,
-        }
-      }, 'webhook error');
-      
-
-      reply.status(500).send({ error: 'Internal server error' });
-    }
-  };
-
-  app.post('/telegram/webhook', handleWebhookCustom);
-  
   return app;
 }
 
@@ -359,7 +334,9 @@ export async function start() {
   process.once('SIGTERM', async () => {
     console.log(`${GATEWAY_LOG_PREFIX} SIGTERM received, shutting down gracefully...`);
     try {
+      stopServices();
       await app.close();
+      await disconnectRedis();
       console.log(`${GATEWAY_LOG_PREFIX} Server closed`);
       process.exit(0);
     } catch (shutdownError) {
