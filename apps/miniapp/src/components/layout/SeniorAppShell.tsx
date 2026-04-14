@@ -111,6 +111,27 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
     setHasMobileSession(Boolean(address || storedAddress || authToken || telegramUser));
   }, [address]);
 
+  // Listen for guided-tour sidebar open/close requests
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { open } = (e as CustomEvent<{ open: boolean }>).detail;
+      setIsSidebarOpen(open);
+    };
+    window.addEventListener('panorama:tour:sidebar', handler);
+    return () => window.removeEventListener('panorama:tour:sidebar', handler);
+  }, []);
+
+  // Listen for guided-tour widget open requests (swap, dca)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { widget, open } = (e as CustomEvent<{ widget: string; open: boolean }>).detail;
+      if (widget === 'swap') setShowSwap(open);
+      if (widget === 'dca') setShowDCA(open);
+    };
+    window.addEventListener('panorama:tour:widget', handler);
+    return () => window.removeEventListener('panorama:tour:widget', handler);
+  }, []);
+
   const navItems: NavItem[] = [
     {
       id: 'chat',
@@ -362,6 +383,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                 {isNewChatItem ? (
                   <div className={cn(isSidebarCollapsed ? '' : 'space-y-2')}>
                     <button
+                      data-tour={`sidebar-${item.id}`}
                       onClick={() => handleNavClick(item)}
                       disabled={isCreatingConversation}
                       title={isSidebarCollapsed ? item.label : undefined}
@@ -519,6 +541,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                   </div>
                 ) : (
                   <button
+                    data-tour={`sidebar-${item.id}`}
                     onClick={() => handleNavClick(item)}
                     title={isSidebarCollapsed ? item.label : undefined}
                     className={cn(

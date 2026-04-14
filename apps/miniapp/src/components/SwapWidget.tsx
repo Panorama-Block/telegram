@@ -1392,6 +1392,7 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
       onClick={onClose}
     >
       <motion.div
+        data-tour="widget-swap"
         variants={modalVariants}
         initial="initial"
         animate="animate"

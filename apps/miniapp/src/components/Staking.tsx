@@ -1206,6 +1206,7 @@ export function Staking({
 
   return (
     <DefiWidgetModalShell
+      dataTour="widget-staking"
       onClose={onClose}
       variant={variant}
       isMobile={isMobile}

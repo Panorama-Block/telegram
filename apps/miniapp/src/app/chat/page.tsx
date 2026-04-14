@@ -41,6 +41,7 @@ import { AvaxLiquidStaking } from '@/components/AvaxLiquidStaking';
 import { LiquidStakingRouter } from '@/components/LiquidStakingRouter';
 import { Yield } from '@/components/Yield';
 import { OnboardingModal } from '@/components/OnboardingModal';
+import { GuidedTour } from '@/components/GuidedTour';
 import { Droplets } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { useAudioRecorder } from '@/shared/hooks/useAudioRecorder';
@@ -587,6 +588,18 @@ export default function ChatPage() {
       debug('component:unmount');
     };
   }, [debug, setSidebarActiveConversationId]);
+
+  // Guided-tour widget open/close listener (lending, staking, yield)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { widget, open } = (e as CustomEvent<{ widget: string; open: boolean }>).detail;
+      if (widget === 'lending') setLendingModalOpen(open);
+      if (widget === 'staking') setShowStakingWidget(open);
+      if (widget === 'yield') setShowYieldWidget(open);
+    };
+    window.addEventListener('panorama:tour:widget', handler);
+    return () => window.removeEventListener('panorama:tour:widget', handler);
+  }, []);
 
   const resolvedIdentity = resolveChatIdentity({
     accountAddress: account?.address,
@@ -1936,6 +1949,9 @@ export default function ChatPage() {
           {/* Onboarding Modal - Shows when user has no balance after login */}
           <OnboardingModal />
 
+          {/* Guided Tour - Shows on first visit to teach the user about features */}
+          <GuidedTour />
+
           <SeniorAppShell pageTitle={activeConversationTitle}>
             <div className="flex flex-col h-full relative bg-black">
               {/* Ambient God Ray */}
@@ -1978,6 +1994,7 @@ export default function ChatPage() {
                           layout
                           transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
                           className="relative shrink-0 mb-6"
+                          data-tour="welcome"
                         >
                           <AnimatePresence mode="wait" initial={false}>
                             {inputMessage.trim() ? (
@@ -2014,7 +2031,7 @@ export default function ChatPage() {
                         {/* Main Input Area */}
                         <div className="relative group max-w-2xl mx-auto w-full">
                           <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/50 to-cyan-500/50 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500 pointer-events-none" />
-                          <div data-prompt-bar className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex flex-col shadow-2xl">
+                          <div data-prompt-bar data-tour="prompt-bar" className="relative bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex flex-col shadow-2xl">
                             {isRecording ? (
                               // Recording UI
                               <div className="flex items-center gap-1.5 md:gap-3">
@@ -2292,6 +2309,7 @@ export default function ChatPage() {
                                 duration: 0.5,
                                 ease: [0.4, 0, 0.2, 1],
                               }}
+                              data-tour="suggestions"
                               className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 w-full max-w-2xl mt-6 shrink-0 overflow-hidden"
                             >
                               {[
@@ -2314,6 +2332,26 @@ export default function ChatPage() {
                             </motion.div>
                           )}
                         </AnimatePresence>
+
+                        {/* Multi-chain indicator */}
+                        <div
+                          data-tour="multichain"
+                          className="flex items-center gap-2 mt-4 px-3 py-2 rounded-xl border border-white/5 bg-white/[0.02]"
+                        >
+                          <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Supported chains</span>
+                          <div className="flex items-center -space-x-1">
+                            {[
+                              { src: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', alt: 'ETH' },
+                              { src: 'https://avatars.githubusercontent.com/u/108554348?s=200&v=4', alt: 'Base' },
+                              { src: 'https://assets.coingecko.com/coins/images/16547/small/photo_2023-03-29_21.47.00.jpeg', alt: 'Arbitrum' },
+                              { src: 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png', alt: 'Avalanche' },
+                              { src: 'https://assets.coingecko.com/coins/images/4713/small/polygon.png', alt: 'Polygon' },
+                              { src: 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png', alt: 'TON' },
+                            ].map((chain) => (
+                              <img key={chain.alt} src={chain.src} alt={chain.alt} className="w-5 h-5 rounded-full border border-black" title={chain.alt} />
+                            ))}
+                          </div>
+                        </div>
                       </motion.div>
                     </div>
                   ) : (

@@ -910,6 +910,7 @@ export function Lending({
   return (
     <>
       <DefiWidgetModalShell
+        dataTour="widget-lending"
         onClose={onClose}
         variant={variant}
         isMobile={isMobile}

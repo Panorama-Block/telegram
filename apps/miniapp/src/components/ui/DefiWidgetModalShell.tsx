@@ -18,6 +18,8 @@ interface DefiWidgetModalShellProps {
   showGradientGlow?: boolean;
   gradientClassName?: string;
   showMobileHandle?: boolean;
+  /** Optional data-tour identifier for guided-tour spotlight */
+  dataTour?: string;
 }
 
 export function DefiWidgetModalShell({
@@ -33,6 +35,7 @@ export function DefiWidgetModalShell({
   showGradientGlow = true,
   gradientClassName = "bg-primary/10",
   showMobileHandle = false,
+  dataTour,
 }: DefiWidgetModalShellProps) {
   const modalVariants = {
     initial: isMobile ? { y: "100%", opacity: 0 } : { scale: 0.95, opacity: 0 },
@@ -43,6 +46,7 @@ export function DefiWidgetModalShell({
   const card = (
     <GlassCard
       data-testid="defi-widget-card"
+      data-tour={dataTour}
       className={cn(
         "defi-widget-shell-card w-full shadow-2xl overflow-hidden relative bg-[#0A0A0A] border-white/10 flex flex-col rounded-2xl border",
         cardClassName,
