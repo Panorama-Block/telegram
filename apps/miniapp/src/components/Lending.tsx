@@ -115,9 +115,10 @@ export function Lending({
 
   const [amount, setAmount] = useState<string>(normalizeInitialAmount(initialAmount) ?? '');
 
-  // When launched with initialViewState='review' (e.g. from chat), auto-advance
-  // once the market data has loaded so the review screen can render properly.
-  const hasDeferredReviewRef = useRef(initialViewState === 'review');
+  // When launched with initialViewState='review' AND an initialAmount (e.g. from chat),
+  // auto-advance once market data loads. Requires initialAmount so that user typing
+  // the first digit does NOT trigger navigation.
+  const hasDeferredReviewRef = useRef(initialViewState === 'review' && !!normalizeInitialAmount(initialAmount));
   useEffect(() => {
     if (!hasDeferredReviewRef.current) return;
     if (activeMarket && amount) {
@@ -145,6 +146,7 @@ export function Lending({
   const isMountedRef = useRef(true);
   const timeoutSyncHashRef = useRef<string | null>(null);
   const txActionInFlightRef = useRef(false);
+  const lastAutoFilledActionRef = useRef<string | null>(null);
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -343,24 +345,38 @@ export function Lending({
     return null;
   }, [activeAction]);
 
+  // Auto-fill amount with the max for the active action whenever the tab changes.
+  // - Supply   → wallet balance
+  // - Withdraw → supplied amount
+  // - Repay    → borrowed amount
+  // - Borrow   → clear (limit is protocol-side, no static max)
+  // NOTE: must come AFTER activeAction and maxHuman are declared (both used in deps).
+  useEffect(() => {
+    if (normalizeInitialAmount(initialAmount)) return; // respect explicit initial amount
+    if (lastAutoFilledActionRef.current === activeAction) return; // already handled this action
+
+    if (maxHuman === null) {
+      // maxHuman is null while loading OR intentionally for borrow.
+      if (activeAction === 'borrow') {
+        lastAutoFilledActionRef.current = activeAction;
+        setAmount('');
+      }
+      return;
+    }
+
+    lastAutoFilledActionRef.current = activeAction;
+    setAmount(maxHuman);
+  }, [maxHuman, activeAction, initialAmount]);
+
   const setActiveAction = useCallback((action: LendingActionType) => {
-    if (action === 'supply') {
-      setMode('supply');
-      setFlow('open');
-      return;
-    }
-    if (action === 'withdraw') {
-      setMode('supply');
-      setFlow('close');
-      return;
-    }
-    if (action === 'borrow') {
-      setMode('borrow');
-      setFlow('open');
-      return;
-    }
-    setMode('borrow');
-    setFlow('close');
+    // Reset so the auto-fill effect re-runs with the correct max for the new action.
+    lastAutoFilledActionRef.current = null;
+    setAmount('');
+
+    if (action === 'supply') { setMode('supply'); setFlow('open'); return; }
+    if (action === 'withdraw') { setMode('supply'); setFlow('close'); return; }
+    if (action === 'borrow') { setMode('borrow'); setFlow('open'); return; }
+    setMode('borrow'); setFlow('close');
   }, []);
 
   const inputLabel = useMemo(() => {
@@ -894,6 +910,7 @@ export function Lending({
   return (
     <>
       <DefiWidgetModalShell
+        dataTour="widget-lending"
         onClose={onClose}
         variant={variant}
         isMobile={isMobile}

@@ -434,6 +434,7 @@ export function DCA({ onClose }: DCAProps) {
       onClick={onClose}
     >
       <motion.div
+        data-tour="widget-dca"
         variants={modalVariants}
         initial="initial"
         animate="animate"

@@ -31,7 +31,7 @@ async function main() {
   const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setWebhook`;
   const body = new URLSearchParams({
     url: `${baseUrl}/telegram/webhook`,
-    allowed_updates: JSON.stringify(['message', 'callback_query', 'chat_member']),
+    allowed_updates: JSON.stringify(['message', 'callback_query', 'chat_member', 'inline_query']),
     secret_token: env.TELEGRAM_WEBHOOK_SECRET,
   });
 

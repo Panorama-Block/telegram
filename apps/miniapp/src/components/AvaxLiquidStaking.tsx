@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Droplets, X, RefreshCw, ExternalLink, ArrowDown, Info, RefreshCcw } from 'lucide-react';
 import { useActiveAccount } from 'thirdweb/react';
 import { DefiWidgetModalShell } from '@/components/ui/DefiWidgetModalShell';
@@ -115,24 +115,40 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
   const [redeemingIndex, setRedeemingIndex] = useState<number | null>(null);
 
   /* ---------------------------------------------------------------- */
-  /*  Fetch AVAX balance                                               */
+  /*  Fetch AVAX + sAVAX balances directly on-chain (no backend dep) */
   /* ---------------------------------------------------------------- */
+  const SAVAX_CONTRACT = '0x2b2C81e08f1Af8835a78Bb2A90AE924ACE0eA4bE';
+
   useEffect(() => {
-    if (!account?.address) return;
+    if (!account?.address || !THIRDWEB_CLIENT_ID) return;
     let cancelled = false;
-    const fetchAvaxBalance = async () => {
+
+    const fetchBalances = async () => {
       try {
-        const { createThirdwebClient, defineChain } = await import('thirdweb');
+        const { createThirdwebClient, getContract, defineChain } = await import('thirdweb');
         const { eth_getBalance, getRpcClient } = await import('thirdweb/rpc');
+        const { getBalance } = await import('thirdweb/extensions/erc20');
+
         const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID });
-        const rpc = getRpcClient({ client, chain: defineChain(AVAX_CHAIN_ID) });
-        const bal = await eth_getBalance(rpc, { address: account.address as `0x${string}` });
-        if (!cancelled) setAvaxBalance(bal.toString());
+        const chain = defineChain(AVAX_CHAIN_ID);
+        const rpc = getRpcClient({ client, chain });
+
+        // AVAX native balance
+        const avaxWei = await eth_getBalance(rpc, { address: account.address as `0x${string}` });
+
+        // sAVAX ERC-20 balance
+        const sAvaxContract = getContract({ client, chain, address: SAVAX_CONTRACT });
+        const sAvaxRes = await getBalance({ contract: sAvaxContract, address: account.address as `0x${string}` });
+
+        if (cancelled) return;
+        setAvaxBalance(avaxWei.toString());
+        setSAvaxBalance(sAvaxRes.value.toString());
       } catch {
-        if (!cancelled) setAvaxBalance(null);
+        // balances stay null — position API may still fill them
       }
     };
-    fetchAvaxBalance();
+
+    fetchBalances();
     return () => { cancelled = true; };
   }, [account?.address]);
 
@@ -245,6 +261,44 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
   }, [stakeAmount, exchangeRate]);
 
   /* ---------------------------------------------------------------- */
+  /*  Auto-fill: pre-set input with max when balance loads / tab changes */
+  /* ---------------------------------------------------------------- */
+  const lastAutoFilledTabRef = useRef<string | null>(null);
+
+  // Max for stake = AVAX balance minus a small gas buffer
+  const maxStakeHuman = useMemo(() => {
+    if (!avaxBalance) return null;
+    const gasBuf = 3_000_000_000_000_000n;
+    const bal = BigInt(avaxBalance);
+    const safe = bal > gasBuf ? bal - gasBuf : 0n;
+    return formatWei(safe.toString(), 18, 6);
+  }, [avaxBalance]);
+
+  // Max for unstake = full sAVAX balance
+  const maxUnlockHuman = useMemo(() => {
+    if (!sAvaxBalance) return null;
+    return formatWei(sAvaxBalance, 18, 6);
+  }, [sAvaxBalance]);
+
+  // Fill stake input when on stake tab and balance becomes available
+  useEffect(() => {
+    if (tab !== 'stake') return;
+    if (lastAutoFilledTabRef.current === 'stake') return;
+    if (maxStakeHuman === null) return;
+    lastAutoFilledTabRef.current = 'stake';
+    setStakeAmount(maxStakeHuman);
+  }, [tab, maxStakeHuman]);
+
+  // Fill unlock input when on unstake/request tab and sAVAX balance becomes available
+  useEffect(() => {
+    if (tab !== 'unstake' || unstakeView !== 'request') return;
+    if (lastAutoFilledTabRef.current === 'unstake-request') return;
+    if (maxUnlockHuman === null) return;
+    lastAutoFilledTabRef.current = 'unstake-request';
+    setUnlockAmount(maxUnlockHuman);
+  }, [tab, unstakeView, maxUnlockHuman]);
+
+  /* ---------------------------------------------------------------- */
   /*  Stable token pills (defined outside render to keep identity)    */
   /* ---------------------------------------------------------------- */
   const avaxPill  = <TokenPill icon={AVAX_ICON}  alt="AVAX"  symbol="AVAX"  />;
@@ -293,11 +347,11 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
 
         {/* Main tabs */}
         <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => { setTab('stake'); resetTx(); }}
+          <button type="button" onClick={() => { lastAutoFilledTabRef.current = null; setTab('stake'); resetTx(); }}
             className={`py-2 rounded-xl border transition-colors text-xs font-medium ${tab === 'stake' ? 'bg-primary/15 border-primary/30 text-white' : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10'}`}>
             Stake
           </button>
-          <button type="button" onClick={() => { setTab('unstake'); resetTx(); }}
+          <button type="button" onClick={() => { lastAutoFilledTabRef.current = null; setTab('unstake'); resetTx(); }}
             className={`py-2 rounded-xl border transition-colors text-xs font-medium ${tab === 'unstake' ? 'bg-primary/15 border-primary/30 text-white' : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10'}`}>
             Unstake
           </button>
@@ -306,7 +360,7 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
         {/* Unstake sub-tabs */}
         {tab === 'unstake' && (
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => { setUnstakeView('request'); resetTx(); }}
+            <button type="button" onClick={() => { lastAutoFilledTabRef.current = null; setUnstakeView('request'); resetTx(); }}
               className={`py-2 rounded-xl border transition-colors text-xs font-medium ${unstakeView === 'request' ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10'}`}>
               Request Unlock
             </button>
@@ -345,6 +399,7 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
             <DataInput
               label="You stake"
               value={stakeAmount}
+              placeholder="0.00"
               balance={`Available: ${avaxBalance ? `${formatWei(avaxBalance, 18, 4)} AVAX` : '--'}`}
               onMaxClick={avaxBalance ? () => {
                 const gasBuf = 3_000_000_000_000_000n;
@@ -418,6 +473,7 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
             <DataInput
               label="You unstake"
               value={unlockAmount}
+              placeholder="0.00"
               balance={`Available: ${sAvaxBalance ? `${formatWei(sAvaxBalance, 18, 4)} sAVAX` : '--'}`}
               onMaxClick={sAvaxBalance ? () => setUnlockAmount(formatWei(sAvaxBalance, 18, 6)) : undefined}
               onChange={(e) => {

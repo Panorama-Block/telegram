@@ -166,11 +166,13 @@ class LendingApiClient {
       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
     if (!isBrowser && direct && direct.length > 0) {
+      // SSR: call the service directly (no CORS restriction).
       this.baseUrl = direct.replace(/\/+$/, '');
-    } else if (isDev && isLocalHost) {
-      // In local dev, skip Next rewrite proxy to reduce one network hop.
+    } else if (isDev && isLocalHost && !direct) {
+      // Local dev without an explicit env var: bypass the Next proxy to save a hop.
       this.baseUrl = 'http://localhost:3007';
     } else {
+      // Browser (prod or dev with env var set): use the Next.js rewrite proxy.
       this.baseUrl = '/api/lending';
     }
 

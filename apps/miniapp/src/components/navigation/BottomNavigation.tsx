@@ -54,6 +54,7 @@ export function BottomNavigation({
           return (
             <button
               key={item.key}
+              data-tour={`nav-${item.key}`}
               onClick={() => handleNavigation(item)}
               disabled={item.disabled}
               className={cn(

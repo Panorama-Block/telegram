@@ -766,6 +766,7 @@ export function Yield({
 
   return (
     <DefiWidgetModalShell
+      dataTour="widget-yield"
       onClose={onClose}
       variant={variant}
       isMobile={isMobile}
