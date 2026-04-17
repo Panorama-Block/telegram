@@ -25,6 +25,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { swapApi } from '@/features/swap/api';
 import { bridgeApi } from '@/features/swap/bridgeApi';
 import { Lending } from '@/components/Lending';
+import { MoonwellLending } from '@/components/MoonwellLending';
+import { LendingRouter } from '@/components/LendingRouter';
 import { useLendingApi } from '@/features/lending';
 import { normalizeToApi, formatAmountHuman, toFixedFloor, parseAmountToWei } from '@/features/swap/utils';
 import { networks, Token, TON_CHAIN_ID } from '@/features/swap/tokens';
@@ -417,7 +419,9 @@ export default function ChatPage() {
   const [swapWidgetTokens, setSwapWidgetTokens] = useState<{ from: any; to: any; amount?: string; quote?: any; viewState?: 'input' | 'routing' | 'details' | 'confirm' } | null>(null);
 
   // Lending states
+  const [showLendingRouter, setShowLendingRouter] = useState(false);
   const [lendingModalOpen, setLendingModalOpen] = useState(false);
+  const [moonwellLendingModalOpen, setMoonwellLendingModalOpen] = useState(false);
   const [currentLendingMetadata, setCurrentLendingMetadata] = useState<Record<string, unknown> | null>(null);
   const [lendingLoading, setLendingLoading] = useState(false);
   const [lendingError, setLendingError] = useState<string | null>(null);
@@ -593,7 +597,9 @@ export default function ChatPage() {
   useEffect(() => {
     const handler = (e: Event) => {
       const { widget, open } = (e as CustomEvent<{ widget: string; open: boolean }>).detail;
-      if (widget === 'lending') setLendingModalOpen(open);
+      if (widget === 'lending') setShowLendingRouter(open);
+      if (widget === 'lending-benqi') setLendingModalOpen(open);
+      if (widget === 'lending-moonwell') setMoonwellLendingModalOpen(open);
       if (widget === 'staking') setShowStakingWidget(open);
       if (widget === 'yield') setShowYieldWidget(open);
     };
@@ -1482,7 +1488,7 @@ export default function ChatPage() {
 
       if (openWidgetPlan.target === 'lending') {
         setCurrentLendingMetadata(openWidgetPlan.metadata ?? parseLendingQueryMetadata(searchParams));
-        setLendingModalOpen(true);
+        setShowLendingRouter(true);
       } else if (openWidgetPlan.target === 'staking') {
         setCurrentStakingMetadata(openWidgetPlan.metadata ?? parseStakingQueryMetadata(searchParams));
         setShowStakingRouter(true);
@@ -3392,35 +3398,85 @@ export default function ChatPage() {
             </div>
           </SeniorAppShell>
 
-          {/* Lending Modal */}
-	          <AnimatePresence>
-	            {lendingModalOpen && (
-	              <Lending
-	                onClose={() => {
-	                  setLendingModalOpen(false);
-	                  setCurrentLendingMetadata(null);
-	                }}
-	                initialAmount={
-	                  typeof currentLendingMetadata?.amount === 'string' || typeof currentLendingMetadata?.amount === 'number'
-	                    ? currentLendingMetadata.amount
-	                    : undefined
-	                }
-	                initialAsset={
-	                  (typeof currentLendingMetadata?.asset === 'string' ? currentLendingMetadata.asset : undefined) ||
-	                  (typeof currentLendingMetadata?.token === 'string' ? currentLendingMetadata.token : undefined)
-	                }
-	                initialMode={
-	                  parseLendingMode(currentLendingMetadata?.mode) ??
-	                  deriveLendingModeFromAction(currentLendingMetadata?.action)
-	                }
-	                initialFlow={
-	                  parseLendingFlow(currentLendingMetadata?.flow) ??
-	                  deriveLendingFlowFromAction(currentLendingMetadata?.action)
-	                }
-	                initialViewState="review"
-	              />
-	            )}
-	          </AnimatePresence>
+          {/* Lending Protocol Router */}
+          <AnimatePresence>
+            {showLendingRouter && (
+              <LendingRouter
+                onClose={() => {
+                  setShowLendingRouter(false);
+                  setCurrentLendingMetadata(null);
+                }}
+                onSelectBenqi={() => {
+                  setShowLendingRouter(false);
+                  setLendingModalOpen(true);
+                }}
+                onSelectMoonwell={() => {
+                  setShowLendingRouter(false);
+                  setMoonwellLendingModalOpen(true);
+                }}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Lending Modal — Benqi · Avalanche */}
+          <AnimatePresence>
+            {lendingModalOpen && (
+              <Lending
+                onClose={() => {
+                  setLendingModalOpen(false);
+                  setCurrentLendingMetadata(null);
+                }}
+                initialAmount={
+                  typeof currentLendingMetadata?.amount === 'string' || typeof currentLendingMetadata?.amount === 'number'
+                    ? currentLendingMetadata.amount
+                    : undefined
+                }
+                initialAsset={
+                  (typeof currentLendingMetadata?.asset === 'string' ? currentLendingMetadata.asset : undefined) ||
+                  (typeof currentLendingMetadata?.token === 'string' ? currentLendingMetadata.token : undefined)
+                }
+                initialMode={
+                  parseLendingMode(currentLendingMetadata?.mode) ??
+                  deriveLendingModeFromAction(currentLendingMetadata?.action)
+                }
+                initialFlow={
+                  parseLendingFlow(currentLendingMetadata?.flow) ??
+                  deriveLendingFlowFromAction(currentLendingMetadata?.action)
+                }
+                initialViewState="review"
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Lending Modal — Moonwell · Base */}
+          <AnimatePresence>
+            {moonwellLendingModalOpen && (
+              <MoonwellLending
+                onClose={() => {
+                  setMoonwellLendingModalOpen(false);
+                  setCurrentLendingMetadata(null);
+                }}
+                initialAmount={
+                  typeof currentLendingMetadata?.amount === 'string' || typeof currentLendingMetadata?.amount === 'number'
+                    ? currentLendingMetadata.amount
+                    : undefined
+                }
+                initialAsset={
+                  (typeof currentLendingMetadata?.asset === 'string' ? currentLendingMetadata.asset : undefined) ||
+                  (typeof currentLendingMetadata?.token === 'string' ? currentLendingMetadata.token : undefined)
+                }
+                initialMode={
+                  parseLendingMode(currentLendingMetadata?.mode) ??
+                  deriveLendingModeFromAction(currentLendingMetadata?.action)
+                }
+                initialFlow={
+                  parseLendingFlow(currentLendingMetadata?.flow) ??
+                  deriveLendingFlowFromAction(currentLendingMetadata?.action)
+                }
+                initialViewState="review"
+              />
+            )}
+          </AnimatePresence>
 
           {/* SwapWidget Modal */}
           <AnimatePresence>

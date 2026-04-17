@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { useRef, useState } from "react";
 import { AlertCircle, ChevronDown, Clock, Loader2, RefreshCcw } from "lucide-react";
 import { DataInput } from "@/components/ui/DataInput";
 import { NeonButton } from "@/components/ui/NeonButton";
@@ -26,6 +27,9 @@ interface LendingInputViewProps {
   maxHuman: string | null;
   onSetAmount: (value: string) => void;
   onOpenTokenList: () => void;
+  /** When provided, replaces the full-screen token modal with an inline dropdown */
+  tokenOptions?: Array<{ symbol: string; icon?: string }>;
+  onSelectToken?: (symbol: string) => void;
   secondaryLabel: string;
   previewHuman: string;
   actionLabel: string;
@@ -104,7 +108,12 @@ export function LendingInputView({
   onContinue,
   tokenSymbol,
   tokenIcon,
+  tokenOptions,
+  onSelectToken,
 }: LendingInputViewProps) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   return (
     <motion.div
       key="input"
@@ -183,19 +192,60 @@ export function LendingInputView({
           }}
           placeholder="0.00"
           rightElement={
-            <button
-              type="button"
-              onClick={onOpenTokenList}
-              className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2.5 sm:px-3 py-1.5 sm:py-2 min-h-[40px] sm:min-h-[44px] hover:bg-zinc-900 active:bg-zinc-800 transition-colors group"
-            >
-              {tokenIcon ? (
-                <img src={tokenIcon} alt={tokenSymbol} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover" />
-              ) : (
-                <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-zinc-700" />
-              )}
-              <span className="text-white font-medium text-sm sm:text-base">{tokenSymbol}</span>
-              <ChevronDown className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors" />
-            </button>
+            tokenOptions && tokenOptions.length > 1 && onSelectToken ? (
+              <div ref={dropdownRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setDropdownOpen((v) => !v)}
+                  className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2.5 sm:px-3 py-1.5 sm:py-2 min-h-[40px] sm:min-h-[44px] hover:bg-zinc-900 active:bg-zinc-800 transition-colors group"
+                >
+                  {tokenIcon ? (
+                    <img src={tokenIcon} alt={tokenSymbol} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-zinc-700" />
+                  )}
+                  <span className="text-white font-medium text-sm sm:text-base">{tokenSymbol}</span>
+                  <ChevronDown className={cn("w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-all", dropdownOpen && "rotate-180")} />
+                </button>
+                {dropdownOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 z-50 min-w-[130px] rounded-xl border border-white/10 bg-zinc-900 shadow-xl overflow-hidden">
+                    {tokenOptions.map((opt) => (
+                      <button
+                        key={opt.symbol}
+                        type="button"
+                        onClick={() => { onSelectToken(opt.symbol); setDropdownOpen(false); }}
+                        className={cn(
+                          "flex items-center gap-2 w-full px-3 py-2.5 text-sm hover:bg-white/10 transition-colors",
+                          opt.symbol === tokenSymbol ? "text-white bg-white/5" : "text-zinc-300"
+                        )}
+                      >
+                        {opt.icon ? (
+                          <img src={opt.icon} alt={opt.symbol} className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-5 h-5 rounded-full bg-zinc-700 flex-shrink-0" />
+                        )}
+                        <span className="font-medium">{opt.symbol}</span>
+                        {opt.symbol === tokenSymbol && <span className="ml-auto text-zinc-500 text-xs">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onOpenTokenList}
+                className="flex items-center gap-1.5 sm:gap-2 bg-black border border-white/10 rounded-full px-2.5 sm:px-3 py-1.5 sm:py-2 min-h-[40px] sm:min-h-[44px] hover:bg-zinc-900 active:bg-zinc-800 transition-colors group"
+              >
+                {tokenIcon ? (
+                  <img src={tokenIcon} alt={tokenSymbol} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover" />
+                ) : (
+                  <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-zinc-700" />
+                )}
+                <span className="text-white font-medium text-sm sm:text-base">{tokenSymbol}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors" />
+              </button>
+            )
           }
         />
 
