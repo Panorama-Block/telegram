@@ -348,6 +348,146 @@ class MoonwellLendingApiClient {
     return bundleFromLegacyResponse(json?.data, 'repay');
   }
 
+  /**
+   * Step 1 of the permit flow.
+   * Returns the EIP-712 typed data to sign + the pre-encoded execute calldata.
+   * permitMessage is null when the token does not support EIP-2612 — caller should
+   * fall back to the standard two-step approve flow via prepareSupply().
+   */
+  async prepareSupplyWithPermit(mTokenAddress: string, amount: string, decimals = 18): Promise<{
+    permitMessage: any | null;
+    executeCalldata: string;
+    permitTarget: string;
+    executorAddress: string;
+    chainId: number;
+    metadata: any;
+  } | null> {
+    const userAddress = this.connectedAddress();
+    const amountWei = parseAmountToWei(amount, decimals).toString();
+
+    const res = await fetch(`${this.baseUrl}/moonwell/prepareSupplyWithPermit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: userAddress, amount: amountWei, mTokenAddress }),
+    });
+    if (!res.ok) return null; // graceful fallback to approve flow
+    const json = await res.json();
+    return json?.data ?? null;
+  }
+
+  /**
+   * Signs an EIP-712 permit message using eth_signTypedData_v4.
+   * Returns null if the wallet does not support typed signing (fall back to approve flow).
+   */
+  async signPermitMessage(permitMessage: any): Promise<string | null> {
+    const eth = typeof window !== 'undefined' ? (window as Window & { ethereum?: any }).ethereum : null;
+    const providers: any[] = Array.isArray(eth?.providers) ? eth.providers : (eth ? [eth] : []);
+
+    const provider = providers.find((p: any) => {
+      const selected = typeof p?.selectedAddress === 'string' ? p.selectedAddress.toLowerCase() : null;
+      return selected === this.account?.address?.toLowerCase();
+    }) ?? providers[0] ?? null;
+
+    if (!provider || typeof provider.request !== 'function') return null;
+
+    try {
+      const userAddress = this.connectedAddress();
+      const signature = await provider.request({
+        method: 'eth_signTypedData_v4',
+        params: [userAddress, JSON.stringify(permitMessage)],
+      });
+      if (typeof signature === 'string' && /^0x[a-fA-F0-9]{130}$/.test(signature)) {
+        return signature;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Step 2 of the permit flow.
+   * Sends the signed permit to the backend, which returns a single Multicall3 transaction
+   * that atomically executes [permit, execute] — no separate approve needed.
+   */
+  async finalizeSupplyPermit(
+    permitContext: {
+      permitMessage: any;
+      executeCalldata: string;
+      executorAddress: string;
+    },
+    signature: string,
+  ): Promise<any> {
+    const userAddress = this.connectedAddress();
+
+    const res = await fetch(`${this.baseUrl}/moonwell/finalizeSupplyPermit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        address: userAddress,
+        permitMessage:   permitContext.permitMessage,
+        signature,
+        executeCalldata: permitContext.executeCalldata,
+        executorAddress: permitContext.executorAddress,
+      }),
+    });
+    if (!res.ok) throw new Error(`Finalize permit failed (${res.status}): ${await this.readError(res)}`);
+    const json = await res.json();
+    // Response: { status: 200, data: { bundle, metadata } }
+    const bundle = json?.data?.bundle;
+    if (!bundle?.steps?.length) throw new Error('No transaction bundle returned from permit finalization.');
+    return { bundle };
+  }
+
+  async prepareRepayWithPermit(mTokenAddress: string, amount: string, decimals = 18): Promise<{
+    permitMessage: any | null;
+    executeCalldata: string;
+    permitTarget: string;
+    executorAddress: string;
+    chainId: number;
+    metadata: any;
+  } | null> {
+    const userAddress = this.connectedAddress();
+    const amountWei = parseAmountToWei(amount, decimals).toString();
+
+    const res = await fetch(`${this.baseUrl}/moonwell/prepareRepayWithPermit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: userAddress, amount: amountWei, mTokenAddress }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json?.data ?? null;
+  }
+
+  async finalizeRepayPermit(
+    permitContext: {
+      permitMessage: any;
+      executeCalldata: string;
+      executorAddress: string;
+    },
+    signature: string,
+  ): Promise<any> {
+    const userAddress = this.connectedAddress();
+
+    const res = await fetch(`${this.baseUrl}/moonwell/finalizeRepayPermit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        address: userAddress,
+        permitMessage:   permitContext.permitMessage,
+        signature,
+        executeCalldata: permitContext.executeCalldata,
+        executorAddress: permitContext.executorAddress,
+      }),
+    });
+    if (!res.ok) throw new Error(`Finalize repay permit failed (${res.status}): ${await this.readError(res)}`);
+    const json = await res.json();
+    const bundle = json?.data?.bundle;
+    if (!bundle?.steps?.length) throw new Error('No transaction bundle returned from repay permit finalization.');
+    return { bundle };
+  }
+
   async prepareRecoverEth(): Promise<any> {
     const userAddress = this.connectedAddress();
     const res = await fetch(`${this.baseUrl}/moonwell/recoverEth`, {

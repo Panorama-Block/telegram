@@ -174,6 +174,8 @@ export function MoonwellLending({
     }
     let cancelled = false;
     setLoadingBalance(true);
+    setWalletBalanceWei(null);
+    setWalletBalanceHuman(null);
 
     const fetchBalance = async () => {
       try {
@@ -449,9 +451,23 @@ export function MoonwellLending({
         }
       }
 
-      // Prepare transaction bundle
+      // Prepare transaction bundle.
+      // For supply, attempt the EIP-2612 permit flow first: it collapses the approve + execute
+      // into a single Multicall3 transaction, bypassing MetaMask Smart Transaction cancellations.
+      // Falls back to the two-step approve + execute flow when permit is unsupported.
       const prepared = await (async () => {
         if (mode === 'supply' && flow === 'open') {
+          try {
+            const permitCtx = await (lendingApi as any).prepareSupplyWithPermit?.(mTokenAddress, opAmount, decimals);
+            if (permitCtx?.permitMessage) {
+              const sig = await (lendingApi as any).signPermitMessage?.(permitCtx.permitMessage);
+              if (sig) {
+                return (lendingApi as any).finalizeSupplyPermit(permitCtx, sig);
+              }
+            }
+          } catch {
+            // Permit failed or wallet rejected typed signing — fall through to approve flow.
+          }
           return lendingApi.prepareSupply(mTokenAddress, opAmount, decimals);
         }
         if (mode === 'supply' && flow === 'close') {
@@ -474,6 +490,17 @@ export function MoonwellLending({
         }
         if (mode === 'borrow' && flow === 'open') {
           return lendingApi.prepareBorrow(mTokenAddress, opAmount, decimals);
+        }
+        try {
+          const permitCtx = await (lendingApi as any).prepareRepayWithPermit?.(mTokenAddress, opAmount, decimals);
+          if (permitCtx?.permitMessage) {
+            const sig = await (lendingApi as any).signPermitMessage?.(permitCtx.permitMessage);
+            if (sig) {
+              return (lendingApi as any).finalizeRepayPermit(permitCtx, sig);
+            }
+          }
+        } catch {
+          // Permit failed — fall through to approve flow.
         }
         return lendingApi.prepareRepay(mTokenAddress, opAmount, decimals);
       })();
@@ -516,6 +543,25 @@ export function MoonwellLending({
         chainId: MOONWELL_CHAIN_ID,
       })));
 
+      // Detect MetaMask to apply STX-aware timeouts and messaging.
+      // MetaMask Smart Transactions (STX) can cancel ERC-20 approves to unknown contracts
+      // before broadcasting, causing "Transaction canceled" without user action.
+      const injectedEth = typeof window !== 'undefined' ? (window as Window & { ethereum?: Record<string, unknown> }).ethereum : null;
+      const isMetaMask = !!(
+        injectedEth?.isMetaMask ||
+        (Array.isArray((injectedEth as Record<string, unknown> & { providers?: unknown[] })?.providers) &&
+         ((injectedEth as Record<string, unknown> & { providers?: unknown[] })?.providers as unknown[])
+           ?.some((p: unknown) => (p as Record<string, unknown>)?.isMetaMask))
+      );
+      const hasApproveStep = txs.some((tx: Record<string, unknown>) =>
+        typeof tx?.data === 'string' && (tx.data as string).startsWith('0x095ea7b3')
+      );
+      if (isMetaMask && hasApproveStep) {
+        setTxWarning(
+          'MetaMask detected: if the approval is cancelled, open MetaMask → Settings → Advanced → Smart Transactions → turn Off, then retry.'
+        );
+      }
+
       const markStep = (index: number, patch: Partial<TxStep>) => {
         setTxSteps((prev) => prev.map((s, i) => i === index ? { ...s, ...patch } : s));
       };
@@ -553,7 +599,26 @@ export function MoonwellLending({
 
           if (confirmedByWallet) return { hash, outcome: 'confirmed' };
 
-          const receipt = await waitForReceipt(hash, { to: tx?.to, data: tx?.data });
+          const isApproval = typeof tx?.data === 'string' && tx.data.startsWith('0x095ea7b3');
+
+          // For MetaMask users: use a 45-second timeout for approve transactions.
+          // Base produces 2-second blocks, so a genuine approve confirms in <20 seconds.
+          // MetaMask Smart Transactions (STX) may cancel approves to unknown contracts
+          // silently (Blockaid security) — the tx is never broadcast and will never
+          // confirm. 45 seconds is enough to distinguish confirmed from STX-cancelled.
+          // For non-MetaMask wallets keep 3 minutes (conservative).
+          const approveTimeoutMs = isApproval && isMetaMask ? 45_000 : 3 * 60_000;
+          const receipt = isApproval
+            ? await waitForEvmReceipt({
+                clientId: THIRDWEB_CLIENT_ID,
+                chainId: MOONWELL_CHAIN_ID,
+                txHash: hash,
+                timeoutMs: approveTimeoutMs,
+                pollIntervalMs: 2_500,
+                shouldContinue: () => isMountedRef.current,
+                tracking: { fromAddress: account?.address, to: tx?.to, data: tx?.data },
+              })
+            : await waitForReceipt(hash, { to: tx?.to, data: tx?.data });
           const resolvedHash = typeof receipt.txHash === 'string' && /^0x[a-fA-F0-9]{64}$/.test(receipt.txHash)
             ? receipt.txHash : hash;
           if (resolvedHash !== hash) {
@@ -575,11 +640,31 @@ export function MoonwellLending({
       for (let i = 0; i < txs.length; i++) {
         const result = await executeAndConfirm(txs[i], stepLabels[i] ?? `Step ${i + 1}`, i);
         if (result.outcome === 'timeout') {
+          const isApprovalStep = typeof txs[i]?.data === 'string' && txs[i].data.startsWith('0x095ea7b3');
+          if (isApprovalStep && isMetaMask) {
+            // MetaMask STX cancels approves to unlisted contracts silently.
+            // Throw so the UI shows a clear error with actionable instructions.
+            throw new Error(
+              'MetaMask Smart Transactions cancelled your approval. ' +
+              'To fix: open MetaMask → Settings → Advanced → Smart transactions → turn Off, then retry.'
+            );
+          }
           hasTimeout = true;
           setTxStage('timeout');
-          setTxWarning(`${stepLabels[i]} was submitted but confirmation is still pending. Wait, then use Try again or Refresh.`);
+          setTxWarning(
+            isApprovalStep
+              ? `Approval timed out. If MetaMask shows "Transaction canceled", disable Smart Transactions in MetaMask → Settings → Advanced → Smart Transactions, then retry.`
+              : `${stepLabels[i]} was submitted but confirmation is still pending. Wait, then use Try again or Refresh.`
+          );
           if (tracker) { try { await tracker.markPending(); } catch {} }
           break;
+        }
+        // After a confirmed non-final step (typically the approve), wait briefly so that
+        // the RPC node MetaMask uses to simulate the next transaction has indexed the
+        // on-chain state change. Without this, MetaMask Smart Transaction may see the
+        // stale pre-approve allowance and cancel the execute step.
+        if (i < txs.length - 1) {
+          await new Promise((r) => setTimeout(r, 4_000));
         }
       }
 
