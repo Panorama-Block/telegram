@@ -44,6 +44,26 @@ function normalizeLendingDevBase(raw: string | undefined, isDev: boolean): strin
   return remapped;
 }
 
+// Execution layer runs on 3010; older envs may still point yield/base-execution at 3011.
+function remapDevPort(
+  base: string,
+  fromPort: number,
+  toPort: number,
+  isDev: boolean,
+  label: string,
+): string {
+  if (!isDev || !base) return base;
+  const pattern = new RegExp(
+    `^((?:https?://)(?:localhost|127\\.0\\.0\\.1)):${fromPort}(?=/|$)`,
+    "i",
+  );
+  const remapped = base.replace(pattern, `$1:${toPort}`);
+  if (remapped !== base) {
+    console.warn(`[Next.js] ${label} points to localhost:${fromPort}. Remapping to :${toPort}.`);
+  }
+  return remapped;
+}
+
 type LendingBaseResolution = {
   base: string;
   errors: string[];
@@ -132,12 +152,20 @@ const nextConfig: NextConfig = {
     const swapBase = normalizeDevServiceBase(swapBaseRaw, "http://localhost:3002", isDev);
 
     // yieldBase = execution service (Avalanche: avax/lending, avax/liquid-staking, avax/swap)
+    // Also serves Base routes: /staking, /swap, /dca, /modules/metronome
     const yieldBaseRaw =
       process.env.VITE_YIELD_API_URL ||
       process.env.NEXT_PUBLIC_YIELD_API_URL ||
       process.env.YIELD_SERVICE_URL ||
+      process.env.BASE_EXECUTION_SERVICE_URL ||
       "";
-    const yieldBase = normalizeDevServiceBase(yieldBaseRaw, "http://localhost:3011", isDev);
+    const yieldBase = remapDevPort(
+      normalizeDevServiceBase(yieldBaseRaw, "http://localhost:3010", isDev),
+      3011,
+      3010,
+      isDev,
+      "Yield/Base-execution API URL",
+    );
 
     const rewrites = [];
 
@@ -163,6 +191,19 @@ const nextConfig: NextConfig = {
       rewrites.push({
         source: "/miniapp/api/lending/avax/:path*",
         destination: `${yieldBase}/avax/:path*`,
+        basePath: false,
+      });
+
+      // Base execution layer — staking, swap, dca, metronome, etc.
+      // Same host as yieldBase (execution-layer backend on port 3010).
+      rewrites.push({
+        source: "/api/base-execution/:path*",
+        destination: `${yieldBase}/:path*`,
+        basePath: false,
+      });
+      rewrites.push({
+        source: "/miniapp/api/base-execution/:path*",
+        destination: `${yieldBase}/:path*`,
         basePath: false,
       });
     }
@@ -258,8 +299,14 @@ const nextConfig: NextConfig = {
       });
     }
 
-    // DCA service proxy
-    const dcaBase = (process.env.DCA_API_BASE || 'http://localhost:3007').replace(/\/+$/, '');
+    // DCA service proxy — dca-service listens on 3003 (3007 was the wrong lending-service port)
+    const dcaBase = remapDevPort(
+      (process.env.DCA_API_BASE || 'http://localhost:3003').replace(/\/+$/, ''),
+      3007,
+      3003,
+      isDev,
+      "DCA API URL",
+    );
     console.log('[Next.js] DCA API proxy configured:', dcaBase);
     rewrites.push({
       source: "/api/dca/:path*",
