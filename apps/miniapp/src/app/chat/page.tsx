@@ -40,6 +40,8 @@ import { Staking } from '@/components/Staking';
 import { AvaxLiquidStaking } from '@/components/AvaxLiquidStaking';
 import { LiquidStakingRouter } from '@/components/LiquidStakingRouter';
 import { Yield } from '@/components/Yield';
+import { Metronome } from '@/components/Metronome';
+import type { MetronomeUiAction } from '@/features/metronome/types';
 import { OnboardingModal } from '@/components/OnboardingModal';
 import { GuidedTour } from '@/components/GuidedTour';
 import { Droplets } from 'lucide-react';
@@ -64,6 +66,9 @@ import {
   parseYieldAction,
   parseYieldPoolId,
   parseYieldQueryMetadata,
+  parseMetronomeAction,
+  parseMetronomeQueryMetadata,
+  parseMetronomeTokenSymbol,
   resolveOpenWidgetTarget,
 } from './openWidgetQuery';
 import { formatYieldActionLabel, normalizeYieldIntentMetadata } from '@/features/yield/normalizers';
@@ -439,6 +444,10 @@ export default function ChatPage() {
   const [showYieldWidget, setShowYieldWidget] = useState(false);
   const [currentYieldMetadata, setCurrentYieldMetadata] = useState<Record<string, unknown> | null>(null);
 
+  // Metronome states
+  const [showMetronomeWidget, setShowMetronomeWidget] = useState(false);
+  const [currentMetronomeMetadata, setCurrentMetronomeMetadata] = useState<Record<string, unknown> | null>(null);
+
   const openSwapFromStakingPrefill = useCallback(
     async (params: { fromToken: string; toToken: string; amount?: string }) => {
       const ethNetwork = networks.find((network) => network.chainId === 1);
@@ -589,13 +598,14 @@ export default function ChatPage() {
     };
   }, [debug, setSidebarActiveConversationId]);
 
-  // Guided-tour widget open/close listener (lending, staking, yield)
+  // Guided-tour widget open/close listener (lending, staking, yield, metronome)
   useEffect(() => {
     const handler = (e: Event) => {
       const { widget, open } = (e as CustomEvent<{ widget: string; open: boolean }>).detail;
-      if (widget === 'lending') setLendingModalOpen(open);
-      if (widget === 'staking') setShowStakingWidget(open);
-      if (widget === 'yield') setShowYieldWidget(open);
+      if (widget === 'lending')   setLendingModalOpen(open);
+      if (widget === 'staking')   setShowStakingWidget(open);
+      if (widget === 'yield')     setShowYieldWidget(open);
+      if (widget === 'metronome') setShowMetronomeWidget(open);
     };
     window.addEventListener('panorama:tour:widget', handler);
     return () => window.removeEventListener('panorama:tour:widget', handler);
@@ -1489,6 +1499,9 @@ export default function ChatPage() {
       } else if (openWidgetPlan.target === 'yield') {
         setCurrentYieldMetadata(openWidgetPlan.metadata ?? parseYieldQueryMetadata(searchParams));
         setShowYieldWidget(true);
+      } else if (openWidgetPlan.target === 'metronome') {
+        setCurrentMetronomeMetadata(openWidgetPlan.metadata ?? parseMetronomeQueryMetadata(searchParams));
+        setShowMetronomeWidget(true);
       }
 
       if (!cancelled) {
@@ -3511,6 +3524,26 @@ export default function ChatPage() {
                 initialPoolId={
                   parseYieldPoolId(currentYieldMetadata?.pool_id)
                 }
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Metronome Modal */}
+          <AnimatePresence>
+            {showMetronomeWidget && (
+              <Metronome
+                onClose={() => {
+                  setShowMetronomeWidget(false);
+                  setCurrentMetronomeMetadata(null);
+                }}
+                initialAmount={
+                  typeof currentMetronomeMetadata?.amount === 'string' || typeof currentMetronomeMetadata?.amount === 'number'
+                    ? currentMetronomeMetadata.amount
+                    : undefined
+                }
+                initialAction={parseMetronomeAction(currentMetronomeMetadata?.action) as MetronomeUiAction | undefined}
+                initialCollateralSymbol={parseMetronomeTokenSymbol(currentMetronomeMetadata?.collateral)}
+                initialSynthSymbol={parseMetronomeTokenSymbol(currentMetronomeMetadata?.synth)}
               />
             )}
           </AnimatePresence>

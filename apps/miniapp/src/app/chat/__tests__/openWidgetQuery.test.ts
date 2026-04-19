@@ -7,6 +7,8 @@ import {
   parseLendingFlow,
   parseLendingMode,
   parseLendingQueryMetadata,
+  parseMetronomeAction,
+  parseMetronomeQueryMetadata,
   parseStakingMode,
   parseStakingQueryMetadata,
   parseYieldAction,
@@ -20,6 +22,7 @@ describe('openWidgetQuery helpers', () => {
     expect(resolveOpenWidgetTarget('lending')).toBe('lending');
     expect(resolveOpenWidgetTarget('STAKING')).toBe('staking');
     expect(resolveOpenWidgetTarget('yield')).toBe('yield');
+    expect(resolveOpenWidgetTarget('metronome')).toBe('metronome');
     expect(resolveOpenWidgetTarget('swap')).toBeNull();
   });
 
@@ -122,5 +125,36 @@ describe('openWidgetQuery helpers', () => {
     expect(parseYieldPoolId('WETH-USDC')).toBe('weth-usdc-volatile');
     expect(parseYieldPoolId('weth/usdc')).toBe('weth-usdc-volatile');
     expect(parseYieldPoolId('weth-usdc-volatile')).toBe('weth-usdc-volatile');
+  });
+
+  test('parses metronome action and query metadata', () => {
+    expect(parseMetronomeAction('deposit')).toBe('deposit');
+    expect(parseMetronomeAction('WITHDRAW')).toBe('withdraw');
+    expect(parseMetronomeAction('mint')).toBe('mint');
+    expect(parseMetronomeAction('repay')).toBe('repay');
+    expect(parseMetronomeAction('unwind')).toBe('unwind');
+    expect(parseMetronomeAction('claim')).toBeUndefined();
+
+    expect(
+      parseMetronomeQueryMetadata(
+        new URLSearchParams('open=metronome&action=mint&amount=50&collateral=USDC&synth=msUSD'),
+      ),
+    ).toEqual({
+      action:     'mint',
+      amount:     '50',
+      collateral: 'USDC',
+      synth:      'msUSD',
+    });
+    expect(parseMetronomeQueryMetadata(new URLSearchParams('open=metronome'))).toBeNull();
+  });
+
+  test('builds metronome plan on base', () => {
+    expect(
+      buildOpenWidgetPlan(new URLSearchParams('open=metronome&action=deposit&collateral=USDC&amount=25')),
+    ).toEqual({
+      target:  'metronome',
+      network: 'base',
+      metadata: { action: 'deposit', collateral: 'USDC', amount: '25' },
+    });
   });
 });

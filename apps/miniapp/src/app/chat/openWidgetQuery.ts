@@ -1,10 +1,11 @@
 import type { YieldAction } from '@/features/yield/types';
 import { normalizePoolId, normalizeYieldAction } from '@/features/yield/normalizers';
+import type { MetronomeUiAction } from '@/features/metronome/types';
 
 export type LendingMode = 'supply' | 'borrow';
 export type LendingFlow = 'open' | 'close';
 export type StakingMode = 'stake' | 'unstake';
-export type OpenWidgetTarget = 'lending' | 'staking' | 'yield';
+export type OpenWidgetTarget = 'lending' | 'staking' | 'yield' | 'metronome';
 export type OpenWidgetNetwork = 'avalanche' | 'ethereum' | 'base';
 
 export type OpenWidgetPlan =
@@ -20,6 +21,11 @@ export type OpenWidgetPlan =
     }
   | {
       target: 'yield';
+      network: 'base';
+      metadata: Record<string, unknown> | null;
+    }
+  | {
+      target: 'metronome';
       network: 'base';
       metadata: Record<string, unknown> | null;
     };
@@ -64,7 +70,14 @@ export function deriveLendingFlowFromAction(action: unknown): LendingFlow | unde
 export function resolveOpenWidgetTarget(openParamRaw: string | null): OpenWidgetTarget | null {
   if (typeof openParamRaw !== 'string') return null;
   const normalized = openParamRaw.trim().toLowerCase();
-  if (normalized === 'lending' || normalized === 'staking' || normalized === 'yield') return normalized;
+  if (
+    normalized === 'lending' ||
+    normalized === 'staking' ||
+    normalized === 'yield' ||
+    normalized === 'metronome'
+  ) {
+    return normalized;
+  }
   return null;
 }
 
@@ -85,6 +98,14 @@ export function buildOpenWidgetPlan(searchParams: URLSearchParams): OpenWidgetPl
       target,
       network: 'base',
       metadata: parseYieldQueryMetadata(searchParams),
+    };
+  }
+
+  if (target === 'metronome') {
+    return {
+      target,
+      network: 'base',
+      metadata: parseMetronomeQueryMetadata(searchParams),
     };
   }
 
@@ -140,5 +161,39 @@ export function parseYieldQueryMetadata(searchParams: URLSearchParams): Record<s
   if (amount) metadata.amount = amount;
   if (action) metadata.action = action;
   if (poolId) metadata.pool_id = poolId;
+  return Object.keys(metadata).length > 0 ? metadata : null;
+}
+
+const METRONOME_UI_ACTIONS: ReadonlySet<MetronomeUiAction> = new Set([
+  'deposit',
+  'withdraw',
+  'mint',
+  'repay',
+  'unwind',
+]);
+
+export function parseMetronomeAction(value: unknown): MetronomeUiAction | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase() as MetronomeUiAction;
+  return METRONOME_UI_ACTIONS.has(normalized) ? normalized : undefined;
+}
+
+export function parseMetronomeTokenSymbol(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function parseMetronomeQueryMetadata(searchParams: URLSearchParams): Record<string, unknown> | null {
+  const amount = searchParams.get('amount');
+  const action = parseMetronomeAction(searchParams.get('action'));
+  const collateralSymbol = parseMetronomeTokenSymbol(searchParams.get('collateral'));
+  const synthSymbol = parseMetronomeTokenSymbol(searchParams.get('synth'));
+
+  const metadata: Record<string, unknown> = {};
+  if (amount) metadata.amount = amount;
+  if (action) metadata.action = action;
+  if (collateralSymbol) metadata.collateral = collateralSymbol;
+  if (synthSymbol) metadata.synth = synthSymbol;
   return Object.keys(metadata).length > 0 ? metadata : null;
 }

@@ -61,12 +61,30 @@ export interface UserPosition {
 
 /* ─────────── Prepare-* request/response ─────────── */
 
+/**
+ * Short user-facing intent, as picked in the widget or passed via
+ * `?action=` query strings. Stable across UI + entry points.
+ */
+export type MetronomeUiAction = 'deposit' | 'withdraw' | 'mint' | 'repay' | 'unwind';
+
+/**
+ * Backend metadata label returned by the /prepare-* endpoints. Expanded
+ * vocabulary so one string identifies both the operation and its target.
+ */
 export type MetronomeAction =
   | 'deposit_collateral'
   | 'withdraw_collateral'
   | 'mint_synth'
   | 'repay_synth'
   | 'unwind_position';
+
+export const UI_ACTION_TO_BACKEND: Record<MetronomeUiAction, MetronomeAction> = {
+  deposit:  'deposit_collateral',
+  withdraw: 'withdraw_collateral',
+  mint:     'mint_synth',
+  repay:    'repay_synth',
+  unwind:   'unwind_position',
+};
 
 export interface MetronomePrepareMetadata {
   action:             MetronomeAction;
