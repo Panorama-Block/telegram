@@ -165,6 +165,28 @@ const nextConfig: NextConfig = {
         destination: `${yieldBase}/avax/:path*`,
         basePath: false,
       });
+      // Benqi markets/position data also served by execution-layer (avoids requiring lending-service locally).
+      // More specific rules must precede the generic /api/lending/:path* catch-all below.
+      rewrites.push({
+        source: "/api/lending/benqi/markets",
+        destination: `${yieldBase}/avax/lending/markets`,
+        basePath: false,
+      });
+      rewrites.push({
+        source: "/miniapp/api/lending/benqi/markets",
+        destination: `${yieldBase}/avax/lending/markets`,
+        basePath: false,
+      });
+      rewrites.push({
+        source: "/api/lending/benqi/account/:userAddress/positions",
+        destination: `${yieldBase}/avax/lending/position/:userAddress`,
+        basePath: false,
+      });
+      rewrites.push({
+        source: "/miniapp/api/lending/benqi/account/:userAddress/positions",
+        destination: `${yieldBase}/avax/lending/position/:userAddress`,
+        basePath: false,
+      });
     }
 
     if (!lendingBase) {
