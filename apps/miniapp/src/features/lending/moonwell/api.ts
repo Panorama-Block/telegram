@@ -359,6 +359,10 @@ class MoonwellLendingApiClient {
     executeCalldata: string;
     permitTarget: string;
     executorAddress: string;
+    /** Predicted adapter proxy — passed through to finalizeSupplyPermit for the transferFrom step. */
+    adapterProxy: string;
+    /** Token amount in wei — passed through to finalizeSupplyPermit. */
+    amount: string;
     chainId: number;
     metadata: any;
   } | null> {
@@ -376,31 +380,134 @@ class MoonwellLendingApiClient {
   }
 
   /**
-   * Signs an EIP-712 permit message using eth_signTypedData_v4.
-   * Returns null if the wallet does not support typed signing (fall back to approve flow).
+   * Signs an EIP-712 permit message.
+   * Strategy (in order):
+   *   1. Thirdweb account.signTypedData — works in Telegram Mini App and all Thirdweb wallets.
+   *   2. window.ethereum eth_signTypedData_v4 — fallback for injected MetaMask in browser.
+   * Returns null if both fail (caller falls back to the two-step approve flow).
    */
   async signPermitMessage(permitMessage: any): Promise<string | null> {
+    const isValidSig = (s: unknown): s is string =>
+      typeof s === 'string' && /^0x[a-fA-F0-9]{130}$/.test(s);
+
+    // EIP-712 domain contains chainId:8453. MetaMask rejects signTypedData if the wallet
+    // is on a different chain (e.g. Avalanche 43114). Switch to Base before signing.
+    try {
+      await this.ensureBaseChain();
+      console.log('[signPermitMessage] Chain confirmed: Base (8453)');
+    } catch (err) {
+      console.error('[signPermitMessage] Failed to switch to Base before signing:', err instanceof Error ? err.message : String(err));
+      // If chain switch fails, signing will also fail — return null to fall through to approve flow.
+      return null;
+    }
+
+    const accountAddr = this.account?.address ?? 'none';
+    const hasSignTypedData = this.account && typeof (this.account as any).signTypedData === 'function';
     const eth = typeof window !== 'undefined' ? (window as Window & { ethereum?: any }).ethereum : null;
-    const providers: any[] = Array.isArray(eth?.providers) ? eth.providers : (eth ? [eth] : []);
+    const ethProviders: any[] = Array.isArray(eth?.providers) ? eth.providers : (eth ? [eth] : []);
 
-    const provider = providers.find((p: any) => {
+    console.log('[signPermitMessage] ▶ START', {
+      accountAddress: accountAddr,
+      hasSignTypedData,
+      windowEthereumPresent: !!eth,
+      ethProvidersCount: ethProviders.length,
+      permitToken: permitMessage?.domain?.verifyingContract,
+      permitSpender: permitMessage?.message?.spender,
+      permitNonce: permitMessage?.message?.nonce,
+      permitValue: permitMessage?.message?.value,
+      permitDeadline: permitMessage?.message?.deadline,
+      valueType: typeof permitMessage?.message?.value,
+      nonceType: typeof permitMessage?.message?.nonce,
+    });
+
+    // Thirdweb v5 uses viem internally which requires BigInt for uint256 fields.
+    // The permitMessage arrives from JSON (all numbers serialized as strings), so
+    // we must convert uint256 fields before calling signTypedData — otherwise viem
+    // throws a silent TypeError and signing silently falls through to null.
+    let typedDataForSigning: any;
+    try {
+      typedDataForSigning = {
+        ...permitMessage,
+        message: {
+          ...permitMessage.message,
+          value:    BigInt(permitMessage.message.value    ?? '0'),
+          nonce:    BigInt(permitMessage.message.nonce    ?? '0'),
+          deadline: BigInt(permitMessage.message.deadline ?? '0'),
+        },
+      };
+      console.log('[signPermitMessage] BigInt conversion OK', {
+        value: typedDataForSigning.message.value.toString(),
+        nonce: typedDataForSigning.message.nonce.toString(),
+        deadline: typedDataForSigning.message.deadline.toString(),
+      });
+    } catch (err) {
+      console.error('[signPermitMessage] BigInt conversion failed:', err);
+      return null;
+    }
+
+    // Strategy 1: Thirdweb account.signTypedData (primary — works in Telegram Mini App).
+    // Thirdweb's Account type exposes signTypedData({ domain, types, primaryType, message }).
+    if (hasSignTypedData) {
+      console.log('[signPermitMessage] Strategy 1: account.signTypedData...');
+      try {
+        const sig = await (this.account as any).signTypedData(typedDataForSigning);
+        console.log('[signPermitMessage] signTypedData raw result:', {
+          type: typeof sig,
+          length: typeof sig === 'string' ? sig.length : 'N/A',
+          prefix: typeof sig === 'string' ? sig.slice(0, 20) : String(sig).slice(0, 20),
+          valid: isValidSig(sig),
+        });
+        if (isValidSig(sig)) {
+          console.log('[signPermitMessage] ✓ Strategy 1 succeeded');
+          return sig;
+        }
+        console.warn('[signPermitMessage] Strategy 1: signature format invalid (not 65 bytes). Got length:', typeof sig === 'string' ? sig.length : typeof sig);
+      } catch (err) {
+        console.error('[signPermitMessage] Strategy 1 threw:', err instanceof Error ? err.message : String(err), err);
+      }
+    } else {
+      console.warn('[signPermitMessage] Strategy 1 skipped: account.signTypedData not available', {
+        accountExists: !!this.account,
+        accountKeys: this.account ? Object.keys(this.account as any).slice(0, 10) : [],
+      });
+    }
+
+    // Strategy 2: window.ethereum eth_signTypedData_v4 (MetaMask injected provider in browser).
+    const provider = ethProviders.find((p: any) => {
       const selected = typeof p?.selectedAddress === 'string' ? p.selectedAddress.toLowerCase() : null;
-      return selected === this.account?.address?.toLowerCase();
-    }) ?? providers[0] ?? null;
+      return selected === accountAddr.toLowerCase();
+    }) ?? ethProviders[0] ?? null;
 
-    if (!provider || typeof provider.request !== 'function') return null;
+    console.log('[signPermitMessage] Strategy 2: window.ethereum', {
+      providersAvailable: ethProviders.length,
+      selectedProvider: provider?.isMetaMask ? 'MetaMask' : provider?.isCoinbaseWallet ? 'Coinbase' : provider ? 'unknown' : 'none',
+    });
+
+    if (!provider || typeof provider.request !== 'function') {
+      console.warn('[signPermitMessage] ✗ Strategy 2 skipped: no injected provider (normal in Telegram Mini App)');
+      return null;
+    }
 
     try {
       const userAddress = this.connectedAddress();
-      const signature = await provider.request({
+      console.log('[signPermitMessage] Strategy 2: calling eth_signTypedData_v4 for', userAddress);
+      const sig = await provider.request({
         method: 'eth_signTypedData_v4',
         params: [userAddress, JSON.stringify(permitMessage)],
       });
-      if (typeof signature === 'string' && /^0x[a-fA-F0-9]{130}$/.test(signature)) {
-        return signature;
+      console.log('[signPermitMessage] eth_signTypedData_v4 raw result:', {
+        type: typeof sig,
+        length: typeof sig === 'string' ? sig.length : 'N/A',
+        valid: isValidSig(sig),
+      });
+      if (isValidSig(sig)) {
+        console.log('[signPermitMessage] ✓ Strategy 2 succeeded');
+        return sig;
       }
+      console.warn('[signPermitMessage] Strategy 2: signature format invalid');
       return null;
-    } catch {
+    } catch (err) {
+      console.error('[signPermitMessage] Strategy 2 threw:', err instanceof Error ? err.message : String(err), err);
       return null;
     }
   }
@@ -408,13 +515,15 @@ class MoonwellLendingApiClient {
   /**
    * Step 2 of the permit flow.
    * Sends the signed permit to the backend, which returns a single Multicall3 transaction
-   * that atomically executes [permit, execute] — no separate approve needed.
+   * that atomically executes [permit, transferFrom, execute] — no separate approve needed.
    */
   async finalizeSupplyPermit(
     permitContext: {
       permitMessage: any;
       executeCalldata: string;
       executorAddress: string;
+      adapterProxy: string;
+      amount: string;
     },
     signature: string,
   ): Promise<any> {
@@ -424,16 +533,17 @@ class MoonwellLendingApiClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        address: userAddress,
+        address:         userAddress,
         permitMessage:   permitContext.permitMessage,
         signature,
         executeCalldata: permitContext.executeCalldata,
         executorAddress: permitContext.executorAddress,
+        adapterProxy:    permitContext.adapterProxy,
+        amount:          permitContext.amount,
       }),
     });
     if (!res.ok) throw new Error(`Finalize permit failed (${res.status}): ${await this.readError(res)}`);
     const json = await res.json();
-    // Response: { status: 200, data: { bundle, metadata } }
     const bundle = json?.data?.bundle;
     if (!bundle?.steps?.length) throw new Error('No transaction bundle returned from permit finalization.');
     return { bundle };
@@ -444,6 +554,8 @@ class MoonwellLendingApiClient {
     executeCalldata: string;
     permitTarget: string;
     executorAddress: string;
+    adapterProxy: string;
+    amount: string;
     chainId: number;
     metadata: any;
   } | null> {
@@ -465,6 +577,8 @@ class MoonwellLendingApiClient {
       permitMessage: any;
       executeCalldata: string;
       executorAddress: string;
+      adapterProxy: string;
+      amount: string;
     },
     signature: string,
   ): Promise<any> {
@@ -474,11 +588,13 @@ class MoonwellLendingApiClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        address: userAddress,
+        address:         userAddress,
         permitMessage:   permitContext.permitMessage,
         signature,
         executeCalldata: permitContext.executeCalldata,
         executorAddress: permitContext.executorAddress,
+        adapterProxy:    permitContext.adapterProxy,
+        amount:          permitContext.amount,
       }),
     });
     if (!res.ok) throw new Error(`Finalize repay permit failed (${res.status}): ${await this.readError(res)}`);

@@ -457,17 +457,33 @@ export function MoonwellLending({
       // Falls back to the two-step approve + execute flow when permit is unsupported.
       const prepared = await (async () => {
         if (mode === 'supply' && flow === 'open') {
+          console.log('[MoonwellLending] supply:open — attempting permit flow', { mTokenAddress, opAmount, decimals });
           try {
             const permitCtx = await (lendingApi as any).prepareSupplyWithPermit?.(mTokenAddress, opAmount, decimals);
+            console.log('[MoonwellLending] prepareSupplyWithPermit result:', {
+              hasPermitMessage: !!permitCtx?.permitMessage,
+              permitSupported: permitCtx?.permitMessage !== null,
+              adapterProxy: permitCtx?.adapterProxy,
+              amount: permitCtx?.amount,
+              executorAddress: permitCtx?.executorAddress,
+            });
             if (permitCtx?.permitMessage) {
               const sig = await (lendingApi as any).signPermitMessage?.(permitCtx.permitMessage);
+              console.log('[MoonwellLending] signPermitMessage result:', { sigReceived: !!sig, sigLength: sig?.length });
               if (sig) {
-                return (lendingApi as any).finalizeSupplyPermit(permitCtx, sig);
+                console.log('[MoonwellLending] calling finalizeSupplyPermit...');
+                const result = await (lendingApi as any).finalizeSupplyPermit(permitCtx, sig);
+                console.log('[MoonwellLending] finalizeSupplyPermit result:', { hasBundle: !!result?.bundle, steps: result?.bundle?.steps?.length });
+                return result;
               }
+              console.warn('[MoonwellLending] signing returned null — falling back to approve+execute');
+            } else {
+              console.warn('[MoonwellLending] token does not support permit (permitMessage=null) — falling back to approve+execute');
             }
-          } catch {
-            // Permit failed or wallet rejected typed signing — fall through to approve flow.
+          } catch (err) {
+            console.error('[MoonwellLending] permit flow threw — falling back to approve+execute:', err instanceof Error ? err.message : String(err), err);
           }
+          console.log('[MoonwellLending] FALLBACK: calling prepareSupply (approve+execute)');
           return lendingApi.prepareSupply(mTokenAddress, opAmount, decimals);
         }
         if (mode === 'supply' && flow === 'close') {
@@ -491,17 +507,31 @@ export function MoonwellLending({
         if (mode === 'borrow' && flow === 'open') {
           return lendingApi.prepareBorrow(mTokenAddress, opAmount, decimals);
         }
+        console.log('[MoonwellLending] repay — attempting permit flow', { mTokenAddress, opAmount, decimals });
         try {
           const permitCtx = await (lendingApi as any).prepareRepayWithPermit?.(mTokenAddress, opAmount, decimals);
+          console.log('[MoonwellLending] prepareRepayWithPermit result:', {
+            hasPermitMessage: !!permitCtx?.permitMessage,
+            adapterProxy: permitCtx?.adapterProxy,
+            amount: permitCtx?.amount,
+          });
           if (permitCtx?.permitMessage) {
             const sig = await (lendingApi as any).signPermitMessage?.(permitCtx.permitMessage);
+            console.log('[MoonwellLending] repay signPermitMessage result:', { sigReceived: !!sig, sigLength: sig?.length });
             if (sig) {
-              return (lendingApi as any).finalizeRepayPermit(permitCtx, sig);
+              console.log('[MoonwellLending] calling finalizeRepayPermit...');
+              const result = await (lendingApi as any).finalizeRepayPermit(permitCtx, sig);
+              console.log('[MoonwellLending] finalizeRepayPermit result:', { hasBundle: !!result?.bundle, steps: result?.bundle?.steps?.length });
+              return result;
             }
+            console.warn('[MoonwellLending] repay signing returned null — falling back to approve+execute');
+          } else {
+            console.warn('[MoonwellLending] repay: token does not support permit — falling back');
           }
-        } catch {
-          // Permit failed — fall through to approve flow.
+        } catch (err) {
+          console.error('[MoonwellLending] repay permit flow threw — falling back:', err instanceof Error ? err.message : String(err), err);
         }
+        console.log('[MoonwellLending] FALLBACK: calling prepareRepay (approve+execute)');
         return lendingApi.prepareRepay(mTokenAddress, opAmount, decimals);
       })();
 
