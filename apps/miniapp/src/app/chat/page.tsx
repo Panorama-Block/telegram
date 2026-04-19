@@ -40,6 +40,8 @@ import { Staking } from '@/components/Staking';
 import { AvaxLiquidStaking } from '@/components/AvaxLiquidStaking';
 import { LiquidStakingRouter } from '@/components/LiquidStakingRouter';
 import { Yield } from '@/components/Yield';
+import { AvaxLp } from '@/components/AvaxLp';
+import { YieldChainSelector } from '@/components/YieldChainSelector';
 import { OnboardingModal } from '@/components/OnboardingModal';
 import { GuidedTour } from '@/components/GuidedTour';
 import { Droplets } from 'lucide-react';
@@ -64,6 +66,9 @@ import {
   parseYieldAction,
   parseYieldPoolId,
   parseYieldQueryMetadata,
+  parseAvaxLpAction,
+  parseAvaxLpPoolId,
+  parseAvaxLpQueryMetadata,
   resolveOpenWidgetTarget,
 } from './openWidgetQuery';
 import { formatYieldActionLabel, normalizeYieldIntentMetadata } from '@/features/yield/normalizers';
@@ -439,6 +444,13 @@ export default function ChatPage() {
   const [showYieldWidget, setShowYieldWidget] = useState(false);
   const [currentYieldMetadata, setCurrentYieldMetadata] = useState<Record<string, unknown> | null>(null);
 
+  // AvaxLp states (TraderJoe LP on Avalanche)
+  const [showAvaxLpWidget, setShowAvaxLpWidget] = useState(false);
+  const [currentAvaxLpMetadata, setCurrentAvaxLpMetadata] = useState<Record<string, unknown> | null>(null);
+
+  // Yield chain selector (shown when opening yield without network context)
+  const [showYieldChainSelector, setShowYieldChainSelector] = useState(false);
+
   const openSwapFromStakingPrefill = useCallback(
     async (params: { fromToken: string; toToken: string; amount?: string }) => {
       const ethNetwork = networks.find((network) => network.chainId === 1);
@@ -596,6 +608,7 @@ export default function ChatPage() {
       if (widget === 'lending') setLendingModalOpen(open);
       if (widget === 'staking') setShowStakingWidget(open);
       if (widget === 'yield') setShowYieldWidget(open);
+      if (widget === 'avax-lp') setShowAvaxLpWidget(open);
     };
     window.addEventListener('panorama:tour:widget', handler);
     return () => window.removeEventListener('panorama:tour:widget', handler);
@@ -1487,8 +1500,17 @@ export default function ChatPage() {
         setCurrentStakingMetadata(openWidgetPlan.metadata ?? parseStakingQueryMetadata(searchParams));
         setShowStakingRouter(true);
       } else if (openWidgetPlan.target === 'yield') {
-        setCurrentYieldMetadata(openWidgetPlan.metadata ?? parseYieldQueryMetadata(searchParams));
-        setShowYieldWidget(true);
+        const metadata = openWidgetPlan.metadata ?? parseYieldQueryMetadata(searchParams);
+        const hasPoolContext = metadata?.pool_id != null;
+        setCurrentYieldMetadata(metadata);
+        if (hasPoolContext) {
+          setShowYieldWidget(true);
+        } else {
+          setShowYieldChainSelector(true);
+        }
+      } else if (openWidgetPlan.target === 'avax-lp') {
+        setCurrentAvaxLpMetadata(openWidgetPlan.metadata ?? parseAvaxLpQueryMetadata(searchParams));
+        setShowAvaxLpWidget(true);
       }
 
       if (!cancelled) {
@@ -3510,6 +3532,42 @@ export default function ChatPage() {
                 initialAction={parseYieldAction(currentYieldMetadata?.action)}
                 initialPoolId={
                   parseYieldPoolId(currentYieldMetadata?.pool_id)
+                }
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Yield Chain Selector */}
+          <AnimatePresence>
+            {showYieldChainSelector && (
+              <YieldChainSelector
+                onClose={() => setShowYieldChainSelector(false)}
+                onSelectBase={() => {
+                  setShowYieldChainSelector(false);
+                  setShowYieldWidget(true);
+                }}
+                onSelectAvalanche={() => {
+                  setShowYieldChainSelector(false);
+                  setShowAvaxLpWidget(true);
+                }}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* AvaxLp Modal (TraderJoe on Avalanche) */}
+          <AnimatePresence>
+            {showAvaxLpWidget && (
+              <AvaxLp
+                onClose={() => {
+                  setShowAvaxLpWidget(false);
+                  setCurrentAvaxLpMetadata(null);
+                }}
+                initialAction={parseAvaxLpAction(currentAvaxLpMetadata?.action)}
+                initialPoolId={parseAvaxLpPoolId(currentAvaxLpMetadata?.pool_id)}
+                initialAmount={
+                  typeof currentAvaxLpMetadata?.amount === 'string' || typeof currentAvaxLpMetadata?.amount === 'number'
+                    ? currentAvaxLpMetadata.amount
+                    : undefined
                 }
               />
             )}
