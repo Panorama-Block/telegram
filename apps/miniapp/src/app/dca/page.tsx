@@ -1090,6 +1090,7 @@ export default function DCAPage() {
     try {
       await createStrategy({
         smartAccountId: config.smartAccountId,
+        actionType: 'swap',
         fromToken: config.fromToken,
         toToken: config.toToken,
         fromChainId: config.fromChainId,

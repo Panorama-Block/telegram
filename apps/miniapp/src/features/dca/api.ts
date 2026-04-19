@@ -41,9 +41,12 @@ export interface CreateAccountResponse {
   expiresAt: Date;
 }
 
+export type StrategyActionType = 'swap' | 'lending' | 'liquid_staking' | 'liquidity_pool';
+
 export interface DCAStrategy {
   strategyId?: string; // Optional for backwards compatibility
   smartAccountId: string;
+  actionType?: StrategyActionType;
   fromToken: string;
   toToken: string;
   fromChainId: number;
@@ -53,16 +56,29 @@ export interface DCAStrategy {
   lastExecuted: number;
   nextExecution: number;
   isActive: boolean;
+  // Lending-specific
+  protocol?: string;
+  action?: 'supply' | 'borrow';
+  // LP-specific
+  amountB?: string;
+  tokenB?: string;
 }
 
 export interface CreateStrategyRequest {
   smartAccountId: string;
+  actionType: StrategyActionType;
   fromToken: string;
   toToken: string;
   fromChainId: number;
   toChainId: number;
   amount: string;
   interval: 'daily' | 'weekly' | 'monthly';
+  // Lending-specific
+  protocol?: string;
+  action?: 'supply' | 'borrow';
+  // LP-specific
+  amountB?: string;
+  tokenB?: string;
 }
 
 export interface ExecutionHistory {
