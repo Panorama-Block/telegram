@@ -1,4 +1,4 @@
-export type AvaxLpAction = 'add' | 'remove' | 'stake' | 'unstake' | 'claim';
+export type AvaxLpAction = 'enter' | 'exit' | 'claim';
 
 export interface AvaxTokenInfo {
   symbol: string;

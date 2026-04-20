@@ -32,4 +32,6 @@ export const AVAX_LP_ENDPOINTS = {
   PREPARE_STAKE: '/avax/lp/prepare-stake',
   PREPARE_UNSTAKE: '/avax/lp/prepare-unstake',
   PREPARE_CLAIM: '/avax/lp/prepare-claim-rewards',
+  PREPARE_ENTER: '/avax/lp/prepare-enter',
+  PREPARE_EXIT: '/avax/lp/prepare-exit',
 } as const;

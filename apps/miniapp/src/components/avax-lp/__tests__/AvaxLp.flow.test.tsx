@@ -3,10 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { AvaxLp } from '@/components/AvaxLp';
 
-const prepareAddLiquidityMock = vi.fn();
-const prepareRemoveLiquidityMock = vi.fn();
-const prepareStakeMock = vi.fn();
-const prepareUnstakeMock = vi.fn();
+const prepareEnterMock = vi.fn();
+const prepareExitMock = vi.fn();
 const prepareClaimRewardsMock = vi.fn();
 const executeTransactionMock = vi.fn();
 const refreshMock = vi.fn();
@@ -48,7 +46,7 @@ const mockPosition = {
   farmAddress: FARM_ADDRESS,
 };
 
-const mockPrepareResponse = {
+const mockEnterResponse = {
   bundle: {
     steps: [
       { to: '0xapprove', data: '0xdata', value: '0', chainId: 43114, description: 'Approve WAVAX' },
@@ -56,9 +54,9 @@ const mockPrepareResponse = {
       { to: '0xexec', data: '0xdata3', value: '0', chainId: 43114, description: 'Add Liquidity' },
     ],
     totalSteps: 3,
-    summary: 'Add liquidity to WAVAX-USDC',
+    summary: 'Enter WAVAX-USDC position',
   },
-  metadata: { lpTokenAddress: LP_ADDRESS, farmAddress: FARM_ADDRESS },
+  metadata: { action: 'enter', lpTokenAddress: LP_ADDRESS, farmAddress: FARM_ADDRESS, hasFarm: true, estimatedLiquidity: '100000000000000000' },
 };
 
 vi.mock('framer-motion', async () => await import('../../../../test/mocks/framerMotion'));
@@ -71,10 +69,8 @@ vi.mock('thirdweb/react', () => ({
 
 vi.mock('@/features/avax-lp/api', () => ({
   useAvaxLpApi: () => ({
-    prepareAddLiquidity: (...args: unknown[]) => prepareAddLiquidityMock(...args),
-    prepareRemoveLiquidity: (...args: unknown[]) => prepareRemoveLiquidityMock(...args),
-    prepareStake: (...args: unknown[]) => prepareStakeMock(...args),
-    prepareUnstake: (...args: unknown[]) => prepareUnstakeMock(...args),
+    prepareEnter: (...args: unknown[]) => prepareEnterMock(...args),
+    prepareExit: (...args: unknown[]) => prepareExitMock(...args),
     prepareClaimRewards: (...args: unknown[]) => prepareClaimRewardsMock(...args),
     executeTransaction: (...args: unknown[]) => executeTransactionMock(...args),
   }),
@@ -97,10 +93,15 @@ vi.mock('@/shared/hooks/useIsMobileBreakpoint', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  prepareAddLiquidityMock.mockResolvedValue(mockPrepareResponse);
-  prepareRemoveLiquidityMock.mockResolvedValue(mockPrepareResponse);
-  prepareStakeMock.mockResolvedValue({ bundle: { steps: [{ to: '0x1', data: '0x', value: '0', chainId: 43114, description: 'Stake LP' }], totalSteps: 1, summary: 'Stake' }, metadata: {} });
-  prepareClaimRewardsMock.mockResolvedValue({ bundle: { steps: [{ to: '0x1', data: '0x', value: '0', chainId: 43114, description: 'Claim JOE' }], totalSteps: 1, summary: 'Claim' }, metadata: {} });
+  prepareEnterMock.mockResolvedValue(mockEnterResponse);
+  prepareExitMock.mockResolvedValue({
+    bundle: { steps: [{ to: '0x1', data: '0x', value: '0', chainId: 43114, description: 'Remove Liquidity' }], totalSteps: 1, summary: 'Exit' },
+    metadata: { action: 'exit', hasFarm: false, stakedAmount: '0', walletAmount: '500000000000000000', totalLp: '500000000000000000' },
+  });
+  prepareClaimRewardsMock.mockResolvedValue({
+    bundle: { steps: [{ to: '0x1', data: '0x', value: '0', chainId: 43114, description: 'Claim JOE' }], totalSteps: 1, summary: 'Claim' },
+    metadata: { action: 'claimRewards' },
+  });
   executeTransactionMock.mockResolvedValue({ transactionHash: '0xhash', confirmed: false, source: 'wallet' });
 });
 
@@ -123,27 +124,25 @@ describe('AvaxLp component', () => {
     render(<AvaxLp onClose={vi.fn()} />);
     fireEvent.click(screen.getByText('All Pools'));
     await waitFor(() => expect(screen.getAllByText('WAVAX / USDC.e').length).toBeGreaterThan(0));
-    // Click the first pool card button
     const poolElements = screen.getAllByText('WAVAX / USDC.e');
     fireEvent.click(poolElements[0]);
     await waitFor(() => {
-      expect(screen.getAllByText('Add').length).toBeGreaterThan(0);
-      expect(screen.getAllByText('Remove').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Enter').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Exit').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Claim').length).toBeGreaterThan(0);
     });
   });
 
-  test('pool without farm disables stake/unstake/claim tabs', async () => {
-    render(<AvaxLp onClose={vi.fn()} initialPoolId={99} initialAction="add" />);
+  test('pool without farm disables claim tab', async () => {
+    render(<AvaxLp onClose={vi.fn()} initialPoolId={99} initialAction="enter" />);
     await waitFor(() => {
-      const stakeBtn = screen.getByText('Stake');
-      expect(stakeBtn.closest('button')?.disabled).toBeFalsy();
-      // tabs should have cursor-not-allowed class when farm is absent
-      expect(stakeBtn.closest('button')?.className).toContain('cursor-not-allowed');
+      const claimBtn = screen.getByText('Claim');
+      expect(claimBtn.closest('button')?.className).toContain('cursor-not-allowed');
     });
   });
 
-  test('add liquidity flow: shows prepare response and proceeds to review', async () => {
-    render(<AvaxLp onClose={vi.fn()} initialPoolId={3} initialAction="add" />);
+  test('enter flow: shows prepare response and proceeds to review', async () => {
+    render(<AvaxLp onClose={vi.fn()} initialPoolId={3} initialAction="enter" />);
 
     await waitFor(() => expect(screen.getAllByPlaceholderText('0.00').length).toBeGreaterThan(0));
 
@@ -151,31 +150,31 @@ describe('AvaxLp component', () => {
     fireEvent.change(inputs[0], { target: { value: '1' } });
     fireEvent.change(inputs[1], { target: { value: '10' } });
 
-    const reviewBtn = screen.getByText(/Review Add Liquidity/i);
+    const reviewBtn = screen.getByText(/Review Enter Position/i);
     fireEvent.click(reviewBtn);
 
     await waitFor(() => {
-      expect(prepareAddLiquidityMock).toHaveBeenCalledWith(expect.objectContaining({
+      expect(prepareEnterMock).toHaveBeenCalledWith(expect.objectContaining({
         tokenA: WAVAX_ADDRESS,
         tokenB: USDC_ADDRESS,
       }));
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Add Liquidity')).toBeTruthy();
+      expect(screen.getByText('Enter Position')).toBeTruthy();
     });
   });
 
   test('prepare timeout shows error', async () => {
-    prepareAddLiquidityMock.mockImplementation(() => new Promise((_, reject) => {
+    prepareEnterMock.mockImplementation(() => new Promise((_, reject) => {
       setTimeout(() => reject(new Error('Preparing transaction bundle timed out. Please try again.')), 0);
     }));
 
-    render(<AvaxLp onClose={vi.fn()} initialPoolId={3} initialAction="add" />);
+    render(<AvaxLp onClose={vi.fn()} initialPoolId={3} initialAction="enter" />);
     const inputs = screen.getAllByPlaceholderText('0.00');
     fireEvent.change(inputs[0], { target: { value: '1' } });
     fireEvent.change(inputs[1], { target: { value: '10' } });
-    fireEvent.click(screen.getByText(/Review Add Liquidity/i));
+    fireEvent.click(screen.getByText(/Review Enter Position/i));
 
     await waitFor(() => {
       expect(screen.getByText(/timed out/i)).toBeTruthy();
@@ -191,12 +190,12 @@ describe('AvaxLp component', () => {
   });
 
   test('execute transaction calls executeTransaction for each step', async () => {
-    render(<AvaxLp onClose={vi.fn()} initialPoolId={3} initialAction="add" />);
+    render(<AvaxLp onClose={vi.fn()} initialPoolId={3} initialAction="enter" />);
 
     const inputs = screen.getAllByPlaceholderText('0.00');
     fireEvent.change(inputs[0], { target: { value: '1' } });
     fireEvent.change(inputs[1], { target: { value: '10' } });
-    fireEvent.click(screen.getByText(/Review Add Liquidity/i));
+    fireEvent.click(screen.getByText(/Review Enter Position/i));
 
     await waitFor(() => screen.getByText(/Execute/i));
     fireEvent.click(screen.getByText(/Execute/i));

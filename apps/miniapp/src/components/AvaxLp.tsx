@@ -37,10 +37,8 @@ const PREPARE_CACHE_TTL_MS = 45_000;
 const PREPARE_PREWARM_DEBOUNCE_MS = 350;
 
 const ACTION_TITLES: Record<AvaxLpAction, string> = {
-  add: 'Add Liquidity',
-  remove: 'Remove Liquidity',
-  stake: 'Stake LP',
-  unstake: 'Unstake LP',
+  enter: 'Enter Position',
+  exit:  'Exit Position',
   claim: 'Claim Rewards',
 };
 
@@ -64,9 +62,7 @@ function buildPrepareCacheKey(params: {
   poolId: number;
   amountA: string;
   amountB: string;
-  removeAmount: string;
-  stakeAmount: string;
-  unstakeAmount: string;
+  exitAmount: string;
   slippageBps: number;
   userAddress: string;
 }): string {
@@ -76,9 +72,7 @@ function buildPrepareCacheKey(params: {
     params.action,
     params.amountA.trim(),
     params.amountB.trim(),
-    params.removeAmount.trim(),
-    params.stakeAmount.trim(),
-    params.unstakeAmount.trim(),
+    params.exitAmount.trim(),
     String(params.slippageBps),
   ].join('|');
 }
@@ -192,14 +186,12 @@ export function AvaxLp({
   );
   const [selectTab, setSelectTab] = useState<'pools' | 'positions' | undefined>(undefined);
 
-  const [action, setAction] = useState<AvaxLpAction>(initialAction ?? 'add');
+  const [action, setAction] = useState<AvaxLpAction>(initialAction ?? 'enter');
   const [poolId, setPoolId] = useState<number | null>(initialPoolId ?? null);
 
-  const [amountA, setAmountA] = useState(initialAction === 'add' ? initialAmountValue : '');
-  const [amountB, setAmountB] = useState(initialAction === 'add' ? initialAmountValue : '');
-  const [removeAmount, setRemoveAmount] = useState(initialAction === 'remove' ? initialAmountValue : '');
-  const [stakeAmount, setStakeAmount] = useState(initialAction === 'stake' ? initialAmountValue : '');
-  const [unstakeAmount, setUnstakeAmount] = useState(initialAction === 'unstake' ? initialAmountValue : '');
+  const [amountA, setAmountA] = useState(initialAction === 'enter' ? initialAmountValue : '');
+  const [amountB, setAmountB] = useState(initialAction === 'enter' ? initialAmountValue : '');
+  const [exitAmount, setExitAmount] = useState(initialAction === 'exit' ? initialAmountValue : '');
   const [slippageBps, setSlippageBps] = useState<number>(AVAX_LP_CONFIG.DEFAULT_SLIPPAGE_BPS);
 
   const [prepareResponse, setPrepareResponse] = useState<AvaxLpPrepareResponse | null>(null);
@@ -313,20 +305,16 @@ export function AvaxLp({
     if (!account?.address) throw new Error('Connect wallet to continue.');
     if (!selectedPool) throw new Error('Select a pool first.');
 
-    if (action === 'add') {
+    if (action === 'enter') {
       if (!amountA || parseFloat(amountA) <= 0 || !amountB || parseFloat(amountB) <= 0) {
         throw new Error('Enter valid amounts for both pool tokens.');
       }
-    } else if (action === 'remove') {
-      if (!removeAmount || parseFloat(removeAmount) <= 0) throw new Error('Enter a valid LP amount to remove.');
-    } else if (action === 'stake') {
-      if (!stakeAmount || parseFloat(stakeAmount) <= 0) throw new Error('Enter a valid LP amount to stake.');
-    } else if (action === 'unstake') {
-      if (!unstakeAmount || parseFloat(unstakeAmount) <= 0) throw new Error('Enter a valid LP amount to unstake.');
+    } else if (action === 'exit') {
+      if (!exitAmount || parseFloat(exitAmount) <= 0) throw new Error('Enter a valid LP amount to exit.');
     }
 
     const cacheKey = buildPrepareCacheKey({
-      action, poolId: selectedPool.poolId, amountA, amountB, removeAmount, stakeAmount, unstakeAmount, slippageBps, userAddress: account.address,
+      action, poolId: selectedPool.poolId, amountA, amountB, exitAmount, slippageBps, userAddress: account.address,
     });
 
     const cached = prepareCacheRef.current.get(cacheKey);
@@ -338,43 +326,26 @@ export function AvaxLp({
     const requestPromise = (async () => {
       let resp: AvaxLpPrepareResponse;
 
-      if (action === 'add') {
+      if (action === 'enter') {
         resp = await withTimeout(
-          avaxLpApi.prepareAddLiquidity({
-            userAddress: account.address,
-            tokenA: selectedPool.tokenA.address,
-            tokenB: selectedPool.tokenB.address,
+          avaxLpApi.prepareEnter({
+            userAddress:    account.address,
+            tokenA:         selectedPool.tokenA.address,
+            tokenB:         selectedPool.tokenB.address,
             amountADesired: parseAmountToWei(amountA, selectedPool.tokenA.decimals).toString(),
             amountBDesired: parseAmountToWei(amountB, selectedPool.tokenB.decimals).toString(),
             slippageBps,
           }),
           PREPARE_TIMEOUT_MS, 'Preparing transaction bundle',
         );
-      } else if (action === 'remove') {
+      } else if (action === 'exit') {
         resp = await withTimeout(
-          avaxLpApi.prepareRemoveLiquidity({
+          avaxLpApi.prepareExit({
             userAddress: account.address,
-            tokenA: selectedPool.tokenA.address,
-            tokenB: selectedPool.tokenB.address,
-            lpAmount: parseAmountToWei(removeAmount, 18).toString(),
-          }),
-          PREPARE_TIMEOUT_MS, 'Preparing transaction bundle',
-        );
-      } else if (action === 'stake') {
-        resp = await withTimeout(
-          avaxLpApi.prepareStake({
-            userAddress: account.address,
-            poolId: selectedPool.poolId,
-            lpAmount: parseAmountToWei(stakeAmount, 18).toString(),
-          }),
-          PREPARE_TIMEOUT_MS, 'Preparing transaction bundle',
-        );
-      } else if (action === 'unstake') {
-        resp = await withTimeout(
-          avaxLpApi.prepareUnstake({
-            userAddress: account.address,
-            poolId: selectedPool.poolId,
-            lpAmount: parseAmountToWei(unstakeAmount, 18).toString(),
+            tokenA:      selectedPool.tokenA.address,
+            tokenB:      selectedPool.tokenB.address,
+            lpAmount:    parseAmountToWei(exitAmount, 18).toString(),
+            slippageBps,
           }),
           PREPARE_TIMEOUT_MS, 'Preparing transaction bundle',
         );
@@ -382,7 +353,7 @@ export function AvaxLp({
         resp = await withTimeout(
           avaxLpApi.prepareClaimRewards({
             userAddress: account.address,
-            poolId: selectedPool.poolId,
+            poolId:      selectedPool.poolId,
           }),
           PREPARE_TIMEOUT_MS, 'Preparing transaction bundle',
         );
@@ -399,7 +370,7 @@ export function AvaxLp({
     prepareInFlightRef.current.set(cacheKey, requestPromise);
     return requestPromise;
   }, [
-    account?.address, action, amountA, amountB, removeAmount, stakeAmount, unstakeAmount,
+    account?.address, action, amountA, amountB, exitAmount,
     selectedPool, slippageBps, avaxLpApi,
   ]);
 
@@ -422,7 +393,7 @@ export function AvaxLp({
   }, [handleSelectPool]);
 
   const handleQuickRemove = useCallback((nextPoolId: number) => {
-    setAction('remove');
+    setAction('exit');
     handleSelectPool(nextPoolId);
   }, [handleSelectPool]);
 
@@ -430,17 +401,15 @@ export function AvaxLp({
   useEffect(() => {
     if (viewState !== 'input') return;
     if (!account?.address || !selectedPool) return;
-    if (action === 'add' && (!amountA || parseFloat(amountA) <= 0 || !amountB || parseFloat(amountB) <= 0)) return;
-    if (action === 'remove' && (!removeAmount || parseFloat(removeAmount) <= 0)) return;
-    if (action === 'stake' && (!stakeAmount || parseFloat(stakeAmount) <= 0)) return;
-    if (action === 'unstake' && (!unstakeAmount || parseFloat(unstakeAmount) <= 0)) return;
+    if (action === 'enter' && (!amountA || parseFloat(amountA) <= 0 || !amountB || parseFloat(amountB) <= 0)) return;
+    if (action === 'exit' && (!exitAmount || parseFloat(exitAmount) <= 0)) return;
 
     const timer = window.setTimeout(() => {
       void loadPrepareResponse().catch(() => {});
     }, PREPARE_PREWARM_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
   }, [
-    account?.address, action, amountA, amountB, removeAmount, stakeAmount, unstakeAmount,
+    account?.address, action, amountA, amountB, exitAmount,
     loadPrepareResponse, selectedPool, viewState,
   ]);
 
@@ -483,19 +452,42 @@ export function AvaxLp({
   }, []);
 
   const handleExecute = useCallback(async () => {
-    if (!prepareResponse || !account?.address) return;
+    if (!account?.address) return;
     if (isExecutingRef.current) return;
     if (txStage === 'awaiting_wallet' || txStage === 'pending' || txStage === 'recovering') return;
 
     isExecutingRef.current = true;
 
     try {
-      safeSet(() => { setViewState('status'); setTxStage('awaiting_wallet'); setError(null); });
+      // Stay in review with spinner while fetching a fresh quote just-in-time.
+      // This prevents the "likely to fail" error caused by stale amountAMin/amountBMin
+      // that were encoded into adapterData at prewarm-time (up to 45s earlier).
+      safeSet(() => { setTxStage('preparing'); setError(null); });
+
+      prepareCacheRef.current.clear();
+
+      let freshResponse: AvaxLpPrepareResponse;
+      try {
+        freshResponse = await loadPrepareResponse();
+      } catch (err) {
+        safeSet(() => {
+          setTxStage('failed');
+          setError(getErrorMessage(err, 'Failed to refresh transaction quote. Please try again.'));
+        });
+        return;
+      }
+
+      safeSet(() => {
+        setPrepareResponse(freshResponse);
+        setTxSteps(buildTxSteps(freshResponse.bundle));
+        setViewState('status');
+        setTxStage('awaiting_wallet');
+      });
 
       const results: TransactionExecutionStatus[] = [];
 
-      for (let i = 0; i < prepareResponse.bundle.steps.length; i += 1) {
-        const step = prepareResponse.bundle.steps[i];
+      for (let i = 0; i < freshResponse.bundle.steps.length; i += 1) {
+        const step = freshResponse.bundle.steps[i];
 
         safeSet(() => { markStep(i, 'awaiting_wallet'); setTxStage('awaiting_wallet'); });
 
@@ -506,7 +498,7 @@ export function AvaxLp({
           safeSet(() => {
             if (result.source === 'recovered') { markStep(i, 'recovering'); setTxStage('recovering'); }
             markStep(i, 'confirmed', result.transactionHash);
-            if (i < prepareResponse.bundle.steps.length - 1) setTxStage('pending');
+            if (i < freshResponse.bundle.steps.length - 1) setTxStage('pending');
           });
         } catch (err) {
           safeSet(() => {
@@ -528,7 +520,7 @@ export function AvaxLp({
     } finally {
       isExecutingRef.current = false;
     }
-  }, [account?.address, avaxLpApi, markStep, prepareResponse, refresh, safeSet, txStage]);
+  }, [account?.address, avaxLpApi, loadPrepareResponse, markStep, refresh, safeSet, txStage]);
 
   const handleBack = useCallback(() => {
     setError(null);
@@ -538,13 +530,25 @@ export function AvaxLp({
     onClose();
   }, [onClose, txStage, viewState]);
 
-  const handleRetry = useCallback(() => {
-    if (!prepareResponse) return;
+  const handleRetry = useCallback(async () => {
+    prepareCacheRef.current.clear();
     setError(null);
-    setTxStage('idle');
-    setTxSteps(buildTxSteps(prepareResponse.bundle));
+    setTxStage('preparing');
     setViewState('review');
-  }, [prepareResponse]);
+    try {
+      const response = await loadPrepareResponse();
+      safeSet(() => {
+        setPrepareResponse(response);
+        setTxSteps(buildTxSteps(response.bundle));
+        setTxStage('idle');
+      });
+    } catch (err) {
+      safeSet(() => {
+        setTxStage('failed');
+        setError(getErrorMessage(err, 'Failed to prepare transaction.'));
+      });
+    }
+  }, [loadPrepareResponse, safeSet]);
 
   const handleViewPosition = useCallback(async () => {
     setIsNavigatingToPositions(true);
@@ -563,13 +567,11 @@ export function AvaxLp({
   }, [resetTransactionState, refresh]);
 
   const handleNewPosition = useCallback(() => {
-    setAction('add');
+    setAction('enter');
     setPoolId(null);
     setAmountA('');
     setAmountB('');
-    setRemoveAmount('');
-    setStakeAmount('');
-    setUnstakeAmount('');
+    setExitAmount('');
     setReviewPool(null);
     setError(null);
     setSelectTab(undefined);
@@ -654,12 +656,8 @@ export function AvaxLp({
             amountB={amountB}
             setAmountA={setAmountA}
             setAmountB={setAmountB}
-            removeAmount={removeAmount}
-            setRemoveAmount={setRemoveAmount}
-            stakeAmount={stakeAmount}
-            setStakeAmount={setStakeAmount}
-            unstakeAmount={unstakeAmount}
-            setUnstakeAmount={setUnstakeAmount}
+            exitAmount={exitAmount}
+            setExitAmount={setExitAmount}
             slippageBps={slippageBps}
             setSlippageBps={setSlippageBps}
             userPosition={selectedPosition}
@@ -678,9 +676,7 @@ export function AvaxLp({
             pool={reviewPoolData}
             amountA={amountA}
             amountB={amountB}
-            removeAmount={removeAmount}
-            stakeAmount={stakeAmount}
-            unstakeAmount={unstakeAmount}
+            exitAmount={exitAmount}
             slippageBps={slippageBps}
             prepareResponse={prepareResponse}
             txStage={txStage}

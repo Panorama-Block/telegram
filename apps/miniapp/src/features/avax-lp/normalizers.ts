@@ -1,21 +1,16 @@
 import type { AvaxLpAction } from './types';
 
 const ACTION_ALIASES: Record<string, AvaxLpAction> = {
-  add: 'add',
-  add_liquidity: 'add',
-  enter: 'add',
-  provide: 'add',
+  enter: 'enter',
+  add: 'enter',
+  add_liquidity: 'enter',
+  provide: 'enter',
 
-  remove: 'remove',
-  remove_liquidity: 'remove',
-  exit: 'remove',
-  withdraw: 'remove',
-
-  stake: 'stake',
-  deposit: 'stake',
-
-  unstake: 'unstake',
-  undeposit: 'unstake',
+  exit: 'exit',
+  remove: 'exit',
+  remove_liquidity: 'exit',
+  withdraw: 'exit',
+  unstake: 'exit',
 
   claim: 'claim',
   claim_rewards: 'claim',

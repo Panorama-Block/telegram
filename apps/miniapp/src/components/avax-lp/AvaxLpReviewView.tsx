@@ -6,10 +6,8 @@ import type { AvaxLpAction, AvaxLpPool, AvaxLpPrepareResponse } from '@/features
 import { formatAmountHuman } from '@/features/swap/utils';
 
 const ACTION_LABELS: Record<AvaxLpAction, string> = {
-  add: 'Add Liquidity',
-  remove: 'Remove Liquidity',
-  stake: 'Stake LP',
-  unstake: 'Unstake LP',
+  enter: 'Enter Position',
+  exit:  'Exit Position',
   claim: 'Claim Rewards',
 };
 
@@ -24,14 +22,16 @@ function getMetaString(metadata: Record<string, unknown>, key: string): string |
   return typeof value === 'string' && value.trim() ? value : null;
 }
 
+function getMetaBool(metadata: Record<string, unknown>, key: string): boolean {
+  return metadata[key] === true;
+}
+
 interface AvaxLpReviewViewProps {
   action: AvaxLpAction;
   pool: AvaxLpPool | null;
   amountA: string;
   amountB: string;
-  removeAmount: string;
-  stakeAmount: string;
-  unstakeAmount: string;
+  exitAmount: string;
   slippageBps: number;
   prepareResponse: AvaxLpPrepareResponse | null;
   txStage: YieldTxStage;
@@ -46,9 +46,7 @@ export function AvaxLpReviewView({
   pool,
   amountA,
   amountB,
-  removeAmount,
-  stakeAmount,
-  unstakeAmount,
+  exitAmount,
   slippageBps,
   prepareResponse,
   txStage,
@@ -118,11 +116,14 @@ export function AvaxLpReviewView({
     );
   }
 
-  const metadata = prepareResponse.metadata as Record<string, unknown>;
-  const bundle = prepareResponse.bundle;
-  const lpTokenAddress = getMetaString(metadata, 'lpTokenAddress');
-  const farmAddress = getMetaString(metadata, 'farmAddress') ?? pool.farmAddress;
+  const metadata           = prepareResponse.metadata as Record<string, unknown>;
+  const bundle             = prepareResponse.bundle;
+  const lpTokenAddress     = getMetaString(metadata, 'pairAddress') ?? getMetaString(metadata, 'lpTokenAddress');
+  const farmAddress        = getMetaString(metadata, 'farmAddress') ?? pool.farmAddress;
   const estimatedLiquidity = getMetaString(metadata, 'estimatedLiquidity');
+  const hasFarm            = getMetaBool(metadata, 'hasFarm');
+  const stakedAmount       = getMetaString(metadata, 'stakedAmount');
+  const totalLp            = getMetaString(metadata, 'totalLp');
 
   const displaySteps = txSteps.length > 0
     ? txSteps
@@ -156,7 +157,7 @@ export function AvaxLpReviewView({
             <span className="text-white font-medium">{pool.tokenA.symbol} / {pool.tokenB.symbol}</span>
           </div>
 
-          {action === 'add' && (
+          {action === 'enter' && (
             <>
               <div className="flex justify-between text-sm">
                 <span className="text-zinc-500">{pool.tokenA.symbol}</span>
@@ -178,28 +179,38 @@ export function AvaxLpReviewView({
                   </span>
                 </div>
               )}
+              {hasFarm && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-zinc-500">Auto-stake</span>
+                  <span className="text-orange-300">Enabled — LP staked in farm</span>
+                </div>
+              )}
             </>
           )}
 
-          {action === 'remove' && (
-            <div className="flex justify-between text-sm">
-              <span className="text-zinc-500">LP amount</span>
-              <span className="text-white font-mono">{removeAmount}</span>
-            </div>
-          )}
-
-          {action === 'stake' && (
-            <div className="flex justify-between text-sm">
-              <span className="text-zinc-500">LP to stake</span>
-              <span className="text-white font-mono">{stakeAmount}</span>
-            </div>
-          )}
-
-          {action === 'unstake' && (
-            <div className="flex justify-between text-sm">
-              <span className="text-zinc-500">LP to unstake</span>
-              <span className="text-white font-mono">{unstakeAmount}</span>
-            </div>
+          {action === 'exit' && (
+            <>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">LP to exit</span>
+                <span className="text-white font-mono">{exitAmount}</span>
+              </div>
+              {stakedAmount && stakedAmount !== '0' && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-zinc-500">Unstake first</span>
+                  <span className="text-orange-300 font-mono">
+                    {formatAmountHuman(BigInt(stakedAmount), 18, 8)} LP
+                  </span>
+                </div>
+              )}
+              {totalLp && totalLp !== '0' && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-zinc-500">Total removed</span>
+                  <span className="text-white font-mono">
+                    {formatAmountHuman(BigInt(totalLp), 18, 8)} LP
+                  </span>
+                </div>
+              )}
+            </>
           )}
 
           {action === 'claim' && (

@@ -383,6 +383,35 @@ class AvaxLpApiClient {
     return validateResponse(AvaxLpPrepareResponseSchema, raw, 'AvaxLpPrepareClaim');
   }
 
+  async prepareEnter(params: {
+    userAddress: string;
+    tokenA: string;
+    tokenB: string;
+    amountADesired: string;
+    amountBDesired: string;
+    slippageBps?: number;
+  }): Promise<AvaxLpPrepareResponse> {
+    const raw = await this.fetchJson<AvaxLpPrepareResponse>(AVAX_LP_ENDPOINTS.PREPARE_ENTER, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+    return validateResponse(AvaxLpPrepareResponseSchema, raw, 'AvaxLpPrepareEnter');
+  }
+
+  async prepareExit(params: {
+    userAddress: string;
+    tokenA: string;
+    tokenB: string;
+    lpAmount?: string;
+    slippageBps?: number;
+  }): Promise<AvaxLpPrepareResponse> {
+    const raw = await this.fetchJson<AvaxLpPrepareResponse>(AVAX_LP_ENDPOINTS.PREPARE_EXIT, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+    return validateResponse(AvaxLpPrepareResponseSchema, raw, 'AvaxLpPrepareExit');
+  }
+
   async executeTransaction(tx: PreparedTransaction): Promise<TransactionExecutionStatus> {
     const key = buildExecutionKey(tx);
     const existing = inFlightByKey.get(key);

@@ -12,10 +12,8 @@ import { SNOWTRACE_URL } from '@/features/avax-lp/config';
 import type { AvaxLpAction } from '@/features/avax-lp/types';
 
 const ACTION_LABELS: Record<AvaxLpAction, string> = {
-  add: 'Add Liquidity',
-  remove: 'Remove Liquidity',
-  stake: 'Stake LP',
-  unstake: 'Unstake LP',
+  enter: 'Enter Position',
+  exit:  'Exit Position',
   claim: 'Claim Rewards',
 };
 

@@ -7,10 +7,8 @@ import type { AvaxLpAction, AvaxLpPool, AvaxLpUserPosition } from '@/features/av
 import { formatAmountHuman } from '@/features/swap/utils';
 
 const ACTION_TABS: { id: AvaxLpAction; label: string }[] = [
-  { id: 'add', label: 'Add' },
-  { id: 'remove', label: 'Remove' },
-  { id: 'stake', label: 'Stake' },
-  { id: 'unstake', label: 'Unstake' },
+  { id: 'enter', label: 'Enter' },
+  { id: 'exit',  label: 'Exit' },
   { id: 'claim', label: 'Claim' },
 ];
 
@@ -71,12 +69,8 @@ interface AvaxLpInputViewProps {
   amountB: string;
   setAmountA: (value: string) => void;
   setAmountB: (value: string) => void;
-  removeAmount: string;
-  setRemoveAmount: (value: string) => void;
-  stakeAmount: string;
-  setStakeAmount: (value: string) => void;
-  unstakeAmount: string;
-  setUnstakeAmount: (value: string) => void;
+  exitAmount: string;
+  setExitAmount: (value: string) => void;
   slippageBps: number;
   setSlippageBps: (value: number) => void;
   userPosition: AvaxLpUserPosition | null;
@@ -89,7 +83,6 @@ interface AvaxLpInputViewProps {
 }
 
 const NUMERIC_REGEX = /^(\d+(\.\d*)?|\.\d*)$/;
-const FARM_ACTIONS: AvaxLpAction[] = ['stake', 'unstake', 'claim'];
 
 export function AvaxLpInputView({
   action,
@@ -99,12 +92,8 @@ export function AvaxLpInputView({
   amountB,
   setAmountA,
   setAmountB,
-  removeAmount,
-  setRemoveAmount,
-  stakeAmount,
-  setStakeAmount,
-  unstakeAmount,
-  setUnstakeAmount,
+  exitAmount,
+  setExitAmount,
   slippageBps,
   setSlippageBps,
   userPosition,
@@ -119,51 +108,43 @@ export function AvaxLpInputView({
   const walletBalanceA = walletBalances?.[pool.tokenA.symbol];
   const walletBalanceB = walletBalances?.[pool.tokenB.symbol];
 
-  const walletLpWei = parseWei(walletLpBalanceWei ?? userPosition?.walletLpBalance);
-  const stakedLpWei = parseWei(userPosition?.stakedBalance);
-  const totalLpWei = walletLpWei + stakedLpWei;
+  const walletLpWei  = parseWei(walletLpBalanceWei ?? userPosition?.walletLpBalance);
+  const stakedLpWei  = parseWei(userPosition?.stakedBalance);
+  const totalLpWei   = walletLpWei + stakedLpWei;
 
-  const walletLpDisplay = formatWeiDisplay(walletLpWei, 18, 8);
-  const stakedLpDisplay = formatWeiDisplay(stakedLpWei, 18, 8);
-  const maxRemoveAmount = totalLpWei > 0n ? formatAmountHuman(totalLpWei, 18, 10) : '';
-  const maxStakeAmount = walletLpWei > 0n ? formatAmountHuman(walletLpWei, 18, 10) : '';
-  const maxUnstakeAmount = stakedLpWei > 0n ? formatAmountHuman(stakedLpWei, 18, 10) : '';
+  const walletLpDisplay  = formatWeiDisplay(walletLpWei, 18, 8);
+  const stakedLpDisplay  = formatWeiDisplay(stakedLpWei, 18, 8);
+  const totalLpDisplay   = formatWeiDisplay(totalLpWei, 18, 8);
+  const maxExitAmount    = totalLpWei > 0n ? formatAmountHuman(totalLpWei, 18, 10) : '';
 
   const pendingRewards = userPosition?.pendingRewards;
-  const hasRewards = pendingRewards ? parseFloat(pendingRewards) > 0 : false;
+  const hasRewards     = pendingRewards ? parseFloat(pendingRewards) > 0 : false;
 
-  const farmDisabled = !hasFarm && FARM_ACTIONS.includes(action);
-
-  const isAddValid = amountA.length > 0 && parseFloat(amountA) > 0 && amountB.length > 0 && parseFloat(amountB) > 0;
-  const isRemoveValid = removeAmount.length > 0 && parseFloat(removeAmount) > 0;
-  const isStakeValid = stakeAmount.length > 0 && parseFloat(stakeAmount) > 0;
-  const isUnstakeValid = unstakeAmount.length > 0 && parseFloat(unstakeAmount) > 0;
+  const isEnterValid = amountA.length > 0 && parseFloat(amountA) > 0 && amountB.length > 0 && parseFloat(amountB) > 0;
+  const isExitValid  = exitAmount.length > 0 && parseFloat(exitAmount) > 0;
+  const hasPosition  = totalLpWei > 0n;
 
   const continueBlockedReason = !walletConnected
     ? 'Connect wallet to continue.'
     : isPreparing
       ? 'Preparing transaction bundle...'
-      : farmDisabled
-        ? 'This pool does not have an active farm.'
-        : action === 'add' && !isAddValid
-          ? `Enter valid amounts for both ${pool.tokenA.symbol} and ${pool.tokenB.symbol}.`
-          : action === 'remove' && !isRemoveValid
-            ? 'Enter a valid LP amount to remove.'
-            : action === 'stake' && !isStakeValid
-              ? 'Enter a valid LP amount to stake.'
-              : action === 'unstake' && !isUnstakeValid
-                ? 'Enter a valid LP amount to unstake.'
-                : action === 'claim' && !hasRewards
-                  ? 'No JOE rewards available to claim yet.'
-                  : null;
+      : action === 'enter' && !isEnterValid
+        ? `Enter valid amounts for both ${pool.tokenA.symbol} and ${pool.tokenB.symbol}.`
+        : action === 'exit' && !isExitValid
+          ? 'Enter a valid LP amount to exit.'
+          : action === 'exit' && !hasPosition
+            ? 'No LP position found.'
+            : action === 'claim' && !hasFarm
+              ? 'This pool has no active farm.'
+              : action === 'claim' && !hasRewards
+                ? 'No JOE rewards available to claim yet.'
+                : null;
 
   const canContinue = continueBlockedReason === null;
 
   const ctaLabel =
-    action === 'add' ? 'Review Add Liquidity'
-    : action === 'remove' ? 'Review Remove Liquidity'
-    : action === 'stake' ? 'Review Stake'
-    : action === 'unstake' ? 'Review Unstake'
+    action === 'enter' ? 'Review Enter Position'
+    : action === 'exit' ? 'Review Exit Position'
     : 'Claim JOE Rewards';
 
   return (
@@ -176,10 +157,9 @@ export function AvaxLpInputView({
     >
       <div className="px-4 sm:px-6 pb-6 space-y-3 relative z-10 flex-1 flex flex-col">
         {/* Action tabs */}
-        <div className="grid grid-cols-5 gap-1 bg-white/5 rounded-xl p-1">
+        <div className="grid grid-cols-3 gap-1 bg-white/5 rounded-xl p-1">
           {ACTION_TABS.map((tab) => {
-            const isFarmTab = FARM_ACTIONS.includes(tab.id);
-            const tabDisabled = isFarmTab && !hasFarm;
+            const tabDisabled = tab.id === 'claim' && !hasFarm;
             return (
               <button
                 key={tab.id}
@@ -223,8 +203,8 @@ export function AvaxLpInputView({
           </div>
         </div>
 
-        {/* Add liquidity */}
-        {action === 'add' && (
+        {/* Enter — add liquidity + optional stake */}
+        {action === 'enter' && (
           <>
             <DataInput
               label={pool.tokenA.symbol}
@@ -269,88 +249,52 @@ export function AvaxLpInputView({
               ))}
             </div>
 
-            {hasFarm && (
-              <div className="rounded-xl border border-white/10 bg-orange-500/5 px-3 py-2 text-[11px] text-zinc-400 leading-relaxed">
-                LP tokens will be received in your wallet. Use the <strong className="text-orange-400">Stake</strong> tab to deposit them in the farm and earn JOE rewards.
+            <div className="rounded-xl border border-white/10 bg-orange-500/5 px-3 py-2 text-[11px] text-zinc-400 leading-relaxed">
+              {hasFarm
+                ? 'Deposits both tokens, mints LP, and automatically stakes in the farm — all in one transaction.'
+                : 'Deposits both tokens and mints LP tokens to your wallet.'}
+            </div>
+          </>
+        )}
+
+        {/* Exit — unstake + remove liquidity */}
+        {action === 'exit' && (
+          <>
+            {totalLpWei > 0n ? (
+              <>
+                <DataInput
+                  label="LP Tokens to Exit"
+                  balance={
+                    `Total: ${totalLpDisplay}` +
+                    (stakedLpWei > 0n ? ` | Staked: ${stakedLpDisplay}` : '') +
+                    (walletLpWei > 0n ? ` | Wallet: ${walletLpDisplay}` : '')
+                  }
+                  onMaxClick={totalLpWei > 0n ? () => setExitAmount(maxExitAmount) : undefined}
+                  value={exitAmount}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === '' || NUMERIC_REGEX.test(v)) setExitAmount(v);
+                  }}
+                  placeholder="0.00"
+                  rightElement={
+                    <div className="flex items-center gap-1.5 bg-black border border-white/10 rounded-full px-2.5 py-1.5 min-h-[36px]">
+                      <span className="text-white font-medium text-sm">LP</span>
+                    </div>
+                  }
+                />
+                <div className="rounded-xl border border-white/10 bg-orange-500/5 px-3 py-2 text-[11px] text-zinc-400 leading-relaxed">
+                  {stakedLpWei > 0n
+                    ? `Unstakes from the farm and removes liquidity in one transaction. Returns ${pool.tokenA.symbol} + ${pool.tokenB.symbol} to your wallet.`
+                    : `Removes liquidity and returns ${pool.tokenA.symbol} + ${pool.tokenB.symbol} to your wallet.`}
+                </div>
+              </>
+            ) : (
+              <div className="bg-zinc-500/10 border border-zinc-500/20 rounded-xl p-4 text-center space-y-2">
+                <AlertTriangle className="w-8 h-8 text-zinc-500 mx-auto" />
+                <p className="text-sm text-zinc-500">No LP position found</p>
+                <p className="text-[11px] text-zinc-600">Add liquidity first to create a position.</p>
               </div>
             )}
-          </>
-        )}
-
-        {/* Remove liquidity */}
-        {action === 'remove' && (
-          <>
-            <DataInput
-              label="LP Tokens"
-              balance={
-                `Total LP: ${formatWeiDisplay(totalLpWei, 18, 8)}${stakedLpWei > 0n ? ` | Staked: ${stakedLpDisplay}` : ''}${walletLpWei > 0n ? ` | Wallet: ${walletLpDisplay}` : ''}`
-              }
-              onMaxClick={totalLpWei > 0n ? () => setRemoveAmount(maxRemoveAmount) : undefined}
-              value={removeAmount}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === '' || NUMERIC_REGEX.test(v)) setRemoveAmount(v);
-              }}
-              placeholder="0.00"
-              rightElement={
-                <div className="flex items-center gap-1.5 bg-black border border-white/10 rounded-full px-2.5 py-1.5 min-h-[36px]">
-                  <span className="text-white font-medium text-sm">LP</span>
-                </div>
-              }
-            />
-            <div className="rounded-xl border border-white/10 bg-orange-500/5 px-3 py-2 text-[11px] text-zinc-400 leading-relaxed">
-              Removes liquidity and returns {pool.tokenA.symbol} + {pool.tokenB.symbol} to your wallet.
-            </div>
-          </>
-        )}
-
-        {/* Stake */}
-        {action === 'stake' && hasFarm && (
-          <>
-            <DataInput
-              label="LP Tokens to Stake"
-              balance={walletLpWei > 0n ? `Wallet: ${walletLpDisplay}` : 'No LP in wallet'}
-              onMaxClick={walletLpWei > 0n ? () => setStakeAmount(maxStakeAmount) : undefined}
-              value={stakeAmount}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === '' || NUMERIC_REGEX.test(v)) setStakeAmount(v);
-              }}
-              placeholder="0.00"
-              rightElement={
-                <div className="flex items-center gap-1.5 bg-black border border-white/10 rounded-full px-2.5 py-1.5 min-h-[36px]">
-                  <span className="text-white font-medium text-sm">LP</span>
-                </div>
-              }
-            />
-            <div className="rounded-xl border border-white/10 bg-orange-500/5 px-3 py-2 text-[11px] text-zinc-400 leading-relaxed">
-              Stakes LP tokens in the MasterChef farm to earn JOE rewards.
-            </div>
-          </>
-        )}
-
-        {/* Unstake */}
-        {action === 'unstake' && hasFarm && (
-          <>
-            <DataInput
-              label="LP Tokens to Unstake"
-              balance={stakedLpWei > 0n ? `Staked: ${stakedLpDisplay}` : 'No staked LP'}
-              onMaxClick={stakedLpWei > 0n ? () => setUnstakeAmount(maxUnstakeAmount) : undefined}
-              value={unstakeAmount}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === '' || NUMERIC_REGEX.test(v)) setUnstakeAmount(v);
-              }}
-              placeholder="0.00"
-              rightElement={
-                <div className="flex items-center gap-1.5 bg-black border border-white/10 rounded-full px-2.5 py-1.5 min-h-[36px]">
-                  <span className="text-white font-medium text-sm">LP</span>
-                </div>
-              }
-            />
-            <div className="rounded-xl border border-white/10 bg-orange-500/5 px-3 py-2 text-[11px] text-zinc-400 leading-relaxed">
-              Withdraws LP tokens from the farm. Pending JOE rewards are automatically claimed.
-            </div>
           </>
         )}
 
@@ -379,16 +323,8 @@ export function AvaxLpInputView({
           )
         )}
 
-        {/* No farm info banner for farm-required actions */}
-        {farmDisabled && (
-          <div className="rounded-xl border border-zinc-500/20 bg-zinc-500/10 px-3 py-2 text-[11px] text-zinc-500 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            This pool has no active farm. Only Add/Remove liquidity is available.
-          </div>
-        )}
-
         {/* Position summary */}
-        {userPosition && (action === 'add' || action === 'remove') && (
+        {userPosition && (
           <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-1.5">
             <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Your Position</span>
             {parseFloat(userPosition.walletLpBalance) > 0 && (
