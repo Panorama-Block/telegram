@@ -168,7 +168,7 @@ export function AvaxLpInputView({
                 title={tabDisabled ? 'No active farm for this pool' : undefined}
                 className={`py-2 px-1 rounded-lg text-[11px] font-medium transition-all ${
                   action === tab.id && !tabDisabled
-                    ? 'bg-orange-500/15 text-white border border-orange-500/30'
+                    ? 'bg-cyan-500/15 text-white border border-cyan-500/30'
                     : tabDisabled
                       ? 'text-zinc-600 border border-transparent cursor-not-allowed'
                       : 'text-zinc-400 hover:text-white border border-transparent'
@@ -196,8 +196,8 @@ export function AvaxLpInputView({
             </div>
             {pool.estimatedAPR && (
               <div className="flex items-center gap-1 text-xs">
-                <TrendingUp className="w-3 h-3 text-orange-400" />
-                <span className="text-orange-400 font-semibold">{formatAPR(pool.estimatedAPR)} APR</span>
+                <TrendingUp className="w-3 h-3 text-cyan-400" />
+                <span className="text-cyan-400 font-semibold">{formatAPR(pool.estimatedAPR)} APR</span>
               </div>
             )}
           </div>
@@ -240,7 +240,7 @@ export function AvaxLpInputView({
                   onClick={() => setSlippageBps(bps)}
                   className={`text-[10px] px-2 py-1 rounded-lg border transition-colors ${
                     slippageBps === bps
-                      ? 'bg-orange-500/15 border-orange-500/30 text-white'
+                      ? 'bg-cyan-500/15 border-cyan-500/30 text-white'
                       : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
                   }`}
                 >
@@ -249,7 +249,7 @@ export function AvaxLpInputView({
               ))}
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-orange-500/5 px-3 py-2 text-[11px] text-zinc-400 leading-relaxed">
+            <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-zinc-400 leading-relaxed">
               {hasFarm
                 ? 'Deposits both tokens, mints LP, and automatically stakes in the farm — all in one transaction.'
                 : 'Deposits both tokens and mints LP tokens to your wallet.'}
@@ -282,7 +282,7 @@ export function AvaxLpInputView({
                     </div>
                   }
                 />
-                <div className="rounded-xl border border-white/10 bg-orange-500/5 px-3 py-2 text-[11px] text-zinc-400 leading-relaxed">
+                <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-zinc-400 leading-relaxed">
                   {stakedLpWei > 0n
                     ? `Unstakes from the farm and removes liquidity in one transaction. Returns ${pool.tokenA.symbol} + ${pool.tokenB.symbol} to your wallet.`
                     : `Removes liquidity and returns ${pool.tokenA.symbol} + ${pool.tokenB.symbol} to your wallet.`}
@@ -301,9 +301,9 @@ export function AvaxLpInputView({
         {/* Claim */}
         {action === 'claim' && (
           hasFarm ? (
-            <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-4 text-center space-y-2">
+            <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-4 text-center space-y-2">
               <img src={JOE_ICON} alt="JOE" className="w-10 h-10 rounded-full mx-auto" />
-              <p className="text-sm text-orange-400 font-medium">
+              <p className="text-sm text-cyan-400 font-medium">
                 {hasRewards
                   ? `${formatBalance(pendingRewards!, userPosition?.rewardToken?.decimals)} JOE`
                   : 'No rewards available'}
@@ -342,7 +342,7 @@ export function AvaxLpInputView({
             {parseFloat(userPosition.pendingRewards) > 0 && (
               <div className="flex justify-between text-xs">
                 <span className="text-zinc-400">Pending JOE</span>
-                <span className="text-orange-400 font-mono">
+                <span className="text-cyan-400 font-mono">
                   {formatBalance(userPosition.pendingRewards, userPosition.rewardToken?.decimals)} {userPosition.rewardToken?.symbol}
                 </span>
               </div>

@@ -7,7 +7,7 @@ import { TOKEN_ICONS as AVAX_TOKEN_ICONS, JOE_ICON } from '@/features/avax-lp/co
 import { useIsMobileBreakpoint } from '@/shared/hooks/useIsMobileBreakpoint';
 
 const AERO_ICON = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0x940181a94A35A4569E4529A3CDfB74e38FD98631/logo.png';
-const BASE_ICON = 'https://assets.coingecko.com/asset_platforms/images/131/small/base-network-logo.png';
+const BASE_ICON = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/info/logo.png';
 
 export interface YieldChainSelectorProps {
   onSelectBase: () => void;
@@ -84,7 +84,7 @@ export function YieldChainSelector({
         <button
           type="button"
           onClick={onSelectAvalanche}
-          className="w-full rounded-xl border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10 hover:border-orange-500/30 transition-all p-4 text-left group"
+          className="w-full rounded-xl border border-cyan-500/20 bg-cyan-500/5 hover:bg-cyan-500/10 hover:border-cyan-500/30 transition-all p-4 text-left group"
         >
           <div className="flex items-center gap-3">
             <div className="flex -space-x-1.5">
@@ -96,12 +96,12 @@ export function YieldChainSelector({
               <img src={JOE_ICON} alt="TraderJoe" className="w-8 h-8 rounded-full ring-2 ring-[#0b0d0f]" />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-semibold text-white group-hover:text-orange-300 transition-colors">
+              <p className="text-sm font-semibold text-white group-hover:text-cyan-300 transition-colors">
                 Avalanche — TraderJoe V1
               </p>
               <p className="text-xs text-zinc-500 mt-0.5">JOE rewards · MasterChef farming</p>
             </div>
-            <span className="text-xs text-orange-400 border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 rounded-full font-medium">
+            <span className="text-xs text-cyan-400 border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 rounded-full font-medium">
               AVAX
             </span>
           </div>

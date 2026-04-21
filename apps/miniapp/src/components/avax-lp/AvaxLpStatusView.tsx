@@ -74,21 +74,21 @@ export function AvaxLpStatusView({
         <div className="pt-2 flex flex-col items-center text-center gap-2">
           <div className={`w-16 h-16 rounded-full flex items-center justify-center border ${
             isSuccess
-              ? 'bg-orange-500/20 border-orange-500/30'
+              ? 'bg-cyan-500/20 border-cyan-500/30'
               : isPartial
                 ? 'bg-amber-500/20 border-amber-500/30'
                 : isFailed
                   ? 'bg-red-500/20 border-red-500/30'
-                  : 'bg-orange-500/10 border-orange-500/20'
+                  : 'bg-cyan-500/10 border-cyan-500/20'
           }`}>
             {isSuccess ? (
-              <Check className="w-8 h-8 text-orange-300" />
+              <Check className="w-8 h-8 text-cyan-300" />
             ) : isPartial ? (
               <AlertCircle className="w-8 h-8 text-amber-300" />
             ) : isFailed ? (
               <AlertCircle className="w-8 h-8 text-red-400" />
             ) : (
-              <Loader2 className="w-7 h-7 text-orange-300 animate-spin" />
+              <Loader2 className="w-7 h-7 text-cyan-300 animate-spin" />
             )}
           </div>
 
@@ -119,7 +119,7 @@ export function AvaxLpStatusView({
                   href={`${SNOWTRACE_URL}${step.txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-[11px] text-orange-300 hover:text-orange-200 transition-colors"
+                  className="flex items-center gap-2 text-[11px] text-cyan-300 hover:text-cyan-200 transition-colors"
                 >
                   <span className="font-mono truncate flex-1">{step.txHash}</span>
                   <ExternalLink className="w-3.5 h-3.5 shrink-0" />
@@ -137,7 +137,7 @@ export function AvaxLpStatusView({
 
         <div className="flex-1" />
 
-        {isSuccess ? (
+        {isSuccess || isPartial ? (
           <div className="space-y-2">
             <NeonButton onClick={onViewPosition} disabled={isNavigatingToPositions}>
               {isNavigatingToPositions ? (
@@ -147,9 +147,11 @@ export function AvaxLpStatusView({
                 </span>
               ) : 'View Position'}
             </NeonButton>
-            <NeonButton onClick={onNewPosition} className="bg-white/10 hover:bg-white/15 shadow-none text-white">
-              New Position
-            </NeonButton>
+            {isSuccess && (
+              <NeonButton onClick={onNewPosition} className="bg-white/10 hover:bg-white/15 shadow-none text-white">
+                New Position
+              </NeonButton>
+            )}
           </div>
         ) : isExecuting ? (
           <NeonButton onClick={onClose} className="bg-white/10 hover:bg-white/15 shadow-none text-white">

@@ -67,7 +67,7 @@ export function AvaxLpReviewView({
         className="flex flex-col h-full"
       >
         <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-orange-400" />
+          <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
           <p className="text-sm text-zinc-400">Preparing transaction bundle...</p>
         </div>
       </motion.div>
@@ -144,7 +144,7 @@ export function AvaxLpReviewView({
     >
       <div className="px-4 sm:px-6 pb-6 space-y-3 relative z-10 flex-1 flex flex-col overflow-y-auto custom-scrollbar">
         <div className="flex items-center justify-between pt-1">
-          <span className="px-2 py-0.5 bg-orange-500/10 text-orange-400 text-[10px] font-bold rounded border border-orange-500/20 flex items-center gap-1">
+          <span className="px-2 py-0.5 bg-cyan-500/10 text-cyan-400 text-[10px] font-bold rounded border border-cyan-500/20 flex items-center gap-1">
             <Check className="w-3 h-3" />
             {ACTION_LABELS[action]}
           </span>
@@ -174,7 +174,7 @@ export function AvaxLpReviewView({
               {estimatedLiquidity && (
                 <div className="flex justify-between text-sm">
                   <span className="text-zinc-500">Estimated LP output</span>
-                  <span className="text-orange-300 font-mono">
+                  <span className="text-cyan-300 font-mono">
                     {formatAmountHuman(BigInt(estimatedLiquidity), 18, 8)} LP
                   </span>
                 </div>
@@ -182,7 +182,7 @@ export function AvaxLpReviewView({
               {hasFarm && (
                 <div className="flex justify-between text-sm">
                   <span className="text-zinc-500">Auto-stake</span>
-                  <span className="text-orange-300">Enabled — LP staked in farm</span>
+                  <span className="text-cyan-300">Enabled — LP staked in farm</span>
                 </div>
               )}
             </>
@@ -197,7 +197,7 @@ export function AvaxLpReviewView({
               {stakedAmount && stakedAmount !== '0' && (
                 <div className="flex justify-between text-sm">
                   <span className="text-zinc-500">Unstake first</span>
-                  <span className="text-orange-300 font-mono">
+                  <span className="text-cyan-300 font-mono">
                     {formatAmountHuman(BigInt(stakedAmount), 18, 8)} LP
                   </span>
                 </div>
@@ -216,7 +216,7 @@ export function AvaxLpReviewView({
           {action === 'claim' && (
             <div className="flex justify-between text-sm">
               <span className="text-zinc-500">Action</span>
-              <span className="text-orange-300">Claim all pending JOE rewards</span>
+              <span className="text-cyan-300">Claim all pending JOE rewards</span>
             </div>
           )}
         </div>

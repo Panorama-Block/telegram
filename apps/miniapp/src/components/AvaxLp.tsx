@@ -24,6 +24,7 @@ import { useIsMobileBreakpoint } from '@/shared/hooks/useIsMobileBreakpoint';
 
 export interface AvaxLpProps {
   onClose: () => void;
+  onBackToChainSelector?: () => void;
   initialAction?: AvaxLpAction;
   initialPoolId?: number;
   initialAmount?: string | number;
@@ -168,6 +169,7 @@ function buildTxSteps(bundle: AvaxLpPrepareResponse['bundle']): YieldTxStep[] {
 
 export function AvaxLp({
   onClose,
+  onBackToChainSelector,
   initialAction,
   initialPoolId,
   initialAmount,
@@ -515,6 +517,78 @@ export function AvaxLp({
         }
       }
 
+      // Phase 2: stake LP in farm after addLiquidity confirms.
+      // prepareEnter no longer includes stake steps to avoid the estimated-vs-actual
+      // LP mismatch that causes the deposit to revert. prepareStake reads the real
+      // on-chain LP balance so the transfer amount is always correct.
+      const meta = freshResponse.metadata as Record<string, unknown>;
+      if (action === 'enter' && meta.hasFarm === true && selectedPool && account?.address) {
+        // Brief delay so the addLiquidity tx is indexed before the balance read.
+        await new Promise<void>((r) => setTimeout(r, 2500));
+
+        safeSet(() => setTxStage('preparing'));
+
+        let stakeResponse: AvaxLpPrepareResponse;
+        try {
+          stakeResponse = await avaxLpApi.prepareStake({
+            userAddress: account.address,
+            poolId:      selectedPool.poolId,
+            lpAmount:    (meta.estimatedLiquidity as string) ?? '1',
+          });
+        } catch (err) {
+          safeSet(() => {
+            setTxStage('partial_confirmed');
+            setError(
+              `Liquidity added to wallet. Auto-stake failed: ${getErrorMessage(err, 'could not prepare staking.')} ` +
+              `LP tokens are in your wallet — use "Manage" to stake manually.`
+            );
+          });
+          await refresh();
+          return;
+        }
+
+        const stakeOffset = freshResponse.bundle.steps.length;
+        const stakeSteps: YieldTxStep[] = stakeResponse.bundle.steps.map((step, i) => ({
+          id: `stake-${i}`,
+          label: step.description || `Step ${stakeOffset + i + 1}`,
+          stage: 'queued' as YieldTxStepStage,
+          txHash: null,
+        }));
+
+        safeSet(() => {
+          setTxSteps((prev) => [...prev, ...stakeSteps]);
+          setTxStage('awaiting_wallet');
+        });
+
+        for (let i = 0; i < stakeResponse.bundle.steps.length; i += 1) {
+          const step = stakeResponse.bundle.steps[i];
+          const globalIdx = stakeOffset + i;
+
+          safeSet(() => { markStep(globalIdx, 'awaiting_wallet'); setTxStage('awaiting_wallet'); });
+
+          try {
+            const result = await avaxLpApi.executeTransaction(step);
+
+            safeSet(() => {
+              if (result.source === 'recovered') { markStep(globalIdx, 'recovering'); setTxStage('recovering'); }
+              markStep(globalIdx, 'confirmed', result.transactionHash);
+              if (i < stakeResponse.bundle.steps.length - 1) setTxStage('pending');
+            });
+          } catch (err) {
+            safeSet(() => {
+              markStep(globalIdx, 'failed');
+              setTxStage('partial_confirmed');
+              setError(
+                `${getErrorMessage(err, 'Staking failed.')} ` +
+                `LP tokens are in your wallet — use "Manage" to stake manually.`
+              );
+            });
+            await refresh();
+            return;
+          }
+        }
+      }
+
       safeSet(() => setTxStage('confirmed'));
       await refresh();
     } finally {
@@ -527,8 +601,9 @@ export function AvaxLp({
     if (viewState === 'status') { if (txStage === 'failed') { setViewState('review'); return; } onClose(); return; }
     if (viewState === 'review') { setViewState('input'); return; }
     if (viewState === 'input') { setViewState('select'); return; }
+    if (onBackToChainSelector) { onBackToChainSelector(); return; }
     onClose();
-  }, [onClose, txStage, viewState]);
+  }, [onBackToChainSelector, onClose, txStage, viewState]);
 
   const handleRetry = useCallback(async () => {
     prepareCacheRef.current.clear();
@@ -597,10 +672,10 @@ export function AvaxLp({
         onClick={handleBack}
         className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors"
       >
-        {viewState === 'select' ? <X className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
+        {viewState === 'select' && !onBackToChainSelector ? <X className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
       </button>
       <div className="flex items-center gap-2 flex-1">
-        <Layers className="w-5 h-5 text-orange-400" />
+        <Layers className="w-5 h-5 text-white" />
         <h2 className="text-lg font-display font-bold text-white">{viewTitles[viewState]}</h2>
       </div>
     </div>
@@ -626,7 +701,7 @@ export function AvaxLp({
       isMobile={isMobile}
       header={header}
       footer={footer}
-      gradientClassName="bg-orange-500/10"
+      gradientClassName="bg-cyan-500/10"
       cardClassName="md:min-h-[540px]"
       bodyClassName="custom-scrollbar"
     >

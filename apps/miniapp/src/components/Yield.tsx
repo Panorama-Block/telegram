@@ -20,6 +20,7 @@ import { useIsMobileBreakpoint } from '@/shared/hooks/useIsMobileBreakpoint';
 
 export interface YieldProps {
   onClose: () => void;
+  onBackToChainSelector?: () => void;
   initialAction?: YieldAction;
   initialPoolId?: string;
   initialAmount?: string | number;
@@ -165,6 +166,7 @@ function buildTxSteps(bundle: YieldPrepareResponse['bundle']): YieldTxStep[] {
 
 export function Yield({
   onClose,
+  onBackToChainSelector,
   initialAction,
   initialPoolId,
   initialAmount,
@@ -688,8 +690,13 @@ export function Yield({
       return;
     }
 
+    if (onBackToChainSelector) {
+      onBackToChainSelector();
+      return;
+    }
+
     onClose();
-  }, [onClose, txStage, viewState]);
+  }, [onBackToChainSelector, onClose, txStage, viewState]);
 
   const handleRetry = useCallback(() => {
     if (!prepareResponse) return;
@@ -748,7 +755,7 @@ export function Yield({
         onClick={handleBack}
         className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full transition-colors"
       >
-        {viewState === 'select' ? <X className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
+        {viewState === 'select' && !onBackToChainSelector ? <X className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
       </button>
       <div className="flex items-center gap-2 flex-1">
         <TrendingUp className="w-5 h-5 text-cyan-400" />

@@ -97,14 +97,14 @@ export function AvaxLpSelectView({
             onClick={() => setActiveTab('positions')}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all ${
               activeTab === 'positions'
-                ? 'bg-orange-500/15 text-orange-400 border border-orange-500/20 shadow-sm'
+                ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/20 shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-300'
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
             Positions
             {hasPositions && (
-              <span className="ml-0.5 text-[10px] bg-orange-500/20 text-orange-400 px-1.5 py-px rounded-full">
+              <span className="ml-0.5 text-[10px] bg-cyan-500/20 text-cyan-400 px-1.5 py-px rounded-full">
                 {userPositions.length}
               </span>
             )}
@@ -114,7 +114,7 @@ export function AvaxLpSelectView({
             onClick={() => setActiveTab('pools')}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all ${
               activeTab === 'pools'
-                ? 'bg-orange-500/15 text-orange-400 border border-orange-500/20 shadow-sm'
+                ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/20 shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-300'
             }`}
           >
@@ -150,7 +150,7 @@ export function AvaxLpSelectView({
                   <button
                     type="button"
                     onClick={() => setActiveTab('pools')}
-                    className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
+                    className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
                   >
                     Browse pools to get started
                   </button>
@@ -164,7 +164,7 @@ export function AvaxLpSelectView({
                     return (
                       <div
                         key={pos.poolId}
-                        className="bg-white/5 border border-orange-500/20 rounded-xl p-3 space-y-2"
+                        className="bg-white/5 border border-cyan-500/20 rounded-xl p-3 space-y-2"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -181,7 +181,7 @@ export function AvaxLpSelectView({
                             </span>
                           </div>
                           {pos.farmAddress ? (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full border font-medium text-orange-300 bg-orange-500/10 border-orange-500/20">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full border font-medium text-cyan-300 bg-cyan-500/10 border-cyan-500/20">
                               Farm
                             </span>
                           ) : (
@@ -212,7 +212,7 @@ export function AvaxLpSelectView({
                             <span className="text-zinc-500 flex items-center gap-1">
                               <Gift className="w-3 h-3" /> Rewards
                             </span>
-                            <span className="text-orange-400 font-mono flex items-center gap-1">
+                            <span className="text-cyan-400 font-mono flex items-center gap-1">
                               <img src={JOE_ICON} alt="" className="w-3 h-3 rounded-full" />
                               {formatRewards(pos.pendingRewards, pos.rewardToken?.decimals ?? 18)} {pos.rewardToken?.symbol}
                             </span>
@@ -223,7 +223,7 @@ export function AvaxLpSelectView({
                           {hasRewards && pos.farmAddress && (
                             <button
                               onClick={(e) => { e.stopPropagation(); onQuickClaim(pos.poolId); }}
-                              className="flex-1 py-1.5 rounded-lg text-[11px] font-medium bg-orange-500/10 border border-orange-500/20 text-orange-400 hover:bg-orange-500/20 transition-colors"
+                              className="flex-1 py-1.5 rounded-lg text-[11px] font-medium bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/20 transition-colors"
                             >
                               Claim
                             </button>
@@ -266,7 +266,7 @@ export function AvaxLpSelectView({
                     <button
                       type="button"
                       onClick={onRetry}
-                      className="px-3 py-1.5 text-xs rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 transition-colors"
+                      className="px-3 py-1.5 text-xs rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 transition-colors"
                     >
                       Retry
                     </button>
@@ -313,12 +313,12 @@ export function AvaxLpSelectView({
 
                           <div className="flex items-center gap-1.5">
                             {hasPosition && (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20 font-medium">
+                              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium">
                                 Active
                               </span>
                             )}
                             {hasFarm ? (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full border font-medium text-orange-300 bg-orange-500/10 border-orange-500/20">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full border font-medium text-cyan-300 bg-cyan-500/10 border-cyan-500/20">
                                 Farm
                               </span>
                             ) : (
@@ -331,9 +331,9 @@ export function AvaxLpSelectView({
 
                         <div className="flex items-center gap-4 text-xs flex-wrap">
                           <div className="flex items-center gap-1">
-                            <TrendingUp className="w-3 h-3 text-orange-400" />
+                            <TrendingUp className="w-3 h-3 text-cyan-400" />
                             <span className="text-zinc-500">APR</span>
-                            <span className="text-orange-400 font-semibold">{formatAPR(pool.estimatedAPR)}</span>
+                            <span className="text-cyan-400 font-semibold">{formatAPR(pool.estimatedAPR)}</span>
                           </div>
                           <div>
                             <span className="text-zinc-500">TVL </span>

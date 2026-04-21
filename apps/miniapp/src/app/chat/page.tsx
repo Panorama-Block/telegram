@@ -3524,6 +3524,11 @@ export default function ChatPage() {
                   setShowYieldWidget(false);
                   setCurrentYieldMetadata(null);
                 }}
+                onBackToChainSelector={() => {
+                  setShowYieldWidget(false);
+                  setCurrentYieldMetadata(null);
+                  setShowYieldChainSelector(true);
+                }}
                 initialAmount={
                   typeof currentYieldMetadata?.amount === 'string' || typeof currentYieldMetadata?.amount === 'number'
                     ? currentYieldMetadata.amount
@@ -3561,6 +3566,11 @@ export default function ChatPage() {
                 onClose={() => {
                   setShowAvaxLpWidget(false);
                   setCurrentAvaxLpMetadata(null);
+                }}
+                onBackToChainSelector={() => {
+                  setShowAvaxLpWidget(false);
+                  setCurrentAvaxLpMetadata(null);
+                  setShowYieldChainSelector(true);
                 }}
                 initialAction={parseAvaxLpAction(currentAvaxLpMetadata?.action)}
                 initialPoolId={parseAvaxLpPoolId(currentAvaxLpMetadata?.pool_id)}
