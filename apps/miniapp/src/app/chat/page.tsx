@@ -40,8 +40,8 @@ import { Staking } from '@/components/Staking';
 import { AvaxLiquidStaking } from '@/components/AvaxLiquidStaking';
 import { LiquidStakingRouter } from '@/components/LiquidStakingRouter';
 import { Yield } from '@/components/Yield';
-import { OnboardingModal } from '@/components/OnboardingModal';
 import { GuidedTour } from '@/components/GuidedTour';
+import { OnboardingModal } from '@/components/OnboardingModal';
 import { Droplets } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { useAudioRecorder } from '@/shared/hooks/useAudioRecorder';
@@ -368,6 +368,7 @@ function normalizeConversationId(value: unknown): string | null {
 export default function ChatPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [onboardingReady, setOnboardingReady] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -1946,11 +1947,15 @@ export default function ChatPage() {
             }
           />
 
-          {/* Onboarding Modal - Shows when user has no balance after login */}
-          <OnboardingModal />
+          {/* Onboarding Modal - Shows after login when user has no balance; releases tour when dismissed */}
+          <OnboardingModal onReady={() => setOnboardingReady(true)} />
 
-          {/* Guided Tour - Shows on first visit to teach the user about features */}
-          <GuidedTour />
+          {/* Guided Tour - Starts only after OnboardingModal is done (or not needed) */}
+          {/* Add ?devTour=true to the URL to force-show the tour on every load */}
+          <GuidedTour
+            ready={onboardingReady}
+            forceShow={searchParams.get('devTour') === 'true'}
+          />
 
           <SeniorAppShell pageTitle={activeConversationTitle}>
             <div className="flex flex-col h-full relative bg-black">

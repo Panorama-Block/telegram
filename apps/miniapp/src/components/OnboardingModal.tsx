@@ -8,20 +8,21 @@ import { useActiveAccount } from 'thirdweb/react';
 import { createThirdwebClient, defineChain } from 'thirdweb';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 
-export function OnboardingModal() {
+interface OnboardingModalProps {
+  /** Called when the modal is dismissed OR when it determines it doesn't need to show */
+  onReady: () => void;
+}
+
+export function OnboardingModal({ onReady }: OnboardingModalProps) {
   const account = useActiveAccount();
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState(false);
 
   const clientId = THIRDWEB_CLIENT_ID;
   const client = clientId ? createThirdwebClient({ clientId }) : null;
 
-  // Fetch balance across main chains and show onboarding if zero
   useEffect(() => {
-    if (!client || !account?.address || dismissed) {
-      return;
-    }
+    if (!client || !account?.address) return;
 
     let cancelled = false;
 
@@ -29,7 +30,6 @@ export function OnboardingModal() {
       try {
         const { eth_getBalance, getRpcClient } = await import('thirdweb/rpc');
 
-        // Check balance on main chains (Ethereum, Base, Arbitrum)
         const chains = [1, 8453, 42161];
         let total = 0n;
 
@@ -38,25 +38,26 @@ export function OnboardingModal() {
             const rpcRequest = getRpcClient({ client, chain: defineChain(chainId) });
             const balance = await eth_getBalance(rpcRequest, { address: account.address });
             total += balance;
-          } catch (e) {
-            // Skip chain if error
+          } catch {
+            // Skip chain if RPC error
           }
         }
 
         if (cancelled) return;
 
-        // Convert to ETH (18 decimals)
         const totalEth = Number(total) / 1e18;
 
-        // Show onboarding if balance is very low
         if (totalEth < 0.0001) {
-          setTimeout(() => setShowOnboarding(true), 1000);
+          // User has no funds — show modal before guide starts
+          setTimeout(() => setShowOnboarding(true), 800);
+        } else {
+          // User already has funds — release tour immediately
+          onReady();
         }
-      } catch (error) {
-        console.error('[Onboarding] Error fetching balances:', error);
+      } catch {
         if (!cancelled) {
-          // On error, show onboarding anyway
-          setTimeout(() => setShowOnboarding(true), 1000);
+          // On RPC error assume no funds and show modal
+          setTimeout(() => setShowOnboarding(true), 800);
         }
       }
     };
@@ -66,7 +67,8 @@ export function OnboardingModal() {
     return () => {
       cancelled = true;
     };
-  }, [client, account?.address, dismissed]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.address]);
 
   const handleCopyAddress = async () => {
     if (!account?.address) return;
@@ -74,15 +76,14 @@ export function OnboardingModal() {
       await navigator.clipboard.writeText(account.address);
       setCopiedAddress(true);
       setTimeout(() => setCopiedAddress(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy address:', err);
+    } catch {
+      // clipboard not available
     }
   };
 
   const handleDismiss = () => {
     setShowOnboarding(false);
-    setDismissed(true);
-    // Not persisting to storage - modal will show again on page refresh if balance is still 0
+    onReady();
   };
 
   if (!account?.address) return null;
