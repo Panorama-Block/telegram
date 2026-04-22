@@ -7,6 +7,8 @@ export interface TourStep {
   description: string;
   /** Tooltip placement relative to the target */
   placement: 'top' | 'bottom' | 'left' | 'right';
+  /** On narrow viewports (< 480px) center the tooltip on screen instead of anchoring to the target */
+  centerOnMobile?: boolean;
   /** Optional: auto-open a modal or trigger an action when this step becomes active */
   action?: () => void;
 }
@@ -198,6 +200,7 @@ export const ONBOARDING_TOUR: TourStep[] = [
     description:
       'On mobile, use these tabs to quickly jump between Chat, Lending, Staking, and Yield without opening the sidebar.',
     placement: 'top',
+    centerOnMobile: true,
     action: () => {
       closeAllWidgets();
       requestSidebar(false);

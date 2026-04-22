@@ -12,6 +12,8 @@ interface GuidedTourProps {
   onComplete?: () => void;
   /** Force-show the tour even if already completed */
   forceShow?: boolean;
+  /** Gate: tour won't start until this is true (default: true) */
+  ready?: boolean;
 }
 
 interface SpotlightRect {
@@ -25,15 +27,16 @@ const PADDING = 8;
 const BORDER_RADIUS = 16;
 const TOOLTIP_GAP = 12;
 
-export function GuidedTour({ steps = ONBOARDING_TOUR, onComplete, forceShow }: GuidedTourProps) {
+export function GuidedTour({ steps = ONBOARDING_TOUR, onComplete, forceShow, ready = true }: GuidedTourProps) {
   const [active, setActive] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [spotlight, setSpotlight] = useState<SpotlightRect | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
 
-  // Check if tour should show
+  // Check if tour should show — waits for `ready` gate (e.g. onboarding modal dismissed)
   useEffect(() => {
+    if (!ready) return;
     if (forceShow) {
       setActive(true);
       return;
@@ -44,7 +47,7 @@ export function GuidedTour({ steps = ONBOARDING_TOUR, onComplete, forceShow }: G
       const timer = setTimeout(() => setActive(true), 1200);
       return () => clearTimeout(timer);
     }
-  }, [forceShow]);
+  }, [forceShow, ready]);
 
   // Compute spotlight rect for current step
   const updateSpotlight = useCallback(() => {
@@ -139,9 +142,12 @@ export function GuidedTour({ steps = ONBOARDING_TOUR, onComplete, forceShow }: G
 
   const completeTour = useCallback(() => {
     setActive(false);
-    localStorage.setItem(TOUR_STORAGE_KEY, 'true');
+    // In dev mode (forceShow) don't persist completion so the tour reappears on refresh
+    if (!forceShow) {
+      localStorage.setItem(TOUR_STORAGE_KEY, 'true');
+    }
     onComplete?.();
-  }, [onComplete]);
+  }, [forceShow, onComplete]);
 
   const goNext = useCallback(() => {
     if (currentStep < steps.length - 1) {
@@ -171,9 +177,23 @@ export function GuidedTour({ steps = ONBOARDING_TOUR, onComplete, forceShow }: G
 
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const TOOLTIP_W = Math.min(320, vw - 32);
-    const TOOLTIP_H = 220; // approximate
     const MARGIN = 12;
+    const isMobile = vw < 480;
+    // Use a conservative width so clamping math stays correct on narrow viewports
+    const TOOLTIP_W = Math.min(320, vw - MARGIN * 2);
+    // Use a generous height estimate so "top" placement never clips the bottom
+    const TOOLTIP_H = 260;
+
+    // On mobile, steps marked centerOnMobile float in the middle of the screen
+    if (isMobile && step.centerOnMobile) {
+      return {
+        position: 'fixed',
+        top: Math.round(vh / 2 - TOOLTIP_H / 2),
+        left: Math.round(vw / 2 - TOOLTIP_W / 2),
+        width: TOOLTIP_W,
+        maxWidth: `calc(100vw - ${MARGIN * 2}px)`,
+      };
+    }
 
     // Available space in each direction
     const spaceTop = spotlight.y;
@@ -183,7 +203,6 @@ export function GuidedTour({ steps = ONBOARDING_TOUR, onComplete, forceShow }: G
 
     // Pick best placement: preferred, fallback to where there is space
     let placement = step.placement;
-    const needed = placement === 'top' || placement === 'bottom' ? TOOLTIP_H + MARGIN : TOOLTIP_W + MARGIN;
     const fits = {
       top: spaceTop >= TOOLTIP_H + MARGIN,
       bottom: spaceBottom >= TOOLTIP_H + MARGIN,
@@ -199,7 +218,6 @@ export function GuidedTour({ steps = ONBOARDING_TOUR, onComplete, forceShow }: G
           return map[b] - map[a];
         })[0];
       if (best) placement = best;
-      // If nothing fits, overlay at bottom of viewport
     }
 
     let top: number;
@@ -227,7 +245,7 @@ export function GuidedTour({ steps = ONBOARDING_TOUR, onComplete, forceShow }: G
         left = vw / 2 - TOOLTIP_W / 2;
     }
 
-    // Clamp to viewport
+    // Clamp to viewport — use TOOLTIP_W (not a guess) so right edge is always within bounds
     left = Math.max(MARGIN, Math.min(left, vw - TOOLTIP_W - MARGIN));
     top = Math.max(MARGIN, Math.min(top, vh - TOOLTIP_H - MARGIN));
 
@@ -236,6 +254,8 @@ export function GuidedTour({ steps = ONBOARDING_TOUR, onComplete, forceShow }: G
       top,
       left,
       width: TOOLTIP_W,
+      // CSS safety net: prevents overflow even if window.innerWidth is unreliable
+      maxWidth: `calc(100vw - ${MARGIN * 2}px)`,
     };
   };
 
@@ -381,7 +401,7 @@ export function GuidedTour({ steps = ONBOARDING_TOUR, onComplete, forceShow }: G
             exit={{ opacity: 0, scale: 0.95, y: 8 }}
             transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
             style={{ ...getTooltipStyle(), zIndex: 202 }}
-            className="w-[320px] max-w-[calc(100vw-32px)]"
+            className="overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="bg-[#0A0A0A]/95 backdrop-blur-xl border border-white/15 rounded-2xl p-5 shadow-2xl shadow-black/60">
@@ -420,16 +440,16 @@ export function GuidedTour({ steps = ONBOARDING_TOUR, onComplete, forceShow }: G
               </div>
 
               {/* Navigation */}
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-500">
+              <div className="flex items-center justify-between gap-2 min-w-0">
+                <span className="text-xs text-zinc-500 shrink-0">
                   {currentStep + 1} of {steps.length}
                 </span>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   {!isFirstStep && (
                     <button
                       onClick={goPrev}
-                      className="flex items-center gap-1 px-3 py-1.5 text-xs text-zinc-400 hover:text-white border border-white/10 hover:border-white/20 rounded-lg transition-colors"
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs text-zinc-400 hover:text-white border border-white/10 hover:border-white/20 rounded-lg transition-colors whitespace-nowrap"
                     >
                       <ChevronLeft className="w-3.5 h-3.5" />
                       Back
@@ -438,14 +458,14 @@ export function GuidedTour({ steps = ONBOARDING_TOUR, onComplete, forceShow }: G
                   {isFirstStep && (
                     <button
                       onClick={completeTour}
-                      className="px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                      className="px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
                     >
                       Skip
                     </button>
                   )}
                   <button
                     onClick={goNext}
-                    className="flex items-center gap-1 px-4 py-1.5 text-xs font-medium text-black bg-cyan-400 hover:bg-cyan-300 rounded-lg transition-colors"
+                    className="flex items-center gap-1 px-4 py-1.5 text-xs font-medium text-black bg-cyan-400 hover:bg-cyan-300 rounded-lg transition-colors whitespace-nowrap"
                   >
                     {isLastStep ? "Let's go!" : 'Next'}
                     {!isLastStep && <ChevronRight className="w-3.5 h-3.5" />}
