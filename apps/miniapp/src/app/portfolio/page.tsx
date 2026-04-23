@@ -148,7 +148,7 @@ export default function PortfolioPage() {
 
   const [viewMode, setViewMode] = useState<ViewMode>('main');
   const [activeTab, setActiveTab] = useState<TabMode>('assets');
-  const [desktopRightTab, setDesktopRightTab] = useState<'assets' | 'history'>('assets');
+  const [desktopRightTab, setDesktopRightTab] = useState<'assets' | 'history' | 'dca'>('assets');
   const [historyRange, setHistoryRange] = useState<TimeRange>('1W');
   const [stakingSlide, setStakingSlide] = useState(0);
   const [lendingSlide, setLendingSlide] = useState(0);
@@ -971,19 +971,28 @@ export default function PortfolioPage() {
         <div className="hidden lg:flex lg:flex-col lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:min-h-0">
           {/* Desktop mini-tab toggle */}
           <div className="flex items-center gap-1 mb-2 px-1">
-            {(['assets', 'history'] as const).map(tab => (
+            {([
+              { key: 'assets',  label: 'Assets',  icon: <Wallet className="w-3.5 h-3.5" /> },
+              { key: 'dca',     label: 'DCA',     icon: <Zap className="w-3.5 h-3.5" /> },
+              { key: 'history', label: 'History', icon: <Clock className="w-3.5 h-3.5" /> },
+            ] as const).map(tab => (
               <button
-                key={tab}
-                onClick={() => setDesktopRightTab(tab)}
+                key={tab.key}
+                onClick={() => setDesktopRightTab(tab.key)}
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-                  desktopRightTab === tab
+                  desktopRightTab === tab.key
                     ? "bg-white/10 text-white"
                     : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
                 )}
               >
-                {tab === 'assets' ? <Wallet className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-                {tab === 'assets' ? 'Assets' : 'History'}
+                {tab.icon}
+                {tab.label}
+                {tab.key === 'dca' && activeStrategiesCount > 0 && (
+                  <span className="ml-0.5 text-[10px] bg-cyan-500/20 text-cyan-400 px-1.5 py-0.5 rounded-full font-medium">
+                    {activeStrategiesCount}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -1124,6 +1133,162 @@ export default function PortfolioPage() {
                   </button>
                 )}
               </div>
+          </div>
+
+          {/* DCA content (desktop right) */}
+          <div className={cn(
+            "flex-1 min-h-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
+            desktopRightTab !== 'dca' && "hidden"
+          )}>
+            <div className="rounded-3xl border border-white/8 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-3 space-y-2">
+              <SmartWalletCard
+                smartAccount={selectedAccount}
+                smartAccounts={smartAccounts}
+                hasSmartWallet={hasSmartWallet}
+                loading={smartLoading || isDeleting}
+                isSelected={isSmartWalletView}
+                balance={smartStats.netWorth}
+                activeStrategies={activeStrategiesCount}
+                onSelect={handleSmartWalletCardClick}
+                onCreateWallet={() => setShowCreateModal(true)}
+                onDeposit={() => setShowDepositModal(true)}
+                onWithdraw={() => setShowWithdrawModal(true)}
+                onDelete={handleDeleteWallet}
+                onSelectAccount={selectAccount}
+              />
+              {!hasSmartWallet && (
+                <div className="py-6 text-center">
+                  <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-2">
+                    <Zap className="w-4 h-4 text-zinc-600" />
+                  </div>
+                  <p className="text-sm text-zinc-500 mb-3">Create a Smart Wallet to enable DCA strategies</p>
+                  <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="px-4 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-sm hover:bg-cyan-500/15 transition-colors"
+                  >
+                    Create Smart Wallet
+                  </button>
+                </div>
+              )}
+              {hasSmartWallet && strategies.length === 0 && (
+                <div className="py-6 text-center">
+                  <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-2">
+                    <Zap className="w-4 h-4 text-zinc-600" />
+                  </div>
+                  <p className="text-sm text-zinc-500">No DCA strategies yet.</p>
+                  <p className="text-xs text-zinc-600 mt-1">Ask Zico to set one up for you.</p>
+                </div>
+              )}
+              {hasSmartWallet && strategies.length > 0 && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">
+                      {strategies.filter(s => s.isActive).length} active · {strategies.length} total
+                    </span>
+                  </div>
+                  {strategies.map((strategy, i) => {
+                    const isExpanded = expandedStrategy === strategy.strategyId;
+                    const isLoading = strategyActionLoading === strategy.strategyId;
+                    const fromSymbol = getTokenSymbol(strategy.fromToken);
+                    const toSymbol = getTokenSymbol(strategy.toToken);
+                    return (
+                      <GlassCard
+                        key={strategy.strategyId || i}
+                        className={cn("p-4 bg-[#0A0A0A]/60 transition-all", isExpanded && "ring-1 ring-cyan-500/30")}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center text-[10px] font-bold text-cyan-400 border border-cyan-500/20 shrink-0">
+                              {fromSymbol.slice(0, 2)}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-white truncate">
+                                {strategy.amount} {fromSymbol} → {toSymbol}
+                              </div>
+                              <div className="text-xs text-zinc-500 flex items-center gap-2 flex-wrap">
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  <span className="capitalize">{strategy.interval}</span>
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {new Date(strategy.nextExecution * 1000).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <div className={cn(
+                              "px-2 py-0.5 rounded-full text-[10px] font-medium border",
+                              strategy.isActive
+                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                : "bg-zinc-500/10 border-zinc-500/20 text-zinc-400"
+                            )}>
+                              {strategy.isActive ? 'Active' : 'Paused'}
+                            </div>
+                            <button
+                              onClick={() => setExpandedStrategy(isExpanded ? null : strategy.strategyId || null)}
+                              className="p-1.5 text-zinc-500 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                            >
+                              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="mt-2 pt-2 border-t border-white/5"
+                          >
+                            <div className="grid grid-cols-2 gap-2 mb-3">
+                              {[
+                                { label: 'Amount',         value: `${strategy.amount} ${fromSymbol}`, cls: '' },
+                                { label: 'Frequency',      value: strategy.interval,                   cls: 'capitalize' },
+                                { label: 'Last Executed',  value: strategy.lastExecuted > 0 ? new Date(strategy.lastExecuted * 1000).toLocaleDateString() : 'Never', cls: '' },
+                                { label: 'Next Execution', value: new Date(strategy.nextExecution * 1000).toLocaleDateString(), cls: '' },
+                              ].map(({ label, value, cls }) => (
+                                <div key={label}>
+                                  <div className="text-[10px] text-zinc-500 uppercase mb-1">{label}</div>
+                                  <div className={cn("text-sm text-white", cls)}>{value}</div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleToggleStrategy(strategy)}
+                                disabled={isLoading}
+                                className={cn(
+                                  "flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
+                                  strategy.isActive
+                                    ? "bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 border border-yellow-500/20"
+                                    : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20",
+                                  isLoading && "opacity-50 cursor-not-allowed"
+                                )}
+                              >
+                                {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : strategy.isActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                                {strategy.isActive ? 'Pause' : 'Resume'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteStrategy(strategy)}
+                                disabled={isLoading}
+                                className={cn(
+                                  "flex items-center gap-1.5 px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-xs font-medium transition-colors",
+                                  isLoading && "opacity-50 cursor-not-allowed"
+                                )}
+                              >
+                                {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                Delete
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </GlassCard>
+                    );
+                  })}
+                </>
+              )}
+            </div>
           </div>
         </div>
 

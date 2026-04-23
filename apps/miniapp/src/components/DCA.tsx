@@ -140,7 +140,7 @@ interface Protocol {
 }
 
 const LENDING_PROTOCOLS: Protocol[] = [
-  { id: "benqi", name: "Benqi", chain: "Avalanche", chainId: 43114, icon: "https://assets.coingecko.com/coins/images/18174/small/qi.png" },
+  { id: "benqi", name: "Benqi", chain: "Avalanche", chainId: 43114, icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/avalanchec/assets/0x8729438EB15e2C8B576fCc6AeCdA6A148776C0F5/logo.png" },
   { id: "aave-v3", name: "Aave V3", chain: "Ethereum", chainId: 1, icon: "https://assets.coingecko.com/coins/images/12645/small/AAVE.png" },
 ];
 
@@ -488,7 +488,7 @@ export function DCA({ onClose }: DCAProps) {
         </button>
       </div>
 
-      <DataInput label="Amount to spend per execution" value={spendAmount} onChange={(e) => setSpendAmount(e.target.value)} type="number" placeholder="100" rightElement={<TokenButton token={payToken} onClick={() => setShowPayTokenModal(true)} />} />
+      <DataInput label="Amount to spend per execution" value={spendAmount} onChange={(e) => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setSpendAmount(v); }} type="text" inputMode="decimal" placeholder="100" rightElement={<TokenButton token={payToken} onClick={() => setShowPayTokenModal(true)} />} />
     </>
   );
 
@@ -539,7 +539,7 @@ export function DCA({ onClose }: DCAProps) {
         </button>
       </div>
 
-      <DataInput label={`Amount to ${lendingAction} per execution`} value={spendAmount} onChange={(e) => setSpendAmount(e.target.value)} type="number" placeholder="100" />
+      <DataInput label={`Amount to ${lendingAction} per execution`} value={spendAmount} onChange={(e) => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setSpendAmount(v); }} type="text" inputMode="decimal" placeholder="100" />
     </>
   );
 
@@ -568,7 +568,7 @@ export function DCA({ onClose }: DCAProps) {
         </div>
       </div>
 
-      <DataInput label="Amount to stake per execution" value={spendAmount} onChange={(e) => setSpendAmount(e.target.value)} type="number" placeholder="0.5" />
+      <DataInput label="Amount to stake per execution" value={spendAmount} onChange={(e) => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setSpendAmount(v); }} type="text" inputMode="decimal" placeholder="0.5" />
     </>
   );
 
@@ -611,17 +611,17 @@ export function DCA({ onClose }: DCAProps) {
         </div>
       </div>
 
-      <DataInput label={`Amount ${selectedPool.tokenA} per execution`} value={spendAmount} onChange={(e) => setSpendAmount(e.target.value)} type="number" placeholder="100" />
-      <DataInput label={`Amount ${selectedPool.tokenB} per execution`} value={amountB} onChange={(e) => setAmountB(e.target.value)} type="number" placeholder="100" />
+      <DataInput label={`Amount ${selectedPool.tokenA} per execution`} value={spendAmount} onChange={(e) => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setSpendAmount(v); }} type="text" inputMode="decimal" placeholder="100" />
+      <DataInput label={`Amount ${selectedPool.tokenB} per execution`} value={amountB} onChange={(e) => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setAmountB(v); }} type="text" inputMode="decimal" placeholder="100" />
     </>
   );
 
   const renderFormByType = () => {
     switch (strategyType) {
-      case "swap": return <SwapForm />;
-      case "lending": return <LendingForm />;
-      case "liquid_staking": return <StakingForm />;
-      case "liquidity_pool": return <LPForm />;
+      case "swap": return SwapForm();
+      case "lending": return LendingForm();
+      case "liquid_staking": return StakingForm();
+      case "liquidity_pool": return LPForm();
     }
   };
 
