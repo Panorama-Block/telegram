@@ -95,7 +95,7 @@ export default function NewChatPage() {
   // Wallet configuration
   const wallets = useMemo(() => {
     if (typeof window === 'undefined') return [inAppWallet()];
-    const isTelegram = isTelegramWebApp();
+    const isTelegram = isTelegramWebApp() || isTelegramEnv;
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const mode = isTelegram ? 'redirect' : 'popup';
     const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
@@ -128,7 +128,7 @@ export default function NewChatPage() {
           }),
           createWallet('io.metamask', { preferDeepLink: true }),
         ];
-  }, []);
+  }, [isTelegramEnv]);
 
   // Auto-connect wallet on mount if not connected
   useEffect(() => {
