@@ -31,6 +31,32 @@ import {
   type StrategyActionType,
 } from "@/features/dca/api";
 
+function parseDCAError(err: any): string {
+  const msg: string = err?.message || err?.toString() || '';
+  if (msg.includes('AA21') || msg.includes('prefund') || msg.includes("didn't pay prefund")) {
+    return 'Insufficient gas in your Panorama Wallet. Send a small amount of ETH (or the native token) to it before proceeding.';
+  }
+  if (msg.includes('AA25') || msg.includes('invalid account nonce')) {
+    return 'Transaction conflict. Wait a few seconds and try again.';
+  }
+  if (msg.includes('insufficient funds')) {
+    return 'Insufficient token balance in your Panorama Wallet.';
+  }
+  if (msg.includes('user rejected') || msg.includes('User rejected')) {
+    return 'Transaction cancelled.';
+  }
+  if (msg.includes('INSUFFICIENT_OUTPUT_AMOUNT') || msg.includes('Too little received')) {
+    return 'Price moved too much (slippage). Please try again.';
+  }
+  if (msg.includes('network') || msg.includes('fetch')) {
+    return 'Network error. Check your connection and try again.';
+  }
+  if (msg.includes('Swap execution failed: ')) {
+    return msg.replace('Swap execution failed: ', '');
+  }
+  return msg || 'Something went wrong. Please try again.';
+}
+
 interface DCAProps {
   onClose: () => void;
 }
@@ -224,13 +250,9 @@ export function DCA({ onClose }: DCAProps) {
     setError(null);
     try {
       const { sendAndConfirmTransaction, createThirdwebClient, defineChain, prepareTransaction } = await import("thirdweb");
-      const { smartWallet } = await import("thirdweb/wallets");
       const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID });
       const baseChain = defineChain(8453);
       await switchChain(baseChain);
-
-      const wallet = smartWallet({ chain: baseChain, gasless: false });
-      const smartAccount = await wallet.connect({ client, personalAccount: account });
 
       for (let i = 0; i < vaultBundle.steps.length; i++) {
         const step = vaultBundle.steps[i];
@@ -242,11 +264,11 @@ export function DCA({ onClose }: DCAProps) {
           data: step.data as `0x${string}`,
           value: BigInt(step.value || "0"),
         });
-        await sendAndConfirmTransaction({ transaction: tx, account: smartAccount });
+        await sendAndConfirmTransaction({ transaction: tx, account });
       }
       setViewState("success");
     } catch (err: any) {
-      setError(err.message || "Transaction failed");
+      setError(parseDCAError(err));
     } finally {
       setIsSigning(false);
       setSignStep(null);
@@ -336,7 +358,7 @@ export function DCA({ onClose }: DCAProps) {
       }
     } catch (err: any) {
       console.error("Error creating strategy:", err);
-      setError(err.message || "Failed to create strategy");
+      setError(parseDCAError(err));
     } finally {
       setIsCreating(false);
     }
