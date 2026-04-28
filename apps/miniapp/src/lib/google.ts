@@ -174,7 +174,7 @@ export async function sendConfirmationEmail(data: AllocationPayload): Promise<vo
     </html>
   `
 
-  await sendMail(data.email, '$PANBLK Seed Round — Allocation Request Received', html)
+  await sendMail(data.email, '$PANBLK Seed Round - Allocation Request Received', html)
 }
 
 export async function sendAdminNotification(data: AllocationPayload): Promise<void> {
@@ -217,7 +217,7 @@ export async function sendAdminNotification(data: AllocationPayload): Promise<vo
     </html>
   `
 
-  await sendMail(adminEmail, `[PANBLK] New allocation request — $${data.amountUSD.toLocaleString()}`, html)
+  await sendMail(adminEmail, `[PANBLK] New allocation request - $${data.amountUSD.toLocaleString()}`, html)
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
