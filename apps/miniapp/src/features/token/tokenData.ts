@@ -14,7 +14,7 @@ export interface RoadmapItem {
 }
 
 export const ALLOCATIONS: Allocation[] = [
-  { label: 'Seed Round',      pct: 6,  color: '#22d3ee', price: '$0.025', vesting: '6mo cliff · 18mo linear' },
+  { label: 'Seed Round',      pct: 6,  color: '#22d3ee', price: '$0.025', vesting: '6mo cliff · 24mo linear' },
   { label: 'Strategic',       pct: 8,  color: '#06b6d4', price: '$0.045', vesting: '3mo cliff · 12mo linear' },
   { label: 'Public Sale',     pct: 4,  color: '#0891b2', price: '$0.080', vesting: '25% TGE · 9mo linear' },
   { label: 'Team & Advisors', pct: 18, color: '#164e63', price: '—',      vesting: '12mo cliff · 36mo linear' },
@@ -28,26 +28,46 @@ export const ROADMAP: RoadmapItem[] = [
   {
     phase: 'Q2 2026',
     status: 'live',
-    title: 'Seed & Foundation',
-    items: ['Token sale (seed)', 'Core protocol v0.1', 'Agent framework alpha', 'UCLA partnership formalized'],
+    title: 'Foundation & Testnet',
+    items: [
+      'Seed token round execution',
+      'Core protocol v0.1 deployment',
+      'Testnet launch with early users',
+      'Integrations live (Base, Avalanche, TON, Ethereum)',
+    ],
   },
   {
     phase: 'Q3 2026',
     status: 'next',
-    title: 'Strategic & Testnet',
-    items: ['Strategic round closes', 'Testnet launch', 'Agent marketplace beta', 'Audit (Halborn)'],
+    title: 'Token Launch & Early Traction',
+    items: [
+      'Public token sale',
+      'Expansion of AI agent capabilities (DeFi automation)',
+      'User growth and on-chain activity scaling',
+      'Initial revenue via transaction fees (swap / execution layer)',
+    ],
   },
   {
     phase: 'Q4 2026',
     status: 'planned',
-    title: 'Public Sale & TGE',
-    items: ['Public round', 'TGE & DEX listing', 'Mainnet v1.0', 'Staking goes live'],
+    title: 'Mainnet & Infrastructure Hardening',
+    items: [
+      'Token Generation Event (TGE)',
+      'Mainnet v1.0 release',
+      'DEX listings and liquidity provisioning',
+      'Smart contract audits and security reinforcement',
+    ],
   },
   {
     phase: 'Q1 2027',
     status: 'planned',
-    title: 'Mainnet Expansion',
-    items: ['Cross-chain agents', 'Governance launch', 'CEX listings', 'Agent SDK public'],
+    title: 'Scale & Institutional Layer',
+    items: [
+      'Cross-chain agent orchestration fully live',
+      'Institutional B2B rollout (white-label agents, APIs)',
+      'Governance framework launch',
+      'Public release of Agent SDKs for Institutions & Developers',
+    ],
   },
 ]
 

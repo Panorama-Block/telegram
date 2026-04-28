@@ -33,9 +33,8 @@ export function TokenHero() {
             Request allocation →
           </a>
           <a
-            href="https://docs.panoramablock.com"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#about"
+            onClick={(e) => handleSmoothScroll(e, '#about')}
             className="h-10 md:h-11 px-6 rounded-full border border-white/15 text-white/70 font-mono text-[12px] uppercase tracking-wider hover:border-white/30 hover:text-white transition inline-flex items-center"
           >
             About us

@@ -41,17 +41,6 @@ export function TokenHeader() {
           ))}
         </nav>
 
-        {/* Right: docs CTA */}
-        <div className="ml-auto hidden md:flex items-center">
-          <a
-            href="https://docs.panoramablock.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center min-h-[40px] px-4 rounded-full border border-cyan-400/35 text-cyan-400 hover:bg-cyan-400/10 transition-colors text-sm"
-          >
-            Documentation
-          </a>
-        </div>
       </div>
 
       {/* Mobile-only: scrollable nav row */}
@@ -66,14 +55,6 @@ export function TokenHeader() {
             {label}
           </a>
         ))}
-        <a
-          href="https://docs.panoramablock.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex-shrink-0 ml-auto px-3 py-1.5 rounded-full text-sm text-cyan-400 border border-cyan-400/35 hover:bg-cyan-400/10 transition-colors whitespace-nowrap"
-        >
-          Docs
-        </a>
       </nav>
     </header>
   )

@@ -1,21 +1,21 @@
 const STEPS = [
   {
     n: '01',
-    title: 'Enter Amount',
-    body: 'Choose how much you\'d like to participate with. You\'ll see an estimated token amount based on the current seed price.',
-    hint: 'Min $500 · Max $50K',
+    title: 'Submit Your Request',
+    body: 'Enter your wallet address, a contact method, and your intended investment amount. The process takes less than 2 minutes.',
+    hint: 'Min $250 · Max $50K',
   },
   {
     n: '02',
-    title: 'Submit Details',
-    body: 'Enter your wallet address and request your allocation. We\'ll guide you through the next step right after.',
-    hint: 'EVM-compatible wallet',
+    title: 'We Review & Confirm',
+    body: 'Our team reviews every request internally. Serious allocations are prioritised. You\'ll receive confirmation within 24 hours.',
+    hint: 'Manual review · No bots',
   },
   {
     n: '03',
-    title: 'Complete Participation',
-    body: 'Follow the instructions provided to complete your participation in the seed round.',
-    hint: 'KYC · Confirmation',
+    title: 'Receive Payment Instructions',
+    body: 'Once confirmed, we send you the verified wallet address and exact transfer amount. After you send, we verify the transaction and confirm your allocation.',
+    hint: 'Via email · Telegram',
   },
 ]
 
@@ -31,23 +31,20 @@ export function TokenHowItWorks() {
           How It Works
         </h2>
         <p className="font-mono text-[11px] text-white/40 text-center">
-          Simple and quick — join the seed round in a few steps.
+          A controlled process designed to protect both sides.
         </p>
       </div>
 
-      {/* Single unified panel — looks nothing like the roadmap grid */}
       <div
         className="rounded-2xl overflow-hidden"
         style={{ background: 'rgba(15,15,17,0.82)', border: '1px solid rgba(255,255,255,0.07)' }}
       >
-        {/* Accent progress bar at the top */}
         <div className="h-[2px] w-full bg-gradient-to-r from-cyan-400 via-cyan-400/40 to-transparent" />
 
         <div className="grid grid-cols-1 md:grid-cols-3 divide-y divide-white/[0.06] md:divide-y-0 md:divide-x md:divide-white/[0.06]">
           {STEPS.map(({ n, title, body, hint }, i) => (
             <div key={n} className="relative p-6 md:p-8 overflow-hidden group">
 
-              {/* Giant watermark number — background decoration */}
               <div
                 className="absolute -bottom-6 -right-3 font-display font-bold leading-none select-none pointer-events-none transition-opacity duration-500 group-hover:opacity-[0.07]"
                 style={{ fontSize: '9rem', color: 'rgba(255,255,255,0.04)' }}
@@ -56,7 +53,6 @@ export function TokenHowItWorks() {
                 {n}
               </div>
 
-              {/* Left accent line on mobile (vertical flow indicator) */}
               <div
                 className="md:hidden absolute top-0 left-0 w-[2px] h-full"
                 style={{
@@ -69,7 +65,6 @@ export function TokenHowItWorks() {
               />
 
               <div className="relative z-10 flex flex-col gap-3 pl-2 md:pl-0">
-                {/* Step label */}
                 <div className="flex items-center gap-2">
                   <span
                     className="font-mono text-[10px] uppercase tracking-[0.25em]"
@@ -91,7 +86,6 @@ export function TokenHowItWorks() {
 
                 <p className="font-mono text-[12px] text-white/45 leading-relaxed">{body}</p>
 
-                {/* Hint chip */}
                 <div className="font-mono text-[10px] text-white/30 mt-1 flex items-center gap-1.5">
                   <span className="text-cyan-400/50">›</span>
                   {hint}

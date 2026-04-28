@@ -1,266 +1,348 @@
 'use client'
 
 import { useState } from 'react'
-import { TOKEN_CONFIG, type Currency } from './config'
+import { motion, AnimatePresence } from 'framer-motion'
+import { X, Check, Wallet, Mail, MessageCircle, DollarSign, AlertCircle, Loader2, Phone } from 'lucide-react'
+import { TOKEN_CONFIG } from './config'
 
 interface AllocationModalProps {
   isOpen: boolean
   onClose: () => void
-  amount: string
-  currency: Currency
-  tokensReceived: string
 }
 
-type Step = 'form' | 'instructions'
+type Step = 'form' | 'submitted'
 
-export function AllocationModal({
-  isOpen,
-  onClose,
-  amount,
-  currency,
-  tokensReceived,
-}: AllocationModalProps) {
-  const [step, setStep] = useState<Step>('form')
-  const [walletAddress, setWalletAddress] = useState('')
-  const [email, setEmail] = useState('')
+export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
+  const [step, setStep]           = useState<Step>('form')
+  const [amountUSD, setAmountUSD] = useState('')
+  const [wallet, setWallet]       = useState('')
+  const [email, setEmail]         = useState('')
+  const [telegram, setTelegram]   = useState('')
+  const [phone, setPhone]         = useState('')
   const [confirmed, setConfirmed] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const [loading, setLoading]     = useState(false)
+  const [apiError, setApiError]   = useState('')
 
-  if (!isOpen) return null
+  const usd            = parseFloat(amountUSD) || 0
+  const tokens         = usd > 0 ? Math.floor(usd / TOKEN_CONFIG.seedPrice) : 0
+  const valueAtListing = tokens * TOKEN_CONFIG.listingPrice
+  const walletFilled   = wallet.trim().length > 0
+  const isValidWallet  = !walletFilled || (wallet.startsWith('0x') && wallet.length === 42)
+  const isValidAmount  = usd >= TOKEN_CONFIG.minInvestmentUSD && usd <= TOKEN_CONFIG.maxInvestmentUSD
+  const hasContact     = email.trim().length > 0 || telegram.trim().length > 0
+  const canSubmit      = confirmed && isValidWallet && isValidAmount && hasContact
 
-  const usdValue = (parseFloat(amount) || 0) * TOKEN_CONFIG.rates[currency]
-  const isValidAddress = walletAddress.startsWith('0x') && walletAddress.length === 42
+  const contactMethod = email && telegram
+    ? 'email or Telegram'
+    : email ? 'email' : 'Telegram'
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // TODO: Send allocation request to backend when ready
-    // await submitAllocationRequest({ walletAddress, email, amount, currency, tokensReceived })
-    setStep('instructions')
-  }
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(TOKEN_CONFIG.multisigAddress)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setLoading(true)
+    setApiError('')
+    try {
+      const res = await fetch('/miniapp/api/allocation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amountUSD: usd, tokens, wallet, email, telegram, phone }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? 'Something went wrong. Please try again.')
+      }
+      setStep('submitted')
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Unexpected error')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleClose = () => {
     setStep('form')
-    setWalletAddress('')
+    setAmountUSD('')
+    setWallet('')
     setEmail('')
+    setTelegram('')
+    setPhone('')
     setConfirmed(false)
+    setApiError('')
     onClose()
   }
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
-        onClick={handleClose}
-      />
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+            onClick={handleClose}
+          />
 
-      {/* Modal */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-[#0A1520] border border-pano-primary/25 rounded-2xl shadow-[0_0_40px_hsl(var(--pano-primary)/0.12)] overflow-hidden">
+          {/* Modal */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="fixed inset-x-10 top-1/2 -translate-y-1/2 z-50 sm:inset-x-0 sm:flex sm:items-center sm:justify-center"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-full max-w-sm mx-auto bg-[#0A0A0A] border border-white/10 rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
 
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
-            <div>
-              <h2 className="text-base font-bold text-white">
-                {step === 'form' ? 'Request Allocation' : 'Transfer Instructions'}
-              </h2>
-              <p className="text-xs text-white/40 mt-0.5">
-                {step === 'form' ? 'Seed Round · $PANBLK' : 'Complete your allocation below'}
-              </p>
-            </div>
-            <button
-              onClick={handleClose}
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
-              aria-label="Close modal"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+              {/* Header */}
+              <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-white">
+                      {step === 'form' ? 'Request Allocation' : 'Request Submitted'}
+                    </h2>
+                    <p className="text-xs text-zinc-500 mt-0.5">Seed Round · $PANBLK</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleClose}
+                  className="p-2 rounded-lg bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+                  aria-label="Close modal"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
-          {/* ── STEP 1: Form ── */}
-          {step === 'form' && (
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {/* Summary card */}
-              <div className="bg-pano-primary/[0.06] border border-pano-primary/20 rounded-xl p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/50">You send</span>
-                  <span className="text-white font-semibold">
-                    {amount} {currency}
-                    {usdValue > 0 && (
-                      <span className="text-white/40 text-xs ml-1">(~${usdValue.toLocaleString()})</span>
+              {/* Step 1: Form */}
+              {step === 'form' && (
+                <form onSubmit={handleSubmit} className="p-4 space-y-4">
+
+                  {/* Amount */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-zinc-400 flex items-center gap-1.5">
+                      <DollarSign className="w-3.5 h-3.5" />
+                      Intended Investment (USD)
+                    </label>
+                    <div className={`flex items-center bg-zinc-900/50 border rounded-xl px-4 h-10 gap-2 transition-colors ${
+                      amountUSD ? 'border-primary/50 ring-1 ring-primary/20' : 'border-white/10'
+                    }`}>
+                      <span className="text-zinc-500 text-sm">$</span>
+                      <input
+                        type="number"
+                        value={amountUSD}
+                        onChange={e => setAmountUSD(e.target.value)}
+                        placeholder="0"
+                        required
+                        className="bg-transparent flex-1 text-white text-base font-semibold outline-none placeholder:text-zinc-600 tabular-nums w-full [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      />
+                      <span className="text-zinc-500 text-sm">USD</span>
+                    </div>
+                    {amountUSD && !isValidAmount && (
+                      <p className="text-xs text-red-400 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Between ${TOKEN_CONFIG.minInvestmentUSD.toLocaleString()} and ${TOKEN_CONFIG.maxInvestmentUSD.toLocaleString()}
+                      </p>
                     )}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/50">You receive</span>
-                  <span className="text-pano-text-accent font-bold">{tokensReceived} $PANBLK</span>
-                </div>
-              </div>
+                    {tokens > 0 && (
+                      <div className="bg-zinc-900/80 rounded-lg px-3 py-2 border border-white/5 flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-xs text-zinc-500">You receive</span>
+                        <span className="text-sm font-bold text-primary">{tokens.toLocaleString()} PANBLK</span>
+                        <span className="text-xs text-zinc-600">≈ ${valueAtListing.toLocaleString()} at listing</span>
+                      </div>
+                    )}
+                  </div>
 
-              {/* Wallet address */}
-              <div>
-                <label className="text-[10px] text-white/40 uppercase tracking-widest mb-1.5 block">
-                  Your EVM Wallet Address *
-                </label>
-                <input
-                  type="text"
-                  value={walletAddress}
-                  onChange={e => setWalletAddress(e.target.value)}
-                  placeholder="0x..."
-                  required
-                  className="w-full bg-white/[0.05] border border-white/10 focus:border-pano-primary/50 rounded-xl px-4 h-12 text-sm text-white placeholder-white/20 outline-none transition-colors font-mono"
-                />
-                {walletAddress && !isValidAddress && (
-                  <p className="text-[10px] text-pano-error mt-1">
-                    Enter a valid EVM address (starts with 0x, 42 characters)
-                  </p>
-                )}
-              </div>
+                  {/* Wallet */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-zinc-400 flex items-center gap-1.5">
+                      EVM Wallet Address
+                      <span className="text-xs text-zinc-600 font-normal">optional</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={wallet}
+                      onChange={e => setWallet(e.target.value)}
+                      placeholder="0x... (leave blank if you don't have one yet)"
+                      className="w-full h-10 bg-zinc-900/50 border border-white/10 rounded-xl px-4 text-white placeholder:text-zinc-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all font-mono text-sm"
+                    />
+                    {walletFilled && !isValidWallet && (
+                      <p className="text-xs text-red-400 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Valid EVM address required (0x + 40 characters)
+                      </p>
+                    )}
+                  </div>
 
-              {/* Email */}
-              <div>
-                <label className="text-[10px] text-white/40 uppercase tracking-widest mb-1.5 block">
-                  Email{' '}
-                  <span className="text-white/25 normal-case tracking-normal">(optional — for round updates)</span>
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full bg-white/[0.05] border border-white/10 focus:border-pano-primary/50 rounded-xl px-4 h-12 text-sm text-white placeholder-white/20 outline-none transition-colors"
-                />
-              </div>
+                  {/* Contact — side by side */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-zinc-400 flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5" />
+                        Email
+                      </label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="w-full h-10 bg-zinc-900/50 border border-white/10 rounded-xl px-3 text-white placeholder:text-zinc-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-zinc-400 flex items-center gap-1.5">
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        Telegram
+                        <span className="text-xs text-zinc-600 font-normal">optional</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={telegram}
+                        onChange={e => setTelegram(e.target.value)}
+                        placeholder="@handle"
+                        className="w-full h-10 bg-zinc-900/50 border border-white/10 rounded-xl px-3 text-white placeholder:text-zinc-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all font-mono text-sm"
+                      />
+                    </div>
+                  </div>
 
-              {/* Confirm checkbox */}
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={confirmed}
-                  onChange={e => setConfirmed(e.target.checked)}
-                  required
-                  className="mt-0.5 accent-cyan-400 cursor-pointer"
-                />
-                <span className="text-xs text-white/45 leading-relaxed group-hover:text-white/60 transition-colors">
-                  I understand this is a manual allocation process. Tokens are subject to a{' '}
-                  {TOKEN_CONFIG.vestingCliffMonths}-month cliff and{' '}
-                  {TOKEN_CONFIG.vestingDurationMonths}-month linear vesting schedule.
-                </span>
-              </label>
+                  {/* Phone */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-zinc-400 flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5" />
+                      Phone
+                      <span className="text-xs text-zinc-600 font-normal">optional</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={e => setPhone(e.target.value)}
+                      placeholder="+1 212 555 0000"
+                      className="w-full h-10 bg-zinc-900/50 border border-white/10 rounded-xl px-3 text-white placeholder:text-zinc-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all font-mono text-sm"
+                    />
+                  </div>
 
-              <button
-                type="submit"
-                disabled={!confirmed || !walletAddress || !isValidAddress || !amount}
-                className="w-full h-12 rounded-xl bg-gradient-to-r from-pano-primary to-pano-primary-hover text-black font-bold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-[0.99]"
-              >
-                Continue →
-              </button>
-            </form>
-          )}
-
-          {/* ── STEP 2: Instructions ── */}
-          {step === 'instructions' && (
-            <div className="p-6 space-y-4">
-              {/* Success header */}
-              <div className="flex flex-col items-center text-center py-2">
-                <div className="w-12 h-12 rounded-full bg-pano-primary/20 border border-pano-primary/40 flex items-center justify-center mb-3">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="text-pano-text-accent">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <p className="text-white font-bold text-lg">Allocation Reserved</p>
-                <p className="text-white/40 text-xs mt-1">
-                  Complete the steps below to confirm your spot
-                </p>
-              </div>
-
-              {/* Step 1: Transfer */}
-              <div className="bg-pano-primary/[0.06] border border-pano-primary/20 rounded-xl p-4 space-y-3">
-                <p className="text-[10px] font-semibold text-pano-text-accent uppercase tracking-wider">
-                  Step 1 — Send Funds
-                </p>
-                <div>
-                  <p className="text-[10px] text-white/40 mb-0.5">Transfer exactly</p>
-                  <p className="text-white font-bold text-xl">{amount} {currency}</p>
-                  {usdValue > 0 && (
-                    <p className="text-white/35 text-xs">≈ ${usdValue.toLocaleString()} USD</p>
+                  {amountUSD && !hasContact && (
+                    <p className="text-xs text-amber-400 flex items-center gap-1.5">
+                      <AlertCircle className="w-3 h-3" />
+                      Provide at least one contact method
+                    </p>
                   )}
-                </div>
-                <div>
-                  <p className="text-[10px] text-white/40 mb-1.5">To this multisig address</p>
-                  <div className="flex items-center gap-2 bg-black/40 rounded-lg px-3 py-2.5">
-                    <code className="text-pano-text-accent text-xs flex-1 break-all font-mono">
-                      {TOKEN_CONFIG.multisigAddress}
-                    </code>
+
+                  {/* Checkbox */}
+                  <label className="flex items-start gap-2.5 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={confirmed}
+                      onChange={e => setConfirmed(e.target.checked)}
+                      required
+                      className="mt-0.5 accent-cyan-400 cursor-pointer"
+                    />
+                    <span className="text-xs text-zinc-500 leading-relaxed group-hover:text-zinc-400 transition-colors">
+                      I understand this is a manual process. Payment instructions are sent only after allocation is confirmed. Tokens vest {TOKEN_CONFIG.vestingDurationMonths}mo with {TOKEN_CONFIG.vestingCliffMonths}mo cliff. I have read and agree to the{' '}
+                      <a
+                        href="/miniapp/PanoramaBlockTermsofService_Disclaimers.pdf"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors"
+                      >
+                        Terms of Service & Disclaimers
+                      </a>.
+                    </span>
+                  </label>
+
+                  {apiError && (
+                    <p className="text-xs text-red-400 flex items-center gap-1.5 bg-red-500/5 border border-red-500/20 rounded-lg px-3 py-2">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                      {apiError}
+                    </p>
+                  )}
+
+                  {/* Footer actions */}
+                  <div className="flex gap-3 pt-1">
                     <button
-                      onClick={handleCopy}
                       type="button"
-                      className="text-white/40 hover:text-white transition-colors flex-shrink-0"
-                      aria-label="Copy address"
+                      onClick={handleClose}
+                      disabled={loading}
+                      className="px-4 py-2.5 text-zinc-400 hover:text-white font-medium transition-colors text-sm disabled:opacity-50"
                     >
-                      {copied ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="text-pano-success">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!canSubmit || loading}
+                      className="flex-1 h-10 rounded-xl bg-primary text-black font-bold text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:bg-primary/90 shadow-[0_0_20px_rgba(34,211,238,0.25)] hover:shadow-[0_0_30px_rgba(34,211,238,0.4)] active:scale-[0.99] flex items-center justify-center gap-2"
+                    >
+                      {loading ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
                       ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                          <rect x="9" y="9" width="13" height="13" rx="2" />
-                          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                        </svg>
+                        'Submit Request →'
                       )}
                     </button>
                   </div>
-                </div>
-              </div>
+                </form>
+              )}
 
-              {/* Step 2: Confirm via Telegram */}
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4">
-                <p className="text-[10px] font-semibold text-white/50 uppercase tracking-wider mb-2">
-                  Step 2 — Confirm via Telegram
-                </p>
-                <p className="text-xs text-white/40 leading-relaxed">
-                  After transferring, send your{' '}
-                  <span className="text-white/70">transaction hash</span> and{' '}
-                  <span className="text-white/70">wallet address</span> to our Telegram:{' '}
-                  <a
-                    href="https://t.me/panoramablock"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-pano-text-accent hover:underline"
+              {/* Step 2: Confirmation */}
+              {step === 'submitted' && (
+                <div className="p-4 space-y-4">
+                  {/* Success icon + title */}
+                  <div className="flex flex-col items-center text-center py-2 gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                      <Check className="w-6 h-6 text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="text-lg font-bold text-white">Request Submitted</p>
+                      <p className="text-sm text-zinc-500 mt-1 leading-relaxed max-w-xs">
+                        Our team will review and reach out with confirmation and payment instructions.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Summary */}
+                  <div className="bg-zinc-900/80 rounded-xl p-4 border border-white/5 space-y-3">
+                    <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Summary</p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Intended amount</span>
+                        <span className="text-white font-medium">${usd.toLocaleString()} USD</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Tokens requested</span>
+                        <span className="text-primary font-bold">{tokens.toLocaleString()} PANBLK</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Wallet submitted</span>
+                        {walletFilled
+                          ? <span className="text-zinc-300 font-mono text-xs">{wallet.slice(0, 6)}…{wallet.slice(-4)}</span>
+                          : <span className="text-zinc-600 text-xs italic">to be provided</span>
+                        }
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Next step note */}
+                  <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3">
+                    <p className="text-xs text-primary/80 leading-relaxed text-center">
+                      We&apos;ll contact you via {contactMethod} to confirm your spot before sending payment details. No funds needed yet.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleClose}
+                    className="w-full py-2.5 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:bg-white/10 hover:text-white transition-all font-medium text-sm"
                   >
-                    @panoramablock
-                  </a>
-                </p>
-              </div>
+                    Close
+                  </button>
+                </div>
+              )}
 
-              {/* Vesting reminder */}
-              <div className="bg-yellow-500/[0.06] border border-yellow-500/20 rounded-xl px-4 py-3">
-                <p className="text-[11px] text-yellow-400/75 leading-relaxed text-center">
-                  ⚠ Tokens distributed after TGE subject to vesting schedule.
-                  <br />
-                  {TOKEN_CONFIG.tgeUnlockPercent}% at TGE · monthly release from Month{' '}
-                  {TOKEN_CONFIG.vestingCliffMonths + 1}.
-                </p>
-              </div>
-
-              <button
-                onClick={handleClose}
-                className="w-full h-11 rounded-xl border border-white/10 text-white/50 hover:text-white hover:border-white/20 text-sm font-medium transition-all"
-              >
-                Close
-              </button>
             </div>
-          )}
-        </div>
-      </div>
-    </>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   )
 }
