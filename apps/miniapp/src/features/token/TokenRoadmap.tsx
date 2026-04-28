@@ -7,7 +7,7 @@ export function TokenRoadmap() {
       <div className="flex flex-col items-center gap-2 mb-6 md:mb-8">
         <div>
           <h2 className="font-display text-3xl md:text-5xl font-bold text-white tracking-tight text-center w-full">
-            Roadmap to mainnet.
+            Roadmap.
           </h2>
         </div>
         <div className="font-mono text-[11px] text-white/40">4 phases · Q2 2026 → Q1 2027</div>

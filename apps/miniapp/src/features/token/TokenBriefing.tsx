@@ -14,7 +14,7 @@ const FEATURES = [
 
 const STATS = [
   { label: 'Seed price',  value: '$0.025' },
-  { label: 'TGE listing', value: '$0.080' },
+  { label: 'TGE listing', value: '$0.08'  },
   { label: 'Upside',      value: '+220%'  },
   { label: 'Round cap',   value: '$500K'  },
 ]
@@ -48,7 +48,7 @@ export function TokenBriefing() {
           className="font-display font-bold text-white tracking-tight text-center"
           style={{ fontSize: 'clamp(28px, 3.8vw, 52px)' }}
         >
-          Built by researchers.<br className="hidden sm:block" /> Deployed for everyone.
+          About Panorama Block
         </h2>
         <p className="font-mono text-[11px] text-white/40 text-center">UCLA × Inteli × Amina Bank</p>
       </div>
@@ -88,7 +88,7 @@ export function TokenBriefing() {
         </Card>
 
         {/* Card 3 — Why $PANBLK */}
-        <Card tag="03 / Token" title="Why $PANBLK" accent>
+        <Card tag="03 / Token" title="Why buy $PANBLK" accent>
           <p className="text-white/50 text-[13px] leading-relaxed">
             Early Seed investors enter at $0.025, with structural protections aligning holders
             to long-term value creation. Beyond price, $PANBLK accrues governance rights, priority access,
