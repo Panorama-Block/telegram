@@ -129,12 +129,6 @@ export function TokenLive() {
         </div>
       </div>
 
-      <div className="px-4 md:px-12 pb-8 md:pb-12 flex items-center justify-center gap-2 md:gap-3 font-mono text-[10px] uppercase tracking-[0.15em] text-white/30 flex-wrap">
-        <span>Multisig verified</span>
-        <span className="text-white/20">·</span>
-        <span>KYC required</span>
-      </div>
-
       <AllocationModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
     </section>
   )

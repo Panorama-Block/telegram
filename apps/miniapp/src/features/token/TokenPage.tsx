@@ -35,7 +35,7 @@ export function TokenPage() {
 
         <footer className="px-4 md:px-12 py-6 md:py-8 border-t border-white/[0.05] flex flex-wrap items-center justify-between gap-4">
         <div className="font-mono text-[11px] text-white/30 tracking-wider">
-          © 2026 Panorama Block · multisig 0xa3F4…91dE verified · UCLA × São Paulo × Zurich
+          © 2026 Panorama Block
         </div>
         <nav className="font-mono text-[11px] text-white/30 tracking-wider flex gap-5">
           <a
@@ -46,7 +46,6 @@ export function TokenPage() {
           >
             Docs
           </a>
-          <span className="hover:text-white/60 transition-colors cursor-pointer">Audit</span>
           <a
             href="https://t.me/panoramablock"
             target="_blank"
@@ -55,7 +54,6 @@ export function TokenPage() {
           >
             Telegram
           </a>
-          <span className="hover:text-white/60 transition-colors cursor-pointer">Risk disclosure</span>
         </nav>
       </footer>
       </div>

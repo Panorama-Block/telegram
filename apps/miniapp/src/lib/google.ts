@@ -135,7 +135,7 @@ export async function sendConfirmationEmail(data: AllocationPayload): Promise<vo
                     ${row('Tokens requested', `${data.tokens.toLocaleString()} PANBLK`)}
                     ${row('Wallet submitted', data.wallet ? `${data.wallet.slice(0, 6)}…${data.wallet.slice(-4)}` : 'To be provided')}
                     ${row('Seed price', '$0.025 per PANBLK')}
-                    ${row('Est. value at listing', `$${(data.tokens * 0.10).toLocaleString()} USD`)}
+                    ${row('Est. value at listing', `$${(data.tokens * 0.08).toLocaleString()} USD`)}
                   </td></tr>
                 </table>
 

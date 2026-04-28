@@ -124,7 +124,7 @@ export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium text-zinc-400 flex items-center gap-1.5">
                       <DollarSign className="w-3.5 h-3.5" />
-                      Intended Investment (USD)
+                      Contribution Investment (USD)
                     </label>
                     <div className={`flex items-center bg-zinc-900/50 border rounded-xl px-4 h-10 gap-2 transition-colors ${
                       amountUSD ? 'border-primary/50 ring-1 ring-primary/20' : 'border-white/10'

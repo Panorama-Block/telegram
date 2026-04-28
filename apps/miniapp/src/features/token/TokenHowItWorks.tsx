@@ -3,7 +3,7 @@ const STEPS = [
     n: '01',
     title: 'Submit Your Request',
     body: 'Enter your wallet address, a contact method, and your intended investment amount. The process takes less than 2 minutes.',
-    hint: 'Min $250 · Max $50K',
+    hint: 'Min $500 · Max $500K',
   },
   {
     n: '02',
@@ -30,9 +30,6 @@ export function TokenHowItWorks() {
         >
           How It Works
         </h2>
-        <p className="font-mono text-[11px] text-white/40 text-center">
-          A controlled process designed to protect both sides.
-        </p>
       </div>
 
       <div

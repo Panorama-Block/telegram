@@ -50,7 +50,6 @@ export function TokenBriefing() {
         >
           About Panorama Block
         </h2>
-        <p className="font-mono text-[11px] text-white/40 text-center">UCLA × Inteli × Amina Bank</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
