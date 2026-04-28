@@ -7,12 +7,15 @@ import { useActiveWallet, useDisconnect } from 'thirdweb/react'
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb'
 import zicoBlue from '../../../../public/icons/zico_blue.svg'
 import Banner from '../banner'
+import { motion, AnimatePresence } from 'framer-motion'
+import { X, Zap } from 'lucide-react'
 
 const Hero = () => {
   const activeWallet = useActiveWallet()
   const { disconnect } = useDisconnect()
   const [currentWord, setCurrentWord] = useState(0)
   const [isLaunching, setIsLaunching] = useState(false)
+  const [showSeedModal, setShowSeedModal] = useState(false)
 
   const words = [
     'Composable DeFi Strategies',
@@ -140,13 +143,104 @@ const Hero = () => {
 
       <div className="flex flex-col items-center mx-auto w-fit mt-8 gap-8 z-50">
         <Button
-          onClick={handleLaunchApp}
+          onClick={() => setShowSeedModal(true)}
           disabled={isLaunching}
           className="min-w-[180px] h-14 rounded-[30px] bg-white text-black hover:bg-gray-100 text-lg font-semibold disabled:opacity-70 disabled:cursor-wait"
         >
           {isLaunching ? 'Loading...' : 'Launch App'}
         </Button>
       </div>
+
+      {/* Seed Round Awareness Modal */}
+      <AnimatePresence>
+        {showSeedModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
+              onClick={() => setShowSeedModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed inset-x-6 top-1/2 -translate-y-1/2 z-50 sm:inset-x-0 sm:flex sm:items-center sm:justify-center"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="w-full max-w-sm mx-auto bg-[#0A0A0A] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+
+                {/* Header */}
+                <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-cyan-400/10 flex items-center justify-center">
+                      <Zap className="w-4 h-4 text-cyan-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-white">$PANBLK Seed Round</h2>
+                      <p className="text-xs text-zinc-500 mt-0.5 font-mono">Live now · Limited allocation</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowSeedModal(false)}
+                    className="p-2 rounded-lg bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+                    aria-label="Close"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="p-5 space-y-4">
+                  <p className="text-sm text-zinc-400 leading-relaxed">
+                    Panorama Block is running its <span className="text-white font-semibold">$PANBLK Seed Round</span>. Early supporters can acquire tokens at <span className="text-cyan-400 font-mono font-semibold">$0.025</span> — a{' '}
+                    <span className="text-cyan-400 font-semibold">3.2×</span> discount to the <span className="text-white">$0.08 listing price</span>.
+                  </p>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      ['Seed price', '$0.025'],
+                      ['At listing', '$0.08'],
+                      ['Upside', '+220%'],
+                    ] as [string, string][]).map(([label, value]) => (
+                      <div key={label} className="bg-zinc-900/60 border border-white/5 rounded-xl px-3 py-2.5 text-center">
+                        <div className="font-mono text-[9px] uppercase tracking-widest text-zinc-500 mb-1">{label}</div>
+                        <div className="font-mono text-sm font-bold text-cyan-400">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="bg-cyan-400/5 border border-cyan-400/15 rounded-xl px-4 py-3">
+                    <p className="text-xs text-cyan-300/70 leading-relaxed text-center font-mono">
+                      Allocation is manual and reviewed — no payment needed now. Submit your interest and our team reaches out within 24h.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-2 pt-1">
+                    <button
+                      onClick={() => { window.location.href = '/miniapp/token' }}
+                      className="w-full h-11 rounded-xl bg-gradient-to-r from-cyan-500 to-cyan-400 text-black font-bold text-sm tracking-wide transition-all hover:brightness-110 active:scale-[0.99]"
+                      style={{ boxShadow: '0 6px 24px rgba(34,211,238,0.3)' }}
+                    >
+                      View Seed Round →
+                    </button>
+                    <button
+                      onClick={() => { setShowSeedModal(false); handleLaunchApp() }}
+                      disabled={isLaunching}
+                      className="w-full h-10 rounded-xl bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-all text-sm font-medium disabled:opacity-50"
+                    >
+                      {isLaunching ? 'Loading…' : 'Continue to App'}
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Prompt Banner */}
       <div className="w-full mt-12 mb-8">
