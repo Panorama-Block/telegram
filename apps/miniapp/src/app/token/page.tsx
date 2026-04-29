@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: '$PANBLK Pre-seed Round — Panorama Block',
     description:
-      'Buy $PANBLK at $0.025 seed price before the public listing at $0.08 (+220% upside).',
+      'Buy $PANBLK at $0.025 Pre-seed price before the public listing at $0.08 (+220% upside).',
     type: 'website',
   },
 }
