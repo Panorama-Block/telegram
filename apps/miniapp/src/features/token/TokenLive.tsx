@@ -13,10 +13,10 @@ export function TokenLive() {
 
       <div className="px-4 md:px-12 pt-10 md:pt-12 pb-6 md:pb-8 text-center">
         <h2 className="font-display text-3xl md:text-5xl font-bold text-white tracking-tight mb-2">
-          Seed Round — Live
+          Pre-seed Round — Live
         </h2>
         <p className="font-mono text-[11px] text-white/35">
-          Limited allocation · Closes May 29, 2026
+          Limited allocation · Closes May 6, 2026
         </p>
       </div>
 
@@ -34,7 +34,7 @@ export function TokenLive() {
                 Sale active
               </span>
             </div>
-            <span className="font-mono text-[10px] text-white/30 tabular-nums">est. May 29, 2026</span>
+            <span className="font-mono text-[10px] text-white/30 tabular-nums">est. May 6, 2026</span>
           </div>
 
           <div className="px-5 md:px-6 py-6 md:py-7 flex-1 flex flex-col justify-between">
@@ -53,7 +53,7 @@ export function TokenLive() {
                 </div>
               </div>
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-widest text-white/40 mb-1">At listing</div>
+                <div className="font-mono text-[10px] uppercase tracking-widest text-white/40 mb-1">TGE Target At Listing</div>
                 <div className="flex items-baseline gap-1.5">
                   <div className="font-display tabular-nums text-xl md:text-2xl text-cyan-400 font-bold">
                     ${TOKEN_CONFIG.listingPrice.toFixed(2)}

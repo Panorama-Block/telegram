@@ -9,12 +9,12 @@ const FEATURES = [
   'Cross-chain liquidity & yield via conversational prompt',
   'AI co-pilot handles routing, execution & fee optimization',
   'No dashboards. No manual wallet config. No protocol navigation.',
-  'Telegram Mini Apps as the primary delivery surface',
+  'Telegram Mini App as the primary delivery surface',
 ]
 
 const STATS = [
   { label: 'Seed price',  value: '$0.025' },
-  { label: 'TGE listing', value: '$0.08'  },
+  { label: 'TGE Target At Listing', value: '$0.08'  },
   { label: 'Upside',      value: '+220%'  },
   { label: 'Round cap',   value: '$500K'  },
 ]
@@ -57,8 +57,9 @@ export function TokenBriefing() {
         {/* Card 1 — Who We Are */}
         <Card tag="01 / Team" title="Who We Are">
           <p className="text-white/50 text-[13px] leading-relaxed">
-            A collaboration between UCLA's MQE program and a team of builders, academics,
-            and institutional finance veterans — united by a single thesis: DeFi needs smarter infrastructure.
+            A collaboration between Alex Nascimento - UCLA Faculty, and students from the
+            Masters of Qualitative Economics program and a team of developers under the
+            leadership of Mikael Bjorn Ex-CTO of Hedera HashGraph
           </p>
           <ul className="mt-1 space-y-2.5">
             {TEAM.map(({ name, role }) => (
@@ -89,9 +90,9 @@ export function TokenBriefing() {
         {/* Card 3 — Why $PANBLK */}
         <Card tag="03 / Token" title="Why buy $PANBLK" accent>
           <p className="text-white/50 text-[13px] leading-relaxed">
-            Early Seed investors enter at $0.025, with structural protections aligning holders
-            to long-term value creation. Beyond price, $PANBLK accrues governance rights, priority access,
-            and fee discounts as the network grows.
+            Pre-seed investors enter at $0.025, aligning early holders with long-term value creation.
+            Beyond price appreciation, $PANBLK holders gain priority access to new features and discounts
+            as the network grows.
           </p>
 
           <div className="grid grid-cols-2 gap-2 mt-1">

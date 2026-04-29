@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>PHASE_01_TESTING_GUIDE.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="zico-miniapp--phase-01-testing-guide">Zico MiniApp — Phase 01 Testing Guide</h1>
+<p><strong>Version:</strong> 1.0<br>
+<strong>Date:</strong> 2026-04-29<br>
+<strong>Scope:</strong> End-to-end product testing — UI, flows, and user experience<br>
+<strong>Out of scope:</strong> AI agent on-chain execution (covered in Phase 02)</p>
+<hr>
+<h2 id="before-you-start">Before You Start</h2>
+<h3 id="requirements">Requirements</h3>
+<ul>
+<li><input type="checkbox" id="checkbox0"><label for="checkbox0">MetaMask wallet installed and set up</label></li>
+<li><input type="checkbox" id="checkbox1"><label for="checkbox1">Small balances ready on each chain you will test (values under $1 at all times)</label></li>
+<li><input type="checkbox" id="checkbox2"><label for="checkbox2">TON wallet available (Telegram Wallet or Tonkeeper) if testing TON features</label></li>
+<li><input type="checkbox" id="checkbox3"><label for="checkbox3">Access to the app URL</label></li>
+</ul>
+<blockquote>
+<p><strong>Important:</strong> Always use amounts below $1 USD when executing any transaction. The goal is to verify the flow and interface, not to move meaningful funds.</p>
+</blockquote>
+<h3 id="how-to-use-this-guide">How to Use This Guide</h3>
+<ul>
+<li>Work through each section in order</li>
+<li>Check off each item as you complete it</li>
+<li>Use the <strong>Notes</strong> field at the end of each section to log what you observed</li>
+<li>After finishing each product, fill in the corresponding <strong>Report</strong></li>
+<li>If something looks wrong or confusing, write it down — every observation matters</li>
+</ul>
+<hr>
+<h2 id="section-1--landing-page">Section 1 — Landing Page</h2>
+<blockquote>
+<p>Goal: Read through the landing page carefully, confirm all content makes sense, and flag anything that is confusing, missing, or could be improved.</p>
+</blockquote>
+<h3 id="content-review">Content Review</h3>
+<ul>
+<li><input type="checkbox" id="checkbox4"><label for="checkbox4">Read the main headline — does it clearly explain what Zico is?</label></li>
+<li><input type="checkbox" id="checkbox5"><label for="checkbox5">Read every section on the page from top to bottom</label></li>
+<li><input type="checkbox" id="checkbox6"><label for="checkbox6">Check that all images and icons load correctly (no broken images)</label></li>
+<li><input type="checkbox" id="checkbox7"><label for="checkbox7">Check that all buttons are visible and the text on them is clear</label></li>
+<li><input type="checkbox" id="checkbox8"><label for="checkbox8">Verify the &quot;Launch App&quot; or main CTA button is easy to find</label></li>
+<li><input type="checkbox" id="checkbox9"><label for="checkbox9">Check the page on mobile screen size — does everything still look good?</label></li>
+</ul>
+<h3 id="text--messaging">Text &amp; Messaging</h3>
+<ul>
+<li><input type="checkbox" id="checkbox10"><label for="checkbox10">Is the value proposition easy to understand for someone new to DeFi?</label></li>
+<li><input type="checkbox" id="checkbox11"><label for="checkbox11">Are there any spelling or grammar mistakes?</label></li>
+<li><input type="checkbox" id="checkbox12"><label for="checkbox12">Is there any text that seems technical or confusing without explanation?</label></li>
+<li><input type="checkbox" id="checkbox13"><label for="checkbox13">Does every section have a clear purpose?</label></li>
+</ul>
+<h3 id="navigation--links">Navigation &amp; Links</h3>
+<ul>
+<li><input type="checkbox" id="checkbox14"><label for="checkbox14">All links in the navigation bar work</label></li>
+<li><input type="checkbox" id="checkbox15"><label for="checkbox15">No broken links on the page</label></li>
+<li><input type="checkbox" id="checkbox16"><label for="checkbox16">Social media or external links (if any) open correctly</label></li>
+</ul>
+<p><strong>Notes / Suggestions:</strong></p>
+<pre class="hljs"><code><div>[Write your observations here]
+</div></code></pre>
+<hr>
+<h2 id="section-2--authentication-connect-wallet">Section 2 — Authentication (Connect Wallet)</h2>
+<blockquote>
+<p>Goal: Confirm the wallet connection flow works smoothly and the app recognizes the connected wallet correctly.</p>
+</blockquote>
+<h3 id="evm-wallet-metamask">EVM Wallet (MetaMask)</h3>
+<ul>
+<li><input type="checkbox" id="checkbox17"><label for="checkbox17">Click &quot;Launch App&quot; from the landing page</label></li>
+<li><input type="checkbox" id="checkbox18"><label for="checkbox18">The connection screen appears and offers a wallet option</label></li>
+<li><input type="checkbox" id="checkbox19"><label for="checkbox19">Click to connect MetaMask — the MetaMask popup appears</label></li>
+<li><input type="checkbox" id="checkbox20"><label for="checkbox20">After approving, the app redirects to the main interface (chat or portfolio)</label></li>
+<li><input type="checkbox" id="checkbox21"><label for="checkbox21">Your connected wallet address is visible somewhere on the screen</label></li>
+</ul>
+<h3 id="ton-wallet-if-applicable">TON Wallet (if applicable)</h3>
+<ul>
+<li><input type="checkbox" id="checkbox22"><label for="checkbox22">TON Connect option is visible on the connection screen</label></li>
+<li><input type="checkbox" id="checkbox23"><label for="checkbox23">Clicking it shows the TON wallet options (Telegram Wallet, Tonkeeper, etc.)</label></li>
+<li><input type="checkbox" id="checkbox24"><label for="checkbox24">After connecting, the app recognizes the TON wallet</label></li>
+</ul>
+<p><strong>Notes:</strong></p>
+<pre class="hljs"><code><div>[Write your observations here]
+</div></code></pre>
+<hr>
+<h2 id="section-3--portfolio-page">Section 3 — Portfolio Page</h2>
+<blockquote>
+<p>Goal: Verify that the portfolio correctly displays asset balances and positions.</p>
+</blockquote>
+<h3 id="asset-overview">Asset Overview</h3>
+<ul>
+<li><input type="checkbox" id="checkbox25"><label for="checkbox25">Navigate to the Portfolio page</label></li>
+<li><input type="checkbox" id="checkbox26"><label for="checkbox26">The page loads without errors</label></li>
+<li><input type="checkbox" id="checkbox27"><label for="checkbox27">A list of assets is shown (tokens with their balances)</label></li>
+<li><input type="checkbox" id="checkbox28"><label for="checkbox28">Compare the token balances displayed in the app with your MetaMask wallet</label>
+<ul>
+<li>Values do not need to match exactly, but they should be close in total USD value</li>
+<li>Note any tokens that appear in MetaMask but are missing from the app</li>
+<li>Note any tokens that appear in the app but are not in your MetaMask</li>
+</ul>
+</li>
+</ul>
+<h3 id="net-worth--summary">Net Worth &amp; Summary</h3>
+<ul>
+<li><input type="checkbox" id="checkbox29"><label for="checkbox29">A total portfolio value (Net Worth) is shown</label></li>
+<li><input type="checkbox" id="checkbox30"><label for="checkbox30">The value is a reasonable estimate compared to your actual holdings</label></li>
+<li><input type="checkbox" id="checkbox31"><label for="checkbox31">24h PnL or change indicator is visible (if available)</label></li>
+</ul>
+<h3 id="positions--active-strategies">Positions / Active Strategies</h3>
+<ul>
+<li><input type="checkbox" id="checkbox32"><label for="checkbox32">A &quot;Positions&quot; section is visible (for lending, staking, or DCA positions)</label></li>
+<li><input type="checkbox" id="checkbox33"><label for="checkbox33">If you have active positions, they appear here</label></li>
+<li><input type="checkbox" id="checkbox34"><label for="checkbox34">Each position shows the protocol name, token, and amount</label></li>
+<li><input type="checkbox" id="checkbox35"><label for="checkbox35">&quot;Manage&quot; or action buttons on positions are visible and clickable (no need to execute)</label></li>
+</ul>
+<h3 id="general-ux">General UX</h3>
+<ul>
+<li><input type="checkbox" id="checkbox36"><label for="checkbox36">The page fully loads within a reasonable time (under 10 seconds)</label></li>
+<li><input type="checkbox" id="checkbox37"><label for="checkbox37">No error messages or blank sections</label></li>
+<li><input type="checkbox" id="checkbox38"><label for="checkbox38">All token icons load correctly</label></li>
+<li><input type="checkbox" id="checkbox39"><label for="checkbox39">Values update if you navigate away and come back</label></li>
+</ul>
+<p><strong>Notes:</strong></p>
+<pre class="hljs"><code><div>[Write your observations here]
+</div></code></pre>
+<hr>
+<h2 id="section-4--swap">Section 4 — Swap</h2>
+<blockquote>
+<p>Goal: Test token swaps across different networks. Always use amounts below $1 USD.</p>
+</blockquote>
+<h3 id="general-checklist-apply-to-every-network-tested">General Checklist (apply to every network tested)</h3>
+<p>Before each swap, verify:</p>
+<ul>
+<li><input type="checkbox" id="checkbox40"><label for="checkbox40">The correct network is selected</label></li>
+<li><input type="checkbox" id="checkbox41"><label for="checkbox41">The banner/label inside the swap card matches the selected network and protocol</label>
+<ul>
+<li>Example: Base → should show <strong>&quot;Powered by Aerodrome on Base&quot;</strong></li>
+<li>Example: Ethereum → should show the correct DEX label for Ethereum</li>
+<li>Example: Avalanche → should show the correct label for Avalanche</li>
+</ul>
+</li>
+<li><input type="checkbox" id="checkbox42"><label for="checkbox42">Token icons load correctly for both &quot;from&quot; and &quot;to&quot; tokens</label></li>
+<li><input type="checkbox" id="checkbox43"><label for="checkbox43">The estimated output amount appears after entering the input</label></li>
+<li><input type="checkbox" id="checkbox44"><label for="checkbox44">Slippage or fee info is shown before confirming</label></li>
+</ul>
+<hr>
+<h3 id="41--base-network-test-all-tokens">4.1 — Base Network (Test All Tokens)</h3>
+<blockquote>
+<p>Test every token pair available on Base. The swap engine on Base uses Aerodrome.</p>
+</blockquote>
+<p><strong>Available Base tokens to test:</strong> ETH, WETH, USDC, USDT, cbBTC, DAI, AERO, VIRTUAL, msETH, EURC</p>
+<ul>
+<li><input type="checkbox" id="checkbox45"><label for="checkbox45">Switch to Base network in the swap interface</label></li>
+<li><input type="checkbox" id="checkbox46"><label for="checkbox46">Confirm the card shows: </label><strong>&quot;Powered by Aerodrome on Base&quot;</strong></li>
+</ul>
+<p><strong>Swap pairs to test (use amounts under $1 each time):</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox47"><label for="checkbox47">ETH → USDC</label></li>
+<li><input type="checkbox" id="checkbox48"><label for="checkbox48">ETH → USDT</label></li>
+<li><input type="checkbox" id="checkbox49"><label for="checkbox49">ETH → DAI</label></li>
+<li><input type="checkbox" id="checkbox50"><label for="checkbox50">ETH → AERO</label></li>
+<li><input type="checkbox" id="checkbox51"><label for="checkbox51">USDC → ETH</label></li>
+<li><input type="checkbox" id="checkbox52"><label for="checkbox52">USDC → USDT</label></li>
+<li><input type="checkbox" id="checkbox53"><label for="checkbox53">USDC → cbBTC</label></li>
+<li><input type="checkbox" id="checkbox54"><label for="checkbox54">USDC → AERO</label></li>
+<li><input type="checkbox" id="checkbox55"><label for="checkbox55">USDC → VIRTUAL</label></li>
+<li><input type="checkbox" id="checkbox56"><label for="checkbox56">WETH → USDC</label></li>
+<li><input type="checkbox" id="checkbox57"><label for="checkbox57">ETH → VIRTUAL</label></li>
+<li><input type="checkbox" id="checkbox58"><label for="checkbox58">ETH → msETH</label></li>
+<li><input type="checkbox" id="checkbox59"><label for="checkbox59">ETH → EURC</label></li>
+</ul>
+<p>For each pair, confirm:</p>
+<ul>
+<li><input type="checkbox" id="checkbox60"><label for="checkbox60">Quote loads (estimated output appears)</label></li>
+<li><input type="checkbox" id="checkbox61"><label for="checkbox61">Transaction submitted successfully (check that the tx hash appears)</label></li>
+<li><input type="checkbox" id="checkbox62"><label for="checkbox62">After confirming, the swap shows as pending or confirmed</label></li>
+<li><input type="checkbox" id="checkbox63"><label for="checkbox63">No unexpected error messages during the flow</label></li>
+</ul>
+<p><strong>Notes — Base:</strong></p>
+<pre class="hljs"><code><div>[Write your observations here — include any pairs that failed or showed weird behavior]
+</div></code></pre>
+<hr>
+<h3 id="42--avalanche-network-test-all-tokens">4.2 — Avalanche Network (Test All Tokens)</h3>
+<blockquote>
+<p>Test every token available on Avalanche. Always under $1.</p>
+</blockquote>
+<p><strong>Available Avalanche tokens:</strong> AVAX, WAVAX, UNI, USDC, USDT, AAVE, BTC.b, JOE, MIM</p>
+<ul>
+<li><input type="checkbox" id="checkbox64"><label for="checkbox64">Switch to Avalanche network</label></li>
+<li><input type="checkbox" id="checkbox65"><label for="checkbox65">Confirm the network label on the swap card shows Avalanche correctly</label></li>
+</ul>
+<p><strong>Swap pairs to test:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox66"><label for="checkbox66">AVAX → USDC</label></li>
+<li><input type="checkbox" id="checkbox67"><label for="checkbox67">AVAX → USDT</label></li>
+<li><input type="checkbox" id="checkbox68"><label for="checkbox68">USDC → AVAX</label></li>
+<li><input type="checkbox" id="checkbox69"><label for="checkbox69">USDC → WAVAX</label></li>
+<li><input type="checkbox" id="checkbox70"><label for="checkbox70">USDC → UNI</label></li>
+<li><input type="checkbox" id="checkbox71"><label for="checkbox71">AVAX → AAVE</label></li>
+<li><input type="checkbox" id="checkbox72"><label for="checkbox72">WAVAX → USDT</label></li>
+</ul>
+<p>For each pair, confirm:</p>
+<ul>
+<li><input type="checkbox" id="checkbox73"><label for="checkbox73">Quote loads correctly</label></li>
+<li><input type="checkbox" id="checkbox74"><label for="checkbox74">Transaction executes (or shows a clear error if it fails)</label></li>
+<li><input type="checkbox" id="checkbox75"><label for="checkbox75">No UI glitches or blank states</label></li>
+</ul>
+<p><strong>Notes — Avalanche:</strong></p>
+<pre class="hljs"><code><div>[Write your observations here]
+</div></code></pre>
+<hr>
+<h3 id="43--ethereum-network-test-all-tokens">4.3 — Ethereum Network (Test All Tokens)</h3>
+<blockquote>
+<p>Test every token available on Ethereum. Always under $1.</p>
+</blockquote>
+<p><strong>Available Ethereum tokens:</strong> ETH, stETH, wstETH, USDC, USDT, WBTC, AAVE, UNI, LINK, LDO, USDe</p>
+<ul>
+<li><input type="checkbox" id="checkbox76"><label for="checkbox76">Switch to Ethereum network</label></li>
+<li><input type="checkbox" id="checkbox77"><label for="checkbox77">Confirm the network label on the swap card shows Ethereum correctly</label></li>
+</ul>
+<p><strong>Swap pairs to test:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox78"><label for="checkbox78">ETH → USDC</label></li>
+<li><input type="checkbox" id="checkbox79"><label for="checkbox79">ETH → USDT</label></li>
+<li><input type="checkbox" id="checkbox80"><label for="checkbox80">USDC → ETH</label></li>
+<li><input type="checkbox" id="checkbox81"><label for="checkbox81">USDC → USDT</label></li>
+<li><input type="checkbox" id="checkbox82"><label for="checkbox82">ETH → WBTC</label></li>
+<li><input type="checkbox" id="checkbox83"><label for="checkbox83">ETH → AAVE</label></li>
+<li><input type="checkbox" id="checkbox84"><label for="checkbox84">ETH → LINK</label></li>
+<li><input type="checkbox" id="checkbox85"><label for="checkbox85">USDC → UNI</label></li>
+<li><input type="checkbox" id="checkbox86"><label for="checkbox86">ETH → stETH</label></li>
+<li><input type="checkbox" id="checkbox87"><label for="checkbox87">ETH → LDO</label></li>
+</ul>
+<p>For each pair, confirm:</p>
+<ul>
+<li><input type="checkbox" id="checkbox88"><label for="checkbox88">Quote appears and is reasonable</label></li>
+<li><input type="checkbox" id="checkbox89"><label for="checkbox89">Transaction executes or shows a clear error</label></li>
+</ul>
+<p><strong>Notes — Ethereum:</strong></p>
+<pre class="hljs"><code><div>[Write your observations here]
+</div></code></pre>
+<hr>
+<h3 id="44--other-networks-main-tokens-only">4.4 — Other Networks (Main Tokens Only)</h3>
+<blockquote>
+<p>For these networks, testing a few main tokens is enough.</p>
+</blockquote>
+<p><strong>Binance Smart Chain (BNB, USDT, USDC):</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox90"><label for="checkbox90">BNB → USDT</label></li>
+<li><input type="checkbox" id="checkbox91"><label for="checkbox91">BNB → USDC</label></li>
+<li><input type="checkbox" id="checkbox92"><label for="checkbox92">Network label correct on swap card</label></li>
+</ul>
+<p><strong>Polygon (POL, USDC, USDT, WETH):</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox93"><label for="checkbox93">POL → USDC</label></li>
+<li><input type="checkbox" id="checkbox94"><label for="checkbox94">USDC → WETH</label></li>
+<li><input type="checkbox" id="checkbox95"><label for="checkbox95">Network label correct on swap card</label></li>
+</ul>
+<p><strong>Arbitrum (ETH, USDC, USDT, ARB):</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox96"><label for="checkbox96">ETH → USDC</label></li>
+<li><input type="checkbox" id="checkbox97"><label for="checkbox97">ETH → ARB</label></li>
+<li><input type="checkbox" id="checkbox98"><label for="checkbox98">Network label correct on swap card</label></li>
+</ul>
+<p><strong>Optimism (ETH, USDC, OP):</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox99"><label for="checkbox99">ETH → USDC</label></li>
+<li><input type="checkbox" id="checkbox100"><label for="checkbox100">ETH → OP</label></li>
+<li><input type="checkbox" id="checkbox101"><label for="checkbox101">Network label correct on swap card</label></li>
+</ul>
+<p><strong>Notes — Other Networks:</strong></p>
+<pre class="hljs"><code><div>[Write your observations here]
+</div></code></pre>
+<hr>
+<h3 id="swap--end-of-section-report">Swap — End of Section Report</h3>
+<blockquote>
+<p>Fill this in after completing all swap tests.</p>
+</blockquote>
+<p><strong>Overall Status:</strong> <input type="checkbox" id="checkbox103"><label for="checkbox103">All good</label> / <input type="checkbox" id="checkbox102"><label for="checkbox102">Issues found</label></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Issue Description</th>
+<th>Network</th>
+<th>Token Pair</th>
+<th>Severity (Low/Med/High)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>2</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>4</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>User Experience Notes:</strong></p>
+<ul>
+<li>Errors that were confusing or not user-friendly:</li>
+<li>Suggestions to improve the flow:</li>
+<li>Anything that worked especially well:</li>
+</ul>
+<hr>
+<h2 id="section-5--lending-benqi-on-avalanche">Section 5 — Lending (Benqi on Avalanche)</h2>
+<blockquote>
+<p>Goal: Test the full lending flow — supply, borrow, and repay. Always under $1 USD.</p>
+</blockquote>
+<blockquote>
+<p><strong>Note:</strong> There is a 10% validation fee on all lending operations. For example, if you supply $1, only $0.90 goes into the protocol. The app should always show this fee breakdown clearly before you confirm.</p>
+</blockquote>
+<h3 id="page--market-overview">Page &amp; Market Overview</h3>
+<ul>
+<li><input type="checkbox" id="checkbox104"><label for="checkbox104">Navigate to the Lending page</label></li>
+<li><input type="checkbox" id="checkbox105"><label for="checkbox105">The page loads without errors</label></li>
+<li><input type="checkbox" id="checkbox106"><label for="checkbox106">A list of available tokens/markets is shown (AVAX, USDC, USDT, etc.)</label></li>
+<li><input type="checkbox" id="checkbox107"><label for="checkbox107">Each token shows a </label><strong>Supply APY</strong> and a <strong>Borrow APY</strong></li>
+<li><input type="checkbox" id="checkbox108"><label for="checkbox108">The numbers look realistic (not 0% or 9999%)</label></li>
+<li><input type="checkbox" id="checkbox109"><label for="checkbox109">Token icons load correctly</label></li>
+</ul>
+<h3 id="supply-flow">Supply Flow</h3>
+<ul>
+<li><input type="checkbox" id="checkbox110"><label for="checkbox110">Select a token to supply (e.g., AVAX or USDC)</label></li>
+<li><input type="checkbox" id="checkbox111"><label for="checkbox111">Enter an amount under $1</label></li>
+<li><input type="checkbox" id="checkbox112"><label for="checkbox112"></label><strong>Verify the fee breakdown is visible</strong> — the app must show:
+<ul>
+<li>Total amount entered</li>
+<li>10% validation fee</li>
+<li>Net amount that will be supplied (90%)</li>
+</ul>
+</li>
+<li><input type="checkbox" id="checkbox113"><label for="checkbox113">Confirm the transaction</label></li>
+<li><input type="checkbox" id="checkbox114"><label for="checkbox114">A success message appears (or a clear pending/error state)</label></li>
+<li><input type="checkbox" id="checkbox115"><label for="checkbox115">After completion, the supplied balance appears in &quot;Your Positions&quot; on the Portfolio or Lending page</label></li>
+</ul>
+<h3 id="withdraw-flow">Withdraw Flow</h3>
+<ul>
+<li><input type="checkbox" id="checkbox116"><label for="checkbox116">With an active supply position, navigate to the lending interface</label></li>
+<li><input type="checkbox" id="checkbox117"><label for="checkbox117">Find the option to withdraw the supplied amount</label></li>
+<li><input type="checkbox" id="checkbox118"><label for="checkbox118">Enter a small amount to withdraw (under $1)</label></li>
+<li><input type="checkbox" id="checkbox119"><label for="checkbox119">The 10% fee breakdown is shown again</label></li>
+<li><input type="checkbox" id="checkbox120"><label for="checkbox120">Confirm and verify the transaction completes</label></li>
+<li><input type="checkbox" id="checkbox121"><label for="checkbox121">The balance is updated in the interface</label></li>
+</ul>
+<h3 id="borrow-flow">Borrow Flow</h3>
+<blockquote>
+<p>Note: To borrow, you need an existing supply as collateral.</p>
+</blockquote>
+<ul>
+<li><input type="checkbox" id="checkbox122"><label for="checkbox122">With an active supply position, find the borrow option</label></li>
+<li><input type="checkbox" id="checkbox123"><label for="checkbox123">Select a token to borrow (use a very small amount)</label></li>
+<li><input type="checkbox" id="checkbox124"><label for="checkbox124">The app shows the current Borrow APY</label></li>
+<li><input type="checkbox" id="checkbox125"><label for="checkbox125">The 10% fee breakdown is visible before confirming</label></li>
+<li><input type="checkbox" id="checkbox126"><label for="checkbox126">Confirm and verify the transaction goes through</label></li>
+<li><input type="checkbox" id="checkbox127"><label for="checkbox127">A &quot;Health Factor&quot; indicator appears and shows a safe value (above 1.5)</label></li>
+<li><input type="checkbox" id="checkbox128"><label for="checkbox128">Borrowed amount appears in positions</label></li>
+</ul>
+<h3 id="repay-flow">Repay Flow</h3>
+<ul>
+<li><input type="checkbox" id="checkbox129"><label for="checkbox129">With an active borrow position, find the repay option</label></li>
+<li><input type="checkbox" id="checkbox130"><label for="checkbox130">Enter the borrowed amount (or a portion of it)</label></li>
+<li><input type="checkbox" id="checkbox131"><label for="checkbox131">Fee breakdown is shown</label></li>
+<li><input type="checkbox" id="checkbox132"><label for="checkbox132">Confirm and verify the transaction completes</label></li>
+<li><input type="checkbox" id="checkbox133"><label for="checkbox133">Borrowed balance is reduced or cleared</label></li>
+</ul>
+<h3 id="general-ux">General UX</h3>
+<ul>
+<li><input type="checkbox" id="checkbox134"><label for="checkbox134">All error messages are clear and helpful (not generic &quot;Transaction failed&quot;)</label></li>
+<li><input type="checkbox" id="checkbox135"><label for="checkbox135">Loading states are shown while transactions process</label></li>
+<li><input type="checkbox" id="checkbox136"><label for="checkbox136">Health factor changes are visible after borrow/repay actions</label></li>
+</ul>
+<p><strong>Notes:</strong></p>
+<pre class="hljs"><code><div>[Write your observations here]
+</div></code></pre>
+<hr>
+<h3 id="lending--end-of-section-report">Lending — End of Section Report</h3>
+<p><strong>Overall Status:</strong> <input type="checkbox" id="checkbox138"><label for="checkbox138">All good</label> / <input type="checkbox" id="checkbox137"><label for="checkbox137">Issues found</label></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Issue Description</th>
+<th>Action Tested</th>
+<th>Severity (Low/Med/High)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>2</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>User Experience Notes:</strong></p>
+<ul>
+<li>Fee display was clear and understandable? (Yes/No and notes):</li>
+<li>Errors that were confusing or not user-friendly:</li>
+<li>Suggestions to improve the flow:</li>
+</ul>
+<hr>
+<h2 id="section-6--liquid-staking">Section 6 — Liquid Staking</h2>
+<blockquote>
+<p>Goal: Test the staking flow for both Lido (Ethereum) and Benqi (Avalanche). Always under $1.</p>
+</blockquote>
+<hr>
+<h3 id="61--lido-ethereum">6.1 — Lido (Ethereum)</h3>
+<blockquote>
+<p>Lido lets you stake ETH on Ethereum and receive stETH (or wstETH) in return. There is no lock period — staking rewards are automatically added to your stETH balance.</p>
+</blockquote>
+<p><strong>Supported tokens:</strong> ETH → stETH / wstETH</p>
+<h4 id="page-overview">Page Overview</h4>
+<ul>
+<li><input type="checkbox" id="checkbox139"><label for="checkbox139">Navigate to the Liquid Staking section and select Lido / Ethereum</label></li>
+<li><input type="checkbox" id="checkbox140"><label for="checkbox140">The page shows the current staking APY</label></li>
+<li><input type="checkbox" id="checkbox141"><label for="checkbox141">ETH, stETH, and wstETH are listed with their details</label></li>
+<li><input type="checkbox" id="checkbox142"><label for="checkbox142">Minimum stake information is visible</label></li>
+</ul>
+<h4 id="stake-flow">Stake Flow</h4>
+<ul>
+<li><input type="checkbox" id="checkbox143"><label for="checkbox143">Enter a small ETH amount (under $1 equivalent — e.g., 0.0003 ETH)</label></li>
+<li><input type="checkbox" id="checkbox144"><label for="checkbox144">The estimated stETH output is shown</label></li>
+<li><input type="checkbox" id="checkbox145"><label for="checkbox145">Confirm the transaction</label></li>
+<li><input type="checkbox" id="checkbox146"><label for="checkbox146">Transaction completes and stETH balance appears in the interface</label></li>
+<li><input type="checkbox" id="checkbox147"><label for="checkbox147">Staking position is visible (staked amount, stETH balance)</label></li>
+</ul>
+<h4 id="unstake-flow">Unstake Flow</h4>
+<ul>
+<li><input type="checkbox" id="checkbox148"><label for="checkbox148">With a stETH balance, find the unstake option</label></li>
+<li><input type="checkbox" id="checkbox149"><label for="checkbox149">Enter a small stETH amount</label></li>
+<li><input type="checkbox" id="checkbox150"><label for="checkbox150">Confirm and verify the transaction goes through</label></li>
+<li><input type="checkbox" id="checkbox151"><label for="checkbox151">Balance is updated</label></li>
+</ul>
+<h4 id="general-ux">General UX</h4>
+<ul>
+<li><input type="checkbox" id="checkbox152"><label for="checkbox152">APY shows correctly (realistic value, not null or 0% without explanation)</label></li>
+<li><input type="checkbox" id="checkbox153"><label for="checkbox153">Error messages are clear if something fails</label></li>
+<li><input type="checkbox" id="checkbox154"><label for="checkbox154">Loading states are shown during transactions</label></li>
+</ul>
+<p><strong>Notes — Lido:</strong></p>
+<pre class="hljs"><code><div>[Write your observations here]
+</div></code></pre>
+<hr>
+<h3 id="62--benqi-liquid-staking-avalanche">6.2 — Benqi Liquid Staking (Avalanche)</h3>
+<blockquote>
+<p>Benqi allows you to stake AVAX and receive sAVAX in return. sAVAX automatically earns staking rewards over time.</p>
+</blockquote>
+<h4 id="page-overview">Page Overview</h4>
+<ul>
+<li><input type="checkbox" id="checkbox155"><label for="checkbox155">Navigate to the Liquid Staking section and select Benqi / Avalanche</label></li>
+<li><input type="checkbox" id="checkbox156"><label for="checkbox156">The page shows the current APY for staking AVAX</label></li>
+<li><input type="checkbox" id="checkbox157"><label for="checkbox157">AVAX and sAVAX are listed with their details</label></li>
+<li><input type="checkbox" id="checkbox158"><label for="checkbox158">Available liquidity or total staked is visible</label></li>
+</ul>
+<h4 id="stake-flow">Stake Flow</h4>
+<ul>
+<li><input type="checkbox" id="checkbox159"><label for="checkbox159">Enter a small AVAX amount (under $1 equivalent)</label></li>
+<li><input type="checkbox" id="checkbox160"><label for="checkbox160">The estimated sAVAX output is shown</label></li>
+<li><input type="checkbox" id="checkbox161"><label for="checkbox161">Confirm the transaction</label></li>
+<li><input type="checkbox" id="checkbox162"><label for="checkbox162">Transaction completes and sAVAX balance appears</label></li>
+<li><input type="checkbox" id="checkbox163"><label for="checkbox163">Staking position is visible in the interface or portfolio</label></li>
+</ul>
+<h4 id="unstake-flow">Unstake Flow</h4>
+<ul>
+<li><input type="checkbox" id="checkbox164"><label for="checkbox164">With a sAVAX balance, find the unstake option</label></li>
+<li><input type="checkbox" id="checkbox165"><label for="checkbox165">Enter a small sAVAX amount</label></li>
+<li><input type="checkbox" id="checkbox166"><label for="checkbox166">Confirm and verify the transaction completes</label></li>
+<li><input type="checkbox" id="checkbox167"><label for="checkbox167">Balance is updated</label></li>
+</ul>
+<h4 id="general-ux">General UX</h4>
+<ul>
+<li><input type="checkbox" id="checkbox168"><label for="checkbox168">UI clearly distinguishes between Lido (Ethereum) and Benqi (Avalanche)</label></li>
+<li><input type="checkbox" id="checkbox169"><label for="checkbox169">APY shows correctly</label></li>
+<li><input type="checkbox" id="checkbox170"><label for="checkbox170">Error messages are clear and helpful</label></li>
+</ul>
+<p><strong>Notes — Benqi Staking:</strong></p>
+<pre class="hljs"><code><div>[Write your observations here]
+</div></code></pre>
+<hr>
+<h3 id="liquid-staking--end-of-section-report">Liquid Staking — End of Section Report</h3>
+<p><strong>Overall Status:</strong> <input type="checkbox" id="checkbox172"><label for="checkbox172">All good</label> / <input type="checkbox" id="checkbox171"><label for="checkbox171">Issues found</label></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Issue Description</th>
+<th>Protocol</th>
+<th>Action</th>
+<th>Severity (Low/Med/High)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>2</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>User Experience Notes:</strong></p>
+<ul>
+<li>Was it clear which protocol/chain each staking option uses?</li>
+<li>Errors that were confusing:</li>
+<li>Suggestions to improve:</li>
+</ul>
+<hr>
+<h2 id="section-7--dca-dollar-cost-averaging">Section 7 — DCA (Dollar Cost Averaging)</h2>
+<blockquote>
+<p>Goal: Create a daily DCA strategy, observe it execute automatically the following day, then cancel it.</p>
+</blockquote>
+<blockquote>
+<p>DCA allows you to automatically buy a token at a fixed schedule (daily, weekly, monthly). The app uses a Smart Wallet to execute trades without requiring your signature every time.</p>
+</blockquote>
+<h3 id="smart-wallet-setup-if-not-done-yet">Smart Wallet Setup (if not done yet)</h3>
+<ul>
+<li><input type="checkbox" id="checkbox173"><label for="checkbox173">Navigate to the DCA page or Smart Wallets page</label></li>
+<li><input type="checkbox" id="checkbox174"><label for="checkbox174">If no smart wallet exists, the app shows a clear message guiding you to create one</label></li>
+<li><input type="checkbox" id="checkbox175"><label for="checkbox175">Create a Smart Wallet (this may require a one-time transaction to confirm)</label></li>
+<li><input type="checkbox" id="checkbox176"><label for="checkbox176">The smart wallet address is displayed after creation</label></li>
+</ul>
+<h3 id="create-a-dca-strategy">Create a DCA Strategy</h3>
+<ul>
+<li><input type="checkbox" id="checkbox177"><label for="checkbox177">Click &quot;Create Strategy&quot; or the equivalent button</label></li>
+<li><input type="checkbox" id="checkbox178"><label for="checkbox178">A modal/form appears with the following options:</label>
+<ul>
+<li><input type="checkbox" id="checkbox179"><label for="checkbox179">Select the Smart Wallet to use</label></li>
+<li><input type="checkbox" id="checkbox180"><label for="checkbox180">Select the &quot;From&quot; token (the token you spend)</label></li>
+<li><input type="checkbox" id="checkbox181"><label for="checkbox181">Select the &quot;To&quot; token (the token you want to accumulate)</label></li>
+<li><input type="checkbox" id="checkbox182"><label for="checkbox182">Enter the amount (use a very small value, under $1)</label></li>
+<li><input type="checkbox" id="checkbox183"><label for="checkbox183">Select the interval: </label><strong>Daily</strong></li>
+</ul>
+</li>
+<li><input type="checkbox" id="checkbox184"><label for="checkbox184">Confirm the creation</label></li>
+<li><input type="checkbox" id="checkbox185"><label for="checkbox185">The strategy appears in the strategy list with status </label><strong>Active</strong></li>
+<li><input type="checkbox" id="checkbox186"><label for="checkbox186">The &quot;Next Execution&quot; date/time is shown and makes sense (within 24 hours)</label></li>
+</ul>
+<h3 id="verify-the-strategy-on-day-1">Verify the Strategy on Day 1</h3>
+<ul>
+<li><input type="checkbox" id="checkbox187"><label for="checkbox187">The strategy card shows:</label>
+<ul>
+<li>Token pair (from → to)</li>
+<li>Amount per execution</li>
+<li>Interval (Daily)</li>
+<li>Status (Active)</li>
+<li>Next execution time</li>
+</ul>
+</li>
+<li><input type="checkbox" id="checkbox188"><label for="checkbox188">Navigate to Portfolio — the DCA position appears there</label></li>
+<li><input type="checkbox" id="checkbox189"><label for="checkbox189">No error in the strategy details</label></li>
+</ul>
+<h3 id="check-execution-on-day-2">Check Execution on Day 2</h3>
+<blockquote>
+<p>Come back to the app the following day to check if the strategy executed automatically.</p>
+</blockquote>
+<ul>
+<li><input type="checkbox" id="checkbox190"><label for="checkbox190">The strategy shows a successful execution in the </label><strong>Execution History</strong></li>
+<li><input type="checkbox" id="checkbox191"><label for="checkbox191">The history entry shows: timestamp, transaction hash, amount, status (success)</label></li>
+<li><input type="checkbox" id="checkbox192"><label for="checkbox192">The &quot;Next Execution&quot; time has moved forward by one day</label></li>
+<li><input type="checkbox" id="checkbox193"><label for="checkbox193">The &quot;To&quot; token balance in your portfolio reflects the new amount purchased</label></li>
+</ul>
+<h3 id="cancel-the-strategy">Cancel the Strategy</h3>
+<ul>
+<li><input type="checkbox" id="checkbox194"><label for="checkbox194">Find the delete/cancel option on the strategy card</label></li>
+<li><input type="checkbox" id="checkbox195"><label for="checkbox195">The app asks for confirmation before deleting (no accidental deletions)</label></li>
+<li><input type="checkbox" id="checkbox196"><label for="checkbox196">Confirm the deletion</label></li>
+<li><input type="checkbox" id="checkbox197"><label for="checkbox197">The strategy is removed from the list</label></li>
+<li><input type="checkbox" id="checkbox198"><label for="checkbox198">A success message is shown</label></li>
+</ul>
+<h3 id="general-ux">General UX</h3>
+<ul>
+<li><input type="checkbox" id="checkbox199"><label for="checkbox199">Is the DCA setup process easy to understand for a new user?</label></li>
+<li><input type="checkbox" id="checkbox200"><label for="checkbox200">Is the &quot;Smart Wallet required&quot; message clear for users who haven't created one?</label></li>
+<li><input type="checkbox" id="checkbox201"><label for="checkbox201">Are transaction hashes visible in the execution history?</label></li>
+<li><input type="checkbox" id="checkbox202"><label for="checkbox202">Are errors shown in a user-friendly way?</label></li>
+</ul>
+<p><strong>Notes:</strong></p>
+<pre class="hljs"><code><div>[Write your observations here]
+</div></code></pre>
+<hr>
+<h3 id="dca--end-of-section-report">DCA — End of Section Report</h3>
+<p><strong>Overall Status:</strong> <input type="checkbox" id="checkbox204"><label for="checkbox204">All good</label> / <input type="checkbox" id="checkbox203"><label for="checkbox203">Issues found</label></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Issue Description</th>
+<th>Step</th>
+<th>Severity (Low/Med/High)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>2</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>User Experience Notes:</strong></p>
+<ul>
+<li>Smart wallet creation was clear and straightforward? (Yes/No):</li>
+<li>Was the strategy setup form easy to use?</li>
+<li>Did the execution history appear correctly after Day 2?</li>
+<li>Errors that were confusing:</li>
+<li>Suggestions to improve:</li>
+</ul>
+<hr>
+<h2 id="section-8--yield-liquidity-pools-on-base">Section 8 — Yield (Liquidity Pools on Base)</h2>
+<blockquote>
+<p>Goal: Test entering a liquidity pool, monitoring the position, claiming rewards, and exiting. Always use amounts under $1.</p>
+</blockquote>
+<blockquote>
+<p>The Yield product uses Aerodrome pools on Base. You provide liquidity to a token pair and earn AERO rewards over time.</p>
+</blockquote>
+<h3 id="page--pool-overview">Page &amp; Pool Overview</h3>
+<ul>
+<li><input type="checkbox" id="checkbox205"><label for="checkbox205">Navigate to the Yield page</label></li>
+<li><input type="checkbox" id="checkbox206"><label for="checkbox206">A list of available pools is shown (token pair names, APR, total liquidity)</label></li>
+<li><input type="checkbox" id="checkbox207"><label for="checkbox207">Each pool shows an estimated APR</label></li>
+<li><input type="checkbox" id="checkbox208"><label for="checkbox208">APR values look realistic (not 0 or unreasonably high without explanation)</label></li>
+<li><input type="checkbox" id="checkbox209"><label for="checkbox209">Pool names clearly show the two tokens involved (e.g., ETH/USDC, USDC/AERO)</label></li>
+</ul>
+<h3 id="enter-a-pool-provide-liquidity">Enter a Pool (Provide Liquidity)</h3>
+<ul>
+<li><input type="checkbox" id="checkbox210"><label for="checkbox210">Select a pool to enter (e.g., ETH/USDC or USDC/AERO)</label></li>
+<li><input type="checkbox" id="checkbox211"><label for="checkbox211">The &quot;Enter&quot; flow starts — a form or panel appears</label></li>
+<li><input type="checkbox" id="checkbox212"><label for="checkbox212">The app explains what tokens you need to provide</label></li>
+<li><input type="checkbox" id="checkbox213"><label for="checkbox213">Enter small amounts for both tokens (under $1 total)</label></li>
+<li><input type="checkbox" id="checkbox214"><label for="checkbox214">A summary of the operation is shown before confirming</label></li>
+<li><input type="checkbox" id="checkbox215"><label for="checkbox215">Confirm the transaction(s) — there may be multiple steps (approve + enter)</label></li>
+<li><input type="checkbox" id="checkbox216"><label for="checkbox216">The transaction completes and the position appears in the interface</label></li>
+</ul>
+<h3 id="monitor-position">Monitor Position</h3>
+<ul>
+<li><input type="checkbox" id="checkbox217"><label for="checkbox217">Your active position is visible on the Yield page or Portfolio</label></li>
+<li><input type="checkbox" id="checkbox218"><label for="checkbox218">The position shows:</label>
+<ul>
+<li>Pool name</li>
+<li>Amount of LP tokens staked</li>
+<li>Pending rewards (AERO)</li>
+<li>Token balances in the pool</li>
+</ul>
+</li>
+<li><input type="checkbox" id="checkbox219"><label for="checkbox219">Rewards accumulate over time (even if small)</label></li>
+</ul>
+<h3 id="claim-rewards">Claim Rewards</h3>
+<ul>
+<li><input type="checkbox" id="checkbox220"><label for="checkbox220">With an active position, find the &quot;Claim&quot; rewards option</label></li>
+<li><input type="checkbox" id="checkbox221"><label for="checkbox221">Enter the claim action</label></li>
+<li><input type="checkbox" id="checkbox222"><label for="checkbox222">The transaction completes</label></li>
+<li><input type="checkbox" id="checkbox223"><label for="checkbox223">Claimed AERO or reward tokens appear in your wallet balance</label></li>
+</ul>
+<h3 id="exit-the-pool-remove-liquidity">Exit the Pool (Remove Liquidity)</h3>
+<ul>
+<li><input type="checkbox" id="checkbox224"><label for="checkbox224">Find the &quot;Exit&quot; option on your active position</label></li>
+<li><input type="checkbox" id="checkbox225"><label for="checkbox225">Enter the exit flow</label></li>
+<li><input type="checkbox" id="checkbox226"><label for="checkbox226">Confirm the transaction(s)</label></li>
+<li><input type="checkbox" id="checkbox227"><label for="checkbox227">The position is removed from the list</label></li>
+<li><input type="checkbox" id="checkbox228"><label for="checkbox228">Token balances are returned to your wallet</label></li>
+</ul>
+<h3 id="general-ux">General UX</h3>
+<ul>
+<li><input type="checkbox" id="checkbox229"><label for="checkbox229">Is it clear what &quot;entering a pool&quot; means for a less experienced user?</label></li>
+<li><input type="checkbox" id="checkbox230"><label for="checkbox230">Is the multi-step transaction flow (approve + enter) clearly explained?</label></li>
+<li><input type="checkbox" id="checkbox231"><label for="checkbox231">Are error messages clear and helpful?</label></li>
+</ul>
+<p><strong>Notes:</strong></p>
+<pre class="hljs"><code><div>[Write your observations here]
+</div></code></pre>
+<hr>
+<h3 id="yield--end-of-section-report">Yield — End of Section Report</h3>
+<p><strong>Overall Status:</strong> <input type="checkbox" id="checkbox233"><label for="checkbox233">All good</label> / <input type="checkbox" id="checkbox232"><label for="checkbox232">Issues found</label></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Issue Description</th>
+<th>Step</th>
+<th>Severity (Low/Med/High)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>2</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>User Experience Notes:</strong></p>
+<ul>
+<li>Was the pool selection and entry flow easy to understand?</li>
+<li>Was the multi-step flow (if any) clearly communicated?</li>
+<li>Did rewards appear and claim correctly?</li>
+<li>Errors that were confusing:</li>
+<li>Suggestions to improve:</li>
+</ul>
+<hr>
+<h2 id="phase-01--final-summary-report">Phase 01 — Final Summary Report</h2>
+<blockquote>
+<p>Complete this section after finishing all products above.</p>
+</blockquote>
+<p><strong>Tester Name:</strong><br>
+<strong>Testing Date:</strong><br>
+<strong>App Version / Build:</strong><br>
+<strong>Wallet Used:</strong></p>
+<hr>
+<h3 id="overall-status-per-section">Overall Status per Section</h3>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Status</th>
+<th>Critical Issues</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Landing Page</td>
+<td><input type="checkbox" id="checkbox235"><label for="checkbox235">Pass</label> / <input type="checkbox" id="checkbox234"><label for="checkbox234">Issues</label></td>
+<td></td>
+</tr>
+<tr>
+<td>Authentication</td>
+<td><input type="checkbox" id="checkbox237"><label for="checkbox237">Pass</label> / <input type="checkbox" id="checkbox236"><label for="checkbox236">Issues</label></td>
+<td></td>
+</tr>
+<tr>
+<td>Portfolio</td>
+<td><input type="checkbox" id="checkbox239"><label for="checkbox239">Pass</label> / <input type="checkbox" id="checkbox238"><label for="checkbox238">Issues</label></td>
+<td></td>
+</tr>
+<tr>
+<td>Swap</td>
+<td><input type="checkbox" id="checkbox241"><label for="checkbox241">Pass</label> / <input type="checkbox" id="checkbox240"><label for="checkbox240">Issues</label></td>
+<td></td>
+</tr>
+<tr>
+<td>Lending</td>
+<td><input type="checkbox" id="checkbox243"><label for="checkbox243">Pass</label> / <input type="checkbox" id="checkbox242"><label for="checkbox242">Issues</label></td>
+<td></td>
+</tr>
+<tr>
+<td>Liquid Staking — Lido</td>
+<td><input type="checkbox" id="checkbox245"><label for="checkbox245">Pass</label> / <input type="checkbox" id="checkbox244"><label for="checkbox244">Issues</label></td>
+<td></td>
+</tr>
+<tr>
+<td>Liquid Staking — Benqi</td>
+<td><input type="checkbox" id="checkbox247"><label for="checkbox247">Pass</label> / <input type="checkbox" id="checkbox246"><label for="checkbox246">Issues</label></td>
+<td></td>
+</tr>
+<tr>
+<td>DCA</td>
+<td><input type="checkbox" id="checkbox249"><label for="checkbox249">Pass</label> / <input type="checkbox" id="checkbox248"><label for="checkbox248">Issues</label></td>
+<td></td>
+</tr>
+<tr>
+<td>Yield</td>
+<td><input type="checkbox" id="checkbox251"><label for="checkbox251">Pass</label> / <input type="checkbox" id="checkbox250"><label for="checkbox250">Issues</label></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="top-issues-found">Top Issues Found</h3>
+<blockquote>
+<p>List the most important issues here, regardless of which section they came from.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Priority</th>
+<th>Product</th>
+<th>Description</th>
+<th>Expected Behavior</th>
+<th>Actual Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>High</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>High</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Medium</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Medium</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Low</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Low</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="general-user-experience-observations">General User Experience Observations</h3>
+<p><strong>What felt smooth and worked well:</strong></p>
+<pre class="hljs"><code><div>[Write here]
+</div></code></pre>
+<p><strong>What was confusing or hard to understand:</strong></p>
+<pre class="hljs"><code><div>[Write here]
+</div></code></pre>
+<p><strong>Error messages that were not user-friendly (list them):</strong></p>
+<pre class="hljs"><code><div>[Write here]
+</div></code></pre>
+<p><strong>Suggestions to improve the overall experience:</strong></p>
+<pre class="hljs"><code><div>[Write here]
+</div></code></pre>
+<hr>
+<p><em>End of Phase 01 Testing Guide</em></p>
+
+</body>
+</html>

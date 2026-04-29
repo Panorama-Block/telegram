@@ -14,6 +14,8 @@ type Step = 'form' | 'submitted'
 
 export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
   const [step, setStep]           = useState<Step>('form')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName]   = useState('')
   const [amountUSD, setAmountUSD] = useState('')
   const [wallet, setWallet]       = useState('')
   const [email, setEmail]         = useState('')
@@ -44,7 +46,7 @@ export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
       const res = await fetch('/miniapp/api/allocation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amountUSD: usd, tokens, wallet, email, telegram, phone }),
+        body: JSON.stringify({ firstName, lastName, amountUSD: usd, tokens, wallet, email, telegram, phone }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -60,6 +62,8 @@ export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
 
   const handleClose = () => {
     setStep('form')
+    setFirstName('')
+    setLastName('')
     setAmountUSD('')
     setWallet('')
     setEmail('')
@@ -104,7 +108,7 @@ export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
                     <h2 className="text-base font-bold text-white">
                       {step === 'form' ? 'Request Allocation' : 'Request Submitted'}
                     </h2>
-                    <p className="text-xs text-zinc-500 mt-0.5">Seed Round · $PANBLK</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">Pre-seed Round · $PANBLK</p>
                   </div>
                 </div>
                 <button
@@ -174,6 +178,34 @@ export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
                         Valid EVM address required (0x + 40 characters)
                       </p>
                     )}
+                  </div>
+
+                  {/* Name — side by side */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-zinc-400">
+                        Name
+                      </label>
+                      <input
+                        type="text"
+                        value={firstName}
+                        onChange={e => setFirstName(e.target.value)}
+                        placeholder="First name"
+                        className="w-full h-10 bg-zinc-900/50 border border-white/10 rounded-xl px-3 text-white placeholder:text-zinc-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-zinc-400">
+                        Last Name
+                      </label>
+                      <input
+                        type="text"
+                        value={lastName}
+                        onChange={e => setLastName(e.target.value)}
+                        placeholder="Last name"
+                        className="w-full h-10 bg-zinc-900/50 border border-white/10 rounded-xl px-3 text-white placeholder:text-zinc-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all text-sm"
+                      />
+                    </div>
                   </div>
 
                   {/* Contact — side by side */}

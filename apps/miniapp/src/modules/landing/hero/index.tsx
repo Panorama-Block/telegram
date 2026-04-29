@@ -151,7 +151,7 @@ const Hero = () => {
         </Button>
       </div>
 
-      {/* Seed Round Awareness Modal */}
+      {/* Pre-seed Round Awareness Modal */}
       <AnimatePresence>
         {showSeedModal && (
           <>
@@ -179,7 +179,7 @@ const Hero = () => {
                       <Zap className="w-4 h-4 text-cyan-400" />
                     </div>
                     <div>
-                      <h2 className="text-base font-bold text-white">$PANBLK Seed Round</h2>
+                      <h2 className="text-base font-bold text-white">$PANBLK Pre-seed Round</h2>
                       <p className="text-xs text-zinc-500 mt-0.5 font-mono">Live now · Limited allocation</p>
                     </div>
                   </div>
@@ -195,7 +195,7 @@ const Hero = () => {
                 {/* Body */}
                 <div className="p-5 space-y-4">
                   <p className="text-sm text-zinc-400 leading-relaxed">
-                    Panorama Block is running its <span className="text-white font-semibold">$PANBLK Seed Round</span>. Early supporters can acquire tokens at <span className="text-cyan-400 font-mono font-semibold">$0.025</span> — a{' '}
+                    Panorama Block is running its <span className="text-white font-semibold">$PANBLK Pre-seed Round</span>. Early supporters can acquire tokens at <span className="text-cyan-400 font-mono font-semibold">$0.025</span> — a{' '}
                     <span className="text-cyan-400 font-semibold">3.2×</span> discount to the <span className="text-white">$0.08 listing price</span>.
                   </p>
 
@@ -224,7 +224,7 @@ const Hero = () => {
                       className="w-full h-11 rounded-xl bg-gradient-to-r from-cyan-500 to-cyan-400 text-black font-bold text-sm tracking-wide transition-all hover:brightness-110 active:scale-[0.99]"
                       style={{ boxShadow: '0 6px 24px rgba(34,211,238,0.3)' }}
                     >
-                      View Seed Round →
+                      View Pre-seed Round →
                     </button>
                     <button
                       onClick={() => { setShowSeedModal(false); handleLaunchApp() }}

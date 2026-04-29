@@ -9,6 +9,8 @@ import {
 // ─── Validation ──────────────────────────────────────────────────────────────
 
 const schema = z.object({
+  firstName: z.string().default(''),
+  lastName:  z.string().default(''),
   amountUSD: z.number().min(500, 'Minimum investment is $500').max(500_000, 'Maximum investment is $500K'),
   tokens:    z.number().positive(),
   wallet:    z.string().regex(/^(0x[a-fA-F0-9]{40})?$/, 'Invalid EVM address').default(''),

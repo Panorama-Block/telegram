@@ -14,7 +14,7 @@ export interface RoadmapItem {
 }
 
 export const ALLOCATIONS: Allocation[] = [
-  { label: 'Seed Round',      pct: 6,  color: '#22d3ee', price: '$0.025', vesting: '6mo cliff · 24mo linear' },
+  { label: 'Pre-seed Round',  pct: 6,  color: '#22d3ee', price: '$0.025', vesting: '6mo cliff · 24mo linear' },
   { label: 'Strategic',       pct: 8,  color: '#06b6d4', price: '$0.045', vesting: '3mo cliff · 12mo linear' },
   { label: 'Public Sale',     pct: 4,  color: '#0891b2', price: '$0.080', vesting: '25% TGE · 9mo linear' },
   { label: 'Team & Advisors', pct: 18, color: '#164e63', price: '—',      vesting: '12mo cliff · 36mo linear' },
@@ -30,7 +30,7 @@ export const ROADMAP: RoadmapItem[] = [
     status: 'live',
     title: 'Foundation & Testnet',
     items: [
-      'Seed token round execution',
+      'Pre-seed token round execution',
       'Core protocol v0.1 deployment',
       'Testnet launch with early users',
       'Integrations live (Base, Avalanche, TON, Ethereum)',

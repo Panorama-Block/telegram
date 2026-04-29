@@ -18,9 +18,10 @@ export function TokenHero() {
         </h1>
 
         <p className="text-white/45 text-sm md:text-base leading-relaxed mb-8 md:mb-10 font-light max-w-xl">
-          $PANBLK powers the Panorama Block protocol — a multi-chain AI agent network
-          for composable DeFi, built on rigorous cryptoeconomic research from UCLA and
-          partner institutions. The seed round is open to qualified participants.
+          Panorama Block Protocol — a multi-chain AI agent network for composable DeFi,
+          built on rigorous cryptoeconomic research led by UCLA faculty and other top
+          universities. This Pre-Seed round is open to qualified participants. Token
+          availability is on a first-come, first-served basis.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-3">

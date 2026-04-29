@@ -15,6 +15,8 @@ function getOAuthClient() {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface AllocationPayload {
+  firstName: string
+  lastName: string
   amountUSD: number
   tokens: number
   wallet: string
@@ -26,7 +28,7 @@ export interface AllocationPayload {
 // ─── Sheets ──────────────────────────────────────────────────────────────────
 
 const SHEET_NAME = 'Allocations'
-const SHEET_HEADERS = ['Timestamp', 'Wallet', 'Email', 'Telegram', 'Phone', 'Amount (USD)', 'Tokens (PANBLK)', 'Status']
+const SHEET_HEADERS = ['Timestamp', 'First Name', 'Last Name', 'Wallet', 'Email', 'Telegram', 'Phone', 'Amount (USD)', 'Tokens (PANBLK)', 'Status']
 
 export async function appendAllocation(data: AllocationPayload): Promise<void> {
   const auth  = getOAuthClient()
@@ -36,7 +38,7 @@ export async function appendAllocation(data: AllocationPayload): Promise<void> {
   // Ensure header row exists on first use
   const existing = await sheets.spreadsheets.values.get({
     spreadsheetId: sheetId,
-    range: `${SHEET_NAME}!A1:H1`,
+    range: `${SHEET_NAME}!A1:J1`,
   }).catch(() => null)
 
   const firstRow = existing?.data?.values?.[0]
@@ -44,7 +46,7 @@ export async function appendAllocation(data: AllocationPayload): Promise<void> {
   if (!firstRow || firstRow.length !== SHEET_HEADERS.length) {
     await sheets.spreadsheets.values.update({
       spreadsheetId: sheetId,
-      range: `${SHEET_NAME}!A1:H1`,
+      range: `${SHEET_NAME}!A1:J1`,
       valueInputOption: 'RAW',
       requestBody: { values: [SHEET_HEADERS] },
     })
@@ -52,17 +54,19 @@ export async function appendAllocation(data: AllocationPayload): Promise<void> {
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: sheetId,
-    range: `${SHEET_NAME}!A:H`,
+    range: `${SHEET_NAME}!A:J`,
     // RAW prevents "+" in phone numbers being parsed as formulas
     valueInputOption: 'RAW',
     insertDataOption: 'INSERT_ROWS',
     requestBody: {
       values: [[
         new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', hour12: false }).replace(',', ''),
-        data.wallet   || '—',
-        data.email    || '—',
-        data.telegram || '—',
-        data.phone    || '—',
+        data.firstName || '—',
+        data.lastName  || '—',
+        data.wallet    || '—',
+        data.email     || '—',
+        data.telegram  || '—',
+        data.phone     || '—',
         data.amountUSD,
         data.tokens,
         'Pending Review',
@@ -124,7 +128,7 @@ export async function sendConfirmationEmail(data: AllocationPayload): Promise<vo
             <tr>
               <td bgcolor="#0a0a0a" style="background-color:#0a0a0a;padding:32px 40px;">
                 <p style="margin:0 0 24px;font-size:13px;color:#808080;line-height:1.7;">
-                  Thank you for your interest in the $PANBLK Seed Round. Our team will review your request and reach out with allocation confirmation and payment instructions.
+                  Thank you${data.firstName ? `, ${data.firstName}` : ''} for your interest in the $PANBLK Pre-seed Round. Our team will review your request and reach out with allocation confirmation and payment instructions.
                 </p>
 
                 <!-- Summary box -->
@@ -162,7 +166,7 @@ export async function sendConfirmationEmail(data: AllocationPayload): Promise<vo
             <tr>
               <td bgcolor="#0a0a0a" style="background-color:#0a0a0a;padding:20px 40px;border-top:1px solid #0f0f0f;">
                 <p style="margin:0;font-size:10px;color:#333333;text-align:center;">
-                  Panorama Block - Seed Round - $PANBLK - This email was sent because you submitted an allocation request.
+                  Panorama Block - Pre-seed Round - $PANBLK - This email was sent because you submitted an allocation request.
                 </p>
               </td>
             </tr>
@@ -174,7 +178,7 @@ export async function sendConfirmationEmail(data: AllocationPayload): Promise<vo
     </html>
   `
 
-  await sendMail(data.email, '$PANBLK Seed Round - Allocation Request Received', html)
+  await sendMail(data.email, '$PANBLK Pre-seed Round - Allocation Request Received', html)
 }
 
 export async function sendAdminNotification(data: AllocationPayload): Promise<void> {
@@ -200,6 +204,7 @@ export async function sendAdminNotification(data: AllocationPayload): Promise<vo
                 <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#111111" style="background-color:#111111;border:1px solid #1c1c1c;border-radius:10px;">
                   <tr><td style="padding:16px 20px;">
                     ${row('Timestamp', new Date().toLocaleString('en-US', { timeZone: 'UTC' }) + ' UTC')}
+                    ${row('Name', [data.firstName, data.lastName].filter(Boolean).join(' ') || 'not provided')}
                     ${row('Amount', `$${data.amountUSD.toLocaleString()} USD`)}
                     ${row('Tokens', `${data.tokens.toLocaleString()} PANBLK`)}
                     ${row('Wallet', data.wallet || 'not provided')}
