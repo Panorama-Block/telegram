@@ -591,9 +591,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
       console.log("[SwapWidget] Token decimals:", { symbol: sellSymbol, decimals, rawDecimals: sellToken.decimals });
 
-      // Base same-chain → Execution Layer (Aerodrome) via backend
-      if (fromChainId === BASE_CHAIN_ID && toChainId === BASE_CHAIN_ID) {
-        console.log("[SwapWidget] Base same-chain → chamando backend (Execution Layer / Aerodrome)");
+      // Same-chain EVM (não-Avalanche) → backend (RouterDomainService escolhe Aerodrome/Uniswap/Thirdweb)
+      if (fromChainId === toChainId && fromChainId !== 43114) {
+        console.log(`[SwapWidget] Same-chain (chain ${fromChainId}) → chamando backend`);
         const quoteRes = await swapApi.quote({
           fromChainId,
           toChainId,
@@ -999,9 +999,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
       const hashes: Array<{ hash: string, chainId: number }> = [];
 
-      // Base same-chain → Execution Layer (Aerodrome) via backend
-      if (fromChainId === BASE_CHAIN_ID && toChainId === BASE_CHAIN_ID) {
-        console.log("[SwapWidget] Base same-chain → preparando bundle via backend (Execution Layer / Aerodrome)");
+      // Same-chain EVM (não-Avalanche) → backend (RouterDomainService escolhe Aerodrome/Uniswap/Thirdweb)
+      if (fromChainId === toChainId && fromChainId !== 43114) {
+        console.log(`[SwapWidget] Same-chain (chain ${fromChainId}) → preparando bundle via backend`);
 
         const prepareRes = await swapApi.prepare({
           fromChainId,
@@ -1058,10 +1058,9 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             value: BigInt(tx.value),
             chain: defineChain(tx.chainId),
             client,
-            // Gas explícito para swap: execute() → clone → AerodromeAdapter.swap()
-            // → safeApprove(×2) → router ≈ 300-340k. Sem limite, eth_estimateGas
-            // pode falhar em RPC rate-limit e o fallback do thirdweb é muito baixo (OOG).
-            gas: tx.action === 'swap' ? 400000n : undefined,
+            // Gas explícito apenas pra Base/Aerodrome: execute() → clone → AerodromeAdapter.swap()
+            // → safeApprove(×2) → router ≈ 300-340k. Outras chains usam Uniswap UR e estimação padrão.
+            gas: tx.action === 'swap' && fromChainId === BASE_CHAIN_ID ? 400000n : undefined,
           });
 
           const receipt = await sendAndConfirmTransaction({ transaction: preparedTx, account });
@@ -1380,8 +1379,8 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
   const toIsTon = buyToken.network === 'TON';
   const fromAddress = fromIsTon ? tonConnectUI.account?.address : account?.address;
   const toAddress = toIsTon ? tonConnectUI.account?.address : account?.address;
-  const fromLabel = fromIsTon ? 'TON' : 'EVM';
-  const toLabel = toIsTon ? 'TON' : 'EVM';
+  const fromLabel = fromIsTon ? 'TON' : sellToken.network;
+  const toLabel = toIsTon ? 'TON' : buyToken.network;
 
   return (
     <motion.div
