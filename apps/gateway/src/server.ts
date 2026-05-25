@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 import { parseEnv, type Env } from './env.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerCapabilityRoutes, LEGACY_DEPRECATION_DATE } from './routes/capability.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
 import { registerWalletRoutes } from './routes/wallet.js';
 import { registerErrorHandler } from './middleware/errorHandler.js';
@@ -193,13 +194,18 @@ export async function createServer(): Promise<FastifyInstance> {
 
   app.log.info({ NEXTJS_URL, shouldProxyMiniapp, publicMiniappUrl }, 'Miniapp routing configured');
 
-  // ===== SWAP SERVICE PROXY =====
+  // ===== SWAP SERVICE PROXY (legacy — deprecated, kept for backward compat) =====
   const SWAP_SERVICE_URL = process.env.SWAP_SERVICE_URL || 'http://localhost:3002';
 
   app.all('/swap/*', async (req, reply) => {
+    // RFC 8594 deprecation notice — clients should migrate to /v1/capability/swap/*
+    reply.header('Deprecation', LEGACY_DEPRECATION_DATE);
+    reply.header('Sunset', LEGACY_DEPRECATION_DATE);
+    reply.header('Link', '</v1/capability/swap>; rel="successor-version"');
+
     try {
       const targetUrl = `${SWAP_SERVICE_URL}${req.url}`;
-      console.log(`[Gateway] → Swap: ${targetUrl}`);
+      console.log(`[Gateway] → Swap (legacy): ${targetUrl}`);
 
       const response = await fetch(targetUrl, {
         method: req.method,
@@ -215,7 +221,10 @@ export async function createServer(): Promise<FastifyInstance> {
     }
   });
 
-  app.log.info({ SWAP_SERVICE_URL }, 'Swap proxy configured');
+  app.log.info({ SWAP_SERVICE_URL }, 'Swap proxy configured (legacy — deprecated, migrate to /v1/capability/swap/*)');
+
+  // ===== CAPABILITY ROUTES =====
+  await registerCapabilityRoutes(app);
 
   // Debug: log miniapp requests and expose a probe
   app.addHook('onRequest', async (req) => {
