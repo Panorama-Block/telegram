@@ -1,4 +1,4 @@
-name: Build And Publish Telegram Gateway Image
+name: Deploy Telegram Gateway
 
 on:
   workflow_dispatch:
@@ -7,8 +7,11 @@ on:
       - main
     paths:
       - 'apps/gateway/**'
+      - 'apps/miniapp/package*.json'
       - 'deploy/azure-vm/**'
       - 'Dockerfile'
+      - 'package*.json'
+      - 'tsconfig.base.json'
       - '.github/workflows/deploy-gateway.yml'
 
 permissions:
@@ -16,41 +19,98 @@ permissions:
   contents: read
 
 env:
+  RG: rg-panorama-dev
+  APP_NAME: panorama-dev-telegram-gateway-api
+  ACR_NAME: panoramadevpublicapi
+  IMAGE_REPO: panoramadevpublicapi.azurecr.io/telegram-gateway
   IMAGE_TAG: ${{ github.sha }}
+  GATEWAY_APP_NAME: panorama-dev-public-api-gateway
 
 jobs:
-  publish:
+  deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
         with:
-          registry: ghcr.io
-          username: ${{ secrets.GHCR_USERNAME }}
-          password: ${{ secrets.GHCR_PASSWORD }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Compute gateway image
-        id: image
-        run: |
-          OWNER_LOWER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
-          echo "image=ghcr.io/${OWNER_LOWER}/telegram-gateway:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "namespace=${OWNER_LOWER}" >> "$GITHUB_OUTPUT"
+      - name: Enable Container Apps extension
+        run: az extension add --name containerapp --upgrade
+
+      - name: Login to ACR
+        run: az acr login --name "$ACR_NAME"
 
       - name: Build and push gateway image
         env:
-          IMAGE: ${{ steps.image.outputs.image }}
-          IMAGE_LATEST: ghcr.io/${{ steps.image.outputs.namespace }}/telegram-gateway:latest
+          IMAGE_SHA: ${{ env.IMAGE_REPO }}:${{ env.IMAGE_TAG }}
+          IMAGE_LATEST: ${{ env.IMAGE_REPO }}:latest
         run: |
+          set -euo pipefail
           docker build \
             --build-arg BUILD_MINIAPP=false \
             -f Dockerfile \
-            -t "$IMAGE" \
+            -t "$IMAGE_SHA" \
             -t "$IMAGE_LATEST" .
-          docker push "$IMAGE"
+          docker push "$IMAGE_SHA"
           docker push "$IMAGE_LATEST"
+
+      - name: Deploy telegram gateway
+        env:
+          IMAGE_SHA: ${{ env.IMAGE_REPO }}:${{ env.IMAGE_TAG }}
+        run: |
+          set -euo pipefail
+          az containerapp update \
+            --name "$APP_NAME" \
+            --resource-group "$RG" \
+            --image "$IMAGE_SHA"
+
+      - name: Wait for latest revision ready
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            latest_revision="$(az containerapp show --name "$APP_NAME" --resource-group "$RG" --query properties.latestRevisionName -o tsv)"
+            latest_ready_revision="$(az containerapp show --name "$APP_NAME" --resource-group "$RG" --query properties.latestReadyRevisionName -o tsv)"
+            echo "latestRevisionName=${latest_revision}"
+            echo "latestReadyRevisionName=${latest_ready_revision}"
+
+            if [ -n "$latest_revision" ] && [ "$latest_revision" = "$latest_ready_revision" ]; then
+              echo "Latest revision is ready."
+              exit 0
+            fi
+
+            sleep 15
+          done
+
+          echo "Latest revision did not become ready in time."
+          exit 1
+
+      - name: Smoke test via public API gateway
+        run: |
+          set -euo pipefail
+          FQDN="$(az containerapp show --name "$GATEWAY_APP_NAME" --resource-group "$RG" --query properties.configuration.ingress.fqdn -o tsv)"
+          URL="https://${FQDN}/__health/telegram"
+
+          for attempt in 1 2 3 4 5; do
+            status="$(curl -sS -L --max-time 30 -o /tmp/health_body.txt -w '%{http_code}' "$URL" || true)"
+            echo "HEALTH_STATUS=${status}"
+            cat /tmp/health_body.txt || true
+
+            if [ "$status" = "200" ]; then
+              echo "Telegram gateway smoke test passed."
+              exit 0
+            fi
+
+            sleep 15
+          done
+
+          echo "Telegram gateway smoke test failed."
+          exit 1

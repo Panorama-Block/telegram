@@ -47,7 +47,25 @@ function isWalletDeepLink(url: string): boolean {
 
 function getWebApp(): TgWebApp | null {
   if (typeof window === 'undefined') return null;
-  return (window as any).Telegram?.WebApp ?? null;
+  const telegram = (window as any).Telegram;
+  const webApp = telegram?.WebApp;
+  if (!webApp) return null;
+
+  const initData = typeof webApp.initData === 'string' ? webApp.initData.trim() : '';
+  const search = window.location?.search ?? '';
+  const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+  const referrer = typeof document !== 'undefined' ? document.referrer : '';
+  const isIframe = window.top !== window;
+
+  const hasTelegramContext =
+    initData.length > 0 ||
+    /tgWebApp/i.test(search) ||
+    /Telegram/i.test(userAgent) ||
+    /web\.telegram\.(org|me)/i.test(referrer) ||
+    telegram?.WebView?.isIframe === true ||
+    isIframe;
+
+  return hasTelegramContext ? webApp : null;
 }
 
 let installed = false;
@@ -72,21 +90,36 @@ export function installTelegramWindowOpenShim(): void {
 
       // tg:// and t.me links → stay inside Telegram
       if (href.startsWith('tg://') || href.startsWith('https://t.me/')) {
-        webApp.openTelegramLink?.(href);
-        return null;
+        if (webApp.openTelegramLink) {
+          webApp.openTelegramLink(href);
+          return null;
+        }
+        return originalOpen(url as any, target, features);
+      }
+
+      // Thirdweb OAuth URLs need a real Window object in popup mode. If this
+      // path is reached, let the SDK handle it instead of returning null.
+      if (/thirdweb/i.test(href) && !isWalletDeepLink(href)) {
+        return originalOpen(url as any, target, features);
       }
 
       // Wallet deep links → hand to Telegram so iOS actually follows them
       if (isWalletDeepLink(href)) {
-        webApp.openLink?.(href, { try_instant_view: false });
-        return null;
+        if (webApp.openLink) {
+          webApp.openLink(href, { try_instant_view: false });
+          return null;
+        }
+        return originalOpen(url as any, target, features);
       }
 
-      // Generic https:// — let Telegram route it externally, which is
-      // more reliable than window.open inside the webview
+      // Generic https:// — let Telegram route it externally when available,
+      // which is more reliable than window.open inside the webview.
       if (href.startsWith('https://') || href.startsWith('http://')) {
-        webApp.openLink?.(href, { try_instant_view: false });
-        return null;
+        if (webApp.openLink) {
+          webApp.openLink(href, { try_instant_view: false });
+          return null;
+        }
+        return originalOpen(url as any, target, features);
       }
 
       return originalOpen(url as any, target, features);
@@ -98,6 +131,5 @@ export function installTelegramWindowOpenShim(): void {
   };
 
   installed = true;
-  // eslint-disable-next-line no-console
   console.log('[TgShim] window.open shim installed for Telegram webview');
 }

@@ -54,7 +54,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const authApiBase = (process.env.VITE_AUTH_API_BASE || '').replace(/\/+$/, '');
 
   const client = useMemo(() => {
-    const clientId = process.env.VITE_THIRDWEB_CLIENT_ID || undefined;
+    const clientId = THIRDWEB_CLIENT_ID || undefined;
     if (!clientId) {
       console.warn('No THIRDWEB_CLIENT_ID found')
       return null;
@@ -69,14 +69,14 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
   const wallets = useMemo(() => {
     if (typeof window === 'undefined') return [inAppWallet()];
-    const isTelegram = isTelegramWebApp();
+    const isTelegramEnv = isTelegramWebApp() || isTelegram;
     const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const mode = isTelegram ? 'redirect' : 'popup';
-    const redirectUrl = isTelegram ? `${window.location.origin}/miniapp/auth/callback` : undefined;
+    const mode = isTelegramEnv ? 'redirect' : 'popup';
+    const redirectUrl = isTelegramEnv ? `${window.location.origin}/miniapp/auth/callback` : undefined;
     const telegramAuthOptions = ['telegram', 'email'] as const;
 
     if (isiOS) {
-      if (isTelegram) {
+      if (isTelegramEnv) {
         return [inAppWallet({ auth: { options: telegramAuthOptions, mode, redirectUrl } })];
       }
       return [
@@ -84,7 +84,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         createWallet('io.metamask', { preferDeepLink: true }),
       ];
     }
-    return isTelegram
+    return isTelegramEnv
       ? [inAppWallet({
           auth: {
             options: telegramAuthOptions,
@@ -102,7 +102,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           }),
           createWallet('io.metamask', { preferDeepLink: true }),
         ];
-  }, []);
+  }, [isTelegram]);
 
   const [statusMessage, setStatusMessage] = useState<string>('');
 

@@ -2,6 +2,10 @@
 node_modules
 apps/*/node_modules
 apps/*/dist
+apps/*/.next
+.next
+dist
+coverage
 pnpm-lock.yaml
 npm-debug.log
 .vscode
