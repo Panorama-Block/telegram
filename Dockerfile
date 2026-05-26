@@ -8,13 +8,14 @@ ARG BUILD_MINIAPP="true"
 
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
+ARG BUILD_MINIAPP
 
 COPY tsconfig.base.json ./
 COPY apps/gateway/package*.json apps/gateway/
 COPY apps/miniapp/package*.json apps/miniapp/
 
 RUN npm install --prefix apps/gateway \
- && npm install --prefix apps/miniapp
+ && if [ "$BUILD_MINIAPP" = "true" ]; then npm install --prefix apps/miniapp; fi
 
 FROM deps AS build-miniapp
 ARG BUILD_MINIAPP
