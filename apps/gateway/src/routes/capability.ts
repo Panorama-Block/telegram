@@ -146,6 +146,7 @@ export async function registerCapabilityRoutes(app: FastifyInstance): Promise<vo
     { name: 'stake',  url: env.LIDO_API_BASE },
     { name: 'lend',   url: env.LENDING_API_BASE },
     { name: 'dca',    url: env.DCA_API_BASE },
+    ...(env.AUTH_API_BASE ? [{ name: 'auth', url: env.AUTH_API_BASE }] : []),
   ];
 
   // /v1/capability/<slug>/* → upstream service preserving full path + query
