@@ -35,7 +35,12 @@ export function isTelegramWebApp(): boolean {
   const hasTelegramUA = /Telegram/i.test(userAgent);
   const referrer = typeof document !== 'undefined' ? document.referrer : '';
   const fromTelegramWeb = /web\.telegram\.(org|me)/i.test(referrer);
-  const isIframe = typeof window !== 'undefined' && window.top !== window;
+  let isIframe = false;
+  try {
+    isIframe = typeof window !== 'undefined' && window.top !== window;
+  } catch {
+    isIframe = true;
+  }
 
   // 2) Telegram injects tgWebApp* params in URL
   const hasTgParams = /tgWebApp/i.test(search);
