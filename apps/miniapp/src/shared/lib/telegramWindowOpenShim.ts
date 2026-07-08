@@ -8,12 +8,12 @@
  * such as Google rely on receiving a real Window object from window.open().
  */
 
+import { isTelegramWebApp } from '@/lib/isTelegram';
+
 type TgWebApp = {
-  initData?: string;
   openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
   openTelegramLink?: (url: string) => void;
   platform?: string;
-  version?: string;
 };
 
 const WALLET_SCHEMES = [
@@ -42,29 +42,6 @@ function getWebApp(): TgWebApp | null {
   return (window as any).Telegram?.WebApp ?? null;
 }
 
-function hasRealTelegramMiniAppSignal(webApp: TgWebApp): boolean {
-  if (typeof window === "undefined") return false;
-
-  const initData = typeof webApp.initData === "string" ? webApp.initData.trim() : "";
-  if (initData.length > 0) return true;
-
-  const search = window.location?.search ?? "";
-  const hasTgParams = /tgWebApp/i.test(search);
-  const overrideParam = /(?:^|[?&])tma=(1|true)(?:&|$)/i.test(search);
-  const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : "";
-  const hasTelegramUA = /Telegram/i.test(userAgent);
-  const referrer = typeof document !== "undefined" ? document.referrer : "";
-  const fromTelegramWeb = /web\.telegram\.(org|me)/i.test(referrer);
-  const isIframe = window.top !== window;
-  const host = window.location.hostname.toLowerCase();
-
-  if (/^web\.telegram\.(org|me)$/i.test(host)) return true;
-  if ((hasTgParams || overrideParam) && (hasTelegramUA || fromTelegramWeb || isIframe)) return true;
-  if (isIframe && typeof webApp.version === "string" && (hasTelegramUA || fromTelegramWeb)) return true;
-
-  return false;
-}
-
 let installed = false;
 
 export function installTelegramWindowOpenShim(): void {
@@ -72,34 +49,34 @@ export function installTelegramWindowOpenShim(): void {
   if (typeof window === "undefined") return;
 
   const webApp = getWebApp();
-  if (!webApp || !hasRealTelegramMiniAppSignal(webApp)) return;
+  if (!webApp || !isTelegramWebApp()) return;
 
   const originalOpen = window.open.bind(window);
 
-  const callTelegramLinkOpener = (open: ((url: string, options?: { try_instant_view?: boolean }) => void) | undefined, href: string) => {
-    if (!open) return originalOpen(href, "_blank");
-
+  const withOriginalOpen = (fn: () => void): null => {
     const shimmedOpen = window.open;
     try {
       window.open = originalOpen;
-      open(href, { try_instant_view: false });
+      fn();
       return null;
     } finally {
       window.open = shimmedOpen;
     }
   };
 
-  const callTelegramInternalOpener = (href: string) => {
-    if (!webApp.openTelegramLink) return originalOpen(href, "_blank");
+  const callTelegramLinkOpener = (
+    open: ((url: string, options?: { try_instant_view?: boolean }) => void) | undefined,
+    href: string,
+    target?: string,
+    features?: string,
+  ) => {
+    if (!open) return originalOpen(href, target, features);
+    return withOriginalOpen(() => open(href, { try_instant_view: false }));
+  };
 
-    const shimmedOpen = window.open;
-    try {
-      window.open = originalOpen;
-      webApp.openTelegramLink(href);
-      return null;
-    } finally {
-      window.open = shimmedOpen;
-    }
+  const callTelegramInternalOpener = (href: string, target?: string, features?: string) => {
+    if (!webApp.openTelegramLink) return originalOpen(href, target, features);
+    return withOriginalOpen(() => webApp.openTelegramLink!(href));
   };
 
   (window as any).open = (
@@ -112,11 +89,11 @@ export function installTelegramWindowOpenShim(): void {
       if (!href) return originalOpen(url as any, target, features);
 
       if (href.startsWith("tg://") || href.startsWith("https://t.me/")) {
-        return callTelegramInternalOpener(href);
+        return callTelegramInternalOpener(href, target, features);
       }
 
       if (isWalletDeepLink(href)) {
-        return callTelegramLinkOpener(webApp.openLink, href);
+        return callTelegramLinkOpener(webApp.openLink, href, target, features);
       }
 
       return originalOpen(url as any, target, features);

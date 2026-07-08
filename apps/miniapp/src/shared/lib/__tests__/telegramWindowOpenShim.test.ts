@@ -30,7 +30,8 @@ describe('installTelegramWindowOpenShim', () => {
   it("leaves generic https popups to the browser when running in a real Telegram mini app context", async () => {
     const openLink = vi.fn();
     const popup = {} as Window;
-    window.open = vi.fn(() => popup);
+    const nativeOpenSpy = vi.fn(() => popup);
+    window.open = nativeOpenSpy;
     (window as any).Telegram = {
       WebApp: {
         version: "7.0",
@@ -47,5 +48,10 @@ describe('installTelegramWindowOpenShim', () => {
 
     expect(result).toBe(popup);
     expect(openLink).not.toHaveBeenCalled();
+    expect(nativeOpenSpy).toHaveBeenCalledWith(
+      "https://accounts.google.com/o/oauth2/v2/auth",
+      "_blank",
+      undefined,
+    );
   });
 });
