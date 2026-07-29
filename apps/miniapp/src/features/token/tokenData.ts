@@ -14,14 +14,13 @@ export interface RoadmapItem {
 }
 
 export const ALLOCATIONS: Allocation[] = [
-  { label: 'Pre-seed Round',  pct: 6,  color: '#22d3ee', price: '$0.025', vesting: '6mo cliff · 24mo linear' },
-  { label: 'Strategic',       pct: 8,  color: '#06b6d4', price: '$0.045', vesting: '3mo cliff · 12mo linear' },
-  { label: 'Public Sale',     pct: 4,  color: '#0891b2', price: '$0.080', vesting: '25% TGE · 9mo linear' },
-  { label: 'Team & Advisors', pct: 18, color: '#164e63', price: '—',      vesting: '12mo cliff · 36mo linear' },
-  { label: 'Ecosystem',       pct: 25, color: '#155e75', price: '—',      vesting: '4yr linear emission' },
-  { label: 'Treasury',        pct: 20, color: '#0e7490', price: '—',      vesting: 'Governed by multisig' },
-  { label: 'Research',        pct: 12, color: '#0369a1', price: '—',      vesting: '2yr linear' },
-  { label: 'Liquidity',       pct: 7,  color: '#1d4ed8', price: '—',      vesting: 'Unlocked at TGE' },
+  { label: 'Pre-seed Round',  pct: 6,  color: '#22d3ee', price: '$0.04', vesting: '6mo cliff · 24mo linear' },
+  { label: 'Public Sale',     pct: 4,  color: '#0891b2', price: '$0.08', vesting: '25% TGE · 9mo linear' },
+  { label: 'Team & Advisors', pct: 18, color: '#164e63', price: '—',     vesting: '12mo cliff · 36mo linear' },
+  { label: 'Ecosystem',       pct: 25, color: '#155e75', price: '—',     vesting: '4yr linear emission' },
+  { label: 'Treasury',        pct: 20, color: '#0e7490', price: '—',     vesting: 'Governed by multisig' },
+  { label: 'Research',        pct: 12, color: '#0369a1', price: '—',     vesting: '2yr linear' },
+  { label: 'Liquidity',       pct: 7,  color: '#1d4ed8', price: '—',     vesting: 'Unlocked at TGE' },
 ]
 
 export const ROADMAP: RoadmapItem[] = [
