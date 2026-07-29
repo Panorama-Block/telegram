@@ -195,7 +195,7 @@ const Hero = () => {
                 {/* Body */}
                 <div className="p-5 space-y-4">
                   <p className="text-sm text-zinc-400 leading-relaxed">
-                    Panorama Block's <span className="text-white font-semibold">$PANB Pre-Seed Round</span> is now open. Early supporters can acquire tokens at <span className="text-cyan-400 font-mono font-semibold">$$0.04</span>, 
+                    Panorama Block's <span className="text-white font-semibold">$PANB Pre-Seed Round</span> is now open. Early supporters can acquire tokens at <span className="text-cyan-400 font-mono font-semibold">$0.04</span>, 
                     a <span className="text-cyan-400 font-semibold">50%</span> discount to the <span className="text-white">$0.08 Seed target price</span>. This pricing is exclusive to the Pre-Seed stage and will not be available again.
                   </p>
 
@@ -214,7 +214,7 @@ const Hero = () => {
 
                   <div className="bg-cyan-400/5 border border-cyan-400/15 rounded-xl px-4 py-3">
                     <p className="text-xs text-cyan-300/70 leading-relaxed text-center font-mono">
-                      Pre-Seed and Seed rounds are processed securely through <span className="text-white">$Anchorage Digital Bank</span>, a federally chartered crypto bank. 
+                      Pre-Seed and Seed rounds are processed securely through <span className="text-white">Anchorage Digital Bank</span>, a federally chartered crypto bank. 
                       Submitting your allocation request is free and non-binding: no payment is required at this stage. Once your request is approved, our team will contact you directly with next steps.
                     </p>
                   </div>
