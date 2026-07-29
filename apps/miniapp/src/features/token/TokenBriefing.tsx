@@ -13,9 +13,9 @@ const FEATURES = [
 ]
 
 const STATS = [
-  { label: 'Pre-seed price', value: '$0.025' },
+  { label: 'Pre-seed price', value: '$0.04' },
   { label: 'TGE Target At Listing', value: '$0.08'  },
-  { label: 'Upside',      value: '+220%'  },
+  { label: 'Upside',      value: '+100%'  },
   { label: 'Round cap',   value: '$500K'  },
 ]
 
