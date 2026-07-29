@@ -202,7 +202,7 @@ const Hero = () => {
                   <div className="grid grid-cols-3 gap-2">
                     {([
                       ['Pre-seed price', '$0.04'],
-                      ['TGE Target', '$0.08'],
+                      ['Seed Target Price', '$0.08'],
                       ['Upside', '+100%'],
                     ] as [string, string][]).map(([label, value]) => (
                       <div key={label} className="bg-zinc-900/60 border border-white/5 rounded-xl px-3 py-2.5 text-center">
