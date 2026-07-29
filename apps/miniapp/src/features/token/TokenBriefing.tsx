@@ -90,9 +90,8 @@ export function TokenBriefing() {
         {/* Card 3 — Why $PANBLK */}
         <Card tag="03 / Token" title="Why buy $PANBLK" accent>
           <p className="text-white/50 text-[13px] leading-relaxed">
-            Pre-seed investors enter at $0.025, aligning early holders with long-term value creation.
-            Beyond price appreciation, $PANBLK holders gain priority access to new features and discounts
-            as the network grows.
+            Panorama Block's $PANB Pre-Seed Round is now open. Early supporters can acquire tokens at $0.04, a 50% discount to the $0.08 
+            Seed target price. This pricing is exclusive to the Pre-Seed stage and will not be available again.
           </p>
 
           <div className="grid grid-cols-2 gap-2 mt-1">
