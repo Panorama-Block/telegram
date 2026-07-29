@@ -195,15 +195,15 @@ const Hero = () => {
                 {/* Body */}
                 <div className="p-5 space-y-4">
                   <p className="text-sm text-zinc-400 leading-relaxed">
-                    Panorama Block is running its <span className="text-white font-semibold">$PANBLK Pre-seed Round</span>. Early supporters can acquire tokens at <span className="text-cyan-400 font-mono font-semibold">$0.025</span> — a{' '}
+                    Panorama Block is running its <span className="text-white font-semibold">$PANBLK Pre-seed Round</span>. Early supporters can acquire tokens at <span className="text-cyan-400 font-mono font-semibold">$0.04</span> — a{' '}
                     <span className="text-cyan-400 font-semibold">3.2×</span> discount to the <span className="text-white">$0.08 listing price</span>.
                   </p>
 
                   <div className="grid grid-cols-3 gap-2">
                     {([
-                      ['Pre-seed price', '$0.025'],
+                      ['Pre-seed price', '$0.04'],
                       ['TGE Target', '$0.08'],
-                      ['Upside', '+220%'],
+                      ['Upside', '+100%'],
                     ] as [string, string][]).map(([label, value]) => (
                       <div key={label} className="bg-zinc-900/60 border border-white/5 rounded-xl px-3 py-2.5 text-center">
                         <div className="font-mono text-[9px] uppercase tracking-widest text-zinc-500 mb-1">{label}</div>
