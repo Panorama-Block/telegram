@@ -3,9 +3,9 @@ export const TOKEN_CONFIG = {
   name: 'Panorama Block',
   roundName: 'Pre-seed Round',
 
-  seedPrice: 0.025,
+  seedPrice: 0.04,
   listingPrice: 0.08,
-  upsidePercent: 220,
+  upsidePercent: 100,
 
   hardCapUSD: 500_000,
 
@@ -21,4 +21,4 @@ export const TOKEN_CONFIG = {
 } as const
 
 // Pre-seed round closes May 6, 2026 23:59:59 UTC
-export const SALE_ENDS_AT = new Date('2026-05-06T23:59:59Z').getTime()
+export const SALE_ENDS_AT = new Date('2026-09-20T23:59:59Z').getTime()
