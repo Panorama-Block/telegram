@@ -4,11 +4,11 @@ import { TokenPage } from '@/features/token/TokenPage'
 export const metadata: Metadata = {
   title: '$PANBLK Pre-seed Round — Panorama Block',
   description:
-    'Participate in the Panorama Block Pre-seed round. Buy $PANBLK at $0.025 before the public listing at $0.08. AI-first DeFi platform on Telegram.',
+    'Participate in the Panorama Block Pre-seed round. Buy $PANBLK at $0.04 before the public listing at $0.08. AI-first DeFi platform on Telegram.',
   openGraph: {
     title: '$PANBLK Pre-seed Round — Panorama Block',
     description:
-      'Buy $PANBLK at $0.025 Pre-seed price before the public listing at $0.08 (+220% upside).',
+      'Buy $PANBLK at $0.04 Pre-seed price before the public listing at $0.08 (100% upside).',
     type: 'website',
   },
 }
