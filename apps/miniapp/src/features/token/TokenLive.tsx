@@ -53,7 +53,7 @@ export function TokenLive() {
                 </div>
               </div>
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-widest text-white/40 mb-1">TGE Target At Listing</div>
+                <div className="font-mono text-[10px] uppercase tracking-widest text-white/40 mb-1">Seed Target Price At Listing</div>
                 <div className="flex items-baseline gap-1.5">
                   <div className="font-display tabular-nums text-xl md:text-2xl text-cyan-400 font-bold">
                     ${TOKEN_CONFIG.listingPrice.toFixed(2)}
