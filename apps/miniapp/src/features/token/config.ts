@@ -13,7 +13,7 @@ export const TOKEN_CONFIG = {
   seedAllocPercent: '6%',
   tgeFDV: '$80M',
 
-  minInvestmentUSD: 500,
+  minInvestmentUSD: 50_000,
   maxInvestmentUSD: 2_000_000,
 
   vestingCliffMonths: 6,
