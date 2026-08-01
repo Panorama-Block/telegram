@@ -108,7 +108,7 @@ export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
                     <h2 className="text-base font-bold text-white">
                       {step === 'form' ? 'Request Allocation' : 'Request Submitted'}
                     </h2>
-                    <p className="text-xs text-zinc-500 mt-0.5">Pre-seed Round · $PANBLK</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">Pre-seed Round · $PANB</p>
                   </div>
                 </div>
                 <button
@@ -153,7 +153,7 @@ export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
                     {tokens > 0 && (
                       <div className="bg-zinc-900/80 rounded-lg px-3 py-2 border border-white/5 flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-xs text-zinc-500">You receive</span>
-                        <span className="text-sm font-bold text-primary">{tokens.toLocaleString()} PANBLK</span>
+                        <span className="text-sm font-bold text-primary">{tokens.toLocaleString()} PANB</span>
                         <span className="text-xs text-zinc-600">≈ ${valueAtListing.toLocaleString()} at listing</span>
                       </div>
                     )}
@@ -343,7 +343,7 @@ export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-zinc-500">Tokens requested</span>
-                        <span className="text-primary font-bold">{tokens.toLocaleString()} PANBLK</span>
+                        <span className="text-primary font-bold">{tokens.toLocaleString()} PANB</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-zinc-500">Wallet submitted</span>
