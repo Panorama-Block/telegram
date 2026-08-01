@@ -1,7 +1,6 @@
 const TEAM = [
   { name: 'Alex Nascimento',    role: 'CEO · UCLA Blockchain faculty · Author' },
   { name: 'Mikael Björn',       role: 'CTO · ex-Hedera Hashgraph & Baanx' },
-  { name: 'Inteli Engineers',   role: '4× full-stack blockchain · São Paulo' },
 ]
 
 const FEATURES = [
