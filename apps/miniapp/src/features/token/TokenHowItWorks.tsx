@@ -3,19 +3,19 @@ const STEPS = [
     n: '01',
     title: 'Submit Your Request',
     body: 'Enter your wallet address, a contact method, and your intended investment amount. The process takes less than 2 minutes.',
-    hint: 'Min $500 · Max $500K',
+    hint: 'Min $50K · Max $500K',
   },
   {
     n: '02',
     title: 'We Review & Confirm',
-    body: 'Our team reviews every request internally. Serious allocations are prioritised. You\'ll receive confirmation within 24 hours.',
+    body: 'Our team reviews every request internally. You\'ll receive confirmation within 24 hours.',
     hint: 'Manual review · No bots',
   },
   {
     n: '03',
-    title: 'Receive Payment Instructions',
-    body: 'Once confirmed, we send you the verified wallet address and exact transfer amount. After you send, we verify the transaction and confirm your allocation.',
-    hint: 'Via email · Telegram',
+    title: 'Payment Instructions',
+    body: 'Once confirmed, we send you the verified wallet address and exact transfer amount. After you submit, we verify the transaction and confirm your allocation. Our token launch is managed by Anchorage Digital Bank, a federally chartered, OCC-regulated crypto bank providing institutional-grade custody.',
+    hint: 'Via email · Anchorage Digital',
   },
 ]
 
