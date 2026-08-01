@@ -49,7 +49,7 @@ export function TokenLive() {
               <div>
                 <div className="font-mono text-[10px] uppercase tracking-widest text-white/40 mb-1">Pre-seed price</div>
                 <div className="font-display tabular-nums text-xl md:text-2xl text-white font-bold">
-                  ${TOKEN_CONFIG.seedPrice.toFixed(3)}
+                  ${TOKEN_CONFIG.seedPrice.toFixed(2)}
                 </div>
               </div>
               <div>
