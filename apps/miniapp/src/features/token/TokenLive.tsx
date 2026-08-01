@@ -87,7 +87,7 @@ export function TokenLive() {
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-display font-bold text-white">Request Allocation</h3>
             <div className="font-mono text-[10px] text-cyan-400/70 uppercase tracking-wider">
-              1 USD = {Math.floor(1 / TOKEN_CONFIG.seedPrice)} PANBLK
+              1 USD = {Math.floor(1 / TOKEN_CONFIG.seedPrice)} PANB
             </div>
           </div>
 
