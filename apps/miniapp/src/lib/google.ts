@@ -28,7 +28,7 @@ export interface AllocationPayload {
 // ─── Sheets ──────────────────────────────────────────────────────────────────
 
 const SHEET_NAME = 'Allocations'
-const SHEET_HEADERS = ['Timestamp', 'First Name', 'Last Name', 'Wallet', 'Email', 'Telegram', 'Phone', 'Amount (USD)', 'Tokens (PANBLK)', 'Status']
+const SHEET_HEADERS = ['Timestamp', 'First Name', 'Last Name', 'Wallet', 'Email', 'Telegram', 'Phone', 'Amount (USD)', 'Tokens (PANB)', 'Status']
 
 export async function appendAllocation(data: AllocationPayload): Promise<void> {
   const auth  = getOAuthClient()
@@ -128,7 +128,7 @@ export async function sendConfirmationEmail(data: AllocationPayload): Promise<vo
             <tr>
               <td bgcolor="#0a0a0a" style="background-color:#0a0a0a;padding:32px 40px;">
                 <p style="margin:0 0 24px;font-size:13px;color:#808080;line-height:1.7;">
-                  Thank you${data.firstName ? `, ${data.firstName}` : ''} for your interest in the $PANBLK Pre-seed Round. Our team will review your request and reach out with allocation confirmation and payment instructions.
+                  Thank you${data.firstName ? `, ${data.firstName}` : ''} for your interest in the $PANB Pre-seed Round. Our team will review your request and reach out with allocation confirmation and payment instructions.
                 </p>
 
                 <!-- Summary box -->
@@ -136,9 +136,9 @@ export async function sendConfirmationEmail(data: AllocationPayload): Promise<vo
                   <tr><td style="padding:20px 24px;">
                     <p style="margin:0 0 12px;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:#595959;">Request Summary</p>
                     ${row('Intended amount', `$${data.amountUSD.toLocaleString()} USD`)}
-                    ${row('Tokens requested', `${data.tokens.toLocaleString()} PANBLK`)}
+                    ${row('Tokens requested', `${data.tokens.toLocaleString()} PANB`)}
                     ${row('Wallet submitted', data.wallet ? `${data.wallet.slice(0, 6)}...${data.wallet.slice(-4)}` : 'To be provided')}
-                    ${row('Pre-seed price', '$0.04 per PANBLK')}
+                    ${row('Pre-seed price', '$0.04 per PANB')}
                     ${row('Est. value at listing', `$${(data.tokens * 0.08).toLocaleString()} USD`)}
                   </td></tr>
                 </table>
@@ -166,7 +166,7 @@ export async function sendConfirmationEmail(data: AllocationPayload): Promise<vo
             <tr>
               <td bgcolor="#0a0a0a" style="background-color:#0a0a0a;padding:20px 40px;border-top:1px solid #0f0f0f;">
                 <p style="margin:0;font-size:10px;color:#333333;text-align:center;">
-                  Panorama Block - Pre-seed Round - $PANBLK - This email was sent because you submitted an allocation request.
+                  Panorama Block - Pre-seed Round - $PANB - This email was sent because you submitted an allocation request.
                 </p>
               </td>
             </tr>
@@ -178,7 +178,7 @@ export async function sendConfirmationEmail(data: AllocationPayload): Promise<vo
     </html>
   `
 
-  await sendMail(data.email, '$PANBLK Pre-seed Round - Allocation Request Received', html)
+  await sendMail(data.email, '$PANB Pre-seed Round - Allocation Request Received', html)
 }
 
 export async function sendAdminNotification(data: AllocationPayload): Promise<void> {
@@ -206,7 +206,7 @@ export async function sendAdminNotification(data: AllocationPayload): Promise<vo
                     ${row('Timestamp', new Date().toLocaleString('en-US', { timeZone: 'UTC' }) + ' UTC')}
                     ${row('Name', [data.firstName, data.lastName].filter(Boolean).join(' ') || 'not provided')}
                     ${row('Amount', `$${data.amountUSD.toLocaleString()} USD`)}
-                    ${row('Tokens', `${data.tokens.toLocaleString()} PANBLK`)}
+                    ${row('Tokens', `${data.tokens.toLocaleString()} PANB`)}
                     ${row('Wallet', data.wallet || 'not provided')}
                     ${row('Email', data.email || 'not provided')}
                     ${row('Telegram', data.telegram || 'not provided')}
@@ -222,7 +222,7 @@ export async function sendAdminNotification(data: AllocationPayload): Promise<vo
     </html>
   `
 
-  await sendMail(adminEmail, `[PANBLK] New allocation request - $${data.amountUSD.toLocaleString()}`, html)
+  await sendMail(adminEmail, `[PANB] New allocation request - $${data.amountUSD.toLocaleString()}`, html)
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
