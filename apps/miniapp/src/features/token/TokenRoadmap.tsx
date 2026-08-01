@@ -10,7 +10,7 @@ export function TokenRoadmap() {
             Roadmap.
           </h2>
         </div>
-        <div className="font-mono text-[11px] text-white/40">4 phases · Q2 2026 → Q1 2027</div>
+        <div className="font-mono text-[11px] text-white/40">4 phases · Q3 2026 → Q2 2027</div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 relative">
