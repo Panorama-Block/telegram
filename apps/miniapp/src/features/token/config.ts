@@ -1,5 +1,5 @@
 export const TOKEN_CONFIG = {
-  symbol: '$PANBLK',
+  symbol: '$PANB',
   name: 'Panorama Block',
   roundName: 'Pre-seed Round',
 
