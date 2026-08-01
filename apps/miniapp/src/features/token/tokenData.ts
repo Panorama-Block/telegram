@@ -25,7 +25,7 @@ export const ALLOCATIONS: Allocation[] = [
 
 export const ROADMAP: RoadmapItem[] = [
   {
-    phase: 'Q2 2026',
+    phase: 'Q3 2026',
     status: 'live',
     title: 'Foundation & Testnet',
     items: [
@@ -36,7 +36,7 @@ export const ROADMAP: RoadmapItem[] = [
     ],
   },
   {
-    phase: 'Q3 2026',
+    phase: 'Q4 2026',
     status: 'next',
     title: 'Token Launch & Early Traction',
     items: [
@@ -47,7 +47,7 @@ export const ROADMAP: RoadmapItem[] = [
     ],
   },
   {
-    phase: 'Q4 2026',
+    phase: 'Q1 2027',
     status: 'planned',
     title: 'Mainnet & Infrastructure Hardening',
     items: [
@@ -58,7 +58,7 @@ export const ROADMAP: RoadmapItem[] = [
     ],
   },
   {
-    phase: 'Q1 2027',
+    phase: 'Q2 2027',
     status: 'planned',
     title: 'Scale & Institutional Layer',
     items: [
