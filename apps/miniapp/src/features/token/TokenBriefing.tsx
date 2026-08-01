@@ -109,7 +109,7 @@ export function TokenBriefing() {
           </div>
 
           <div className="font-mono text-[10px] text-white/35 leading-relaxed mt-1">
-            6-month cliff · 24-month linear vesting · $500K capped round
+            6-month cliff · 24-month linear vesting · $2M capped round
           </div>
         </Card>
       </div>
