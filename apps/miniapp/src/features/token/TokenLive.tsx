@@ -16,7 +16,7 @@ export function TokenLive() {
           Pre-seed Round — Live
         </h2>
         <p className="font-mono text-[11px] text-white/35">
-          Limited allocation · Closes May 6, 2026
+          Limited allocation
         </p>
       </div>
 
@@ -34,7 +34,7 @@ export function TokenLive() {
                 Sale active
               </span>
             </div>
-            <span className="font-mono text-[10px] text-white/30 tabular-nums">est. May 6, 2026</span>
+            <span className="font-mono text-[10px] text-white/30 tabular-nums"></span>
           </div>
 
           <div className="px-5 md:px-6 py-6 md:py-7 flex-1 flex flex-col justify-between">
