@@ -7,14 +7,14 @@ export const TOKEN_CONFIG = {
   listingPrice: 0.08,
   upsidePercent: 100,
 
-  hardCapUSD: 500_000,
+  hardCapUSD: 2_000_000,
 
   totalSupply: '1B',
   seedAllocPercent: '6%',
   tgeFDV: '$80M',
 
   minInvestmentUSD: 500,
-  maxInvestmentUSD: 500_000,
+  maxInvestmentUSD: 2_000_000,
 
   vestingCliffMonths: 6,
   vestingDurationMonths: 24,
