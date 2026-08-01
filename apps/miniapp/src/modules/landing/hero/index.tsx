@@ -179,7 +179,7 @@ const Hero = () => {
                       <Zap className="w-4 h-4 text-cyan-400" />
                     </div>
                     <div>
-                      <h2 className="text-base font-bold text-white">$PANBLK Pre-seed Round</h2>
+                      <h2 className="text-base font-bold text-white">$PANB Pre-seed Round</h2>
                       <p className="text-xs text-zinc-500 mt-0.5 font-mono">Live now · Limited allocation</p>
                     </div>
                   </div>
@@ -195,7 +195,7 @@ const Hero = () => {
                 {/* Body */}
                 <div className="p-5 space-y-4">
                   <p className="text-sm text-zinc-400 leading-relaxed">
-                    Panorama Block's <span className="text-white font-semibold">$PANBLK Pre-Seed Round</span> is now open. Early supporters can acquire tokens at <span className="text-cyan-400 font-mono font-semibold">$0.04</span>, 
+                    Panorama Block's <span className="text-white font-semibold">$PANB Pre-Seed Round</span> is now open. Early supporters can acquire tokens at <span className="text-cyan-400 font-mono font-semibold">$0.04</span>, 
                     a <span className="text-cyan-400 font-semibold">50%</span> discount to the <span className="text-white">$0.08 Seed target price</span>. This pricing is exclusive to the Pre-Seed stage and will not be available again.
                   </p>
 
