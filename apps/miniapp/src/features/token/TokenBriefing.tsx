@@ -1,7 +1,6 @@
 const TEAM = [
   { name: 'Alex Nascimento',    role: 'CEO · UCLA Blockchain faculty · Author' },
   { name: 'Mikael Björn',       role: 'CTO · ex-Hedera Hashgraph & Baanx' },
-  { name: 'Dr. Mattia Rattaggi',role: 'Sr. Advisor · Co-founder, Amina Bank' },
   { name: 'Inteli Engineers',   role: '4× full-stack blockchain · São Paulo' },
 ]
 
@@ -87,8 +86,8 @@ export function TokenBriefing() {
           </ul>
         </Card>
 
-        {/* Card 3 — Why $PANBLK */}
-        <Card tag="03 / Token" title="Why buy $PANBLK" accent>
+        {/* Card 3 — Why $PANB */}
+        <Card tag="03 / Token" title="Why buy $PANB" accent>
           <p className="text-white/50 text-[13px] leading-relaxed">
             Panorama Block's $PANB Pre-Seed Round is now open. Early supporters can acquire tokens at $0.04, a 50% discount to the $0.08 
             Seed target price. This pricing is exclusive to the Pre-Seed stage and will not be available again.
