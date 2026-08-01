@@ -14,7 +14,6 @@ const STATS = [
   { label: 'Pre-seed price', value: '$0.04' },
   { label: 'Seed Target Price At Listing', value: '$0.08'  },
   { label: 'Upside',      value: '+100%'  },
-  { label: 'Round cap',   value: '$500K'  },
 ]
 
 function Card({
@@ -55,9 +54,11 @@ export function TokenBriefing() {
         {/* Card 1 — Who We Are */}
         <Card tag="01 / Team" title="Who We Are">
           <p className="text-white/50 text-[13px] leading-relaxed">
-            A collaboration between Alex Nascimento - UCLA Faculty, and students from the
-            Masters of Qualitative Economics program and a team of developers under the
-            leadership of Mikael Bjorn Ex-CTO of Hedera HashGraph
+            Panorama Block is building the neutral intent, orchestration and execution infrastructure 
+            for the convergence of traditional and digital finance. Developed in collaboration with UCLA's 
+            Master of Quantitative Economics and other leading universities, our modular AI agents let institutions 
+            and their users orchestrate and execute across DeFi, centralized exchanges, tokenized assets and traditional 
+            markets, all through natural language.
           </p>
           <ul className="mt-1 space-y-2.5">
             {TEAM.map(({ name, role }) => (
@@ -72,8 +73,10 @@ export function TokenBriefing() {
         {/* Card 2 — What We're Building */}
         <Card tag="02 / Product" title="What We're Building">
           <p className="text-white/50 text-[13px] leading-relaxed">
-            A modular AI infrastructure layer for DeFi. Fragmented Web3 data unified across
-            multiple chains into composable strategies — delivered through the world's most familiar interface: a chat window.
+            We are building the orchestration stack that sits above an ever-growing set of venues. Our Zico master agent 
+            coordinates strategy-specific agents for swaps, staking, lending, liquidity provision and cross-chain transfers, 
+            optimizing routes, fees and execution. One AI-powered infrastructure unifying Web2 and Web3 data, so both institutional 
+            and retail users get smart execution without the manual work.
           </p>
           <ul className="mt-1 space-y-2">
             {FEATURES.map((f, i) => (
