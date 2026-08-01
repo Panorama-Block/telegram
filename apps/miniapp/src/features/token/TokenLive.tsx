@@ -53,12 +53,11 @@ export function TokenLive() {
                 </div>
               </div>
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-widest text-white/40 mb-1">Seed Target Price At Listing</div>
+                <div className="font-mono text-[10px] uppercase tracking-widest text-white/40 mb-1">Seed Target Price</div>
                 <div className="flex items-baseline gap-1.5">
                   <div className="font-display tabular-nums text-xl md:text-2xl text-cyan-400 font-bold">
                     ${TOKEN_CONFIG.listingPrice.toFixed(2)}
                   </div>
-                  <span className="font-mono text-[10px] text-cyan-400/70">×{(TOKEN_CONFIG.listingPrice / TOKEN_CONFIG.seedPrice).toFixed(1)}</span>
                 </div>
               </div>
               <div>
@@ -113,8 +112,6 @@ export function TokenLive() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 font-mono text-[11px]">
               {([
                 ['hard_cap',  `$${(TOKEN_CONFIG.hardCapUSD / 1_000).toFixed(0)}K`],
-                ['min_alloc', `$${TOKEN_CONFIG.minInvestmentUSD.toLocaleString()}`],
-                ['max_alloc', `$${(TOKEN_CONFIG.maxInvestmentUSD / 1_000).toFixed(0)}K`],
                 ['cliff',     `${TOKEN_CONFIG.vestingCliffMonths} months`],
                 ['vesting',   `${TOKEN_CONFIG.vestingDurationMonths} mo linear`],
                 ['fdv_at_tge', TOKEN_CONFIG.tgeFDV],
