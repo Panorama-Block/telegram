@@ -244,7 +244,7 @@ export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
                     <label className="text-sm font-medium text-zinc-400 flex items-center gap-1.5">
                       <Phone className="w-3.5 h-3.5" />
                       Phone
-                      <span className="text-xs text-zinc-600 font-normal">optional</span>
+                      <span className="text-xs text-zinc-600 font-normal"></span>
                     </label>
                     <input
                       type="tel"
