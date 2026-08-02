@@ -12,7 +12,7 @@ const FEATURES = [
 
 const STATS = [
   { label: 'Pre-seed price', value: '$0.04' },
-  { label: 'Seed Target Price At Listing', value: '$0.08'  },
+  { label: 'Seed Target Price', value: '$0.08'  },
   { label: 'Upside',      value: '+100%'  },
 ]
 
