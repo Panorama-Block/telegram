@@ -14,9 +14,9 @@ export interface RoadmapItem {
 }
 
 export const ALLOCATIONS: Allocation[] = [
-  { label: 'Pre-seed Round',  pct: 6,  color: '#22d3ee', price: '$0.04', vesting: '6mo cliff · 24mo linear' },
+  { label: 'Pre-seed Round',  pct: 6,  color: '#22d3ee', price: '$0.04', vesting: '12mo cliff · 24mo linear' },
   { label: 'Public Sale',     pct: 4,  color: '#0891b2', price: '$0.08', vesting: '25% TGE · 9mo linear' },
-  { label: 'Team & Advisors', pct: 18, color: '#164e63', price: '—',     vesting: '12mo cliff · 36mo linear' },
+  { label: 'Team & Advisors', pct: 18, color: '#164e63', price: '—',     vesting: '12mo cliff · 24mo linear' },
   { label: 'Ecosystem',       pct: 25, color: '#155e75', price: '—',     vesting: '4yr linear emission' },
   { label: 'Treasury',        pct: 20, color: '#0e7490', price: '—',     vesting: 'Governed by multisig' },
   { label: 'Research',        pct: 12, color: '#0369a1', price: '—',     vesting: '2yr linear' },
@@ -40,7 +40,7 @@ export const ROADMAP: RoadmapItem[] = [
     status: 'next',
     title: 'Token Launch & Early Traction',
     items: [
-      'Public token sale',
+      'Token Generation Event (TGE)',
       'Expansion of AI agent capabilities (DeFi automation)',
       'User growth and on-chain activity scaling',
       'Initial revenue via transaction fees (swap / execution layer)',
@@ -51,7 +51,6 @@ export const ROADMAP: RoadmapItem[] = [
     status: 'planned',
     title: 'Mainnet & Infrastructure Hardening',
     items: [
-      'Token Generation Event (TGE)',
       'Mainnet v1.0 release',
       'DEX listings and liquidity provisioning',
       'Smart contract audits and security reinforcement',
