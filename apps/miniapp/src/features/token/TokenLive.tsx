@@ -111,7 +111,7 @@ export function TokenLive() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 font-mono text-[11px]">
               {([
-                ['hard_cap',  `$${(TOKEN_CONFIG.hardCapUSD / 1_000).toFixed(0)}K`],
+                ['hard_cap',  `$${(TOKEN_CONFIG.hardCapUSD / 1_000_000).toFixed(0)}M`],
                 ['cliff',     `${TOKEN_CONFIG.vestingCliffMonths} months`],
                 ['vesting',   `${TOKEN_CONFIG.vestingDurationMonths} mo linear`],
                 ['fdv_at_tge', TOKEN_CONFIG.tgeFDV],
