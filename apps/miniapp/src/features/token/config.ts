@@ -16,8 +16,8 @@ export const TOKEN_CONFIG = {
   minInvestmentUSD: 50_000,
   maxInvestmentUSD: 2_000_000,
 
-  vestingCliffMonths: 6,
-  vestingDurationMonths: 12,
+  vestingCliffMonths: 12,
+  vestingDurationMonths: 24,
 } as const
 
 // Pre-seed round closes May 6, 2026 23:59:59 UTC
