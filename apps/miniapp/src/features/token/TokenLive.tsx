@@ -63,7 +63,7 @@ export function TokenLive() {
               <div>
                 <div className="font-mono text-[10px] uppercase tracking-widest text-white/40 mb-1">Min · Max</div>
                 <div className="font-display tabular-nums text-sm md:text-base text-white/80">
-                  ${TOKEN_CONFIG.minInvestmentUSD} — ${Math.floor(TOKEN_CONFIG.maxInvestmentUSD / 1_000)}K
+                  ${Math.floor(TOKEN_CONFIG.minInvestmentUSD / 1_000)}K — ${Math.floor(TOKEN_CONFIG.maxInvestmentUSD / 1_000_000)}M
                 </div>
               </div>
               <div>
