@@ -4,10 +4,10 @@ const TEAM = [
 ]
 
 const FEATURES = [
-  'Cross-chain liquidity & yield via conversational prompt',
-  'AI co-pilot handles routing, execution & fee optimization',
-  'No dashboards. No manual wallet config. No protocol navigation.',
-  'Telegram Mini App as the primary delivery surface',
+ 'From human intent to verifiable execution',
+ 'AI-native orchestration with governance, approval and auditability built in',
+ 'Composable execution across blockchains, financial systems and enterprise infrastructure',
+ 'Web and Telegram are reference interfaces. The platform is API and MCP first',
 ]
 
 const STATS = [
@@ -109,7 +109,7 @@ export function TokenBriefing() {
           </div>
 
           <div className="font-mono text-[10px] text-white/35 leading-relaxed mt-1">
-            6-month cliff · 24-month linear vesting · $2M capped round
+            6-month cliff · 12-month linear vesting · $2M capped round
           </div>
         </Card>
       </div>
