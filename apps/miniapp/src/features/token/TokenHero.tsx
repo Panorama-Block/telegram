@@ -18,7 +18,7 @@ export function TokenHero() {
         </h1>
 
         <p className="text-white/45 text-sm md:text-base leading-relaxed mb-8 md:mb-10 font-light max-w-xl">
-          Panorama Block Protocol — The intent, orchestration and execution layer for the convergence of traditional and digital finance,
+          Panorama Block Protocol — The intent, orchestration and execution infrastructure for the convergence of traditional and digital finance,
           built on rigorous cryptoeconomic research led by UCLA faculty and other top
           universities. This Pre-Seed round is open to qualified participants. Token
           availability is on a first-come, first-served basis.
