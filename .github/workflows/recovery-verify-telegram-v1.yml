@@ -28,7 +28,13 @@ jobs:
           set -euo pipefail
 
           echo "GITHUB_REF=${GITHUB_REF}"
+          echo "GITHUB_REF_NAME=${GITHUB_REF_NAME}"
           echo "GITHUB_SHA=${GITHUB_SHA}"
+
+          if [ "$GITHUB_REF_NAME" != "recovery/v1-telegram-gateway" ]; then
+            echo "ERROR: this workflow may only run from recovery/v1-telegram-gateway."
+            exit 1
+          fi
 
           test -f recovery-evidence/TELEGRAM_GATEWAY_RECOVERY.md
           test -f recovery-evidence/SHA256SUMS.txt
@@ -101,15 +107,18 @@ jobs:
 
           docker rm "$CID"
 
-          find /tmp/candidate-dist \
-            -type f \
-            -name '*.js' \
-            -print0 |
-          sort -z |
-          xargs -0 sha256sum \
-            > /tmp/candidate-sha256.txt
+          (
+            cd /tmp/candidate-dist
 
-          COUNT="$(find /tmp/candidate-dist -type f -name '*.js' | wc -l | tr -d ' ')"
+            find . \
+              -type f \
+              -name '*.js' \
+              -print0 |
+            sort -z |
+            xargs -0 sha256sum
+          ) > /tmp/candidate-sha256.txt
+
+          COUNT="$(wc -l < /tmp/candidate-sha256.txt | tr -d ' ')"
 
           echo "CANDIDATE_JS_COUNT=${COUNT}"
 
@@ -117,6 +126,12 @@ jobs:
             echo "ERROR: expected 53 JavaScript application files."
             exit 1
           fi
+
+          diff -u \
+            recovery-evidence/PRODUCTION_DIST_SHA256.txt \
+            /tmp/candidate-sha256.txt
+
+          echo "PASS: candidate application is byte-identical to historical production payload."
 
       - name: Push verified recovery image
         env:

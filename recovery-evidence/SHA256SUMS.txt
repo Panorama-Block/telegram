@@ -1,6 +1,6 @@
 # Telegram Gateway V1 Recovery SHA-256 Inventory
 
-Generated: 2026-08-27T10:46:22Z
+Generated: 2026-08-27T10:53:24Z
 
 Verified historical source:
 
@@ -10,9 +10,9 @@ Recovery branch:
 
     recovery/v1-telegram-gateway
 
-Recovery commit before inventory:
+Recovery commit before this inventory update:
 
-    ee3cc38a3c31e5a7deb2220d29842d623fde9883
+    6cd5cd5201396f04d072479c119216a844303254
 
 ## SHA-256
 
@@ -21,3 +21,5 @@ Recovery commit before inventory:
 635f5870f2c4a7643523fa55caa9844e6ee9a1153cb968c31a6297995bad502a  apps/gateway/tsconfig.json
 fc415f29f20a45a408187ee613795198b5fce6248fdc1fa0007fe37225d58ff4  Dockerfile
 ece585ed10502b3a0e021df0e3b21222063d5dad6805368ffde2119c0f8b9221  recovery-evidence/TELEGRAM_GATEWAY_RECOVERY.md
+d637894d6b3818949be2983e727576a570c1411d40571402adb8f62af38494ee  recovery-evidence/PRODUCTION_DIST_SHA256.txt
+887919ceb64729059c46fea7c875facdece8ba31d77dab1d8fb803370ff072e9  .github/workflows/recovery-verify-telegram-v1.yml
