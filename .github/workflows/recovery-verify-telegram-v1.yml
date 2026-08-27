@@ -1,0 +1,129 @@
+name: Verify Recovered Telegram V1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ACR_NAME: panoramadevpublicapi
+  IMAGE_REPO: panoramadevpublicapi.azurecr.io/telegram-gateway-recovery
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify recovery branch
+        run: |
+          set -euo pipefail
+
+          echo "GITHUB_REF=${GITHUB_REF}"
+          echo "GITHUB_SHA=${GITHUB_SHA}"
+
+          test -f recovery-evidence/TELEGRAM_GATEWAY_RECOVERY.md
+          test -f recovery-evidence/SHA256SUMS.txt
+          test -f apps/gateway/package-lock.json
+
+      - name: Verify recovered lockfile
+        run: |
+          set -euo pipefail
+
+          EXPECTED="364f60ea3c16d3ba6ae4c2f600e1edc4a1dc7e4760e55c92cb59f19690da4e68"
+          ACTUAL="$(sha256sum apps/gateway/package-lock.json | awk '{print $1}')"
+
+          echo "EXPECTED=${EXPECTED}"
+          echo "ACTUAL=${ACTUAL}"
+
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "ERROR: production dependency lockfile differs."
+            exit 1
+          fi
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: |
+          set -euo pipefail
+          az acr login --name "$ACR_NAME"
+
+      - name: Build recovered Telegram gateway
+        env:
+          IMAGE_SHA: ${{ env.IMAGE_REPO }}:${{ env.IMAGE_TAG }}
+        run: |
+          set -euo pipefail
+
+          docker build \
+            --build-arg BUILD_MINIAPP=false \
+            -f Dockerfile \
+            -t "$IMAGE_SHA" \
+            .
+
+      - name: Inspect candidate image
+        env:
+          IMAGE_SHA: ${{ env.IMAGE_REPO }}:${{ env.IMAGE_TAG }}
+        run: |
+          set -euo pipefail
+
+          docker image inspect "$IMAGE_SHA"
+
+          docker history \
+            --no-trunc \
+            "$IMAGE_SHA"
+
+      - name: Extract candidate application
+        env:
+          IMAGE_SHA: ${{ env.IMAGE_REPO }}:${{ env.IMAGE_TAG }}
+        run: |
+          set -euo pipefail
+
+          CID="$(docker create "$IMAGE_SHA")"
+
+          mkdir -p /tmp/candidate-dist
+
+          docker cp \
+            "$CID:/app/apps/gateway/dist/." \
+            /tmp/candidate-dist/
+
+          docker rm "$CID"
+
+          find /tmp/candidate-dist \
+            -type f \
+            -name '*.js' \
+            -print0 |
+          sort -z |
+          xargs -0 sha256sum \
+            > /tmp/candidate-sha256.txt
+
+          COUNT="$(find /tmp/candidate-dist -type f -name '*.js' | wc -l | tr -d ' ')"
+
+          echo "CANDIDATE_JS_COUNT=${COUNT}"
+
+          if [ "$COUNT" != "53" ]; then
+            echo "ERROR: expected 53 JavaScript application files."
+            exit 1
+          fi
+
+      - name: Push verified recovery image
+        env:
+          IMAGE_SHA: ${{ env.IMAGE_REPO }}:${{ env.IMAGE_TAG }}
+        run: |
+          set -euo pipefail
+
+          docker push "$IMAGE_SHA"
+
+          echo "RECOVERY_IMAGE=${IMAGE_SHA}"
