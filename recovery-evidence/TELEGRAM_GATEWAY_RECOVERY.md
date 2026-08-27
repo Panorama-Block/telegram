@@ -108,8 +108,14 @@ Git blob:
 
     0a4d311c46dcf1f40335eeaf2ea1e2dd947d2668
 
-The Dockerfile found at the verified historical source commit is the
-Dockerfile used as the basis of this recovery.
+The Dockerfile present at the verified historical source commit has Git blob:
+
+    0a4d311c46dcf1f40335eeaf2ea1e2dd947d2668
+
+Its runtime structure is consistent with the recovered historical image.
+The application provenance established above does not depend on asserting
+that this Dockerfile was necessarily the exact Dockerfile consumed by
+the historical ACR build.
 
 ## Recovery semantics
 
