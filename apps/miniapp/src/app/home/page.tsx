@@ -8,7 +8,11 @@ import { SeniorAppShell } from '@/components/layout/SeniorAppShell';
 import { AgentsClient } from '@/clients/agentsClient';
 import { Button } from '@/components/ui/button';
 import { Plus, MessageCircle, Clock } from 'lucide-react';
-import { downloadAvaxAdminEvidenceExport, downloadAvaxEvidenceExport } from '@/features/swap/avaxSwapApi';
+import {
+  downloadAvaxAdminEvidenceExport,
+  downloadAvaxEvidenceExport,
+  getAvaxAdminEvidenceStatus,
+} from '@/features/swap/avaxSwapApi';
 
 interface Conversation {
   id: string;
@@ -39,6 +43,7 @@ export default function HomePage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [nickname, setNickname] = useState<string | null>(null);
+  const [isEvidenceAdmin, setIsEvidenceAdmin] = useState(false);
 
   const userId = account?.address?.toLowerCase() || getWalletAddress();
 
@@ -86,6 +91,38 @@ export default function HomePage() {
 
     loadConversations();
   }, [userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setIsEvidenceAdmin(false);
+
+    if (!account) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const checkAdminCapability = async () => {
+      try {
+        const isAdmin = await getAvaxAdminEvidenceStatus(account);
+        if (!cancelled) {
+          setIsEvidenceAdmin(isAdmin);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setIsEvidenceAdmin(false);
+        }
+        console.error('Failed to verify Avalanche evidence admin capability:', error);
+      }
+    };
+
+    void checkAdminCapability();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [account?.address]);
 
   const handleNewChat = () => {
     router.push('/newchat');
@@ -252,16 +289,18 @@ export default function HomePage() {
               <p className="text-zinc-400 text-sm">Avalanche transaction proof</p>
             </button>
 
-            <button
-              onClick={handleDownloadAdminEvidence}
-              disabled={!account}
-              className="bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-xl p-4 transition-all text-center group"
-            >
-              <h3 className="text-white group-hover:text-cyan-100 font-medium mb-2">
-                Admin Evidence Export
-              </h3>
-              <p className="text-zinc-400 text-sm">All Avalanche transaction proof</p>
-            </button>
+            {isEvidenceAdmin && (
+              <button
+                onClick={handleDownloadAdminEvidence}
+                disabled={!account}
+                className="bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-xl p-4 transition-all text-center group"
+              >
+                <h3 className="text-white group-hover:text-cyan-100 font-medium mb-2">
+                  Admin Evidence Export
+                </h3>
+                <p className="text-zinc-400 text-sm">All Avalanche transaction proof</p>
+              </button>
+            )}
           </div>
         </div>
       </SeniorAppShell>

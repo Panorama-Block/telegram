@@ -131,6 +131,32 @@ export async function downloadAvaxEvidenceExport(account: {
   return res;
 }
 
+export async function getAvaxAdminEvidenceStatus(account: {
+  address: string;
+  signMessage: (args: { message: string }) => Promise<string>;
+}): Promise<boolean> {
+  const timestamp = Date.now();
+  const message = `PanoramaBlock auth: ${timestamp}`;
+  const signature = await account.signMessage({ message });
+
+  const params = new URLSearchParams({
+    signature,
+    timestamp: String(timestamp),
+  });
+
+  const res = await fetch(
+    `/api/yield/avax/swap/evidence/admin/status/${encodeURIComponent(account.address)}?${params.toString()}`
+  );
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`avax admin evidence status failed (${res.status}): ${body}`);
+  }
+
+  const result = await res.json() as { isAdmin?: boolean };
+  return result.isAdmin === true;
+}
+
 export async function downloadAvaxAdminEvidenceExport(account: {
   address: string;
   signMessage: (args: { message: string }) => Promise<string>;
