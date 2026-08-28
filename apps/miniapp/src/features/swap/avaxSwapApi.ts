@@ -105,3 +105,53 @@ export async function submitAvaxSwapEvidence(
 
   return res.json() as Promise<AvaxEvidenceVerification>;
 }
+
+export async function downloadAvaxEvidenceExport(account: {
+  address: string;
+  signMessage: (args: { message: string }) => Promise<string>;
+}) {
+  const timestamp = Date.now();
+  const message = `PanoramaBlock auth: ${timestamp}`;
+  const signature = await account.signMessage({ message });
+
+  const params = new URLSearchParams({
+    signature,
+    timestamp: String(timestamp),
+  });
+
+  const res = await fetch(
+    `/api/yield/avax/swap/evidence/export/${encodeURIComponent(account.address)}?${params.toString()}`
+  );
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`avax evidence export failed (${res.status}): ${body}`);
+  }
+
+  return res;
+}
+
+export async function downloadAvaxAdminEvidenceExport(account: {
+  address: string;
+  signMessage: (args: { message: string }) => Promise<string>;
+}) {
+  const timestamp = Date.now();
+  const message = `PanoramaBlock auth: ${timestamp}`;
+  const signature = await account.signMessage({ message });
+
+  const params = new URLSearchParams({
+    signature,
+    timestamp: String(timestamp),
+  });
+
+  const res = await fetch(
+    `/api/yield/avax/swap/evidence/admin/export/${encodeURIComponent(account.address)}?${params.toString()}`
+  );
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`avax admin evidence export failed (${res.status}): ${body}`);
+  }
+
+  return res;
+}

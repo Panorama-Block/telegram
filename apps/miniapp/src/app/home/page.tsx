@@ -8,6 +8,7 @@ import { SeniorAppShell } from '@/components/layout/SeniorAppShell';
 import { AgentsClient } from '@/clients/agentsClient';
 import { Button } from '@/components/ui/button';
 import { Plus, MessageCircle, Clock } from 'lucide-react';
+import { downloadAvaxAdminEvidenceExport, downloadAvaxEvidenceExport } from '@/features/swap/avaxSwapApi';
 
 interface Conversation {
   id: string;
@@ -93,6 +94,62 @@ export default function HomePage() {
   const handleContinueChat = (conversationId: string) => {
     router.push(`/chat?conversation_id=${conversationId}`);
   };
+
+  const handleDownloadEvidence = async () => {
+    if (!account) {
+      alert('Connect your wallet first.');
+      return;
+    }
+
+    try {
+      const res = await downloadAvaxEvidenceExport(account);
+      const blob = await res.blob();
+      const disposition = res.headers.get('content-disposition');
+      const match = disposition?.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] || `panoramablock-avalanche-evidence-${account.address}.json`;
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download Avalanche evidence:', error);
+      alert(error instanceof Error ? error.message : 'Failed to download Avalanche evidence');
+    }
+  };
+
+
+  const handleDownloadAdminEvidence = async () => {
+    if (!account) {
+      alert('Connect your wallet first.');
+      return;
+    }
+
+    try {
+      const res = await downloadAvaxAdminEvidenceExport(account);
+      const blob = await res.blob();
+      const disposition = res.headers.get('content-disposition');
+      const match = disposition?.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] || 'panoramablock-avalanche-admin-evidence.json';
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download admin Avalanche evidence:', error);
+      alert(error instanceof Error ? error.message : 'Failed to download admin Avalanche evidence');
+    }
+  };
+
 
   return (
     <ProtectedRoute>
@@ -182,6 +239,28 @@ export default function HomePage() {
             >
               <h3 className="text-white group-hover:text-cyan-100 font-medium mb-2">Lending</h3>
               <p className="text-zinc-400 text-sm">Supply & borrow</p>
+            </button>
+
+            <button
+              onClick={handleDownloadEvidence}
+              disabled={!account}
+              className="bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-xl p-4 transition-all text-center group"
+            >
+              <h3 className="text-white group-hover:text-cyan-100 font-medium mb-2">
+                Download Evidence
+              </h3>
+              <p className="text-zinc-400 text-sm">Avalanche transaction proof</p>
+            </button>
+
+            <button
+              onClick={handleDownloadAdminEvidence}
+              disabled={!account}
+              className="bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-xl p-4 transition-all text-center group"
+            >
+              <h3 className="text-white group-hover:text-cyan-100 font-medium mb-2">
+                Admin Evidence Export
+              </h3>
+              <p className="text-zinc-400 text-sm">All Avalanche transaction proof</p>
             </button>
           </div>
         </div>
