@@ -20,7 +20,10 @@ import { TokenIcon } from "@/components/TokenIcon";
 import { bridgeApi } from "@/features/swap/bridgeApi";
 // Backend centralizado — usado para swaps same-chain na Base via Execution Layer
 import { swapApi } from "@/features/swap/api";
-import { prepareAvaxSwap } from "@/features/swap/avaxSwapApi";
+import {
+  prepareAvaxSwap,
+  submitAvaxSwapEvidence,
+} from "@/features/swap/avaxSwapApi";
 import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS } from "@/features/swap/tokens";
 
 const BASE_CHAIN_ID = 8453;
@@ -1087,9 +1090,20 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         });
 
         // backend retorna steps como PreparedTransaction[] (flat, sem nested transactions)
-        const backendTxs: Array<{ to: string; data: string; value: string; chainId: number; action: string }> = [];
-        avaxPrepare.bundle.steps.forEach(step => backendTxs.push({
-          to: step.to, data: step.data || '0x', value: String(step.value || '0'),
+        const backendTxs: Array<{
+          stepIndex: number;
+          to: string;
+          data: string;
+          value: string;
+          chainId: number;
+          action: 'approval' | 'swap';
+        }> = [];
+
+        avaxPrepare.bundle.steps.forEach((step, stepIndex) => backendTxs.push({
+          stepIndex,
+          to: step.to,
+          data: step.data || '0x',
+          value: String(step.value || '0'),
           chainId: step.chainId || 43114,
           action: (step.data || '').startsWith('0x095ea7b3') ? 'approval' : 'swap',
         }));
@@ -1127,6 +1141,32 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           console.log(`[SwapWidget] ${tx.action} confirmado:`, receipt.transactionHash);
           hashes.push({ hash: receipt.transactionHash, chainId: tx.chainId });
           if (tracker) tracker.addHash(receipt.transactionHash, tx.chainId, tx.action);
+
+          if (avaxPrepare.evidenceEnabled) {
+            const verification = await submitAvaxSwapEvidence(
+              avaxPrepare.correlationId,
+              {
+                stepIndex: tx.stepIndex,
+                txHash: receipt.transactionHash,
+                executionMechanism: 'thirdweb-client',
+                providerMetadata: {
+                  sdk: 'thirdweb',
+                  flow: 'sendAndConfirmTransaction',
+                  chainId: tx.chainId,
+                },
+              }
+            );
+
+            if (!verification.verified) {
+              throw new Error(
+                `Transaction executed but Phase 2 evidence verification failed for step ${tx.stepIndex}`
+              );
+            }
+
+            console.log(
+              `[SwapWidget] Phase 2 evidence verified: correlation=${avaxPrepare.correlationId} step=${tx.stepIndex} tx=${receipt.transactionHash}`
+            );
+          }
         }
 
         setTxHashes(hashes);

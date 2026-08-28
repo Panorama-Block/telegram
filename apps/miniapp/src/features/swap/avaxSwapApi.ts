@@ -38,7 +38,70 @@ export async function prepareAvaxSwap(params: AvaxSwapPrepareParams) {
   }
 
   return res.json() as Promise<{
-    bundle: { steps: Array<{ to: string; data: string; value: string; chainId: number; description?: string }>; totalSteps: number; summary: string };
-    metadata: { amountOut: string; amountOutMin: string; swapType: string };
+    correlationId: string;
+    evidenceVersion: string;
+    evidenceEnabled: boolean;
+    preparedPayloadHash: string;
+    bundle: {
+      steps: Array<{
+        to: string;
+        data: string;
+        value: string;
+        chainId: number;
+        description?: string;
+      }>;
+      totalSteps: number;
+      summary: string;
+    };
+    metadata: {
+      amountOut: string;
+      amountOutMin: string;
+      swapType: string;
+    };
   }>;
+}
+
+export interface AvaxEvidenceSubmission {
+  stepIndex: number;
+  txHash: string;
+  executionMechanism?: string;
+  providerMetadata?: Record<string, unknown>;
+}
+
+export interface AvaxEvidenceVerification {
+  correlationId: string;
+  stepIndex: number;
+  txHash: string;
+  verified: boolean;
+  receiptStatus: number | null;
+  blockNumber: string;
+  blockHash: string;
+  senderMatchesExpected: boolean;
+  destinationMatchesExpected: boolean;
+  chainMatchesExpected: boolean;
+  dataMatchesExpected: boolean;
+  valueMatchesExpected: boolean;
+}
+
+export async function submitAvaxSwapEvidence(
+  correlationId: string,
+  submission: AvaxEvidenceSubmission
+): Promise<AvaxEvidenceVerification> {
+  const res = await fetch(
+    `/api/yield/avax/swap/evidence/${encodeURIComponent(correlationId)}/submissions`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(submission),
+    }
+  );
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(
+      `avax-swap evidence verification failed (${res.status}): ${body}`
+    );
+  }
+
+  return res.json() as Promise<AvaxEvidenceVerification>;
 }
