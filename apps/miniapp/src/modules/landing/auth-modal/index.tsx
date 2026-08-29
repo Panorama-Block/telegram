@@ -200,7 +200,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             setStatusMessage('Success! Redirecting...');
 
             setTimeout(() => {
-              router.push('/newchat');
+              router.push('/home');
             }, 500);
             return;
           } catch (err) {
@@ -381,11 +381,11 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
       console.log('✅ [AUTH MODAL] Authentication succeeded!');
 
-      // 5. Redirect to /newchat (page that creates a conversation and opens chat)
-      console.log('[AUTH MODAL] Redirecting to /newchat...');
+      // 5. Authentication completes at Home; starting a new chat is an explicit user action
+      console.log('[AUTH MODAL] Redirecting to /home...');
 
       setTimeout(() => {
-        router.push('/newchat');
+        router.push('/home');
       }, 500);
 
     } catch (err: any) {

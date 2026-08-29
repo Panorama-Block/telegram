@@ -279,7 +279,7 @@ export default function NewChatPage() {
               source: 'miniapp:newchat-ton',
             });
             setIsAuthenticated(true);
-            router.push('/chat?new=true');
+            router.push('/home');
             return; // End of TON flow
           } catch (err) {
             console.error("Proof verification failed", err);
@@ -404,13 +404,13 @@ export default function NewChatPage() {
       });
 
       setIsAuthenticated(true);
-      setStatusMessage('Success! Redirecting to chat...');
+      setStatusMessage('Success! Redirecting...');
 
-      console.log('✅ [NEWCHAT] Authentication succeeded! Redirecting to /chat...');
+      console.log('✅ [NEWCHAT] Authentication succeeded! Redirecting to /home...');
 
-      // 5. Redirect to /chat (bootstrap will create a new conversation automatically)
+      // 5. Authentication completes at Home; starting a new chat is an explicit user action
       setTimeout(() => {
-        router.push('/chat?new=true');
+        router.push('/home');
       }, 500);
 
     } catch (err: any) {
@@ -437,10 +437,10 @@ export default function NewChatPage() {
 
     if (lastTriedAddressRef.current === currentAddress) return;
 
-    // Already authenticated — go straight to a fresh chat (welcome screen with "Hello, <user>")
+    // Already authenticated — return to the application home
     const existingToken = localStorage.getItem('authToken');
     if (existingToken) {
-      router.replace('/chat?new=true');
+      router.replace('/home');
       return;
     }
 

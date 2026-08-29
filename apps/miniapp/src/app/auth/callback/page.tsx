@@ -160,7 +160,7 @@ export default function AuthCallbackPage() {
           }
         }
 
-        router.replace('/newchat');
+        router.replace('/home');
       } catch (e: any) {
         console.error('[AUTH CALLBACK] Error:', e);
         setError(e?.message || 'Authentication failed');

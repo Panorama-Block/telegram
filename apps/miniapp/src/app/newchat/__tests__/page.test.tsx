@@ -1,5 +1,5 @@
 import type React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import NewChatPage from '../page';
 
@@ -86,6 +86,7 @@ vi.mock('@/shared/lib/telegram-link', () => ({
 describe('NewChatPage login options', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     mockIsTelegramWebApp.mockReturnValue(false);
     mockDetectTelegram.mockResolvedValue(false);
     mockUseActiveAccount.mockReturnValue(undefined);
@@ -110,6 +111,21 @@ describe('NewChatPage login options', () => {
 
     expect(screen.queryByRole('button', { name: 'Use TON Wallet' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Connect Wallet' })).toBeInTheDocument();
+  });
+
+  it('routes an already authenticated connected user to home', async () => {
+    localStorage.setItem('authToken', 'test-token');
+    mockUseActiveAccount.mockReturnValue({
+      address: '0x1111111111111111111111111111111111111111',
+    } as any);
+
+    render(<NewChatPage />);
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/home');
+    });
+
+    expect(mockPush).not.toHaveBeenCalledWith('/chat?new=true');
   });
 
   it('opens the TON connect modal from the custom button', () => {
