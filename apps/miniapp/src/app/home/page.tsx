@@ -13,6 +13,10 @@ import {
   downloadAvaxEvidenceExport,
   getAvaxAdminEvidenceStatus,
 } from '@/features/swap/avaxSwapApi';
+import {
+  collectRuntimeDiagnostics,
+  downloadRuntimeDiagnostics,
+} from '@/features/admin/runtimeDiagnostics';
 
 interface Conversation {
   id: string;
@@ -160,6 +164,35 @@ export default function HomePage() {
   };
 
 
+  const handleRuntimeDiagnostics = async () => {
+    if (!account) {
+      alert('Connect your wallet first.');
+      return;
+    }
+
+    if (!isEvidenceAdmin) {
+      alert('Verified administrator capability is required.');
+      return;
+    }
+
+    try {
+      const diagnostics = await collectRuntimeDiagnostics({
+        walletAddress: account.address,
+        verifiedAdmin: isEvidenceAdmin,
+      });
+
+      downloadRuntimeDiagnostics(diagnostics);
+    } catch (error) {
+      console.error('Failed to collect runtime diagnostics:', error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Failed to collect runtime diagnostics'
+      );
+    }
+  };
+
+
   const handleDownloadAdminEvidence = async () => {
     if (!account) {
       alert('Connect your wallet first.');
@@ -290,16 +323,29 @@ export default function HomePage() {
             </button>
 
             {isEvidenceAdmin && (
-              <button
-                onClick={handleDownloadAdminEvidence}
-                disabled={!account}
-                className="bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-xl p-4 transition-all text-center group"
-              >
-                <h3 className="text-white group-hover:text-cyan-100 font-medium mb-2">
-                  Admin Evidence Export
-                </h3>
-                <p className="text-zinc-400 text-sm">All Avalanche transaction proof</p>
-              </button>
+              <>
+                <button
+                  onClick={handleDownloadAdminEvidence}
+                  disabled={!account}
+                  className="bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-xl p-4 transition-all text-center group"
+                >
+                  <h3 className="text-white group-hover:text-cyan-100 font-medium mb-2">
+                    Admin Evidence Export
+                  </h3>
+                  <p className="text-zinc-400 text-sm">All Avalanche transaction proof</p>
+                </button>
+
+                <button
+                  onClick={handleRuntimeDiagnostics}
+                  disabled={!account}
+                  className="bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-xl p-4 transition-all text-center group"
+                >
+                  <h3 className="text-white group-hover:text-cyan-100 font-medium mb-2">
+                    Runtime Diagnostics
+                  </h3>
+                  <p className="text-zinc-400 text-sm">Inspect deployed production state</p>
+                </button>
+              </>
             )}
           </div>
         </div>
