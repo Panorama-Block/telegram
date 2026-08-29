@@ -44,6 +44,42 @@ function normalizeLendingDevBase(raw: string | undefined, isDev: boolean): strin
   return remapped;
 }
 
+type GatewayBaseResolution = {
+  base: string;
+  warnings: string[];
+};
+
+export function resolveGatewayBaseForRewrite(
+  env: NodeJS.ProcessEnv,
+  isDev: boolean,
+): GatewayBaseResolution {
+  const warnings: string[] = [];
+
+  if (!isDev) {
+    const legacyPublicGateway = (env.NEXT_PUBLIC_GATEWAY_URL || "").trim();
+
+    if (legacyPublicGateway) {
+      warnings.push(
+        "[Next.js] Ignoring NEXT_PUBLIC_GATEWAY_URL in production. Using PanoramaBlock-controlled gateway ingress.",
+      );
+    }
+
+    return {
+      base: "https://api.panoramablock.com/database",
+      warnings,
+    };
+  }
+
+  return {
+    base: normalizeDevServiceBase(
+      env.NEXT_PUBLIC_GATEWAY_URL,
+      "http://localhost:8080",
+      true,
+    ),
+    warnings,
+  };
+}
+
 type LendingBaseResolution = {
   base: string;
   errors: string[];
@@ -115,6 +151,13 @@ const nextConfig: NextConfig = {
     const isDev = process.env.NODE_ENV !== "production";
 
     // Resolve all service base URLs upfront (needed for correct rule ordering below)
+    const gatewayResolution = resolveGatewayBaseForRewrite(process.env, isDev);
+    const gatewayBase = gatewayResolution.base;
+
+    for (const warning of gatewayResolution.warnings) {
+      console.warn(warning);
+    }
+
     const lendingResolution = resolveLendingBaseForRewrite(process.env, isDev);
     const lendingBase = lendingResolution.base;
 
@@ -141,10 +184,8 @@ const nextConfig: NextConfig = {
 
     const rewrites = [];
 
-    // Gateway proxy — evita CORS ao chamar o DB Gateway direto do browser
-    const gatewayBase = (
-      process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8080'
-    ).replace(/\/+$/, '');
+    // Gateway proxy — keeps browser traffic same-origin while production
+    // resolves through PanoramaBlock-controlled infrastructure.
     console.log('[Next.js] Gateway proxy configured:', gatewayBase);
     rewrites.push({
       source: '/api/gateway/:path*',
