@@ -24,6 +24,9 @@ import {
   prepareAvaxSwap,
   submitAvaxSwapEvidence,
 } from "@/features/swap/avaxSwapApi";
+import {
+  executeEvidenceBoundOperation,
+} from "@/features/execution/evidenceBoundExecutor";
 import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS } from "@/features/swap/tokens";
 
 const BASE_CHAIN_ID = 8453;
@@ -1114,60 +1117,65 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         setPreparing(false);
         setExecuting(true);
 
-        let currentChain: number | null = null;
-        for (const tx of backendTxs) {
-          if (currentChain !== tx.chainId) {
+        await executeEvidenceBoundOperation({
+          operation: {
+            correlationId: avaxPrepare.correlationId,
+            evidenceEnabled: avaxPrepare.evidenceEnabled,
+            preparedPayloadHash: avaxPrepare.preparedPayloadHash,
+            steps: backendTxs.map((tx) => ({
+              ...tx,
+              // Preserve existing AVAX execution behaviour exactly.
+              gas: 700000n,
+            })),
+          },
+          account,
+          client,
+          switchChain: async (chain) => {
             try {
-              await switchChain(defineChain(tx.chainId));
+              await switchChain(chain);
               await new Promise(resolve => setTimeout(resolve, 500));
-              currentChain = tx.chainId;
             } catch {
-              throw new Error(`Please switch to chain ${tx.chainId} in your wallet`);
+              throw new Error(`Please switch to chain ${chain.id} in your wallet`);
             }
-          }
-
-          const preparedTx = prepareTransaction({
-            to: tx.to as `0x${string}`,
-            data: tx.data as `0x${string}`,
-            value: BigInt(tx.value),
-            chain: defineChain(tx.chainId),
-            client,
-            // 700k: cobre CREATE2 BeaconProxy + initializeFull + swapExactAVAXForTokens
-            // na primeira TX do usuário. ThirdWeb cai para 400k sem isso (OOG).
-            gas: 700000n,
-          });
-
-          const receipt = await sendAndConfirmTransaction({ transaction: preparedTx, account });
-          console.log(`[SwapWidget] ${tx.action} confirmado:`, receipt.transactionHash);
-          hashes.push({ hash: receipt.transactionHash, chainId: tx.chainId });
-          if (tracker) tracker.addHash(receipt.transactionHash, tx.chainId, tx.action);
-
-          if (avaxPrepare.evidenceEnabled) {
+          },
+          submitEvidence: async (correlationId, submission) => {
             const verification = await submitAvaxSwapEvidence(
-              avaxPrepare.correlationId,
-              {
-                stepIndex: tx.stepIndex,
-                txHash: receipt.transactionHash,
-                executionMechanism: 'thirdweb-client',
-                providerMetadata: {
-                  sdk: 'thirdweb',
-                  flow: 'sendAndConfirmTransaction',
-                  chainId: tx.chainId,
-                },
-              }
+              correlationId,
+              submission
             );
 
             if (!verification.verified) {
               throw new Error(
-                `Transaction executed but Phase 2 evidence verification failed for step ${tx.stepIndex}`
+                `Phase 2 evidence verification failed for step ${submission.stepIndex}`
               );
             }
 
             console.log(
-              `[SwapWidget] Phase 2 evidence verified: correlation=${avaxPrepare.correlationId} step=${tx.stepIndex} tx=${receipt.transactionHash}`
+              `[SwapWidget] Phase 2 evidence verified: correlation=${correlationId} step=${submission.stepIndex} tx=${submission.txHash}`
             );
-          }
-        }
+
+            return verification;
+          },
+          onConfirmed: async (result) => {
+            console.log(
+              `[SwapWidget] ${result.action || 'transaction'} confirmado:`,
+              result.txHash
+            );
+
+            hashes.push({
+              hash: result.txHash,
+              chainId: result.chainId,
+            });
+
+            if (tracker) {
+              tracker.addHash(
+                result.txHash,
+                result.chainId,
+                result.action as 'approval' | 'swap'
+              );
+            }
+          },
+        });
 
         setTxHashes(hashes);
         if (tracker) await tracker.markConfirmed(estimatedOutput);
