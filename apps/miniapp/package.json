@@ -45,6 +45,7 @@
     "@ton/ton": "^13.11.2",
     "@tonconnect/ui-react": "^2.0.9",
     "@twa-dev/sdk": "^8.0.2",
+    "@vercel/analytics": "^2.0.1",
     "@xyflow/react": "^12.10.0",
     "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.1",

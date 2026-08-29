@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { Analytics } from '@vercel/analytics/next';
 import "./globals.css";
 import { ClientProviders } from "./providers";
 
@@ -174,6 +175,7 @@ export default function RootLayout({
         <ClientProviders>
           {children}
         </ClientProviders>
+        <Analytics />
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
       </body>
     </html>
