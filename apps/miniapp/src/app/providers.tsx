@@ -92,12 +92,12 @@ export function ClientProviders({ children }: ClientProvidersProps) {
                   } catch (e) {
                     console.warn('[StartParam Consume] autoConnect failed:', e);
                   }
-                  // optional: navigate to newchat
+                  // Authentication/session recovery completes at Home.
                   try {
                     const basePath = '/miniapp';
                     const current = window.location.pathname;
-                    if (!current.endsWith('/newchat') && !current.endsWith('/chat')) {
-                      window.location.href = `${basePath}/newchat`;
+                    if (!current.endsWith('/home')) {
+                      window.location.href = `${basePath}/home`;
                     }
                   } catch { }
                 }

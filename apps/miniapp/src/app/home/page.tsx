@@ -129,7 +129,7 @@ export default function HomePage() {
   }, [account?.address]);
 
   const handleNewChat = () => {
-    router.push('/newchat');
+    router.push('/chat?new=true');
   };
 
   const handleContinueChat = (conversationId: string) => {

@@ -3,16 +3,12 @@
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
-import { useActiveWallet, useDisconnect } from 'thirdweb/react'
-import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb'
 import zicoBlue from '../../../../public/icons/zico_blue.svg'
 import Banner from '../banner'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Zap } from 'lucide-react'
 
 const Hero = () => {
-  const activeWallet = useActiveWallet()
-  const { disconnect } = useDisconnect()
   const [currentWord, setCurrentWord] = useState(0)
   const [isLaunching, setIsLaunching] = useState(false)
   const [showSeedModal, setShowSeedModal] = useState(false)
@@ -35,92 +31,18 @@ const Hero = () => {
     setIsLaunching(true)
 
     try {
-      // 1. Disconnect wallet via Thirdweb (if connected)
-      if (activeWallet) {
-        try {
-          await disconnect(activeWallet)
-          console.log('[LaunchApp] Wallet disconnected')
-        } catch (error) {
-          console.warn('[LaunchApp] Wallet disconnect failed:', error)
-        }
-      }
-
-      // 2. Clear ALL localStorage (only if 12h passed since last clear)
-      if (typeof window !== 'undefined') {
-        const now = Date.now()
-        const lastClearKey = 'launchapp_last_clear_at'
-        const lastClearRaw = localStorage.getItem(lastClearKey)
-        const lastClearAt = lastClearRaw ? Number(lastClearRaw) : 0
-        const twelveHoursMs = 12 * 60 * 60 * 1000
-        const shouldClear = !lastClearAt || Number.isNaN(lastClearAt) || now - lastClearAt >= twelveHoursMs
-
-        if (shouldClear) {
-          // Application auth tokens
-          const appKeys = [
-            'authToken',
-            'authPayload',
-            'authSignature',
-            'telegram_user',
-            'userAddress',
-          ]
-          appKeys.forEach(key => localStorage.removeItem(key))
-
-          // Thirdweb-specific keys
-          const clientId = THIRDWEB_CLIENT_ID
-          if (clientId) {
-            const thirdwebKeys = [
-              `walletToken-${clientId}`,
-              `thirdwebEwsWalletToken-${clientId}`,
-              `thirdweb_auth_token_${clientId}`,
-              `thirdwebEwsWalletUserId-${clientId}`,
-            ]
-            thirdwebKeys.forEach(key => localStorage.removeItem(key))
-          }
-          localStorage.removeItem('thirdwebAuthToken')
-
-          // Clear any residual thirdweb/wallet keys
-          Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('thirdweb') || key.startsWith('walletToken')) {
-              localStorage.removeItem(key)
-            }
-          })
-
-          // Clear TON Connect keys
-          Object.keys(localStorage).forEach(key => {
-            const lower = key.toLowerCase()
-            if (lower.startsWith('tonconnect') || lower.startsWith('ton-connect') || lower.includes('tonconnect')) {
-              localStorage.removeItem(key)
-            }
-          })
-
-          // 3. Clear sessionStorage completely
-          Object.keys(sessionStorage).forEach(key => {
-            sessionStorage.removeItem(key)
-          })
-
-          localStorage.setItem(lastClearKey, String(now))
-          console.log('[LaunchApp] All storage cleared')
-        } else {
-          console.log('[LaunchApp] Storage clear skipped (within 12h window)')
-        }
-      }
-
-      // 4. Small delay to ensure everything is cleared
-      await new Promise(resolve => setTimeout(resolve, 150))
-
-      // 5. Full page reload to /newchat (clears React state completely)
       const params = new URLSearchParams(window.location.search)
       const tma = params.get('tma')
-      const nextUrl = tma ? `/miniapp/newchat?tma=${encodeURIComponent(tma)}` : '/miniapp/newchat'
-      window.location.href = nextUrl
+      const hasAuth = Boolean(localStorage.getItem('authToken'))
+      const destination = hasAuth ? '/miniapp/home' : '/miniapp/newchat'
+      const nextUrl = tma
+        ? `${destination}?tma=${encodeURIComponent(tma)}`
+        : destination
 
+      window.location.href = nextUrl
     } catch (error) {
       console.error('[LaunchApp] Error:', error)
-      // Even if something fails, force navigate
-      const params = new URLSearchParams(window.location.search)
-      const tma = params.get('tma')
-      const nextUrl = tma ? `/miniapp/newchat?tma=${encodeURIComponent(tma)}` : '/miniapp/newchat'
-      window.location.href = nextUrl
+      window.location.href = '/miniapp/newchat'
     }
   }
 
