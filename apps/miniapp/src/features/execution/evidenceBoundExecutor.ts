@@ -4,6 +4,8 @@ import {
   sendAndConfirmTransaction,
 } from "thirdweb";
 
+import { chainRequiresEvidence } from "./chainEvidencePolicy";
+
 export interface EvidenceBoundExecutionStep {
   stepIndex: number;
   to: string;
@@ -77,6 +79,20 @@ function assertGovernedOperation(
   operation: EvidenceBoundOperation,
   submitEvidence?: EvidenceSubmissionHandler
 ): void {
+  const requiredChainIds = Array.from(
+    new Set(
+      operation.steps
+        .filter((step) => chainRequiresEvidence(step.chainId))
+        .map((step) => step.chainId)
+    )
+  );
+
+  if (requiredChainIds.length > 0 && !operation.evidenceEnabled) {
+    throw new Error(
+      `Evidence is required before signing for chain(s): ${requiredChainIds.join(", ")}.`
+    );
+  }
+
   if (!operation.evidenceEnabled) {
     return;
   }

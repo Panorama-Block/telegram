@@ -52,6 +52,25 @@ const operation = (): EvidenceBoundOperation => ({
 });
 
 describe("executeEvidenceBoundOperation", () => {
+  it("refuses evidence-disabled Avalanche execution before signing", async () => {
+    const invalid = operation();
+    invalid.evidenceEnabled = false;
+    invalid.correlationId = "";
+    invalid.preparedPayloadHash = "";
+
+    await expect(
+      executeEvidenceBoundOperation({
+        operation: invalid,
+        account: {},
+        client: {},
+        switchChain: vi.fn(),
+      })
+    ).rejects.toThrow("Evidence is required before signing for chain(s): 43114.");
+
+    expect(prepareTransaction).not.toHaveBeenCalled();
+    expect(sendAndConfirmTransaction).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -275,6 +294,10 @@ describe("executeEvidenceBoundOperation", () => {
     disabled.evidenceEnabled = false;
     disabled.correlationId = "";
     disabled.preparedPayloadHash = "";
+    disabled.steps = disabled.steps.map((step) => ({
+      ...step,
+      chainId: 8453,
+    }));
 
     vi.mocked(sendAndConfirmTransaction)
       .mockResolvedValueOnce({ transactionHash: HASH_0 } as any)
