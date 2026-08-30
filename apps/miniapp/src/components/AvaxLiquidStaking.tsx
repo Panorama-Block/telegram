@@ -314,13 +314,119 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
   const handleRequestUnlock = useCallback(async () => {
     const amountWei = parseToWei(unlockAmount);
     if (amountWei === '0') { setTxError('Enter a valid sAVAX amount.'); return; }
-    setTxStatus('preparing'); setTxError(null);
+
+    setTxStatus('preparing');
+    setTxError(null);
+    setTxHash(null);
+
     try {
-      const tx = await avaxApi.prepareRequestUnlock(amountWei);
-      if (!tx) throw new Error('No transaction returned from backend.');
-      await executeTx(tx);
-    } catch (e: any) { setTxStatus('failed'); setTxError(e?.message ?? 'Request unlock failed.'); }
-  }, [avaxApi, unlockAmount, executeTx]);
+      const prepared = await avaxApi.prepareRequestUnlock(amountWei);
+
+      if (!prepared) {
+        throw new Error('No transaction returned from backend.');
+      }
+
+      if (!account) {
+        throw new Error('Wallet not connected.');
+      }
+
+      if (!evidenceClient) {
+        throw new Error(
+          'Thirdweb client is not configured for evidence-bound execution.'
+        );
+      }
+
+      if (
+        !prepared.correlationId ||
+        typeof prepared.evidenceEnabled !== 'boolean' ||
+        !prepared.preparedPayloadHash
+      ) {
+        throw new Error(
+          'Evidence-bound sAVAX unlock preparation is incomplete.'
+        );
+      }
+
+      const txs = prepared.bundle?.steps ?? [];
+
+      if (txs.length < 1 || txs.length > 2) {
+        throw new Error(
+          `Expected one or two sAVAX unlock transactions, received ${txs.length}.`
+        );
+      }
+
+      setTxStatus('awaiting_wallet');
+
+      await executeEvidenceBoundOperation({
+        operation: {
+          correlationId: prepared.correlationId,
+          evidenceEnabled: prepared.evidenceEnabled,
+          preparedPayloadHash: prepared.preparedPayloadHash,
+          steps: txs.map((tx, index) => ({
+            stepIndex: index,
+            to: tx.to,
+            data: tx.data,
+            value: tx.value || '0',
+            chainId: tx.chainId || AVAX_CHAIN_ID,
+            action:
+              txs.length === 2 && index === 0
+                ? 'Approve sAVAX'
+                : 'Request sAVAX unlock',
+            gas: tx.gasLimit
+              ? BigInt(tx.gasLimit)
+              : undefined,
+          })),
+        },
+        account,
+        client: evidenceClient,
+        switchChain: async (chain) => {
+          await switchActiveWalletChain(chain);
+        },
+        submitEvidence: async (
+          correlationId,
+          submission
+        ) => {
+          const verification =
+            await lendingApi.submitEvidence(
+              correlationId,
+              submission
+            );
+
+          if (verification?.verified !== true) {
+            throw new Error(
+              `Evidence verification failed for sAVAX unlock step ${submission.stepIndex}.`
+            );
+          }
+
+          return verification;
+        },
+        onConfirmed: async (result) => {
+          setTxHash(result.txHash);
+
+          if (
+            result.stepIndex ===
+            txs.length - 1
+          ) {
+            setTxStatus('confirmed');
+            await fetchPosition();
+          }
+        },
+      });
+    } catch (e: any) {
+      setTxStatus('failed');
+      setTxError(
+        e?.message ??
+        'Request unlock failed.'
+      );
+    }
+  }, [
+    account,
+    avaxApi,
+    evidenceClient,
+    fetchPosition,
+    lendingApi,
+    unlockAmount,
+    switchActiveWalletChain,
+  ]);
 
   const handleRedeem = useCallback(async (index: number) => {
     setRedeemingIndex(index); setTxStatus('preparing'); setTxError(null);
