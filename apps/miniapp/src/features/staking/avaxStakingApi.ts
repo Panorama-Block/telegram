@@ -29,6 +29,22 @@ export interface AvaxStakingTx {
   data: string;
   value: string;
   chainId: number;
+  gasLimit?: string;
+}
+
+export interface AvaxStakingPreparedOperation {
+  correlationId: string;
+  evidenceVersion: string;
+  evidenceEnabled: boolean;
+  preparedPayloadHash: string;
+  bundle: {
+    steps: AvaxStakingTx[];
+  };
+  metadata: {
+    action: 'stake';
+    avaxAmount: string;
+    estimatedSAvax: string;
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -54,7 +70,7 @@ export class AvaxStakingApiClient {
     return data as AvaxStakingPosition;
   }
 
-  async prepareStake(amountWei: string): Promise<AvaxStakingTx | null> {
+  async prepareStake(amountWei: string): Promise<AvaxStakingPreparedOperation | null> {
     if (!this.userAddress) throw new Error('Wallet not connected');
     const res = await fetch(`${API_BASE}/prepare-stake`, {
       method: 'POST',
@@ -63,9 +79,7 @@ export class AvaxStakingApiClient {
     });
     const json = await res.json();
     if (!res.ok || json.error) throw new Error(json.error ?? `HTTP ${res.status}`);
-    // Execution layer returns { bundle: { steps: [...] }, metadata }
-    const steps: AvaxStakingTx[] = json.bundle?.steps ?? [];
-    return steps[0] ?? null;
+    return json as AvaxStakingPreparedOperation;
   }
 
   async prepareRequestUnlock(sAvaxAmountWei: string): Promise<AvaxStakingTx | null> {
