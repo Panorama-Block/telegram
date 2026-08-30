@@ -1071,11 +1071,10 @@ class LendingApiClient {
     }
   }
 
-  async prepareWithdraw(tokenAddress: string, amount: string, decimals: number = 18, qTokenAmountOverride?: string): Promise<any> {
+  async prepareWithdraw(tokenAddress: string, amount: string, decimals: number = 18): Promise<any> {
     try {
       const amountInWei = this.toWei(amount, decimals);
-      const qTokenAmount = qTokenAmountOverride || amountInWei;
-      const message = this.formatMessage('Withdraw', qTokenAmount, tokenAddress);
+      const message = this.formatMessage('Withdraw', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
 
       const authToken = localStorage.getItem('authToken');
@@ -1090,7 +1089,7 @@ class LendingApiClient {
         body: JSON.stringify({
           ...authData,
           userAddress: authData.address,
-          qTokenAmount,
+          amount: amountInWei,
           qTokenAddress: tokenAddress,
         })
       });
