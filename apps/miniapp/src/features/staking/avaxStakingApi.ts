@@ -63,6 +63,20 @@ export interface AvaxUnlockPreparedOperation {
   };
 }
 
+export interface AvaxRedeemPreparedOperation {
+  correlationId: string;
+  evidenceVersion: string;
+  evidenceEnabled: boolean;
+  preparedPayloadHash: string;
+  bundle: {
+    steps: AvaxStakingTx[];
+  };
+  metadata: {
+    action: 'redeem';
+    userUnlockIndex: number;
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /*  API Client — calls execution layer directly via Next.js proxy     */
 /*  /api/liquid-staking/benqi/* → execution_service/avax/liquid-staking/*  */
@@ -110,7 +124,7 @@ export class AvaxStakingApiClient {
     return json as AvaxUnlockPreparedOperation;
   }
 
-  async prepareRedeem(userUnlockIndex: number): Promise<AvaxStakingTx | null> {
+  async prepareRedeem(userUnlockIndex: number): Promise<AvaxRedeemPreparedOperation | null> {
     if (!this.userAddress) throw new Error('Wallet not connected');
     const res = await fetch(`${API_BASE}/prepare-redeem`, {
       method: 'POST',
@@ -119,8 +133,7 @@ export class AvaxStakingApiClient {
     });
     const json = await res.json();
     if (!res.ok || json.error) throw new Error(json.error ?? `HTTP ${res.status}`);
-    const steps: AvaxStakingTx[] = json.bundle?.steps ?? [];
-    return steps[0] ?? null;
+    return json as AvaxRedeemPreparedOperation;
   }
 }
 

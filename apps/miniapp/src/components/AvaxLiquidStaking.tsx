@@ -429,14 +429,129 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
   ]);
 
   const handleRedeem = useCallback(async (index: number) => {
-    setRedeemingIndex(index); setTxStatus('preparing'); setTxError(null);
+    setRedeemingIndex(index);
+    setTxStatus('preparing');
+    setTxError(null);
+    setTxHash(null);
+
     try {
-      const tx = await avaxApi.prepareRedeem(index);
-      if (!tx) throw new Error('No transaction returned from backend.');
-      await executeTx(tx);
-    } catch (e: any) { setTxStatus('failed'); setTxError(e?.message ?? 'Redeem failed.'); }
-    finally { setRedeemingIndex(null); }
-  }, [avaxApi, executeTx]);
+      const prepared =
+        await avaxApi.prepareRedeem(index);
+
+      if (!prepared) {
+        throw new Error(
+          'No transaction returned from backend.'
+        );
+      }
+
+      if (!account) {
+        throw new Error(
+          'Wallet not connected.'
+        );
+      }
+
+      if (!evidenceClient) {
+        throw new Error(
+          'Thirdweb client is not configured for evidence-bound execution.'
+        );
+      }
+
+      if (
+        !prepared.correlationId ||
+        typeof prepared.evidenceEnabled !== 'boolean' ||
+        !prepared.preparedPayloadHash
+      ) {
+        throw new Error(
+          'Evidence-bound sAVAX redeem preparation is incomplete.'
+        );
+      }
+
+      const txs =
+        prepared.bundle?.steps ?? [];
+
+      if (txs.length !== 1) {
+        throw new Error(
+          `Expected exactly one sAVAX redeem transaction, received ${txs.length}.`
+        );
+      }
+
+      setTxStatus('awaiting_wallet');
+
+      await executeEvidenceBoundOperation({
+        operation: {
+          correlationId:
+            prepared.correlationId,
+          evidenceEnabled:
+            prepared.evidenceEnabled,
+          preparedPayloadHash:
+            prepared.preparedPayloadHash,
+          steps: txs.map(
+            (tx, stepIndex) => ({
+              stepIndex,
+              to: tx.to,
+              data: tx.data,
+              value: tx.value || '0',
+              chainId:
+                tx.chainId ||
+                AVAX_CHAIN_ID,
+              action:
+                'Redeem sAVAX unlock → AVAX',
+              gas: tx.gasLimit
+                ? BigInt(tx.gasLimit)
+                : undefined,
+            })
+          ),
+        },
+        account,
+        client: evidenceClient,
+        switchChain: async (chain) => {
+          await switchActiveWalletChain(
+            chain
+          );
+        },
+        submitEvidence: async (
+          correlationId,
+          submission
+        ) => {
+          const verification =
+            await lendingApi.submitEvidence(
+              correlationId,
+              submission
+            );
+
+          if (
+            verification?.verified !== true
+          ) {
+            throw new Error(
+              `Evidence verification failed for sAVAX redeem step ${submission.stepIndex}.`
+            );
+          }
+
+          return verification;
+        },
+        onConfirmed: async (result) => {
+          setTxHash(result.txHash);
+          setTxStatus('confirmed');
+          await fetchPosition();
+        },
+      });
+    } catch (e: any) {
+      setTxStatus('failed');
+      setTxError(
+        e?.message ??
+        'Redeem failed.'
+      );
+    } finally {
+      setRedeemingIndex(null);
+    }
+  }, [
+    account,
+    avaxApi,
+    evidenceClient,
+    fetchPosition,
+    lendingApi,
+    switchActiveWalletChain,
+  ]);
 
   const resetTx = () => { setTxStatus('idle'); setTxHash(null); setTxError(null); setStakeAmount(''); setUnlockAmount(''); };
 
