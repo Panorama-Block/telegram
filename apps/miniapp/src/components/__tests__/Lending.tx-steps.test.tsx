@@ -37,6 +37,7 @@ vi.mock('@/components/TokenSelectionModal', () => ({
 
 vi.mock('thirdweb/react', () => ({
   useActiveAccount: () => ({ address: '0x1111111111111111111111111111111111111111' }),
+  useSwitchActiveWalletChain: () => vi.fn(async () => {}),
 }));
 
 vi.mock('@/shared/utils/evmReceipt', () => ({

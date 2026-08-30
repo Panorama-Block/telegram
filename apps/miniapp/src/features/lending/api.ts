@@ -1180,6 +1180,36 @@ class LendingApiClient {
     }
   }
 
+  async submitEvidence(
+    correlationId: string,
+    submission: {
+      stepIndex: number;
+      txHash: string;
+      executionMechanism?: string;
+      providerMetadata?: Record<string, unknown>;
+    }
+  ): Promise<any> {
+    const response = await fetchWithAuth(
+      `${this.baseUrl}/avax/lending/evidence/${encodeURIComponent(correlationId)}/submissions`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(submission),
+      }
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `lending evidence verification failed (${response.status}): ${body}`
+      );
+    }
+
+    return response.json();
+  }
+
   async executeTransaction(txData: any): Promise<string> {
     const result = await this.executeTransactionWithStatus(txData);
     return result.transactionHash;
