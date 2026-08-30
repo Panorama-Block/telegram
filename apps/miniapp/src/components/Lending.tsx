@@ -672,7 +672,7 @@ export function Lending({
         }
       };
 
-      if ((mode === 'supply' && (flow === 'open' || flow === 'close')) || (mode === 'borrow' && flow === 'open')) {
+      if ((mode === 'supply' && (flow === 'open' || flow === 'close')) || (mode === 'borrow' && (flow === 'open' || flow === 'close'))) {
         if (!evidenceClient) {
           throw new Error(
             'Thirdweb client is not configured for evidence-bound execution.'

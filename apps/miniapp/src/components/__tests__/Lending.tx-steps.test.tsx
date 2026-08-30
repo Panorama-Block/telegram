@@ -6,9 +6,14 @@ import { Lending } from '@/components/Lending';
 const waitForEvmReceiptMock = vi.fn();
 const prepareWithdrawMock = vi.fn();
 const prepareBorrowMock = vi.fn();
+const prepareRepayMock = vi.fn();
 const executeTransactionMock = vi.fn();
 const submitEvidenceMock = vi.fn();
 const executeEvidenceBoundOperationMock = vi.fn();
+
+const lendingPositionState = vi.hoisted(() => ({
+  borrowedWei: '0',
+}));
 
 const baseToken = {
   symbol: 'AVAX',
@@ -80,7 +85,7 @@ vi.mock('@/features/lending/useLendingData', () => ({
           qTokenAddress: baseToken.qTokenAddress,
           qTokenSymbol: baseToken.qTokenSymbol,
           suppliedWei: '500000000000000000',
-          borrowedWei: '0',
+          borrowedWei: lendingPositionState.borrowedWei,
           qTokenBalanceWei: '10000000',
           qTokenDecimals: 8,
         },
@@ -102,7 +107,7 @@ vi.mock('@/features/lending/api', () => ({
     prepareSupply: vi.fn(),
     prepareWithdraw: (...args: unknown[]) => prepareWithdrawMock(...args),
     prepareBorrow: (...args: unknown[]) => prepareBorrowMock(...args),
-    prepareRepay: vi.fn(),
+    prepareRepay: (...args: unknown[]) => prepareRepayMock(...args),
     executeTransaction: (...args: unknown[]) => executeTransactionMock(...args),
     submitEvidence: (...args: unknown[]) => submitEvidenceMock(...args),
     getTransactionHistory: vi.fn().mockResolvedValue([]),
@@ -111,8 +116,10 @@ vi.mock('@/features/lending/api', () => ({
 
 describe('Lending multi-step tx states', () => {
   beforeEach(() => {
+    lendingPositionState.borrowedWei = '0';
     prepareWithdrawMock.mockReset();
     prepareBorrowMock.mockReset();
+    prepareRepayMock.mockReset();
     executeTransactionMock.mockReset();
     submitEvidenceMock.mockReset();
     executeEvidenceBoundOperationMock.mockReset();
@@ -450,5 +457,134 @@ describe('Lending multi-step tx states', () => {
       waitForEvmReceiptMock,
     ).not.toHaveBeenCalled();
   });
+
+  test('executes repay through the evidence boundary', async () => {
+    lendingPositionState.borrowedWei = '500000000000000000';
+
+    prepareRepayMock.mockResolvedValue({
+      correlationId: 'corr-repay-1',
+      evidenceVersion: '1',
+      evidenceEnabled: true,
+      preparedPayloadHash: 'prepared-repay-hash-1',
+      bundle: {
+        steps: [
+          {
+            to: '0xc35059D1BC395Ff0F6fDcEA1b7F365E3aa7C1D12',
+            value: '100000000000000000',
+            data: '0xabcdef05',
+            gasLimit: '300000',
+            chainId: 43114,
+          },
+        ],
+        totalSteps: 1,
+        summary: 'Repay AVAX borrow on Benqi',
+      },
+    });
+
+    submitEvidenceMock.mockResolvedValue({
+      correlationId: 'corr-repay-1',
+      verified: true,
+    });
+
+    render(
+      <Lending
+        onClose={vi.fn()}
+        initialAmount="0.1"
+        initialMode="borrow"
+        initialFlow="close"
+      />,
+    );
+
+    const repayButtons =
+      await screen.findAllByRole(
+        'button',
+        { name: 'Repay' },
+      );
+
+    fireEvent.click(
+      repayButtons[
+        repayButtons.length - 1
+      ],
+    );
+
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: /Confirm repay/i },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText('Confirmed').length,
+      ).toBeGreaterThan(0);
+    });
+
+    expect(prepareRepayMock).toHaveBeenCalledWith(
+      baseToken.qTokenAddress,
+      '0.1',
+      18,
+    );
+
+    expect(
+      executeEvidenceBoundOperationMock,
+    ).toHaveBeenCalledTimes(1);
+
+    const executionArgs =
+      executeEvidenceBoundOperationMock.mock.calls[0][0];
+
+    expect(
+      executionArgs.operation.correlationId,
+    ).toBe('corr-repay-1');
+
+    expect(
+      executionArgs.operation.evidenceEnabled,
+    ).toBe(true);
+
+    expect(
+      executionArgs.operation.preparedPayloadHash,
+    ).toBe('prepared-repay-hash-1');
+
+    expect(
+      executionArgs.operation.steps,
+    ).toHaveLength(1);
+
+    expect(
+      executionArgs.operation.steps[0],
+    ).toEqual(
+      expect.objectContaining({
+        stepIndex: 0,
+        to: '0xc35059D1BC395Ff0F6fDcEA1b7F365E3aa7C1D12',
+        data: '0xabcdef05',
+        value: '100000000000000000',
+        chainId: 43114,
+        action: 'Repay',
+      }),
+    );
+
+    expect(submitEvidenceMock)
+      .toHaveBeenCalledTimes(1);
+
+    expect(submitEvidenceMock)
+      .toHaveBeenCalledWith(
+        'corr-repay-1',
+        expect.objectContaining({
+          stepIndex: 0,
+          txHash:
+            '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          executionMechanism:
+            'thirdweb-client',
+        }),
+      );
+
+    expect(
+      executeTransactionMock,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      waitForEvmReceiptMock,
+    ).not.toHaveBeenCalled();
+  });
+
 
 });
