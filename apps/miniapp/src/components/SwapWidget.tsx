@@ -26,7 +26,9 @@ import {
 } from "@/features/swap/avaxSwapApi";
 import {
   beginAvaxBridgeEvidence,
+  beginAvaxBridgeDestinationEvidence,
   commitAvaxBridgeEvidence,
+  commitAvaxBridgeDestinationEvidence,
 } from "@/features/swap/avaxBridgeEvidenceApi";
 import {
   executeEvidenceBoundOperation,
@@ -1355,6 +1357,19 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             })
           : null;
 
+      // AVAX-10 T1: if Avalanche is the destination, record the
+      // destination-chain intent before Thirdweb prepares any bundle.
+      const avaxBridgeDestinationIntent =
+        toChainId === 43114 &&
+        fromChainId !== 43114
+          ? await beginAvaxBridgeDestinationEvidence({
+              userAddress: account.address,
+              sourceChainId: fromChainId,
+              destinationToken,
+              amountRaw: weiAmount.toString(),
+            })
+          : null;
+
       console.log("[SwapWidget] Preparing swap...");
 
       const prepared = await Bridge.Sell.prepare({
@@ -1386,6 +1401,105 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         prepared.steps.flatMap(
           s => s.transactions
         );
+
+      let avaxDestinationSteps: Array<{
+        to: string;
+        data: string;
+        value: string;
+        chainId: number;
+        description?: string;
+      }> = [];
+
+      let avaxDestinationCommit:
+        | Awaited<
+            ReturnType<
+              typeof commitAvaxBridgeDestinationEvidence
+            >
+          >
+        | null = null;
+
+      if (
+        toChainId === 43114 &&
+        fromChainId !== 43114
+      ) {
+        if (!avaxBridgeDestinationIntent) {
+          throw new Error(
+            "Avalanche bridge destination evidence intent was not created"
+          );
+        }
+
+        const normalizedTransactions =
+          allTxs.map(
+            (transaction, index) => ({
+              transaction,
+              index,
+              chainId: Number(
+                (transaction as any).chainId ||
+                  fromChainId
+              ),
+            })
+          );
+
+        const firstDestination =
+          normalizedTransactions.findIndex(
+            item =>
+              item.chainId === 43114
+          );
+
+        if (firstDestination >= 0) {
+          // Preserve Thirdweb transaction order exactly. We can split
+          // execution only when Avalanche transactions form a suffix.
+          const interleaved =
+            normalizedTransactions
+              .slice(firstDestination)
+              .some(
+                item =>
+                  item.chainId !== 43114
+              );
+
+          if (interleaved) {
+            throw new Error(
+              "Thirdweb returned interleaved Avalanche destination transactions; refusing to reorder bridge execution"
+            );
+          }
+
+          avaxDestinationSteps =
+            normalizedTransactions
+              .slice(firstDestination)
+              .map(({ transaction }) => {
+                const txAction =
+                  (transaction as any).action ||
+                  'unknown';
+
+                return {
+                  to:
+                    (transaction as any).to,
+                  data:
+                    (transaction as any).data ||
+                    '0x',
+                  value: String(
+                    (transaction as any).value ||
+                      '0'
+                  ),
+                  chainId: 43114,
+                  description:
+                    txAction === 'approval'
+                      ? "Approve Avalanche bridge destination"
+                      : "Thirdweb bridge destination transaction",
+                };
+              });
+
+          avaxDestinationCommit =
+            await commitAvaxBridgeDestinationEvidence({
+              correlationId:
+                avaxBridgeDestinationIntent
+                  .correlationId,
+              sourceChainId: fromChainId,
+              provider: "thirdweb",
+              steps: avaxDestinationSteps,
+            });
+        }
+      }
 
       const approvalTx =
         allTxs.find(
@@ -1630,6 +1744,16 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             continue;
           }
 
+          // AVAX-10: Avalanche destination transactions are committed
+          // above and executed only through the evidence-bound executor.
+          if (
+            toChainId === 43114 &&
+            fromChainId !== 43114 &&
+            txChainId === 43114
+          ) {
+            continue;
+          }
+
           console.log(
             `[SwapWidget] Executing ${txAction} transaction on chain ${txChainId}...`
           );
@@ -1772,6 +1896,76 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             );
           }
         }
+      }
+
+      if (
+        avaxDestinationCommit &&
+        avaxDestinationSteps.length > 0
+      ) {
+        await executeEvidenceBoundOperation({
+          operation: {
+            correlationId:
+              avaxDestinationCommit
+                .correlationId,
+            evidenceEnabled:
+              avaxDestinationCommit
+                .evidenceEnabled,
+            preparedPayloadHash:
+              avaxDestinationCommit
+                .preparedPayloadHash,
+            steps:
+              avaxDestinationSteps.map(
+                (step, stepIndex) => ({
+                  ...step,
+                  stepIndex,
+                  action:
+                    step.data.startsWith(
+                      '0x095ea7b3'
+                    )
+                      ? 'approval'
+                      : 'bridge',
+                })
+              ),
+          },
+          account,
+          client,
+          switchChain,
+          submitEvidence: async (
+            correlationId,
+            submission
+          ) => {
+            const verification =
+              await submitAvaxSwapEvidence(
+                correlationId,
+                submission
+              );
+
+            if (!verification.verified) {
+              throw new Error(
+                `Avalanche bridge destination evidence verification failed for step ${submission.stepIndex}`
+              );
+            }
+
+            return verification;
+          },
+          onConfirmed: async result => {
+            hashes.push({
+              hash: result.txHash,
+              chainId: result.chainId,
+            });
+
+            if (tracker) {
+              tracker.addHash(
+                result.txHash,
+                result.chainId,
+                result.action as
+                  | 'approval'
+                  | 'swap'
+                  | 'bridge'
+              );
+            }
+          },
+        });
       }
 
       setTxHashes(hashes);
