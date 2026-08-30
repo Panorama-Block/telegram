@@ -52,9 +52,16 @@ vi.mock('thirdweb/react', () => ({
   useSwitchActiveWalletChain: () => vi.fn(async () => {}),
 }));
 
-vi.mock('thirdweb', () => ({
-  createThirdwebClient: () => ({ clientId: 'test-thirdweb-client' }),
-}));
+vi.mock('thirdweb', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('thirdweb')>();
+
+  return {
+    ...actual,
+    createThirdwebClient: () => ({
+      clientId: 'test-thirdweb-client',
+    }),
+  };
+});
 
 vi.mock('@/shared/config/thirdweb', () => ({
   THIRDWEB_CLIENT_ID: 'test-thirdweb-client',

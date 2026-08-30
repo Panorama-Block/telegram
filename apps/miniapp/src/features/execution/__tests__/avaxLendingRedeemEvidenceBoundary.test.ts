@@ -65,7 +65,7 @@ describe("Avalanche lending redeem evidence boundary", () => {
   it("routes supply/close through the generic evidence-bound executor before the legacy loop", () => {
     const evidenceBranch =
       lendingSource.indexOf(
-        "if (mode === 'supply' && (flow === 'open' || flow === 'close')) {"
+        "if ((mode === 'supply' && (flow === 'open' || flow === 'close')) || (mode === 'borrow' && flow === 'open')) {"
       );
 
     const legacyLoop =

@@ -41,7 +41,7 @@ describe("Avalanche lending supply evidence boundary", () => {
   it("keeps the evidence boundary scoped to migrated supply flows", () => {
     const evidenceBranch =
       lendingSource.indexOf(
-        "if (mode === 'supply' && (flow === 'open' || flow === 'close')) {"
+        "if ((mode === 'supply' && (flow === 'open' || flow === 'close')) || (mode === 'borrow' && flow === 'open')) {"
       );
 
     const genericLegacyExecution =

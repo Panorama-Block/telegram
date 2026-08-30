@@ -5,6 +5,7 @@ import { Lending } from '@/components/Lending';
 
 const waitForEvmReceiptMock = vi.fn();
 const prepareWithdrawMock = vi.fn();
+const prepareBorrowMock = vi.fn();
 const executeTransactionMock = vi.fn();
 const submitEvidenceMock = vi.fn();
 const executeEvidenceBoundOperationMock = vi.fn();
@@ -100,7 +101,7 @@ vi.mock('@/features/lending/api', () => ({
   useLendingApi: () => ({
     prepareSupply: vi.fn(),
     prepareWithdraw: (...args: unknown[]) => prepareWithdrawMock(...args),
-    prepareBorrow: vi.fn(),
+    prepareBorrow: (...args: unknown[]) => prepareBorrowMock(...args),
     prepareRepay: vi.fn(),
     executeTransaction: (...args: unknown[]) => executeTransactionMock(...args),
     submitEvidence: (...args: unknown[]) => submitEvidenceMock(...args),
@@ -111,6 +112,7 @@ vi.mock('@/features/lending/api', () => ({
 describe('Lending multi-step tx states', () => {
   beforeEach(() => {
     prepareWithdrawMock.mockReset();
+    prepareBorrowMock.mockReset();
     executeTransactionMock.mockReset();
     submitEvidenceMock.mockReset();
     executeEvidenceBoundOperationMock.mockReset();
@@ -322,4 +324,131 @@ describe('Lending multi-step tx states', () => {
       waitForEvmReceiptMock,
     ).not.toHaveBeenCalled();
   });
+
+  test('executes borrow through the evidence boundary', async () => {
+    prepareBorrowMock.mockResolvedValue({
+      correlationId: 'corr-borrow-1',
+      evidenceVersion: '1',
+      evidenceEnabled: true,
+      preparedPayloadHash: 'prepared-borrow-hash-1',
+      bundle: {
+        steps: [
+          {
+            to: '0xc35059D1BC395Ff0F6fDcEA1b7F365E3aa7C1D12',
+            value: '0',
+            data: '0xabcdef03',
+            gasLimit: '300000',
+            chainId: 43114,
+          },
+        ],
+        totalSteps: 1,
+        summary: 'Borrow AVAX from Benqi',
+      },
+    });
+
+    submitEvidenceMock.mockResolvedValue({
+      correlationId: 'corr-borrow-1',
+      verified: true,
+    });
+
+    render(
+      <Lending
+        onClose={vi.fn()}
+        initialAmount="0.1"
+        initialMode="borrow"
+        initialFlow="open"
+      />,
+    );
+
+    const borrowButtons =
+      await screen.findAllByRole(
+        'button',
+        { name: 'Borrow' },
+      );
+
+    fireEvent.click(
+      borrowButtons[
+        borrowButtons.length - 1
+      ],
+    );
+
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: /Confirm borrow/i },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText('Confirmed').length,
+      ).toBeGreaterThan(0);
+    });
+
+    expect(prepareBorrowMock).toHaveBeenCalledWith(
+      baseToken.qTokenAddress,
+      '0.1',
+      18,
+    );
+
+    expect(
+      executeEvidenceBoundOperationMock,
+    ).toHaveBeenCalledTimes(1);
+
+    const executionArgs =
+      executeEvidenceBoundOperationMock.mock.calls[0][0];
+
+    expect(
+      executionArgs.operation.correlationId,
+    ).toBe('corr-borrow-1');
+
+    expect(
+      executionArgs.operation.evidenceEnabled,
+    ).toBe(true);
+
+    expect(
+      executionArgs.operation.preparedPayloadHash,
+    ).toBe('prepared-borrow-hash-1');
+
+    expect(
+      executionArgs.operation.steps,
+    ).toHaveLength(1);
+
+    expect(
+      executionArgs.operation.steps[0],
+    ).toEqual(
+      expect.objectContaining({
+        stepIndex: 0,
+        to: '0xc35059D1BC395Ff0F6fDcEA1b7F365E3aa7C1D12',
+        data: '0xabcdef03',
+        value: '0',
+        chainId: 43114,
+        action: 'Borrow',
+      }),
+    );
+
+    expect(submitEvidenceMock)
+      .toHaveBeenCalledTimes(1);
+
+    expect(submitEvidenceMock)
+      .toHaveBeenCalledWith(
+        'corr-borrow-1',
+        expect.objectContaining({
+          stepIndex: 0,
+          txHash:
+            '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          executionMechanism:
+            'thirdweb-client',
+        }),
+      );
+
+    expect(
+      executeTransactionMock,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      waitForEvmReceiptMock,
+    ).not.toHaveBeenCalled();
+  });
+
 });
