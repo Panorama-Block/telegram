@@ -4,6 +4,7 @@ import LendingApiClient from '@/features/lending/api';
 const safeExecuteTransactionV2Mock = vi.fn();
 
 vi.mock('@/shared/utils/transactionUtilsV2', () => ({
+  assertNoRawAvalancheApproval: vi.fn(),
   safeExecuteTransactionV2: (...args: unknown[]) => safeExecuteTransactionV2Mock(...args),
 }));
 

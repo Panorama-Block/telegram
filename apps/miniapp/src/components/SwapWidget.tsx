@@ -1463,31 +1463,139 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             );
           }
 
-          avaxDestinationSteps =
-            normalizedTransactions
-              .slice(firstDestination)
-              .map(({ transaction }) => {
-                const txAction =
-                  (transaction as any).action ||
-                  'unknown';
+          for (
+            const { transaction } of
+            normalizedTransactions.slice(
+              firstDestination
+            )
+          ) {
+            const txAction =
+              (transaction as any).action ||
+              'unknown';
 
-                return {
-                  to:
-                    (transaction as any).to,
-                  data:
-                    (transaction as any).data ||
-                    '0x',
-                  value: String(
-                    (transaction as any).value ||
-                      '0'
-                  ),
-                  chainId: 43114,
-                  description:
-                    txAction === 'approval'
-                      ? "Approve Avalanche bridge destination"
-                      : "Thirdweb bridge destination transaction",
-                };
-              });
+            const txTo =
+              (transaction as any).to;
+
+            const txData =
+              ((transaction as any).data ||
+                '0x') as string;
+
+            const txValue =
+              String(
+                (transaction as any).value ||
+                  '0'
+              );
+
+            const isApproval =
+              txAction === 'approval' ||
+              txData
+                .toLowerCase()
+                .startsWith('0x095ea7b3');
+
+            // Some ERC-20s require allowance to be reset to zero
+            // before a new non-zero approval. Any such Avalanche
+            // reset is part of the committed T3 bundle, never
+            // dynamically created during raw execution.
+            if (isApproval) {
+              if (
+                !txData
+                  .toLowerCase()
+                  .startsWith('0x095ea7b3') ||
+                txData.length < 138
+              ) {
+                throw new Error(
+                  'Malformed Avalanche bridge destination approval'
+                );
+              }
+
+              const spenderFromData =
+                (
+                  '0x' +
+                  txData.slice(34, 74)
+                ) as `0x${string}`;
+
+              const approvalAmount =
+                BigInt(
+                  `0x${txData.slice(74, 138)}`
+                );
+
+              const resetData =
+                `0x095ea7b3${
+                  spenderFromData
+                    .slice(2)
+                    .padStart(64, '0')
+                }${'0'.repeat(64)}`;
+
+              const previousDestinationStep =
+                avaxDestinationSteps[
+                  avaxDestinationSteps.length - 1
+                ];
+
+              const hasPreparedReset =
+                !!previousDestinationStep &&
+                previousDestinationStep.to
+                  .toLowerCase() ===
+                  txTo.toLowerCase() &&
+                previousDestinationStep.data
+                  .toLowerCase() ===
+                  resetData.toLowerCase();
+
+              // A provider-supplied approve(spender, 0) is already
+              // the reset step and must be preserved without adding
+              // another reset. Only a non-zero approval can require
+              // an additional reset.
+              if (
+                approvalAmount > 0n &&
+                !hasPreparedReset
+              ) {
+                const { getContract } =
+                  await import("thirdweb");
+
+                const { allowance } =
+                  await import(
+                    "thirdweb/extensions/erc20"
+                  );
+
+                const tokenContract =
+                  getContract({
+                    client,
+                    chain: defineChain(43114),
+                    address: txTo,
+                  });
+
+                const currentDestinationAllowance =
+                  await allowance({
+                    contract: tokenContract,
+                    owner: account.address,
+                    spender: spenderFromData,
+                  });
+
+                if (
+                  currentDestinationAllowance > 0n
+                ) {
+                  avaxDestinationSteps.push({
+                    to: txTo,
+                    data: resetData,
+                    value: '0',
+                    chainId: 43114,
+                    description:
+                      "Reset Avalanche bridge destination allowance",
+                  });
+                }
+              }
+            }
+
+            avaxDestinationSteps.push({
+              to: txTo,
+              data: txData,
+              value: txValue,
+              chainId: 43114,
+              description:
+                isApproval
+                  ? "Approve Avalanche bridge destination"
+                  : "Thirdweb bridge destination transaction",
+            });
+          }
 
           avaxDestinationCommit =
             await commitAvaxBridgeDestinationEvidence({

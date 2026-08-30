@@ -13,7 +13,7 @@ import {
 } from './types';
 import { LENDING_CONFIG, API_ENDPOINTS, TOKEN_ICONS, VALIDATION_FEE, updateValidationFee } from './config';
 import { parseAmountToWei } from '@/features/swap/utils';
-import { safeExecuteTransactionV2 } from '@/shared/utils/transactionUtilsV2';
+import { assertNoRawAvalancheApproval, safeExecuteTransactionV2 } from '@/shared/utils/transactionUtilsV2';
 import { fetchWithAuth } from '@/shared/lib/fetchWithAuth';
 import { getAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 
@@ -1310,6 +1310,11 @@ class LendingApiClient {
       if (!Number.isFinite(targetChainId) || targetChainId <= 0) {
         throw new Error(`Invalid chain ID for lending transaction: ${chainId}`);
       }
+
+      assertNoRawAvalancheApproval(
+        targetChainId,
+        data
+      );
 
       await this.ensureWalletOnChain(targetChainId);
 

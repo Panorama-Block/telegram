@@ -50,6 +50,27 @@ export function createInfiniteApprovalData(spender: Address): `0x${string}` {
 }
 
 /**
+ * Raw Avalanche ERC-20 approvals are prohibited.
+ *
+ * Every chain-43114 approval must already be part of an exact
+ * evidence commitment and executed through executeEvidenceBoundOperation.
+ */
+export function assertNoRawAvalancheApproval(
+  chainId: number,
+  data: string | undefined
+): void {
+  if (
+    chainId === 43114 &&
+    typeof data === 'string' &&
+    data.toLowerCase().startsWith('0x095ea7b3')
+  ) {
+    throw new Error(
+      'Avalanche approval must be executed through an evidence-bound operation'
+    );
+  }
+}
+
+/**
  * Check if a transaction is an approval transaction
  */
 export function isApprovalTransaction(tx: any): boolean {
