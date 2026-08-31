@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   repair:
-    if: ${{ !contains(github.event.head_commit.message, 'fix: restore chat conversation resume') }}
+    if: "${{ !contains(github.event.head_commit.message, 'fix: restore chat conversation resume') }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
