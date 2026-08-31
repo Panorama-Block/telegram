@@ -3,6 +3,10 @@
 import { useMemo } from 'react';
 import { useActiveAccount, useActiveWallet, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { defineChain } from 'thirdweb';
+import {
+  sendAccountTransactionNonEvidence,
+  sendProviderTransactionNonEvidence,
+} from '@/features/execution/nonEvidenceTransactionExecutor';
 import { parseAmountToWei } from '@/features/swap/utils';
 import { safeExecuteTransactionV2 } from '@/shared/utils/transactionUtilsV2';
 import { fetchWithAuth } from '@/shared/lib/fetchWithAuth';
@@ -1398,33 +1402,79 @@ class StakingApiClient {
             try {
               return await raceBroadcastWithRecovery(() =>
                 Promise.resolve(
-                  selectedProvider.request({
-                    method: 'eth_sendTransaction',
-                    params: [providerTxPayload],
+                  sendProviderTransactionNonEvidence({
+                    chainId: expectedChainId,
+                    provider: selectedProvider,
+                    transaction: providerTxPayload,
                   }),
                 ),
               );
             } catch (providerError) {
-              if (!this.isUnsupportedProviderRequest(providerError)) {
-                const recoveredProviderHash = await recoverHashFromWallet();
-                if (recoveredProviderHash) {
-                  return { transactionHash: recoveredProviderHash };
-                }
+              const providerErrorMessage =
+                providerError instanceof Error
+                  ? providerError.message
+                  : String(providerError);
+
+              if (
+                /requires evidence-bound execution|does not match declared chain/i.test(
+                  providerErrorMessage
+                )
+              ) {
                 throw providerError;
               }
+
+              if (!this.isUnsupportedProviderRequest(providerError)) {
+                const recoveredProviderHash =
+                  await recoverHashFromWallet();
+
+                if (recoveredProviderHash) {
+                  return {
+                    transactionHash:
+                      recoveredProviderHash,
+                  };
+                }
+
+                throw providerError;
+              }
+
               console.warn('[STAKING] Injected provider does not support eth_sendTransaction, falling back to account.sendTransaction.');
             }
           }
 
           try {
             return await raceBroadcastWithRecovery(() =>
-              Promise.resolve(this.account.sendTransaction(formattedTxData)),
+              Promise.resolve(
+                sendAccountTransactionNonEvidence({
+                  chainId: expectedChainId,
+                  account: this.account,
+                  transaction: formattedTxData,
+                })
+              ),
             );
           } catch (accountSendError) {
-            const recoveredAccountHash = await recoverHashFromWallet();
-            if (recoveredAccountHash) {
-              return { transactionHash: recoveredAccountHash };
+            const accountSendErrorMessage =
+              accountSendError instanceof Error
+                ? accountSendError.message
+                : String(accountSendError);
+
+            if (
+              /requires evidence-bound execution|does not match declared chain/i.test(
+                accountSendErrorMessage
+              )
+            ) {
+              throw accountSendError;
             }
+
+            const recoveredAccountHash =
+              await recoverHashFromWallet();
+
+            if (recoveredAccountHash) {
+              return {
+                transactionHash:
+                  recoveredAccountHash,
+              };
+            }
+
             throw accountSendError;
           }
         });

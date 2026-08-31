@@ -4,6 +4,10 @@ import { useMemo } from 'react';
 import { useActiveAccount, useActiveWallet, useActiveWalletChain, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { defineChain } from 'thirdweb';
 import {
+  sendAccountTransactionNonEvidence,
+  sendProviderTransactionNonEvidence,
+} from '@/features/execution/nonEvidenceTransactionExecutor';
+import {
   LendingToken,
   LendingAccountPositionsResponse,
   ValidationResponse,
@@ -13,7 +17,7 @@ import {
 } from './types';
 import { LENDING_CONFIG, API_ENDPOINTS, TOKEN_ICONS, VALIDATION_FEE, updateValidationFee } from './config';
 import { parseAmountToWei } from '@/features/swap/utils';
-import { safeExecuteTransactionV2 } from '@/shared/utils/transactionUtilsV2';
+import { assertNoRawAvalancheApproval, safeExecuteTransactionV2 } from '@/shared/utils/transactionUtilsV2';
 import { fetchWithAuth } from '@/shared/lib/fetchWithAuth';
 import { getAuthWalletBinding } from '@/shared/lib/authWalletBinding';
 
@@ -1071,11 +1075,10 @@ class LendingApiClient {
     }
   }
 
-  async prepareWithdraw(tokenAddress: string, amount: string, decimals: number = 18, qTokenAmountOverride?: string): Promise<any> {
+  async prepareWithdraw(tokenAddress: string, amount: string, decimals: number = 18): Promise<any> {
     try {
       const amountInWei = this.toWei(amount, decimals);
-      const qTokenAmount = qTokenAmountOverride || amountInWei;
-      const message = this.formatMessage('Withdraw', qTokenAmount, tokenAddress);
+      const message = this.formatMessage('Withdraw', amountInWei, tokenAddress);
       const authData = await this.getAuthData(message);
 
       const authToken = localStorage.getItem('authToken');
@@ -1090,7 +1093,7 @@ class LendingApiClient {
         body: JSON.stringify({
           ...authData,
           userAddress: authData.address,
-          qTokenAmount,
+          amount: amountInWei,
           qTokenAddress: tokenAddress,
         })
       });
@@ -1178,6 +1181,66 @@ class LendingApiClient {
       console.error('[LENDING] Error preparing repay:', error);
       throw new Error('Failed to prepare repay transaction');
     }
+  }
+
+  async reportEvidenceOutcome(
+    correlationId: string,
+    outcome: {
+      outcome:
+        | "cancelled-before-submission"
+        | "partially-executed";
+      reason?: string;
+    }
+  ): Promise<any> {
+    const response = await fetchWithAuth(
+      `${this.baseUrl}/avax/lending/evidence/${encodeURIComponent(correlationId)}/outcomes`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(outcome),
+      }
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `lending evidence outcome reporting failed (${response.status}): ${body}`
+      );
+    }
+
+    return response.json();
+  }
+
+  async submitEvidence(
+    correlationId: string,
+    submission: {
+      stepIndex: number;
+      txHash: string;
+      executionMechanism?: string;
+      providerMetadata?: Record<string, unknown>;
+    }
+  ): Promise<any> {
+    const response = await fetchWithAuth(
+      `${this.baseUrl}/avax/lending/evidence/${encodeURIComponent(correlationId)}/submissions`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(submission),
+      }
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `lending evidence verification failed (${response.status}): ${body}`
+      );
+    }
+
+    return response.json();
   }
 
   async executeTransaction(txData: any): Promise<string> {
@@ -1281,6 +1344,11 @@ class LendingApiClient {
       if (!Number.isFinite(targetChainId) || targetChainId <= 0) {
         throw new Error(`Invalid chain ID for lending transaction: ${chainId}`);
       }
+
+      assertNoRawAvalancheApproval(
+        targetChainId,
+        data
+      );
 
       await this.ensureWalletOnChain(targetChainId);
 
@@ -1424,13 +1492,25 @@ class LendingApiClient {
             try {
               return await raceBroadcastWithRecovery(() =>
                 Promise.resolve(
-                  selectedProvider.request({
-                    method: 'eth_sendTransaction',
-                    params: [providerTxPayload],
+                  sendProviderTransactionNonEvidence({
+                    chainId: targetChainId,
+                    provider: selectedProvider,
+                    transaction: providerTxPayload,
                   }),
                 ),
               );
             } catch (providerError) {
+              const providerErrorMessage =
+                describeUnknown(providerError);
+
+              if (
+                /requires evidence-bound execution|does not match declared chain/i.test(
+                  providerErrorMessage
+                )
+              ) {
+                throw providerError;
+              }
+
               if (!this.isUnsupportedProviderRequest(providerError)) {
                 const recoveredProviderHash = await recoverHashFromWallet();
                 if (recoveredProviderHash) {
@@ -1438,19 +1518,43 @@ class LendingApiClient {
                 }
                 throw providerError;
               }
+
               console.warn('[LENDING] Injected provider does not support eth_sendTransaction, falling back to account.sendTransaction.');
             }
           }
 
           try {
             return await raceBroadcastWithRecovery(() =>
-              Promise.resolve(this.account.sendTransaction(formattedTxData)),
+              Promise.resolve(
+                sendAccountTransactionNonEvidence({
+                  chainId: targetChainId,
+                  account: this.account,
+                  transaction: formattedTxData,
+                })
+              ),
             );
           } catch (accountSendError) {
-            const recoveredAccountHash = await recoverHashFromWallet();
-            if (recoveredAccountHash) {
-              return { transactionHash: recoveredAccountHash };
+            const accountSendErrorMessage =
+              describeUnknown(accountSendError);
+
+            if (
+              /requires evidence-bound execution|does not match declared chain/i.test(
+                accountSendErrorMessage
+              )
+            ) {
+              throw accountSendError;
             }
+
+            const recoveredAccountHash =
+              await recoverHashFromWallet();
+
+            if (recoveredAccountHash) {
+              return {
+                transactionHash:
+                  recoveredAccountHash,
+              };
+            }
+
             throw accountSendError;
           }
         });
@@ -1481,6 +1585,13 @@ class LendingApiClient {
       }
       if (/insufficient funds|insufficient balance|gas/i.test(msg)) {
         throw new Error('Insufficient balance for gas or amount.');
+      }
+      if (
+        /requires evidence-bound execution|does not match declared chain/i.test(
+          msg
+        )
+      ) {
+        throw new Error(msg);
       }
       if (/wrong network|chain|network/i.test(msg)) {
         throw new Error('Wrong network. Please switch to Avalanche C-Chain.');

@@ -16,7 +16,11 @@ import { waitForEvmReceipt } from "@/shared/utils/evmReceipt";
 import { useIsMobileBreakpoint } from "@/shared/hooks/useIsMobileBreakpoint";
 import { useRateLimitCountdown, parseRetryAfter } from "@/shared/hooks/useRateLimitCountdown";
 import { mapError } from "@/shared/lib/errorMapper";
-import { useActiveAccount } from "thirdweb/react";
+import {
+  useActiveAccount,
+  useSwitchActiveWalletChain,
+} from "thirdweb/react";
+import { createThirdwebClient } from "thirdweb";
 import { startSwapTracking, type SwapTracker } from "@/features/gateway";
 import {
   type LendingTxStage,
@@ -25,6 +29,9 @@ import {
 import { LendingInputView } from "@/components/lending/LendingInputView";
 import { LendingReviewView } from "@/components/lending/LendingReviewView";
 import { LendingStatusView } from "@/components/lending/LendingStatusView";
+import {
+  executeEvidenceBoundOperation,
+} from "@/features/execution/evidenceBoundExecutor";
 
 type ViewState = 'input' | 'review' | 'status';
 type Mode = 'supply' | 'borrow';
@@ -95,7 +102,16 @@ export function Lending({
   variant = 'modal',
 }: LendingProps) {
   const account = useActiveAccount();
+  const switchActiveWalletChain = useSwitchActiveWalletChain();
   const lendingApi = useLendingApi();
+
+  const evidenceClient = useMemo(
+    () =>
+      THIRDWEB_CLIENT_ID
+        ? createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID })
+        : null,
+    []
+  );
   const {
     tokens,
     userPosition,
@@ -519,24 +535,11 @@ export function Lending({
       const prepared = await (async () => {
         if (mode === 'supply' && flow === 'open') return await lendingApi.prepareSupply(qTokenAddress, opAmount, decimals);
         if (mode === 'supply' && flow === 'close') {
-          // Calcula qTokenAmount proporcional para evitar TransferFromFailed no contrato.
-          // O contrato precisa de unidades de qToken (8 decimais), não de underlying wei.
-          let qTokenOverride: string | undefined;
-          const pos = activePositionRow as any;
-          // Suporta tanto 'qTokenBalanceWei' (lending-service) quanto 'qTokenBalance' (execution-layer)
-          const qTokenBalStr: string | undefined = pos?.qTokenBalanceWei || pos?.qTokenBalance;
-          const suppliedWStr: string | undefined = pos?.suppliedWei;
-          if (qTokenBalStr && suppliedWStr) {
-            const qTokenBal = BigInt(qTokenBalStr);
-            const suppliedW = BigInt(suppliedWStr);
-            if (suppliedW > 0n && qTokenBal > 0n) {
-              const opWei = parseAmountToWei(opAmount, decimals);
-              qTokenOverride = ((opWei * qTokenBal) / suppliedW).toString();
-            } else if (qTokenBal > 0n) {
-              qTokenOverride = qTokenBalStr;
-            }
-          }
-          return await lendingApi.prepareWithdraw(qTokenAddress, opAmount, decimals, qTokenOverride);
+          return await lendingApi.prepareWithdraw(
+            qTokenAddress,
+            opAmount,
+            decimals
+          );
         }
         if (mode === 'borrow' && flow === 'open') return await lendingApi.prepareBorrow(qTokenAddress, opAmount, decimals);
         return await lendingApi.prepareRepay(qTokenAddress, opAmount, decimals);
@@ -668,6 +671,140 @@ export function Lending({
           throw error;
         }
       };
+
+      if ((mode === 'supply' && (flow === 'open' || flow === 'close')) || (mode === 'borrow' && (flow === 'open' || flow === 'close'))) {
+        if (!evidenceClient) {
+          throw new Error(
+            'Thirdweb client is not configured for evidence-bound execution.'
+          );
+        }
+
+        if (
+          !prepared?.correlationId ||
+          typeof prepared?.evidenceEnabled !== 'boolean' ||
+          !prepared?.preparedPayloadHash
+        ) {
+          throw new Error(
+            'Evidence-bound lending preparation is incomplete.'
+          );
+        }
+
+        if (txs.length > 0) {
+          setTxStage('awaiting_wallet');
+          markStep(0, { stage: 'awaiting_wallet' });
+        }
+
+        await executeEvidenceBoundOperation({
+          operation: {
+            correlationId: prepared.correlationId,
+            evidenceEnabled: prepared.evidenceEnabled,
+            preparedPayloadHash: prepared.preparedPayloadHash,
+            steps: txs.map((tx, index) => ({
+              stepIndex: index,
+              to: tx.to,
+              data: tx.data,
+              value: tx.value || '0',
+              chainId: tx.chainId || 43114,
+              action: stepLabels[index] ?? `Step ${index + 1}`,
+              gas: BigInt(tx.gasLimit || 700000),
+            })),
+          },
+          account,
+          client: evidenceClient,
+          switchChain: async (chain) => {
+            await switchActiveWalletChain(chain);
+          },
+          submitEvidence: async (correlationId, submission) => {
+            const verification = await lendingApi.submitEvidence(
+              correlationId,
+              submission
+            );
+
+            if (verification?.verified !== true) {
+              throw new Error(
+                `Evidence verification failed for lending step ${submission.stepIndex}.`
+              );
+            }
+
+            return verification;
+          },
+          reportOutcome: async (correlationId, outcome) => {
+            return lendingApi.reportEvidenceOutcome(
+              correlationId,
+              outcome
+            );
+          },
+          onConfirmed: async (result) => {
+            const index = result.stepIndex;
+            const tx = txs[index];
+            const hash = result.txHash;
+
+            setTxHashes((prev) => [...prev, hash]);
+            markStep(index, {
+              stage: 'confirmed',
+              txHash: hash,
+            });
+
+            if (index + 1 < txs.length) {
+              markStep(index + 1, {
+                stage: 'awaiting_wallet',
+              });
+            }
+
+            if (tracker) {
+              try {
+                const type =
+                  typeof tx?.data === 'string' &&
+                  tx.data.startsWith('0x095ea7b3')
+                    ? 'approval'
+                    : index === stepLabels.length - 1
+                      ? 'lend'
+                      : 'other';
+
+                await tracker.addTxHash(
+                  hash,
+                  result.chainId,
+                  type
+                );
+
+                if (index === 0) {
+                  await tracker.markSubmitted();
+                  await tracker.markPending();
+                }
+              } catch (trackingError) {
+                console.warn(
+                  '[LENDING] Failed to update gateway tx hash:',
+                  trackingError
+                );
+              }
+            }
+          },
+        });
+
+        setTxStage('confirmed');
+
+        if (tracker) {
+          try {
+            await tracker.markConfirmed(
+              previewHuman || opAmount
+            );
+          } catch (trackingError) {
+            console.warn(
+              '[LENDING] Failed to mark gateway transaction as confirmed:',
+              trackingError
+            );
+          }
+        }
+
+        void fetchPosition();
+
+        lendingApi
+          .getTransactionHistory(10)
+          .then(setTxHistory)
+          .catch(() => {});
+
+        return;
+      }
 
       let hasTimeout = false;
       for (let index = 0; index < txs.length; index++) {

@@ -23,7 +23,17 @@ import { swapApi } from "@/features/swap/api";
 import {
   prepareAvaxSwap,
   submitAvaxSwapEvidence,
+  reportAvaxSwapEvidenceOutcome,
 } from "@/features/swap/avaxSwapApi";
+import {
+  beginAvaxBridgeEvidence,
+  beginAvaxBridgeDestinationEvidence,
+  commitAvaxBridgeEvidence,
+  commitAvaxBridgeDestinationEvidence,
+} from "@/features/swap/avaxBridgeEvidenceApi";
+import {
+  executeEvidenceBoundOperation,
+} from "@/features/execution/evidenceBoundExecutor";
 import { TON_CHAIN_ID, CROSS_CHAIN_SUPPORTED_CHAIN_IDS, CROSS_CHAIN_SUPPORTED_SYMBOLS } from "@/features/swap/tokens";
 
 const BASE_CHAIN_ID = 8453;
@@ -39,7 +49,8 @@ import {
   toFixedFloor
 } from "@/features/swap/utils";
 import { useActiveAccount, ConnectButton, useSwitchActiveWalletChain } from "thirdweb/react";
-import { Bridge, prepareTransaction, sendTransaction, sendAndConfirmTransaction, createThirdwebClient, defineChain } from "thirdweb";
+import { Bridge, prepareTransaction, createThirdwebClient, defineChain } from "thirdweb";
+import { sendAndConfirmThirdwebTransactionNonEvidence } from "@/features/execution/nonEvidenceTransactionExecutor";
 import { THIRDWEB_CLIENT_ID } from "@/shared/config/thirdweb";
 import { useTonConnectUI } from '@tonconnect/ui-react';
 import { getUserJettonWallet, toUSDT } from '@/lib/ton-helpers';
@@ -873,6 +884,29 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           console.warn('[SwapWidget] Failed to init swap tracker:', trackErr);
         }
 
+        const decimals = await getTokenDecimals({
+          client,
+          chainId: fromChainId,
+          token: sellToken.address
+        }).catch(() => 18);
+
+        const wei = parseAmountToWei(amount, decimals);
+
+        // AVAX-9 T1: persist the Avalanche bridge intent before
+        // LayerSwap prepares any source-chain transaction.
+        const avaxBridgeIntent =
+          fromChainId === 43114
+            ? await beginAvaxBridgeEvidence({
+                userAddress: account.address,
+                destinationChainId: TON_CHAIN_ID,
+                sourceToken:
+                  sellToken.address ||
+                  '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+                destinationToken: buyToken.address,
+                amountRaw: wei.toString(),
+              })
+            : null;
+
         // 1. Create Bridge Transaction
         const sourceNetwork = getLayerswapNetwork(sellToken.network);
         const destinationNetwork = getLayerswapNetwork(buyToken.network);
@@ -881,10 +915,10 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
         const bridgeTx = await bridgeApi.createTransaction(
           Number(amount),
-          userTonAddress, // Destination is TON
-          account.address, // Source Address (EVM)
-          sourceNetwork, // Source Network
-          destinationNetwork, // Destination Network
+          userTonAddress,
+          account.address,
+          sourceNetwork,
+          destinationNetwork,
           refuelEnabled,
           sourceTokenSymbol,
           destinationTokenSymbol
@@ -894,65 +928,204 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
         const txData = bridgeTx.transaction || bridgeTx;
         const swapId = txData.swapId || txData.id;
-        const depositAddress = txData.depositAddress || txData.destination || txData.vaultAddress;
+        const depositAddress =
+          txData.depositAddress ||
+          txData.destination ||
+          txData.vaultAddress;
 
-        if (!depositAddress) throw new Error("Bridge API did not return a Deposit Address");
+        if (!depositAddress) {
+          throw new Error(
+            "Bridge API did not return a Deposit Address"
+          );
+        }
+
         if (swapId) {
           setCurrentSwapId(swapId);
           setSwapStatus(null);
           setSwapStatusError(null);
         }
 
-        // 2. Send EVM Transaction to Deposit Address
-        const decimals = await getTokenDecimals({
-          client,
-          chainId: fromChainId,
-          token: sellToken.address
-        }).catch(() => 18);
+        if (fromChainId === 43114) {
+          if (!avaxBridgeIntent) {
+            throw new Error(
+              "Avalanche bridge evidence intent was not created"
+            );
+          }
 
-        const wei = parseAmountToWei(amount, decimals);
+          let sourceTo: string;
+          let sourceData = '0x';
+          let sourceValue = '0';
 
-        setExecuting(true);
+          if (isNative(sellToken.address)) {
+            sourceTo = depositAddress;
+            sourceValue = wei.toString();
+          } else {
+            sourceTo = sellToken.address;
 
-        // Prepare and send transaction
-        let transaction;
+            const recipientWord =
+              depositAddress
+                .replace(/^0x/, '')
+                .toLowerCase()
+                .padStart(64, '0');
 
-        if (isNative(sellToken.address)) {
-          transaction = prepareTransaction({
-            to: depositAddress,
-            chain: defineChain(fromChainId),
+            const amountWord =
+              BigInt(wei)
+                .toString(16)
+                .padStart(64, '0');
+
+            // ERC20 transfer(address,uint256)
+            sourceData =
+              `0xa9059cbb${recipientWord}${amountWord}`;
+          }
+
+          const avaxSourceSteps = [
+            {
+              to: sourceTo,
+              data: sourceData,
+              value: sourceValue,
+              chainId: 43114,
+              description: "LayerSwap bridge source deposit",
+            },
+          ];
+
+          // AVAX-9 T3: commit the exact source transaction before
+          // any wallet-signing call becomes reachable.
+          const committed =
+            await commitAvaxBridgeEvidence({
+              correlationId:
+                avaxBridgeIntent.correlationId,
+              destinationChainId: TON_CHAIN_ID,
+              provider: 'layerswap',
+              steps: avaxSourceSteps,
+            });
+
+          setPreparing(false);
+          setExecuting(true);
+
+          await executeEvidenceBoundOperation({
+            operation: {
+              correlationId: committed.correlationId,
+              evidenceEnabled: committed.evidenceEnabled,
+              preparedPayloadHash:
+                committed.preparedPayloadHash,
+              steps: avaxSourceSteps.map(
+                (step, stepIndex) => ({
+                  ...step,
+                  stepIndex,
+                  action: 'bridge',
+                })
+              ),
+            },
+            account,
             client,
-            value: wei,
+            switchChain,
+            submitEvidence: async (
+              correlationId,
+              submission
+            ) => {
+              const verification =
+                await submitAvaxSwapEvidence(
+                  correlationId,
+                  submission
+                );
+
+              if (!verification.verified) {
+                throw new Error(
+                  `Avalanche bridge evidence verification failed for step ${submission.stepIndex}`
+                );
+              }
+
+              return verification;
+            },
+            reportOutcome: async (correlationId, outcome) => {
+              return reportAvaxSwapEvidenceOutcome(
+                correlationId,
+                outcome
+              );
+            },
+            onConfirmed: async result => {
+              setTxHashes([
+                {
+                  hash: result.txHash,
+                  chainId: result.chainId,
+                },
+              ]);
+
+              if (tracker) {
+                tracker.addHash(
+                  result.txHash,
+                  result.chainId,
+                  'bridge'
+                );
+              }
+            },
           });
         } else {
-          // ERC20 Transfer
-          const { prepareContractCall, getContract } = await import("thirdweb");
+          // Non-Avalanche EVM -> TON behaviour remains unchanged.
+          let transaction;
 
-          const contract = getContract({
-            client,
-            chain: defineChain(fromChainId),
-            address: sellToken.address
-          });
+          if (isNative(sellToken.address)) {
+            transaction = prepareTransaction({
+              to: depositAddress,
+              chain: defineChain(fromChainId),
+              client,
+              value: wei,
+            });
+          } else {
+            const {
+              prepareContractCall,
+              getContract
+            } = await import("thirdweb");
 
-          transaction = prepareContractCall({
-            contract,
-            method: "function transfer(address to, uint256 value)",
-            params: [depositAddress, BigInt(wei)]
-          });
+            const contract = getContract({
+              client,
+              chain: defineChain(fromChainId),
+              address: sellToken.address
+            });
+
+            transaction = prepareContractCall({
+              contract,
+              method:
+                "function transfer(address to, uint256 value)",
+              params: [
+                depositAddress,
+                BigInt(wei)
+              ]
+            });
+          }
+
+          setPreparing(false);
+          setExecuting(true);
+
+          const receipt =
+            await sendAndConfirmThirdwebTransactionNonEvidence({
+              chainId: fromChainId,
+              transaction,
+              account,
+            });
+
+          setTxHashes([
+            {
+              hash: receipt.transactionHash,
+              chainId: fromChainId
+            }
+          ]);
+
+          if (tracker) {
+            tracker.addHash(
+              receipt.transactionHash,
+              fromChainId,
+              'bridge'
+            );
+          }
         }
 
-        const receipt = await sendAndConfirmTransaction({
-          transaction,
-          account,
-        });
-
-        setTxHashes([{ hash: receipt.transactionHash, chainId: fromChainId }]);
-
-        // Track hash and mark as confirmed
         if (tracker) {
-          tracker.addHash(receipt.transactionHash, fromChainId, 'bridge');
-          await tracker.markConfirmed(estimatedOutput);
+          await tracker.markConfirmed(
+            estimatedOutput
+          );
         }
+
         return;
       }
 
@@ -1067,7 +1240,11 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             gas: tx.action === 'swap' ? 400000n : undefined,
           });
 
-          const receipt = await sendAndConfirmTransaction({ transaction: preparedTx, account });
+          const receipt = await sendAndConfirmThirdwebTransactionNonEvidence({
+            chainId: tx.chainId,
+            transaction: preparedTx,
+            account,
+          });
           console.log(`[SwapWidget] ${tx.action} confirmado:`, receipt.transactionHash);
           hashes.push({ hash: receipt.transactionHash, chainId: tx.chainId });
           if (tracker) tracker.addHash(receipt.transactionHash, tx.chainId, tx.action);
@@ -1114,60 +1291,71 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
         setPreparing(false);
         setExecuting(true);
 
-        let currentChain: number | null = null;
-        for (const tx of backendTxs) {
-          if (currentChain !== tx.chainId) {
+        await executeEvidenceBoundOperation({
+          operation: {
+            correlationId: avaxPrepare.correlationId,
+            evidenceEnabled: avaxPrepare.evidenceEnabled,
+            preparedPayloadHash: avaxPrepare.preparedPayloadHash,
+            steps: backendTxs.map((tx) => ({
+              ...tx,
+              // Preserve existing AVAX execution behaviour exactly.
+              gas: 700000n,
+            })),
+          },
+          account,
+          client,
+          switchChain: async (chain) => {
             try {
-              await switchChain(defineChain(tx.chainId));
+              await switchChain(chain);
               await new Promise(resolve => setTimeout(resolve, 500));
-              currentChain = tx.chainId;
             } catch {
-              throw new Error(`Please switch to chain ${tx.chainId} in your wallet`);
+              throw new Error(`Please switch to chain ${chain.id} in your wallet`);
             }
-          }
-
-          const preparedTx = prepareTransaction({
-            to: tx.to as `0x${string}`,
-            data: tx.data as `0x${string}`,
-            value: BigInt(tx.value),
-            chain: defineChain(tx.chainId),
-            client,
-            // 700k: cobre CREATE2 BeaconProxy + initializeFull + swapExactAVAXForTokens
-            // na primeira TX do usuário. ThirdWeb cai para 400k sem isso (OOG).
-            gas: 700000n,
-          });
-
-          const receipt = await sendAndConfirmTransaction({ transaction: preparedTx, account });
-          console.log(`[SwapWidget] ${tx.action} confirmado:`, receipt.transactionHash);
-          hashes.push({ hash: receipt.transactionHash, chainId: tx.chainId });
-          if (tracker) tracker.addHash(receipt.transactionHash, tx.chainId, tx.action);
-
-          if (avaxPrepare.evidenceEnabled) {
+          },
+          submitEvidence: async (correlationId, submission) => {
             const verification = await submitAvaxSwapEvidence(
-              avaxPrepare.correlationId,
-              {
-                stepIndex: tx.stepIndex,
-                txHash: receipt.transactionHash,
-                executionMechanism: 'thirdweb-client',
-                providerMetadata: {
-                  sdk: 'thirdweb',
-                  flow: 'sendAndConfirmTransaction',
-                  chainId: tx.chainId,
-                },
-              }
+              correlationId,
+              submission
             );
 
             if (!verification.verified) {
               throw new Error(
-                `Transaction executed but Phase 2 evidence verification failed for step ${tx.stepIndex}`
+                `Phase 2 evidence verification failed for step ${submission.stepIndex}`
               );
             }
 
             console.log(
-              `[SwapWidget] Phase 2 evidence verified: correlation=${avaxPrepare.correlationId} step=${tx.stepIndex} tx=${receipt.transactionHash}`
+              `[SwapWidget] Phase 2 evidence verified: correlation=${correlationId} step=${submission.stepIndex} tx=${submission.txHash}`
             );
-          }
-        }
+
+            return verification;
+          },
+          reportOutcome: async (correlationId, outcome) => {
+            return reportAvaxSwapEvidenceOutcome(
+              correlationId,
+              outcome
+            );
+          },
+          onConfirmed: async (result) => {
+            console.log(
+              `[SwapWidget] ${result.action || 'transaction'} confirmado:`,
+              result.txHash
+            );
+
+            hashes.push({
+              hash: result.txHash,
+              chainId: result.chainId,
+            });
+
+            if (tracker) {
+              tracker.addHash(
+                result.txHash,
+                result.chainId,
+                result.action as 'approval' | 'swap'
+              );
+            }
+          },
+        });
 
         setTxHashes(hashes);
         if (tracker) await tracker.markConfirmed(estimatedOutput);
@@ -1175,7 +1363,32 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
       }
 
       // Other EVM swaps → ThirdWeb SDK
-      // Prepare swap - ThirdWeb will return all necessary transactions including approvals
+      // AVAX-9 uses a two-phase evidence boundary because Thirdweb
+      // prepares this cross-chain source bundle client-side.
+      const avaxBridgeIntent =
+        fromChainId === 43114
+          ? await beginAvaxBridgeEvidence({
+              userAddress: account.address,
+              destinationChainId: toChainId,
+              sourceToken: originToken,
+              destinationToken,
+              amountRaw: weiAmount.toString(),
+            })
+          : null;
+
+      // AVAX-10 T1: if Avalanche is the destination, record the
+      // destination-chain intent before Thirdweb prepares any bundle.
+      const avaxBridgeDestinationIntent =
+        toChainId === 43114 &&
+        fromChainId !== 43114
+          ? await beginAvaxBridgeDestinationEvidence({
+              userAddress: account.address,
+              sourceChainId: fromChainId,
+              destinationToken,
+              amountRaw: weiAmount.toString(),
+            })
+          : null;
+
       console.log("[SwapWidget] Preparing swap...");
 
       const prepared = await Bridge.Sell.prepare({
@@ -1191,154 +1404,709 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
       console.log("[SwapWidget] Prepared response:", {
         steps: prepared.steps.length,
-        transactions: prepared.steps.flatMap(s => s.transactions).map(t => ({
-          action: (t as any).action,
-          chainId: (t as any).chainId,
-          to: (t as any).to,
-          spender: (t as any).spender,
-          value: String((t as any).value || '0'),
-        })),
+        transactions: prepared.steps
+          .flatMap(s => s.transactions)
+          .map(t => ({
+            action: (t as any).action,
+            chainId: (t as any).chainId,
+            to: (t as any).to,
+            spender: (t as any).spender,
+            value: String((t as any).value || '0'),
+          })),
         expiration: (prepared as any).expiration,
       });
 
-      // Check if there's an approval transaction and log the spender
-      const allTxs = prepared.steps.flatMap(s => s.transactions);
-      const approvalTx = allTxs.find(t => (t as any).action === 'approval');
-      if (approvalTx) {
-        console.log("[SwapWidget] Approval needed for spender:", (approvalTx as any).spender || (approvalTx as any).to);
-      } else {
-        console.log("[SwapWidget] No approval needed (already approved or native token)");
+      const allTxs =
+        prepared.steps.flatMap(
+          s => s.transactions
+        );
+
+      let avaxDestinationSteps: Array<{
+        to: string;
+        data: string;
+        value: string;
+        chainId: number;
+        description?: string;
+      }> = [];
+
+      let avaxDestinationCommit:
+        | Awaited<
+            ReturnType<
+              typeof commitAvaxBridgeDestinationEvidence
+            >
+          >
+        | null = null;
+
+      if (
+        toChainId === 43114 &&
+        fromChainId !== 43114
+      ) {
+        if (!avaxBridgeDestinationIntent) {
+          throw new Error(
+            "Avalanche bridge destination evidence intent was not created"
+          );
+        }
+
+        const normalizedTransactions =
+          allTxs.map(
+            (transaction, index) => ({
+              transaction,
+              index,
+              chainId: Number(
+                (transaction as any).chainId ||
+                  fromChainId
+              ),
+            })
+          );
+
+        const firstDestination =
+          normalizedTransactions.findIndex(
+            item =>
+              item.chainId === 43114
+          );
+
+        if (firstDestination >= 0) {
+          // Preserve Thirdweb transaction order exactly. We can split
+          // execution only when Avalanche transactions form a suffix.
+          const interleaved =
+            normalizedTransactions
+              .slice(firstDestination)
+              .some(
+                item =>
+                  item.chainId !== 43114
+              );
+
+          if (interleaved) {
+            throw new Error(
+              "Thirdweb returned interleaved Avalanche destination transactions; refusing to reorder bridge execution"
+            );
+          }
+
+          for (
+            const { transaction } of
+            normalizedTransactions.slice(
+              firstDestination
+            )
+          ) {
+            const txAction =
+              (transaction as any).action ||
+              'unknown';
+
+            const txTo =
+              (transaction as any).to;
+
+            const txData =
+              ((transaction as any).data ||
+                '0x') as string;
+
+            const txValue =
+              String(
+                (transaction as any).value ||
+                  '0'
+              );
+
+            const isApproval =
+              txAction === 'approval' ||
+              txData
+                .toLowerCase()
+                .startsWith('0x095ea7b3');
+
+            // Some ERC-20s require allowance to be reset to zero
+            // before a new non-zero approval. Any such Avalanche
+            // reset is part of the committed T3 bundle, never
+            // dynamically created during raw execution.
+            if (isApproval) {
+              if (
+                !txData
+                  .toLowerCase()
+                  .startsWith('0x095ea7b3') ||
+                txData.length < 138
+              ) {
+                throw new Error(
+                  'Malformed Avalanche bridge destination approval'
+                );
+              }
+
+              const spenderFromData =
+                (
+                  '0x' +
+                  txData.slice(34, 74)
+                ) as `0x${string}`;
+
+              const approvalAmount =
+                BigInt(
+                  `0x${txData.slice(74, 138)}`
+                );
+
+              const resetData =
+                `0x095ea7b3${
+                  spenderFromData
+                    .slice(2)
+                    .padStart(64, '0')
+                }${'0'.repeat(64)}`;
+
+              const previousDestinationStep =
+                avaxDestinationSteps[
+                  avaxDestinationSteps.length - 1
+                ];
+
+              const hasPreparedReset =
+                !!previousDestinationStep &&
+                previousDestinationStep.to
+                  .toLowerCase() ===
+                  txTo.toLowerCase() &&
+                previousDestinationStep.data
+                  .toLowerCase() ===
+                  resetData.toLowerCase();
+
+              // A provider-supplied approve(spender, 0) is already
+              // the reset step and must be preserved without adding
+              // another reset. Only a non-zero approval can require
+              // an additional reset.
+              if (
+                approvalAmount > 0n &&
+                !hasPreparedReset
+              ) {
+                const { getContract } =
+                  await import("thirdweb");
+
+                const { allowance } =
+                  await import(
+                    "thirdweb/extensions/erc20"
+                  );
+
+                const tokenContract =
+                  getContract({
+                    client,
+                    chain: defineChain(43114),
+                    address: txTo,
+                  });
+
+                const currentDestinationAllowance =
+                  await allowance({
+                    contract: tokenContract,
+                    owner: account.address,
+                    spender: spenderFromData,
+                  });
+
+                if (
+                  currentDestinationAllowance > 0n
+                ) {
+                  avaxDestinationSteps.push({
+                    to: txTo,
+                    data: resetData,
+                    value: '0',
+                    chainId: 43114,
+                    description:
+                      "Reset Avalanche bridge destination allowance",
+                  });
+                }
+              }
+            }
+
+            avaxDestinationSteps.push({
+              to: txTo,
+              data: txData,
+              value: txValue,
+              chainId: 43114,
+              description:
+                isApproval
+                  ? "Approve Avalanche bridge destination"
+                  : "Thirdweb bridge destination transaction",
+            });
+          }
+
+          avaxDestinationCommit =
+            await commitAvaxBridgeDestinationEvidence({
+              correlationId:
+                avaxBridgeDestinationIntent
+                  .correlationId,
+              sourceChainId: fromChainId,
+              provider: "thirdweb",
+              steps: avaxDestinationSteps,
+            });
+        }
       }
 
-      setPreparing(false);
-      setExecuting(true);
+      const approvalTx =
+        allTxs.find(
+          t => (t as any).action === 'approval'
+        );
 
-      // Track current chain to avoid unnecessary switches
-      let currentWalletChainId: number | null = null;
+      if (approvalTx) {
+        console.log(
+          "[SwapWidget] Approval needed for spender:",
+          (approvalTx as any).spender ||
+            (approvalTx as any).to
+        );
+      } else {
+        console.log(
+          "[SwapWidget] No approval needed (already approved or native token)"
+        );
+      }
 
-      // Execute ALL transactions from ThirdWeb (approvals + swaps)
-      for (const step of prepared.steps) {
-        for (const transaction of step.transactions) {
-          const txAction = (transaction as any).action || 'unknown';
-          const txChainId = (transaction as any).chainId || fromChainId;
+      if (fromChainId === 43114) {
+        if (!avaxBridgeIntent) {
+          throw new Error(
+            "Avalanche bridge evidence intent was not created"
+          );
+        }
 
-          console.log(`[SwapWidget] Executing ${txAction} transaction on chain ${txChainId}...`);
+        const avaxSourceSteps: Array<{
+          to: string;
+          data: string;
+          value: string;
+          chainId: number;
+          description?: string;
+        }> = [];
 
-          // FIRST: Switch chain if needed (before any operations)
-          if (currentWalletChainId !== txChainId) {
-            console.log(`[SwapWidget] Transaction requires chain ${txChainId}, switching...`);
-            try {
-              await switchChain(defineChain(txChainId));
-              // Wait a bit for the wallet to fully switch
-              await new Promise(resolve => setTimeout(resolve, 500));
-              currentWalletChainId = txChainId;
-              console.log(`[SwapWidget] ✅ Switched to chain ${txChainId}`);
-            } catch (switchError: any) {
-              console.error(`[SwapWidget] Failed to switch to chain ${txChainId}:`, switchError);
-              const networkName = Object.entries({
-                1: 'Ethereum', 8453: 'Base', 42161: 'Arbitrum', 43114: 'Avalanche',
-                137: 'Polygon', 10: 'Optimism', 56: 'BSC', 480: 'World Chain'
-              }).find(([id]) => Number(id) === txChainId)?.[1] || `Chain ${txChainId}`;
-              throw new Error(`Please switch to ${networkName} in your wallet to continue`);
-            }
+        for (const transaction of allTxs) {
+          const txChainId =
+            Number(
+              (transaction as any).chainId ||
+                fromChainId
+            );
+
+          if (txChainId !== 43114) {
+            continue;
           }
 
-          // SECOND: For approval transactions, check if we need to reset allowance first
-          // Some tokens (like USDT) require allowance to be 0 before setting a new value
-          if (txAction === 'approval') {
-            const tokenAddress = (transaction as any).to;
-            const txData = (transaction as any).data as string;
+          const txAction =
+            (transaction as any).action ||
+            'unknown';
 
-            // Extract spender from approve(address,uint256) call data
-            // Function selector is 4 bytes (8 hex chars), address is 32 bytes (64 hex chars)
-            const spenderFromData = ('0x' + txData.slice(34, 74)) as `0x${string}`;
+          const txTo =
+            (transaction as any).to;
+
+          const txData =
+            ((transaction as any).data ||
+              '0x') as string;
+
+          const txValue =
+            String(
+              (transaction as any).value ||
+                '0'
+            );
+
+          // Any Avalanche reset-approval must be decided BEFORE T3.
+          if (txAction === 'approval') {
+            const spenderFromData =
+              (
+                '0x' +
+                txData.slice(34, 74)
+              ) as `0x${string}`;
 
             try {
-              const { getContract } = await import("thirdweb");
-              const { allowance } = await import("thirdweb/extensions/erc20");
+              const { getContract } =
+                await import("thirdweb");
 
-              const tokenContract = getContract({
-                client,
-                chain: defineChain(txChainId),
-                address: tokenAddress,
-              });
+              const { allowance } =
+                await import(
+                  "thirdweb/extensions/erc20"
+                );
 
-              const currentAllowance = await allowance({
-                contract: tokenContract,
-                owner: account.address,
-                spender: spenderFromData,
-              });
-
-              console.log(`[SwapWidget] Current allowance for ${tokenAddress}:`, currentAllowance.toString());
-
-              // If there's existing allowance > 0, reset it first (required by some tokens like USDT)
-              if (currentAllowance > 0n) {
-                console.log("[SwapWidget] Resetting allowance to 0 first (required by some tokens)...");
-
-                // Create approve(spender, 0) transaction
-                const resetApproveTx = prepareTransaction({
-                  to: tokenAddress,
-                  data: `0x095ea7b3${spenderFromData.slice(2).padStart(64, '0')}${'0'.repeat(64)}` as `0x${string}`,
-                  value: 0n,
-                  chain: defineChain(txChainId),
+              const tokenContract =
+                getContract({
                   client,
+                  chain: defineChain(43114),
+                  address: txTo,
                 });
 
-                const resetReceipt = await sendAndConfirmTransaction({
-                  transaction: resetApproveTx,
-                  account,
+              const currentAllowance =
+                await allowance({
+                  contract: tokenContract,
+                  owner: account.address,
+                  spender: spenderFromData,
                 });
 
-                console.log("[SwapWidget] Allowance reset confirmed:", resetReceipt.transactionHash);
-                hashes.push({ hash: resetReceipt.transactionHash, chainId: txChainId });
+              console.log(
+                `[SwapWidget] Current allowance for ${txTo}:`,
+                currentAllowance.toString()
+              );
+
+              if (currentAllowance > 0n) {
+                const resetData =
+                  `0x095ea7b3${
+                    spenderFromData
+                      .slice(2)
+                      .padStart(64, '0')
+                  }${'0'.repeat(64)}`;
+
+                avaxSourceSteps.push({
+                  to: txTo,
+                  data: resetData,
+                  value: '0',
+                  chainId: 43114,
+                  description:
+                    "Reset bridge allowance",
+                });
               }
             } catch (allowanceError: any) {
-              console.warn("[SwapWidget] Could not check/reset allowance:", allowanceError.message);
-              // Continue with the original transaction anyway - it might work
+              console.warn(
+                "[SwapWidget] Could not check allowance before evidence commitment:",
+                allowanceError.message
+              );
             }
           }
 
-          // Convert raw transaction to thirdweb prepared transaction
-          const txTo = (transaction as any).to;
-          const txData = (transaction as any).data;
-          const txValue = (transaction as any).value ? BigInt((transaction as any).value) : 0n;
-
-          console.log(`[SwapWidget] Preparing ${txAction} tx:`, {
-            to: txTo,
-            data: txData?.slice(0, 66) + '...',
-            value: txValue.toString(),
-            chainId: txChainId,
-          });
-
-          const preparedTx = prepareTransaction({
+          avaxSourceSteps.push({
             to: txTo,
             data: txData,
             value: txValue,
-            chain: defineChain(txChainId),
-            client,
+            chainId: 43114,
+            description:
+              txAction === 'approval'
+                ? "Approve bridge"
+                : "Thirdweb bridge source transaction",
+          });
+        }
+
+        if (avaxSourceSteps.length === 0) {
+          throw new Error(
+            "Thirdweb returned no Avalanche source transaction"
+          );
+        }
+
+        const committed =
+          await commitAvaxBridgeEvidence({
+            correlationId:
+              avaxBridgeIntent.correlationId,
+            destinationChainId: toChainId,
+            provider: "thirdweb",
+            steps: avaxSourceSteps,
           });
 
-          try {
-            const receipt = await sendAndConfirmTransaction({
+        setPreparing(false);
+        setExecuting(true);
+
+        await executeEvidenceBoundOperation({
+          operation: {
+            correlationId:
+              committed.correlationId,
+            evidenceEnabled:
+              committed.evidenceEnabled,
+            preparedPayloadHash:
+              committed.preparedPayloadHash,
+            steps: avaxSourceSteps.map(
+              (step, stepIndex) => ({
+                ...step,
+                stepIndex,
+                action:
+                  step.data.startsWith(
+                    '0x095ea7b3'
+                  )
+                    ? 'approval'
+                    : 'bridge',
+              })
+            ),
+          },
+          account,
+          client,
+          switchChain,
+          submitEvidence: async (
+            correlationId,
+            submission
+          ) => {
+            const verification =
+              await submitAvaxSwapEvidence(
+                correlationId,
+                submission
+              );
+
+            if (!verification.verified) {
+              throw new Error(
+                `Avalanche bridge evidence verification failed for step ${submission.stepIndex}`
+              );
+            }
+
+            return verification;
+          },
+          reportOutcome: async (correlationId, outcome) => {
+            return reportAvaxSwapEvidenceOutcome(
+              correlationId,
+              outcome
+            );
+          },
+          onConfirmed: async result => {
+            hashes.push({
+              hash: result.txHash,
+              chainId: result.chainId,
+            });
+
+            if (tracker) {
+              tracker.addHash(
+                result.txHash,
+                result.chainId,
+                result.action as
+                  | 'approval'
+                  | 'swap'
+                  | 'bridge'
+              );
+            }
+          },
+        });
+      } else {
+        setPreparing(false);
+        setExecuting(true);
+      }
+
+      // Avalanche source transactions were already executed above.
+      // Any non-Avalanche transactions remain unchanged and are outside
+      // the AVAX-9 source-chain migration boundary.
+      let currentWalletChainId: number | null =
+        fromChainId === 43114
+          ? 43114
+          : null;
+
+      for (const step of prepared.steps) {
+        for (const transaction of step.transactions) {
+          const txAction =
+            (transaction as any).action ||
+            'unknown';
+
+          const txChainId =
+            Number(
+              (transaction as any).chainId ||
+                fromChainId
+            );
+
+          if (
+            fromChainId === 43114 &&
+            txChainId === 43114
+          ) {
+            continue;
+          }
+
+          // AVAX-10: Avalanche destination transactions are committed
+          // above and executed only through the evidence-bound executor.
+          if (
+            toChainId === 43114 &&
+            fromChainId !== 43114 &&
+            txChainId === 43114
+          ) {
+            continue;
+          }
+
+          console.log(
+            `[SwapWidget] Executing ${txAction} transaction on chain ${txChainId}...`
+          );
+
+          if (currentWalletChainId !== txChainId) {
+            try {
+              await switchChain(
+                defineChain(txChainId)
+              );
+
+              await new Promise(
+                resolve =>
+                  setTimeout(resolve, 500)
+              );
+
+              currentWalletChainId =
+                txChainId;
+            } catch {
+              throw new Error(
+                `Please switch to chain ${txChainId} in your wallet to continue`
+              );
+            }
+          }
+
+          // Existing non-Avalanche reset behaviour is preserved.
+          if (
+            txAction === 'approval' &&
+            txChainId !== 43114
+          ) {
+            const tokenAddress =
+              (transaction as any).to;
+
+            const txData =
+              (transaction as any).data as string;
+
+            const spenderFromData =
+              (
+                '0x' +
+                txData.slice(34, 74)
+              ) as `0x${string}`;
+
+            try {
+              const { getContract } =
+                await import("thirdweb");
+
+              const { allowance } =
+                await import(
+                  "thirdweb/extensions/erc20"
+                );
+
+              const tokenContract =
+                getContract({
+                  client,
+                  chain: defineChain(txChainId),
+                  address: tokenAddress,
+                });
+
+              const currentAllowance =
+                await allowance({
+                  contract: tokenContract,
+                  owner: account.address,
+                  spender: spenderFromData,
+                });
+
+              if (currentAllowance > 0n) {
+                const resetApproveTx =
+                  prepareTransaction({
+                    to: tokenAddress,
+                    data:
+                      `0x095ea7b3${
+                        spenderFromData
+                          .slice(2)
+                          .padStart(64, '0')
+                      }${'0'.repeat(64)}` as `0x${string}`,
+                    value: 0n,
+                    chain: defineChain(txChainId),
+                    client,
+                  });
+
+                const allowanceResetReceipt =
+                  await sendAndConfirmThirdwebTransactionNonEvidence({
+                    chainId: txChainId,
+                    transaction:
+                      resetApproveTx,
+                    account,
+                  });
+
+                hashes.push({
+                  hash:
+                    allowanceResetReceipt
+                      .transactionHash,
+                  chainId: txChainId,
+                });
+              }
+            } catch (allowanceError: any) {
+              console.warn(
+                "[SwapWidget] Could not check/reset allowance:",
+                allowanceError.message
+              );
+            }
+          }
+
+          const txTo =
+            (transaction as any).to;
+
+          const txData =
+            (transaction as any).data;
+
+          const txValue =
+            (transaction as any).value
+              ? BigInt(
+                  (transaction as any).value
+                )
+              : 0n;
+
+          const preparedTx =
+            prepareTransaction({
+              to: txTo,
+              data: txData,
+              value: txValue,
+              chain: defineChain(txChainId),
+              client,
+            });
+
+          const receipt =
+            await sendAndConfirmThirdwebTransactionNonEvidence({
+              chainId: txChainId,
               transaction: preparedTx,
               account,
             });
-            console.log(`[SwapWidget] ${txAction} tx confirmed:`, receipt.transactionHash);
-            hashes.push({ hash: receipt.transactionHash, chainId: txChainId });
 
-            // Track each hash in the tracker
-            if (tracker) {
-              tracker.addHash(receipt.transactionHash, txChainId, txAction);
-            }
-          } catch (txError: any) {
-            console.error(`[SwapWidget] ${txAction} tx failed:`, {
-              error: txError.message,
-              to: txTo,
-              chainId: txChainId,
-            });
-            throw txError;
+          hashes.push({
+            hash: receipt.transactionHash,
+            chainId: txChainId,
+          });
+
+          if (tracker) {
+            tracker.addHash(
+              receipt.transactionHash,
+              txChainId,
+              txAction
+            );
           }
         }
+      }
+
+      if (
+        avaxDestinationCommit &&
+        avaxDestinationSteps.length > 0
+      ) {
+        await executeEvidenceBoundOperation({
+          operation: {
+            correlationId:
+              avaxDestinationCommit
+                .correlationId,
+            evidenceEnabled:
+              avaxDestinationCommit
+                .evidenceEnabled,
+            preparedPayloadHash:
+              avaxDestinationCommit
+                .preparedPayloadHash,
+            steps:
+              avaxDestinationSteps.map(
+                (step, stepIndex) => ({
+                  ...step,
+                  stepIndex,
+                  action:
+                    step.data.startsWith(
+                      '0x095ea7b3'
+                    )
+                      ? 'approval'
+                      : 'bridge',
+                })
+              ),
+          },
+          account,
+          client,
+          switchChain,
+          submitEvidence: async (
+            correlationId,
+            submission
+          ) => {
+            const verification =
+              await submitAvaxSwapEvidence(
+                correlationId,
+                submission
+              );
+
+            if (!verification.verified) {
+              throw new Error(
+                `Avalanche bridge destination evidence verification failed for step ${submission.stepIndex}`
+              );
+            }
+
+            return verification;
+          },
+          reportOutcome: async (correlationId, outcome) => {
+            return reportAvaxSwapEvidenceOutcome(
+              correlationId,
+              outcome
+            );
+          },
+          onConfirmed: async result => {
+            hashes.push({
+              hash: result.txHash,
+              chainId: result.chainId,
+            });
+
+            if (tracker) {
+              tracker.addHash(
+                result.txHash,
+                result.chainId,
+                result.action as
+                  | 'approval'
+                  | 'swap'
+                  | 'bridge'
+              );
+            }
+          },
+        });
       }
 
       setTxHashes(hashes);

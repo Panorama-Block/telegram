@@ -83,6 +83,36 @@ export interface AvaxEvidenceVerification {
   valueMatchesExpected: boolean;
 }
 
+export async function reportAvaxSwapEvidenceOutcome(
+  correlationId: string,
+  outcome: {
+    outcome:
+      | "cancelled-before-submission"
+      | "partially-executed";
+    reason?: string;
+  }
+): Promise<unknown> {
+  const res = await fetch(
+    `/api/yield/avax/swap/evidence/${encodeURIComponent(correlationId)}/outcomes`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(outcome),
+    }
+  );
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(
+      `avax-swap evidence outcome reporting failed (${res.status}): ${body}`
+    );
+  }
+
+  return res.json();
+}
+
 export async function submitAvaxSwapEvidence(
   correlationId: string,
   submission: AvaxEvidenceSubmission

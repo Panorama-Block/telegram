@@ -6,6 +6,8 @@ import { Lending } from '@/components/Lending';
 const waitForEvmReceiptMock = vi.fn();
 const prepareSupplyMock = vi.fn();
 const executeTransactionMock = vi.fn();
+const submitEvidenceMock = vi.fn();
+const executeEvidenceBoundOperationMock = vi.fn();
 const getTransactionHistoryMock = vi.fn();
 const fetchPositionMock = vi.fn();
 const startSwapTrackingMock = vi.fn();
@@ -47,6 +49,27 @@ vi.mock('@/components/TokenSelectionModal', () => ({
 
 vi.mock('thirdweb/react', () => ({
   useActiveAccount: () => ({ address: '0x1111111111111111111111111111111111111111' }),
+  useSwitchActiveWalletChain: () => vi.fn(async () => {}),
+}));
+
+vi.mock('thirdweb', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('thirdweb')>();
+
+  return {
+    ...actual,
+    createThirdwebClient: () => ({
+      clientId: 'test-thirdweb-client',
+    }),
+  };
+});
+
+vi.mock('@/shared/config/thirdweb', () => ({
+  THIRDWEB_CLIENT_ID: 'test-thirdweb-client',
+}));
+
+vi.mock('@/features/execution/evidenceBoundExecutor', () => ({
+  executeEvidenceBoundOperation: (...args: unknown[]) =>
+    executeEvidenceBoundOperationMock(...args),
 }));
 
 vi.mock('@/shared/utils/evmReceipt', () => ({
@@ -77,6 +100,7 @@ vi.mock('@/features/lending/api', () => ({
     prepareBorrow: vi.fn(),
     prepareRepay: vi.fn(),
     executeTransaction: (...args: unknown[]) => executeTransactionMock(...args),
+    submitEvidence: (...args: unknown[]) => submitEvidenceMock(...args),
     getTransactionHistory: (...args: unknown[]) => getTransactionHistoryMock(...args),
   }),
 }));
@@ -89,6 +113,8 @@ describe('Lending component flow', () => {
   beforeEach(() => {
     prepareSupplyMock.mockReset();
     executeTransactionMock.mockReset();
+    submitEvidenceMock.mockReset();
+    executeEvidenceBoundOperationMock.mockReset();
     waitForEvmReceiptMock.mockReset();
     getTransactionHistoryMock.mockReset();
     fetchPositionMock.mockReset();
@@ -105,6 +131,41 @@ describe('Lending component flow', () => {
     trackerMarkConfirmedMock.mockResolvedValue(undefined);
     trackerMarkFailedMock.mockResolvedValue(undefined);
     trackerGetTransactionMock.mockResolvedValue({ id: 'tx_gateway_1' });
+
+    submitEvidenceMock.mockResolvedValue({
+      correlationId: 'corr-supply-1',
+      stepIndex: 0,
+      txHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      verified: true,
+    });
+
+    executeEvidenceBoundOperationMock.mockImplementation(async (args: any) => {
+      const result = {
+        stepIndex: 0,
+        txHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        chainId: 43114,
+        action: 'Supply',
+      };
+
+      await args.onConfirmed?.(result);
+
+      await args.submitEvidence?.(
+        args.operation.correlationId,
+        {
+          stepIndex: 0,
+          txHash: result.txHash,
+          executionMechanism: 'thirdweb-client',
+          providerMetadata: {
+            sdk: 'thirdweb',
+            flow: 'sendAndConfirmTransaction',
+            chainId: 43114,
+          },
+        },
+      );
+
+      return [result];
+    });
+
     startSwapTrackingMock.mockReset();
     startSwapTrackingMock.mockResolvedValue({
       transactionId: 'tx_gateway_1',
@@ -121,14 +182,22 @@ describe('Lending component flow', () => {
 
   test('transitions input -> review -> confirmed status', async () => {
     prepareSupplyMock.mockResolvedValue({
-      data: {
-        supply: {
-          to: baseToken.qTokenAddress,
-          value: '0',
-          data: '0xabcdef01',
-          gasLimit: '300000',
-          chainId: 43114,
-        },
+      correlationId: 'corr-supply-1',
+      evidenceVersion: '1',
+      evidenceEnabled: true,
+      preparedPayloadHash: 'prepared-hash-1',
+      bundle: {
+        steps: [
+          {
+            to: baseToken.qTokenAddress,
+            value: '0',
+            data: '0xabcdef01',
+            gasLimit: '300000',
+            chainId: 43114,
+          },
+        ],
+        totalSteps: 1,
+        summary: 'Supply AVAX to Benqi',
       },
     });
     executeTransactionMock.mockResolvedValue('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
@@ -164,5 +233,17 @@ describe('Lending component flow', () => {
       }),
     );
     expect(trackerMarkConfirmedMock).toHaveBeenCalled();
+
+    expect(executeEvidenceBoundOperationMock).toHaveBeenCalledTimes(1);
+    expect(submitEvidenceMock).toHaveBeenCalledWith(
+      'corr-supply-1',
+      expect.objectContaining({
+        stepIndex: 0,
+        txHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        executionMechanism: 'thirdweb-client',
+      }),
+    );
+
+    expect(executeTransactionMock).not.toHaveBeenCalled();
   });
 });

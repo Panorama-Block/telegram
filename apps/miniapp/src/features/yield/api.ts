@@ -3,7 +3,10 @@
 import { useMemo } from 'react';
 import { useActiveAccount, useActiveWallet, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { defineChain } from 'thirdweb';
-import { safeExecuteTransactionV2 } from '@/shared/utils/transactionUtilsV2';
+import {
+  sendAccountTransactionNonEvidence,
+} from '@/features/execution/nonEvidenceTransactionExecutor';
+import { assertNoRawAvalancheApproval, safeExecuteTransactionV2 } from '@/shared/utils/transactionUtilsV2';
 import { fetchWithAuth } from '@/shared/lib/fetchWithAuth';
 import { BASE_CHAIN_ID, API_ENDPOINTS } from './config';
 import type {
@@ -404,9 +407,20 @@ class YieldApiClient {
       throw new Error('Wallet not connected');
     }
 
+    const targetChainId = Number(
+      tx.chainId || BASE_CHAIN_ID
+    );
+
+    assertNoRawAvalancheApproval(
+      targetChainId,
+      tx.data
+    );
+
     if (this.switchChain) {
       try {
-        await this.switchChain(defineChain(tx.chainId || BASE_CHAIN_ID));
+        await this.switchChain(
+          defineChain(targetChainId)
+        );
       } catch {
         // ignore if already on chain
       }
@@ -415,8 +429,6 @@ class YieldApiClient {
     if (!this.account.sendTransaction) {
       throw new Error('Wallet does not support sendTransaction');
     }
-
-    const targetChainId = Number(tx.chainId || BASE_CHAIN_ID);
     const toHex = (input?: string | number | bigint) => {
       if (input === undefined || input === null || input === '') return undefined;
       if (typeof input === 'bigint') return `0x${input.toString(16)}`;
@@ -522,13 +534,39 @@ class YieldApiClient {
 
       try {
         return await raceBroadcastWithRecovery(() =>
-          Promise.resolve(this.account.sendTransaction(formattedTxData)),
+          Promise.resolve(
+            sendAccountTransactionNonEvidence({
+              chainId: targetChainId,
+              account: this.account,
+              transaction: formattedTxData,
+            })
+          ),
         );
       } catch (accountSendError) {
-        const recoveredAccountHash = await recoverHashFromWallet();
-        if (recoveredAccountHash) {
-          return { transactionHash: recoveredAccountHash, source: 'recovered' };
+        const accountSendErrorMessage =
+          accountSendError instanceof Error
+            ? accountSendError.message
+            : String(accountSendError);
+
+        if (
+          /requires evidence-bound execution|does not match declared chain/i.test(
+            accountSendErrorMessage
+          )
+        ) {
+          throw accountSendError;
         }
+
+        const recoveredAccountHash =
+          await recoverHashFromWallet();
+
+        if (recoveredAccountHash) {
+          return {
+            transactionHash:
+              recoveredAccountHash,
+            source: 'recovered',
+          };
+        }
+
         throw accountSendError;
       }
     });
