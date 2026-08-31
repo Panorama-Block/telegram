@@ -49,7 +49,8 @@ import {
   toFixedFloor
 } from "@/features/swap/utils";
 import { useActiveAccount, ConnectButton, useSwitchActiveWalletChain } from "thirdweb/react";
-import { Bridge, prepareTransaction, sendTransaction, sendAndConfirmTransaction, createThirdwebClient, defineChain } from "thirdweb";
+import { Bridge, prepareTransaction, createThirdwebClient, defineChain } from "thirdweb";
+import { sendAndConfirmThirdwebTransactionNonEvidence } from "@/features/execution/nonEvidenceTransactionExecutor";
 import { THIRDWEB_CLIENT_ID } from "@/shared/config/thirdweb";
 import { useTonConnectUI } from '@tonconnect/ui-react';
 import { getUserJettonWallet, toUSDT } from '@/lib/ton-helpers';
@@ -1097,7 +1098,8 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
           setExecuting(true);
 
           const receipt =
-            await sendAndConfirmTransaction({
+            await sendAndConfirmThirdwebTransactionNonEvidence({
+              chainId: fromChainId,
               transaction,
               account,
             });
@@ -1238,7 +1240,11 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             gas: tx.action === 'swap' ? 400000n : undefined,
           });
 
-          const receipt = await sendAndConfirmTransaction({ transaction: preparedTx, account });
+          const receipt = await sendAndConfirmThirdwebTransactionNonEvidence({
+            chainId: tx.chainId,
+            transaction: preparedTx,
+            account,
+          });
           console.log(`[SwapWidget] ${tx.action} confirmado:`, receipt.transactionHash);
           hashes.push({ hash: receipt.transactionHash, chainId: tx.chainId });
           if (tracker) tracker.addHash(receipt.transactionHash, tx.chainId, tx.action);
@@ -1961,7 +1967,8 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
                   });
 
                 const allowanceResetReceipt =
-                  await sendAndConfirmTransaction({
+                  await sendAndConfirmThirdwebTransactionNonEvidence({
+                    chainId: txChainId,
                     transaction:
                       resetApproveTx,
                     account,
@@ -2005,7 +2012,8 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             });
 
           const receipt =
-            await sendAndConfirmTransaction({
+            await sendAndConfirmThirdwebTransactionNonEvidence({
+              chainId: txChainId,
               transaction: preparedTx,
               account,
             });

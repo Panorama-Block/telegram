@@ -8,7 +8,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useActiveAccount, useActiveWalletChain } from 'thirdweb/react';
-import { sendTransaction, prepareTransaction, toWei, defineChain } from 'thirdweb';
+import { prepareTransaction, toWei, defineChain } from 'thirdweb';
+import { sendThirdwebTransactionNonEvidence } from '@/features/execution/nonEvidenceTransactionExecutor';
 import { createThirdwebClient, type Address } from 'thirdweb';
 import { THIRDWEB_CLIENT_ID } from '@/shared/config/thirdweb';
 import { networks } from '@/features/swap/tokens';
@@ -182,7 +183,8 @@ export default function DepositModal({
         client,
       });
 
-      const result = await sendTransaction({
+      const result = await sendThirdwebTransactionNonEvidence({
+        chainId,
         transaction,
         account,
       });

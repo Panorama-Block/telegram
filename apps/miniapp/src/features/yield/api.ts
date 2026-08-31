@@ -3,6 +3,9 @@
 import { useMemo } from 'react';
 import { useActiveAccount, useActiveWallet, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { defineChain } from 'thirdweb';
+import {
+  sendAccountTransactionNonEvidence,
+} from '@/features/execution/nonEvidenceTransactionExecutor';
 import { assertNoRawAvalancheApproval, safeExecuteTransactionV2 } from '@/shared/utils/transactionUtilsV2';
 import { fetchWithAuth } from '@/shared/lib/fetchWithAuth';
 import { BASE_CHAIN_ID, API_ENDPOINTS } from './config';
@@ -531,13 +534,39 @@ class YieldApiClient {
 
       try {
         return await raceBroadcastWithRecovery(() =>
-          Promise.resolve(this.account.sendTransaction(formattedTxData)),
+          Promise.resolve(
+            sendAccountTransactionNonEvidence({
+              chainId: targetChainId,
+              account: this.account,
+              transaction: formattedTxData,
+            })
+          ),
         );
       } catch (accountSendError) {
-        const recoveredAccountHash = await recoverHashFromWallet();
-        if (recoveredAccountHash) {
-          return { transactionHash: recoveredAccountHash, source: 'recovered' };
+        const accountSendErrorMessage =
+          accountSendError instanceof Error
+            ? accountSendError.message
+            : String(accountSendError);
+
+        if (
+          /requires evidence-bound execution|does not match declared chain/i.test(
+            accountSendErrorMessage
+          )
+        ) {
+          throw accountSendError;
         }
+
+        const recoveredAccountHash =
+          await recoverHashFromWallet();
+
+        if (recoveredAccountHash) {
+          return {
+            transactionHash:
+              recoveredAccountHash,
+            source: 'recovered',
+          };
+        }
+
         throw accountSendError;
       }
     });

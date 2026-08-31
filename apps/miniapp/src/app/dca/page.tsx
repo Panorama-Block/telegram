@@ -296,7 +296,8 @@ function CreateDCAModal({
     setDepositError(null);
 
     try {
-      const { createThirdwebClient, prepareTransaction, sendTransaction, toWei, defineChain } = await import('thirdweb');
+      const { createThirdwebClient, prepareTransaction, toWei, defineChain } = await import('thirdweb');
+      const { sendThirdwebTransactionNonEvidence } = await import('@/features/execution/nonEvidenceTransactionExecutor');
       const { THIRDWEB_CLIENT_ID } = await import('@/shared/config/thirdweb');
 
       const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID || '' });
@@ -309,7 +310,8 @@ function CreateDCAModal({
         client,
       });
 
-      const result = await sendTransaction({
+      const result = await sendThirdwebTransactionNonEvidence({
+        chainId: config.fromChainId,
         transaction,
         account,
       });

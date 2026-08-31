@@ -4,6 +4,10 @@ import { useMemo } from 'react';
 import { useActiveAccount, useActiveWallet, useActiveWalletChain, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { defineChain } from 'thirdweb';
 import {
+  sendAccountTransactionNonEvidence,
+  sendProviderTransactionNonEvidence,
+} from '@/features/execution/nonEvidenceTransactionExecutor';
+import {
   LendingToken,
   LendingAccountPositionsResponse,
   ValidationResponse,
@@ -1488,13 +1492,25 @@ class LendingApiClient {
             try {
               return await raceBroadcastWithRecovery(() =>
                 Promise.resolve(
-                  selectedProvider.request({
-                    method: 'eth_sendTransaction',
-                    params: [providerTxPayload],
+                  sendProviderTransactionNonEvidence({
+                    chainId: targetChainId,
+                    provider: selectedProvider,
+                    transaction: providerTxPayload,
                   }),
                 ),
               );
             } catch (providerError) {
+              const providerErrorMessage =
+                describeUnknown(providerError);
+
+              if (
+                /requires evidence-bound execution|does not match declared chain/i.test(
+                  providerErrorMessage
+                )
+              ) {
+                throw providerError;
+              }
+
               if (!this.isUnsupportedProviderRequest(providerError)) {
                 const recoveredProviderHash = await recoverHashFromWallet();
                 if (recoveredProviderHash) {
@@ -1502,19 +1518,43 @@ class LendingApiClient {
                 }
                 throw providerError;
               }
+
               console.warn('[LENDING] Injected provider does not support eth_sendTransaction, falling back to account.sendTransaction.');
             }
           }
 
           try {
             return await raceBroadcastWithRecovery(() =>
-              Promise.resolve(this.account.sendTransaction(formattedTxData)),
+              Promise.resolve(
+                sendAccountTransactionNonEvidence({
+                  chainId: targetChainId,
+                  account: this.account,
+                  transaction: formattedTxData,
+                })
+              ),
             );
           } catch (accountSendError) {
-            const recoveredAccountHash = await recoverHashFromWallet();
-            if (recoveredAccountHash) {
-              return { transactionHash: recoveredAccountHash };
+            const accountSendErrorMessage =
+              describeUnknown(accountSendError);
+
+            if (
+              /requires evidence-bound execution|does not match declared chain/i.test(
+                accountSendErrorMessage
+              )
+            ) {
+              throw accountSendError;
             }
+
+            const recoveredAccountHash =
+              await recoverHashFromWallet();
+
+            if (recoveredAccountHash) {
+              return {
+                transactionHash:
+                  recoveredAccountHash,
+              };
+            }
+
             throw accountSendError;
           }
         });
@@ -1545,6 +1585,13 @@ class LendingApiClient {
       }
       if (/insufficient funds|insufficient balance|gas/i.test(msg)) {
         throw new Error('Insufficient balance for gas or amount.');
+      }
+      if (
+        /requires evidence-bound execution|does not match declared chain/i.test(
+          msg
+        )
+      ) {
+        throw new Error(msg);
       }
       if (/wrong network|chain|network/i.test(msg)) {
         throw new Error('Wrong network. Please switch to Avalanche C-Chain.');

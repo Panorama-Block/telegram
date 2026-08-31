@@ -140,7 +140,7 @@ describe(
 
         const rawSend =
           block.lastIndexOf(
-            "sendAndConfirmTransaction"
+            "sendAndConfirmThirdwebTransactionNonEvidence"
           );
 
         expect(destinationSkip)

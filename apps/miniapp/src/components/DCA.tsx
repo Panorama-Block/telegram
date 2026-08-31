@@ -204,7 +204,8 @@ export function DCA({ onClose }: DCAProps) {
     setIsSigning(true);
     setError(null);
     try {
-      const { sendAndConfirmTransaction, createThirdwebClient, defineChain, prepareTransaction } = await import("thirdweb");
+      const { createThirdwebClient, defineChain, prepareTransaction } = await import("thirdweb");
+      const { sendAndConfirmThirdwebTransactionNonEvidence } = await import("@/features/execution/nonEvidenceTransactionExecutor");
       const { smartWallet } = await import("thirdweb/wallets");
       const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID });
       const baseChain = defineChain(8453);
@@ -224,7 +225,11 @@ export function DCA({ onClose }: DCAProps) {
           data: step.data as `0x${string}`,
           value: BigInt(step.value || "0"),
         });
-        await sendAndConfirmTransaction({ transaction: tx, account: smartAccount });
+        await sendAndConfirmThirdwebTransactionNonEvidence({
+          chainId: 8453,
+          transaction: tx,
+          account: smartAccount,
+        });
       }
       setViewState("success");
     } catch (err: any) {

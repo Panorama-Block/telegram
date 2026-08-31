@@ -270,7 +270,7 @@ describe(
 
         expect(block)
           .toContain(
-            "sendAndConfirmTransaction"
+            "sendAndConfirmThirdwebTransactionNonEvidence"
           );
       }
     );
