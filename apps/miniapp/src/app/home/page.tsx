@@ -29,6 +29,41 @@ function getWalletAddress(): string | null {
   return localStorage.getItem('walletAddress');
 }
 
+function isGenericConversationTitle(title?: string): boolean {
+  if (!title) return true;
+  const normalized = title.trim().toLowerCase();
+  return !normalized || normalized === 'chat' || normalized === 'new chat' || /^chat\s+\d+$/.test(normalized);
+}
+
+function resolveConversationTitle(conversation: Conversation): string {
+  if (!isGenericConversationTitle(conversation.title)) return conversation.title;
+  if (typeof window === 'undefined') return conversation.title || `Conversation ${conversation.id.slice(0, 8)}`;
+
+  try {
+    const aiTitle = localStorage.getItem(`chat:aiTitle:${conversation.id}`);
+    if (aiTitle?.trim()) return aiTitle;
+
+    const exactKey = Object.keys(localStorage).find(
+      (key) => key.startsWith('chat:cache:') && key.endsWith(`:${conversation.id}`)
+    );
+    if (exactKey) {
+      const raw = localStorage.getItem(exactKey);
+      const parsed = raw ? JSON.parse(raw) as Array<{ role?: string; content?: string }> : [];
+      const firstUserMessage = parsed.find(
+        (message) => message.role === 'user' && typeof message.content === 'string' && message.content.trim()
+      );
+      if (firstUserMessage?.content) {
+        const normalized = firstUserMessage.content.trim().replace(/\s+/g, ' ');
+        const words = normalized.split(' ');
+        const title = words.slice(0, 8).join(' ');
+        return words.length > 8 ? `${title}...` : title;
+      }
+    }
+  } catch {}
+
+  return conversation.title || `Conversation ${conversation.id.slice(0, 8)}`;
+}
+
 function formatTimeAgo(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();
@@ -278,7 +313,7 @@ export default function HomePage() {
                       <div className="flex items-center gap-3">
                         <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>
                         <span className="text-white group-hover:text-cyan-100 font-medium truncate">
-                          {conversation.title || `Conversation ${conversation.id.slice(0, 8)}`}
+                          {resolveConversationTitle(conversation)}
                         </span>
                       </div>
                       {conversation.updatedAt && (

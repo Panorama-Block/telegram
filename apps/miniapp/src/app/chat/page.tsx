@@ -368,6 +368,8 @@ function normalizeConversationId(value: unknown): string | null {
 export default function ChatPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const requestedConversationId = searchParams.get('conversation_id');
+  const requestedNewChat = searchParams.get('new') === 'true';
   const [onboardingReady, setOnboardingReady] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -1045,10 +1047,31 @@ export default function ChatPage() {
         });
         setConversations(enriched);
 
-        // Enter pending-new-chat mode: show welcome screen, create backend
-        // conversation only when the user actually sends a message.
-        setPendingNewChat(true);
-        debug('bootstrap:pendingNewChat', { totalConversations: fetchedConversations.length });
+        // The URL is authoritative when an existing conversation is requested.
+        // A fresh chat remains lazy-created on the first user message.
+        if (requestedConversationId) {
+          const requestedConversation = enriched.find(
+            (conversation) => conversation.id === requestedConversationId
+          );
+
+          if (requestedConversation) {
+            targetConversationId = requestedConversation.id;
+            setPendingNewChat(false);
+            debug('bootstrap:resumeConversation', { conversationId: requestedConversation.id });
+          } else {
+            setPendingNewChat(true);
+            debug('bootstrap:requestedConversationNotFound', { conversationId: requestedConversationId });
+          }
+        } else {
+          // /chat and /chat?new=true both show the fresh-chat welcome state.
+          // The backend conversation is still created only on first send.
+          setPendingNewChat(true);
+          debug('bootstrap:pendingNewChat', {
+            requestedNewChat,
+            totalConversations: fetchedConversations.length,
+          });
+        }
+
         try {
           // Store only IDs to maintain compatibility with loadCachedConversationIds
           const idsToCache = fetchedConversations.map(c => c.id);
@@ -1057,9 +1080,6 @@ export default function ChatPage() {
           console.warn('[CHAT CACHE] Failed to store conversation list', e);
         }
 
-
-
-        // Use the selected/remembered conversation as the active one
         setActiveConversation(targetConversationId);
         setInitializationError(null);
         debug('bootstrap:targetSelected', { targetId: targetConversationId, totalConversations: fetchedConversations.length });
@@ -1078,7 +1098,7 @@ export default function ChatPage() {
     };
 
     initialise();
-  }, [agentsClient, authLoading, bootstrapVersion, debug, getAuthOptions, loadCachedConversationIds, loadMessagesFromCache, setActiveConversation, setSidebarActiveConversationId, userId]);
+  }, [agentsClient, authLoading, bootstrapVersion, debug, getAuthOptions, loadCachedConversationIds, loadMessagesFromCache, requestedConversationId, requestedNewChat, setActiveConversation, setSidebarActiveConversationId, userId]);
 
   const retryBootstrap = useCallback(() => {
     debug('bootstrap:retry');
