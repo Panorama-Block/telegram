@@ -23,6 +23,7 @@ import { swapApi } from "@/features/swap/api";
 import {
   prepareAvaxSwap,
   submitAvaxSwapEvidence,
+  reportAvaxSwapEvidenceOutcome,
 } from "@/features/swap/avaxSwapApi";
 import {
   beginAvaxBridgeEvidence,
@@ -1035,6 +1036,12 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
               return verification;
             },
+            reportOutcome: async (correlationId, outcome) => {
+              return reportAvaxSwapEvidenceOutcome(
+                correlationId,
+                outcome
+              );
+            },
             onConfirmed: async result => {
               setTxHashes([
                 {
@@ -1316,6 +1323,12 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             );
 
             return verification;
+          },
+          reportOutcome: async (correlationId, outcome) => {
+            return reportAvaxSwapEvidenceOutcome(
+              correlationId,
+              outcome
+            );
           },
           onConfirmed: async (result) => {
             console.log(
@@ -1802,6 +1815,12 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
 
             return verification;
           },
+          reportOutcome: async (correlationId, outcome) => {
+            return reportAvaxSwapEvidenceOutcome(
+              correlationId,
+              outcome
+            );
+          },
           onConfirmed: async result => {
             hashes.push({
               hash: result.txHash,
@@ -2055,6 +2074,12 @@ export function SwapWidget({ onClose, initialFromToken, initialToToken, initialA
             }
 
             return verification;
+          },
+          reportOutcome: async (correlationId, outcome) => {
+            return reportAvaxSwapEvidenceOutcome(
+              correlationId,
+              outcome
+            );
           },
           onConfirmed: async result => {
             hashes.push({

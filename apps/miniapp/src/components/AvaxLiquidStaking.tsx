@@ -291,6 +291,12 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
 
           return verification;
         },
+        reportOutcome: async (correlationId, outcome) => {
+          return lendingApi.reportEvidenceOutcome(
+            correlationId,
+            outcome
+          );
+        },
         onConfirmed: async (result) => {
           setTxHash(result.txHash);
           setTxStatus('confirmed');
@@ -398,6 +404,12 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
           }
 
           return verification;
+        },
+        reportOutcome: async (correlationId, outcome) => {
+          return lendingApi.reportEvidenceOutcome(
+            correlationId,
+            outcome
+          );
         },
         onConfirmed: async (result) => {
           setTxHash(result.txHash);
@@ -528,6 +540,12 @@ export function AvaxLiquidStaking({ onClose, initialMode = 'stake' }: AvaxLiquid
           }
 
           return verification;
+        },
+        reportOutcome: async (correlationId, outcome) => {
+          return lendingApi.reportEvidenceOutcome(
+            correlationId,
+            outcome
+          );
         },
         onConfirmed: async (result) => {
           setTxHash(result.txHash);

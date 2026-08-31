@@ -1179,6 +1179,36 @@ class LendingApiClient {
     }
   }
 
+  async reportEvidenceOutcome(
+    correlationId: string,
+    outcome: {
+      outcome:
+        | "cancelled-before-submission"
+        | "partially-executed";
+      reason?: string;
+    }
+  ): Promise<any> {
+    const response = await fetchWithAuth(
+      `${this.baseUrl}/avax/lending/evidence/${encodeURIComponent(correlationId)}/outcomes`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(outcome),
+      }
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `lending evidence outcome reporting failed (${response.status}): ${body}`
+      );
+    }
+
+    return response.json();
+  }
+
   async submitEvidence(
     correlationId: string,
     submission: {

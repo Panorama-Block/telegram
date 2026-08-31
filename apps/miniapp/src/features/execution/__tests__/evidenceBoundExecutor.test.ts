@@ -86,6 +86,7 @@ describe("executeEvidenceBoundOperation", () => {
         client: {},
         switchChain: vi.fn(),
         submitEvidence: vi.fn(),
+        reportOutcome: vi.fn().mockResolvedValue({}),
       })
     ).rejects.toThrow("missing correlationId");
 
@@ -107,6 +108,7 @@ describe("executeEvidenceBoundOperation", () => {
       client: { clientId: "test" },
       switchChain,
       submitEvidence,
+      reportOutcome: vi.fn().mockResolvedValue({}),
     });
 
     expect(result).toEqual([
@@ -163,6 +165,7 @@ describe("executeEvidenceBoundOperation", () => {
       client: {},
       switchChain: vi.fn().mockResolvedValue(undefined),
       submitEvidence,
+      reportOutcome: vi.fn().mockResolvedValue({}),
     });
 
     expect(submitEvidence).toHaveBeenNthCalledWith(
@@ -210,6 +213,7 @@ describe("executeEvidenceBoundOperation", () => {
         client: {},
         switchChain: vi.fn().mockResolvedValue(undefined),
         submitEvidence,
+        reportOutcome: vi.fn().mockResolvedValue({}),
       })
     ).rejects.toThrow("wallet rejected");
 
@@ -239,6 +243,7 @@ describe("executeEvidenceBoundOperation", () => {
         client: {},
         switchChain: vi.fn().mockResolvedValue(undefined),
         submitEvidence,
+        reportOutcome: vi.fn().mockResolvedValue({}),
         onConfirmed,
       })
     ).rejects.toBeInstanceOf(EvidencePostSubmissionError);
@@ -274,6 +279,7 @@ describe("executeEvidenceBoundOperation", () => {
         client: {},
         switchChain: vi.fn().mockResolvedValue(undefined),
         submitEvidence,
+        reportOutcome: vi.fn().mockResolvedValue({}),
       });
     } catch (error) {
       caught = error;

@@ -152,6 +152,7 @@ export function defineEvidenceExecutionComplianceSuite(
         client: {},
         switchChain: async () => undefined,
         submitEvidence: async () => ({ verified: true }),
+        reportOutcome: async () => undefined,
       });
 
       expect(results.map((result) => result.stepIndex))
@@ -205,6 +206,7 @@ export function defineEvidenceExecutionComplianceSuite(
           submissions.push(args);
           return { verified: true };
         },
+        reportOutcome: async () => undefined,
       });
 
       expect(submissions).toHaveLength(2);
@@ -242,6 +244,7 @@ export function defineEvidenceExecutionComplianceSuite(
           submitEvidence: async () => {
             evidenceCalls += 1;
           },
+          reportOutcome: async () => undefined,
         })
       ).rejects.toThrow("wallet rejected");
 
@@ -269,6 +272,7 @@ export function defineEvidenceExecutionComplianceSuite(
             events.push("evidence");
             throw new Error("evidence unavailable");
           },
+          reportOutcome: async () => undefined,
         });
       } catch (error) {
         caught = error;

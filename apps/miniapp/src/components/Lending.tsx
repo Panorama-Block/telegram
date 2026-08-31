@@ -728,6 +728,12 @@ export function Lending({
 
             return verification;
           },
+          reportOutcome: async (correlationId, outcome) => {
+            return lendingApi.reportEvidenceOutcome(
+              correlationId,
+              outcome
+            );
+          },
           onConfirmed: async (result) => {
             const index = result.stepIndex;
             const tx = txs[index];
