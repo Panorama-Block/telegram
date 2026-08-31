@@ -28,6 +28,8 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 const LAST_CONVERSATION_STORAGE_KEY = 'chat:lastConversationId';
 const CONVERSATION_LIST_KEY = 'chat:ids';
+const CONVERSATION_CACHE_PREFIX = 'chat:cache';
+const AI_TITLE_PREFIX = 'chat:aiTitle';
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -52,7 +54,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   });
   const userId = identity.userId;
 
-
   const getAuthOptions = useCallback(() => {
     if (typeof window === 'undefined') return undefined;
     const token = localStorage.getItem('authToken');
@@ -61,11 +62,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const setActiveConversationId = useCallback((conversationId: string | null) => {
     setActiveConversationIdState(conversationId);
-    if (conversationId) {
-      try {
+    try {
+      if (conversationId) {
         localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, conversationId);
-      } catch { }
-    }
+      } else {
+        localStorage.removeItem(LAST_CONVERSATION_STORAGE_KEY);
+      }
+    } catch { }
   }, []);
 
   const refreshConversations = useCallback(async () => {
@@ -82,13 +85,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       const mappedConversations: Conversation[] = conversationsFromBackend.map((c, index) => {
         const backendTitle = c.title || `Chat ${index + 1}`;
-        // Prefer cached AI title over generic backend title
         if (typeof window !== 'undefined') {
           const t = backendTitle.trim().toLowerCase();
           const isGeneric = !t || t === 'new chat' || t === 'chat' || /^chat\s+\d+$/.test(t);
           if (isGeneric) {
             try {
-              const cached = localStorage.getItem(`chat:aiTitle:${c.id}`);
+              const cached = localStorage.getItem(`${AI_TITLE_PREFIX}:${c.id}`);
               if (cached) return { id: c.id, title: cached };
             } catch {}
           }
@@ -98,13 +100,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       setConversations(mappedConversations);
 
-      // Cache conversation IDs
       try {
-        localStorage.setItem(`${CONVERSATION_LIST_KEY}:${userId}`, JSON.stringify(conversationsFromBackend.map(c => c.id)));
+        localStorage.setItem(
+          `${CONVERSATION_LIST_KEY}:${userId}`,
+          JSON.stringify(conversationsFromBackend.map(c => c.id))
+        );
       } catch { }
-
-      // Do not auto-select a previous conversation here.
-      // The chat page bootstrap always creates a fresh conversation on entry.
     } catch (err) {
       console.error('Error fetching conversations:', err);
       if (isMountedRef.current) {
@@ -115,7 +116,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
       }
     }
-  }, [userId, agentsClient, getAuthOptions, activeConversationId, setActiveConversationId]);
+  }, [userId, agentsClient, getAuthOptions]);
 
   const createConversation = useCallback(async (): Promise<string | null> => {
     if (!userId || isCreatingConversation) return null;
@@ -147,26 +148,63 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
   }, [userId, agentsClient, getAuthOptions, isCreatingConversation, setActiveConversationId]);
 
+  const clearConversationLocalState = useCallback((conversationId: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.removeItem(`${AI_TITLE_PREFIX}:${conversationId}`);
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith(`${CONVERSATION_CACHE_PREFIX}:`) && key.endsWith(`:${conversationId}`)) {
+          localStorage.removeItem(key);
+        }
+      });
+
+      if (userId) {
+        const listKey = `${CONVERSATION_LIST_KEY}:${userId}`;
+        const raw = localStorage.getItem(listKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            localStorage.setItem(
+              listKey,
+              JSON.stringify(parsed.filter((id) => id !== conversationId))
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to clear deleted conversation cache:', err);
+    }
+  }, [userId]);
+
   const deleteConversation = useCallback(async (conversationId: string): Promise<void> => {
     if (!userId) return;
 
-    try {
-      const authOpts = getAuthOptions();
-      await agentsClient.deleteConversation(userId, conversationId, authOpts);
+    const authOpts = getAuthOptions();
+    await agentsClient.deleteConversation(userId, conversationId, authOpts);
 
-      if (!isMountedRef.current) return;
+    if (!isMountedRef.current) return;
 
-      setConversations(prev => prev.filter(c => c.id !== conversationId));
+    clearConversationLocalState(conversationId);
+    setConversations(prev => prev.filter(c => c.id !== conversationId));
 
-      if (activeConversationId === conversationId) {
-        setActiveConversationId(null);
-      }
-    } catch (err) {
-      console.error('Error deleting conversation:', err);
+    if (activeConversationId === conversationId) {
+      setActiveConversationId(null);
     }
-  }, [userId, agentsClient, getAuthOptions, activeConversationId, setActiveConversationId]);
 
-  // Bootstrap on mount
+    // Re-read the canonical backend list after deletion. If persistence did
+    // not actually remove the conversation this will expose the failure
+    // instead of leaving a false optimistic state until the next page reload.
+    await refreshConversations();
+  }, [
+    userId,
+    agentsClient,
+    getAuthOptions,
+    clearConversationLocalState,
+    activeConversationId,
+    setActiveConversationId,
+    refreshConversations,
+  ]);
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -174,7 +212,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Load conversations when userId is available
   useEffect(() => {
     if (authLoading || !userId || bootstrappedRef.current) return;
 
@@ -182,7 +219,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     refreshConversations();
   }, [authLoading, userId, refreshConversations]);
 
-  // Reset when user changes
   useEffect(() => {
     bootstrappedRef.current = false;
     setConversations([]);
