@@ -14,6 +14,9 @@ export const FEATURE_FLAGS = {
   /** AI Chat assistant */
   CHAT_ENABLED: true,
 
+  /** Chat history visibility */
+  CHAT_HISTORY_ENABLED: process.env.NEXT_PUBLIC_CHAT_HISTORY_ENABLED !== 'false',
+
   /** Analytics dashboard */
   ANALYTICS_ENABLED: false,
 
