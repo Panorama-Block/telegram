@@ -15,7 +15,7 @@ export const FEATURE_FLAGS = {
   CHAT_ENABLED: true,
 
   /** Chat history visibility */
-  CHAT_HISTORY_ENABLED: process.env.NEXT_PUBLIC_CHAT_HISTORY_ENABLED !== 'false',
+  CHAT_HISTORY_ENABLED: process.env.NEXT_PUBLIC_CHAT_HISTORY_ENABLED === 'true',
 
   /** Analytics dashboard */
   ANALYTICS_ENABLED: false,
