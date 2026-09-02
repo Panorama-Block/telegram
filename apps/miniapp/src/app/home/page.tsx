@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useActiveAccount } from 'thirdweb/react';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { SeniorAppShell } from '@/components/layout/SeniorAppShell';
+import { FEATURE_FLAGS } from '@/config/features';
 import { AgentsClient } from '@/clients/agentsClient';
 import { Button } from '@/components/ui/button';
 import { Plus, MessageCircle, Clock } from 'lucide-react';
@@ -282,6 +283,7 @@ export default function HomePage() {
           </div>
 
           {/* Chat History */}
+          {FEATURE_FLAGS.CHAT_HISTORY_ENABLED && (
           <div className="bg-[#0b0d10]/90 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
             <div className="flex items-center gap-3 mb-6">
               <Clock className="w-5 h-5 text-cyan-400" />
@@ -327,6 +329,7 @@ export default function HomePage() {
               </div>
             )}
           </div>
+          )}
 
           {/* Quick Actions */}
           <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">

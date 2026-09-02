@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { NotificationCenter } from '@/shared/ui/NotificationCenter';
 import { cn } from '@/shared/lib/utils';
+import { FEATURE_FLAGS } from '@/config/features';
 import { useActiveAccount } from 'thirdweb/react';
 import { useLogout } from '@/shared/hooks/useLogout';
 import { useChat } from '@/shared/contexts/ChatContext';
@@ -448,7 +449,7 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                     </button>
 
                     {/* Chat History Section — hidden when collapsed */}
-                    {!isSidebarCollapsed && <div className="mt-2">
+                    {!isSidebarCollapsed && FEATURE_FLAGS.CHAT_HISTORY_ENABLED && <div className="mt-2">
                       <button
                         onClick={() => setShowChatHistory(!showChatHistory)}
                         className="w-full flex items-center justify-between px-4 py-2 text-xs text-zinc-500 hover:text-zinc-400 transition-colors"
