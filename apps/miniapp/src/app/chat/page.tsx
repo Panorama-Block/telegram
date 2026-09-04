@@ -32,7 +32,6 @@ import { useActiveAccount, useActiveWallet } from 'thirdweb/react';
 import { useLogout } from '@/shared/hooks/useLogout';
 import { createThirdwebClient } from 'thirdweb';
 import type { QuoteResponse } from '@/features/swap/types';
-import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { SeniorAppShell } from '@/components/layout';
 import { SwapWidget } from '@/components/SwapWidget';
 import { resolveProvider } from '@/shared/utils/swapProvider';
@@ -91,7 +90,6 @@ const MAX_CONVERSATION_TITLE_LENGTH = 48;
 const LAST_CONVERSATION_STORAGE_KEY = 'chat:lastConversationId';
 const CONVERSATION_CACHE_PREFIX = 'chat:cache';
 const CONVERSATION_LIST_KEY = 'chat:ids';
-const AI_TITLE_PREFIX = 'chat:aiTitle';
 const DEBUG_CHAT_FLAG = (process.env.NEXT_PUBLIC_MINIAPP_DEBUG_CHAT ?? process.env.MINIAPP_DEBUG_CHAT ?? '').toLowerCase();
 const DEBUG_CHAT_ENABLED = ['1', 'true', 'on', 'yes'].includes(DEBUG_CHAT_FLAG);
 
@@ -321,34 +319,6 @@ function autoFormatAssistantMarkdown(text: string): string {
     .replace(/\n{4,}/g, '\n\n\n');
   return t.trimEnd();
 }
-function isGenericTitle(title: string | undefined): boolean {
-  if (!title) return true;
-  const t = title.trim().toLowerCase();
-  return !t || t === 'new chat' || t === 'chat' || /^chat\s+\d+$/.test(t);
-}
-
-function deriveConversationTitle(fallbackTitle: string | undefined, messages: Message[]): string {
-  // If the conversation already has a meaningful (AI-generated) title, keep it
-  if (!isGenericTitle(fallbackTitle)) return fallbackTitle!;
-
-  const firstUserMessage = messages.find((msg) => msg.role === 'user' && msg.content.trim().length > 0);
-  if (!firstUserMessage) return fallbackTitle || 'New Chat';
-
-  const normalized = firstUserMessage.content.trim().replace(/\s+/g, ' ');
-  if (!normalized) return fallbackTitle || 'New Chat';
-
-  // Extract 3-8 key words from the message for a concise title
-  const MAX_WORDS = 8;
-  const words = normalized.split(' ').slice(0, MAX_WORDS);
-  const title = words.join(' ');
-
-  if (words.length < normalized.split(' ').length) {
-    return `${title}...`;
-  }
-
-  return title;
-}
-
 function normalizeConversationId(value: unknown): string | null {
   if (typeof value === 'string' && value.trim()) return value;
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
@@ -817,23 +787,35 @@ export default function ChatPage() {
   }, [setSidebarActiveConversationId]);
 
   const loadConversationMessages = useCallback(
-    async (conversationId: string) => {
+    async (
+      conversationId: string,
+      options: { authoritative?: boolean } = {}
+    ) => {
       if (!conversationId) return;
       setLoadingConversationId(conversationId);
       const userKey = userId ?? '__anonymous__';
-      debug('messages:load:start', { conversationId, userId: userKey });
+      debug('messages:load:start', {
+        conversationId,
+        userId: userKey,
+        authoritative: Boolean(options.authoritative),
+      });
       console.log('🔄 [CHAT] Loading messages for conversation:', conversationId);
 
       try {
         const authOpts = getAuthOptions();
 
-        // First, try local cache for immediate render
-        const cached = loadMessagesFromCache(userKey, conversationId);
-        if (cached && cached.length > 0) {
-          setMessagesByConversation((prev) => ({
-            ...prev,
-            [conversationId]: cached,
-          }));
+        // Normal navigation may render cached history immediately.
+        // Authoritative reconciliation must never let browser cache mask
+        // missing or incomplete durable backend history.
+        let cached: Message[] | null = null;
+        if (!options.authoritative) {
+          cached = loadMessagesFromCache(userKey, conversationId);
+          if (cached && cached.length > 0) {
+            setMessagesByConversation((prev) => ({
+              ...prev,
+              [conversationId]: cached,
+            }));
+          }
         }
 
         const history = await agentsClient.fetchMessages(userId, conversationId, authOpts);
@@ -854,23 +836,24 @@ export default function ChatPage() {
         });
 
         setInitializationError(null);
-        debug('messages:load:success', { conversationId, messages: mappedHistory.length });
+        debug('messages:load:success', {
+          conversationId,
+          messages: mappedHistory.length,
+          authoritative: Boolean(options.authoritative),
+        });
         console.log('✅ [CHAT] Messages loaded:', mappedHistory.length, 'for conversation:', conversationId);
-        // If backend returned empty but we have cached messages, keep cached
-        const finalHistory = mappedHistory.length === 0 && cached && cached.length > 0 ? cached : mappedHistory;
+
+        const finalHistory = options.authoritative ? mappedHistory
+          : mappedHistory.length === 0 && cached && cached.length > 0
+            ? cached
+            : mappedHistory;
+
         setMessagesByConversation((prev) => ({
           ...prev,
           [conversationId]: finalHistory,
         }));
         saveMessagesToCache(userKey, conversationId, finalHistory);
 
-        setConversations((prev) =>
-          prev.map((conversation) =>
-            conversation.id === conversationId
-              ? { ...conversation, title: deriveConversationTitle(conversation.title, mappedHistory) }
-              : conversation
-          )
-        );
       } catch (error) {
         console.error('Error fetching conversation history:', error);
         debug('messages:load:error', {
@@ -880,6 +863,7 @@ export default function ChatPage() {
         if (isMountedRef.current && bootstrapKeyRef.current === userKey) {
           setInitializationError('We could not load this conversation. Please try again.');
         }
+        if (options.authoritative) throw error;
       } finally {
         if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) return;
         setLoadingConversationId((current) => (current === conversationId ? null : current));
@@ -1036,15 +1020,8 @@ export default function ChatPage() {
 
         if (!isMountedRef.current || bootstrapKeyRef.current !== userKey) return;
 
-        // Enrich conversations with cached AI titles that may not yet be in the backend
-        const enriched = fetchedConversations.map((c) => {
-          if (!isGenericTitle(c.title)) return c;
-          try {
-            const cached = localStorage.getItem(`${AI_TITLE_PREFIX}:${c.id}`);
-            if (cached) return { ...c, title: cached };
-          } catch {}
-          return c;
-        });
+        // Backend conversation metadata is authoritative.
+        const enriched = fetchedConversations;
         setConversations(enriched);
 
         // The URL is authoritative when an existing conversation is requested.
@@ -1236,17 +1213,11 @@ export default function ChatPage() {
     }));
     saveMessagesToCache(userId ?? '__anonymous__', conversationId, updatedMessages);
 
-      setConversations((prev) => {
-        const ensureConversationExists = prev.some((conversation) => conversation.id === conversationId)
-          ? prev
-          : [{ id: conversationId, title: 'New Chat' }, ...prev];
-
-      return ensureConversationExists.map((conversation) =>
-        conversation.id === conversationId
-          ? { ...conversation, title: deriveConversationTitle(conversation.title, updatedMessages) }
-          : conversation
-      );
-      });
+    setConversations((prev) =>
+      prev.some((conversation) => conversation.id === conversationId)
+        ? prev
+        : [{ id: conversationId, title: 'New Chat' }, ...prev]
+    );
 
     // Mark for AI title generation if this is the first user message in the conversation
     const userMessagesCount = updatedMessages.filter((m) => m.role === 'user').length;
@@ -1337,10 +1308,25 @@ export default function ChatPage() {
         return nextMessages;
       });
 
-      setIsSending(false);
-      streamConversationRef.current = null;
-      refreshSidebarConversations().catch(() => {});
-      debug('chat:stream:complete', { conversationId });
+      // The backend persists the assistant response before emitting SSE done.
+      // Re-read durable history without cache fallback so local state cannot
+      // mask a missing or truncated persisted response.
+      void loadConversationMessages(conversationId, { authoritative: true })
+        .then(() => {
+          setIsSending(false);
+          streamConversationRef.current = null;
+          refreshSidebarConversations().catch(() => {});
+          debug('chat:stream:complete', { conversationId });
+        })
+        .catch((error) => {
+          console.error('[CHAT] Authoritative stream reconciliation failed:', error);
+          setIsSending(false);
+          streamConversationRef.current = null;
+          debug('chat:stream:reconciliation-error', {
+            conversationId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
 
       // Fire AI title generation for first message in a conversation
       const pending = pendingTitleRef.current;
@@ -1351,8 +1337,6 @@ export default function ChatPage() {
           .generateTitle(userId ?? '', conversationId, pending.message, getAuthOptions())
           .then((aiTitle) => {
             if (aiTitle && isMountedRef.current) {
-              // Cache AI title in localStorage for reload resilience
-              try { localStorage.setItem(`${AI_TITLE_PREFIX}:${conversationId}`, aiTitle); } catch {}
               setConversations((prev) =>
                 prev.map((c) => (c.id === conversationId ? { ...c, title: aiTitle } : c))
               );
@@ -1952,7 +1936,7 @@ export default function ChatPage() {
   }, [client, account?.address]);
 
   return (
-    <ProtectedRoute>
+    <>
       <TransactionSettingsProvider>
         <>
           <GlobalLoader isLoading={initializing && !initializationError} message="Setting up your workspace..." />
@@ -3549,6 +3533,6 @@ export default function ChatPage() {
         multiple
         onChange={handleFileChange}
       />
-    </ProtectedRoute>
+    </>
   );
 }

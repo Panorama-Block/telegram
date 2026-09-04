@@ -71,39 +71,74 @@ async function consumeSSEStream(
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let currentEvent = '';
+  let receivedDone = false;
+
+  const processLine = (rawLine: string) => {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+
+    if (line.startsWith('event:')) {
+      currentEvent = line.slice(6).trim();
+      return;
+    }
+
+    if (line.startsWith('data:') && currentEvent) {
+      const payload = line.slice(5).trimStart();
+
+      try {
+        const data = JSON.parse(payload);
+        processEvent(currentEvent, data, setState);
+
+        if (currentEvent === 'done') {
+          receivedDone = true;
+        }
+      } catch {
+        // Ignore malformed complete SSE payloads.
+      }
+
+      currentEvent = '';
+    }
+  };
 
   while (true) {
     if (controller.signal.aborted) break;
 
     const { done, value } = await reader.read();
-    if (done) break;
+
+    if (done) {
+      buffer += decoder.decode();
+      break;
+    }
 
     buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
 
-    let currentEvent = '';
-    for (const line of lines) {
-      if (line.startsWith('event: ')) {
-        currentEvent = line.slice(7).trim();
-      } else if (line.startsWith('data: ') && currentEvent) {
-        try {
-          const data = JSON.parse(line.slice(6));
-          processEvent(currentEvent, data, setState);
-        } catch {
-          // Skip malformed JSON
-        }
-        currentEvent = '';
-      }
+    let newlineIndex = buffer.indexOf('\n');
+
+    while (newlineIndex !== -1) {
+      const line = buffer.slice(0, newlineIndex);
+      buffer = buffer.slice(newlineIndex + 1);
+
+      processLine(line);
+      newlineIndex = buffer.indexOf('\n');
     }
   }
 
-  setState((prev) => {
-    if (!prev.isDone && prev.isStreaming) {
-      return { ...prev, isStreaming: false, isDone: true };
-    }
-    return prev;
-  });
+  if (controller.signal.aborted) {
+    return;
+  }
+
+  if (buffer.length > 0) {
+    processLine(buffer);
+  }
+
+  if (!receivedDone) {
+    setState((prev) => ({
+      ...prev,
+      isStreaming: false,
+      isDone: false,
+      error: prev.error ?? 'stream ended before done event',
+    }));
+  }
 }
 
 export function useAgentStream() {

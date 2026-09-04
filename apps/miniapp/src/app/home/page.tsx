@@ -5,10 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useActiveAccount } from 'thirdweb/react';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { SeniorAppShell } from '@/components/layout/SeniorAppShell';
-import { FEATURE_FLAGS } from '@/config/features';
-import { AgentsClient } from '@/clients/agentsClient';
 import { Button } from '@/components/ui/button';
-import { Plus, MessageCircle, Clock } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import {
   downloadAvaxAdminEvidenceExport,
   downloadAvaxEvidenceExport,
@@ -17,73 +15,23 @@ import {
 import {
   collectRuntimeDiagnostics,
   downloadRuntimeDiagnostics,
+  type RuntimeDiagnostics,
 } from '@/features/admin/runtimeDiagnostics';
-
-interface Conversation {
-  id: string;
-  title: string;
-  updatedAt?: string;
-}
 
 function getWalletAddress(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('walletAddress');
 }
 
-function isGenericConversationTitle(title?: string): boolean {
-  if (!title) return true;
-  const normalized = title.trim().toLowerCase();
-  return !normalized || normalized === 'chat' || normalized === 'new chat' || /^chat\s+\d+$/.test(normalized);
-}
-
-function resolveConversationTitle(conversation: Conversation): string {
-  if (!isGenericConversationTitle(conversation.title)) return conversation.title;
-  if (typeof window === 'undefined') return conversation.title || `Conversation ${conversation.id.slice(0, 8)}`;
-
-  try {
-    const aiTitle = localStorage.getItem(`chat:aiTitle:${conversation.id}`);
-    if (aiTitle?.trim()) return aiTitle;
-
-    const exactKey = Object.keys(localStorage).find(
-      (key) => key.startsWith('chat:cache:') && key.endsWith(`:${conversation.id}`)
-    );
-    if (exactKey) {
-      const raw = localStorage.getItem(exactKey);
-      const parsed = raw ? JSON.parse(raw) as Array<{ role?: string; content?: string }> : [];
-      const firstUserMessage = parsed.find(
-        (message) => message.role === 'user' && typeof message.content === 'string' && message.content.trim()
-      );
-      if (firstUserMessage?.content) {
-        const normalized = firstUserMessage.content.trim().replace(/\s+/g, ' ');
-        const words = normalized.split(' ');
-        const title = words.slice(0, 8).join(' ');
-        return words.length > 8 ? `${title}...` : title;
-      }
-    }
-  } catch {}
-
-  return conversation.title || `Conversation ${conversation.id.slice(0, 8)}`;
-}
-
-function formatTimeAgo(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffInSeconds < 60) return 'Just now';
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
-  return date.toLocaleDateString();
-}
-
 export default function HomePage() {
   const router = useRouter();
   const account = useActiveAccount();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
   const [nickname, setNickname] = useState<string | null>(null);
   const [isEvidenceAdmin, setIsEvidenceAdmin] = useState(false);
+  const [runtimeDiagnostics, setRuntimeDiagnostics] =
+    useState<RuntimeDiagnostics | null>(null);
+  const [showRuntimeDiagnosticsJson, setShowRuntimeDiagnosticsJson] =
+    useState(false);
 
   const userId = account?.address?.toLowerCase() || getWalletAddress();
 
@@ -104,34 +52,6 @@ export default function HomePage() {
       });
     }
   }, [userId]);
-  const agentsClient = new AgentsClient();
-
-  useEffect(() => {
-    const loadConversations = async () => {
-      if (!userId) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const authToken = localStorage.getItem('authToken');
-        const authOptions = authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : {};
-
-        const response = await agentsClient.listConversations(userId, authOptions);
-
-        if (response && Array.isArray(response)) {
-          setConversations(response.slice(0, 10)); // Show latest 10 conversations
-        }
-      } catch (error) {
-        console.error('Failed to load conversations:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadConversations();
-  }, [userId]);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -166,10 +86,6 @@ export default function HomePage() {
 
   const handleNewChat = () => {
     router.push('/chat?new=true');
-  };
-
-  const handleContinueChat = (conversationId: string) => {
-    router.push(`/chat?conversation_id=${conversationId}`);
   };
 
   const handleDownloadEvidence = async () => {
@@ -217,7 +133,7 @@ export default function HomePage() {
         verifiedAdmin: isEvidenceAdmin,
       });
 
-      downloadRuntimeDiagnostics(diagnostics);
+      setRuntimeDiagnostics(diagnostics);
     } catch (error) {
       console.error('Failed to collect runtime diagnostics:', error);
       alert(
@@ -282,55 +198,6 @@ export default function HomePage() {
             </Button>
           </div>
 
-          {/* Chat History */}
-          {FEATURE_FLAGS.CHAT_HISTORY_ENABLED && (
-          <div className="bg-[#0b0d10]/90 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-            <div className="flex items-center gap-3 mb-6">
-              <Clock className="w-5 h-5 text-cyan-400" />
-              <h2 className="text-xl font-semibold text-white">Recent Conversations</h2>
-            </div>
-
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400"></div>
-                <p className="text-zinc-400 mt-4">Loading conversations...</p>
-              </div>
-            ) : conversations.length === 0 ? (
-              <div className="text-center py-12">
-                <MessageCircle className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
-                <p className="text-zinc-400 text-lg mb-2">No conversations yet</p>
-                <p className="text-zinc-500 text-sm">
-                  Start your first chat to begin exploring DeFi with AI assistance
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {conversations.map((conversation) => (
-                  <button
-                    key={conversation.id}
-                    onClick={() => handleContinueChat(conversation.id)}
-                    className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-4 transition-all text-left group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>
-                        <span className="text-white group-hover:text-cyan-100 font-medium truncate">
-                          {resolveConversationTitle(conversation)}
-                        </span>
-                      </div>
-                      {conversation.updatedAt && (
-                        <span className="text-zinc-500 text-sm">
-                          {formatTimeAgo(conversation.updatedAt)}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          )}
-
           {/* Quick Actions */}
           <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
             <button
@@ -383,9 +250,139 @@ export default function HomePage() {
                   </h3>
                   <p className="text-zinc-400 text-sm">Inspect deployed production state</p>
                 </button>
+
+                {runtimeDiagnostics && (
+                  <div className="md:col-span-3 bg-white/5 border border-white/10 rounded-xl p-4 text-left">
+                    <div className="flex flex-col gap-4">
+                      <div>
+                        <h3 className="text-white font-medium mb-1">
+                          Zico Runtime
+                        </h3>
+                        <p className="text-zinc-400 text-sm">
+                          Authenticated, redacted production runtime evidence
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                        <div className="bg-black/20 rounded-lg p-3">
+                          <div className="text-zinc-500 mb-1">HTTP status</div>
+                          <div className="text-white">
+                            {runtimeDiagnostics.probes.zicoRuntimeEvidence.status ?? 'Unavailable'}
+                          </div>
+                        </div>
+
+                        <div className="bg-black/20 rounded-lg p-3">
+                          <div className="text-zinc-500 mb-1">Service</div>
+                          <div className="text-white break-all">
+                            {String(
+                              runtimeDiagnostics.probes.zicoRuntimeEvidence.evidence?.service ??
+                                'Unavailable'
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="bg-black/20 rounded-lg p-3">
+                          <div className="text-zinc-500 mb-1">Tenant</div>
+                          <div className="text-white break-all">
+                            {String(
+                              runtimeDiagnostics.probes.zicoRuntimeEvidence.evidence?.tenant ??
+                                'Unavailable'
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="bg-black/20 rounded-lg p-3">
+                          <div className="text-zinc-500 mb-1">Auth mode</div>
+                          <div className="text-white break-all">
+                            {String(
+                              runtimeDiagnostics.probes.zicoRuntimeEvidence.evidence
+                                ?.effective_auth_mode ?? 'Unavailable'
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {runtimeDiagnostics.probes.zicoRuntimeEvidence.error && (
+                        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                          {runtimeDiagnostics.probes.zicoRuntimeEvidence.error}
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setShowRuntimeDiagnosticsJson(true)}
+                          className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-white hover:bg-white/10"
+                        >
+                          View JSON
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            downloadRuntimeDiagnostics(runtimeDiagnostics)
+                          }
+                          className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-white hover:bg-white/10"
+                        >
+                          Download JSON
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
+
+          {isEvidenceAdmin &&
+            runtimeDiagnostics &&
+            showRuntimeDiagnosticsJson && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Close runtime diagnostics"
+                  onClick={() => setShowRuntimeDiagnosticsJson(false)}
+                  className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+                />
+
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="runtime-diagnostics-title"
+                >
+                  <div className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-xl border border-white/10 bg-zinc-950 shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-white/10 p-4">
+                      <div>
+                        <h2
+                          id="runtime-diagnostics-title"
+                          className="text-lg font-semibold text-white"
+                        >
+                          Runtime Diagnostics JSON
+                        </h2>
+                        <p className="text-sm text-zinc-400">
+                          Redacted production diagnostic evidence
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowRuntimeDiagnosticsJson(false)}
+                        className="rounded-lg border border-white/10 px-3 py-2 text-sm text-white hover:bg-white/10"
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="overflow-auto p-4">
+                      <pre className="whitespace-pre-wrap break-words font-mono text-xs text-zinc-300">
+                        {JSON.stringify(runtimeDiagnostics, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
         </div>
       </SeniorAppShell>
     </ProtectedRoute>
