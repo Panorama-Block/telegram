@@ -12,6 +12,10 @@ export interface RuntimeProbeResult {
   error: string | null;
 }
 
+export interface ZicoRuntimeEvidenceProbeResult extends RuntimeProbeResult {
+  evidence: Record<string, unknown> | null;
+}
+
 export interface RuntimeDiagnostics {
   schemaVersion: '1.0';
   type: 'panoramablock-runtime-diagnostics';
@@ -66,6 +70,7 @@ export interface RuntimeDiagnostics {
   probes: {
     deployedGatewayProxy: RuntimeProbeResult;
     panoramaControlledGateway: RuntimeProbeResult;
+    zicoRuntimeEvidence: ZicoRuntimeEvidenceProbeResult;
   };
 }
 
@@ -137,6 +142,120 @@ async function probe(
   }
 }
 
+
+function agentsApiBase(): string | null {
+  return (
+    publicValue(process.env.NEXT_PUBLIC_AGENTS_API_BASE) ||
+    publicValue(process.env.VITE_AGENTS_API_BASE) ||
+    publicValue(process.env.AGENTS_API_BASE)
+  );
+}
+
+async function probeZicoRuntimeEvidence(): Promise<ZicoRuntimeEvidenceProbeResult> {
+  const baseUrl = agentsApiBase();
+  const authToken =
+    typeof window !== 'undefined'
+      ? localStorage.getItem('authToken')
+      : null;
+
+  if (!baseUrl) {
+    return {
+      url: '',
+      reachable: false,
+      status: null,
+      ok: null,
+      latencyMs: 0,
+      response: null,
+      evidence: null,
+      error: 'AGENTS_API_BASE not configured',
+    };
+  }
+
+  const url =
+    `${baseUrl.replace(/\/+$/, '')}/__runtime_evidence`;
+
+  if (!authToken) {
+    return {
+      url,
+      reachable: false,
+      status: null,
+      ok: null,
+      latencyMs: 0,
+      response: null,
+      evidence: null,
+      error: 'Panorama authentication token unavailable',
+    };
+  }
+
+  const started = performance.now();
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'omit',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
+
+    let evidence: Record<string, unknown> | null = null;
+
+    if (response.ok) {
+      try {
+        const body = await response.json();
+        if (
+          body !== null &&
+          typeof body === 'object' &&
+          !Array.isArray(body)
+        ) {
+          evidence = body as Record<string, unknown>;
+        }
+      } catch {
+        evidence = null;
+      }
+    }
+
+    let error: string | null = null;
+
+    if (response.status === 401) {
+      error = 'Zico runtime evidence authentication failed';
+    } else if (response.status === 503) {
+      error =
+        'Zico runtime evidence authentication service unavailable';
+    } else if (!response.ok) {
+      error =
+        `Zico runtime evidence request failed with HTTP ${response.status}`;
+    }
+
+    return {
+      url,
+      reachable: true,
+      status: response.status,
+      ok: response.ok,
+      latencyMs: Math.round(performance.now() - started),
+      response: {
+        contentType: response.headers.get('content-type'),
+        server: response.headers.get('server'),
+        vercelId: response.headers.get('x-vercel-id'),
+      },
+      evidence,
+      error,
+    };
+  } catch (error) {
+    return {
+      url,
+      reachable: false,
+      status: null,
+      ok: null,
+      latencyMs: Math.round(performance.now() - started),
+      response: null,
+      evidence: null,
+      error: error instanceof Error ? error.name : 'UnknownError',
+    };
+  }
+}
+
 export async function collectRuntimeDiagnostics(args: {
   walletAddress: string;
   verifiedAdmin: boolean;
@@ -159,6 +278,7 @@ export async function collectRuntimeDiagnostics(args: {
   const [
     deployedGatewayProxy,
     panoramaControlledGateway,
+    zicoRuntimeEvidence,
   ] = await Promise.all([
     probe('/api/gateway/v1/user-profiles?take=1', {
       headers: {
@@ -173,6 +293,7 @@ export async function collectRuntimeDiagnostics(args: {
         },
       }
     ),
+    probeZicoRuntimeEvidence(),
   ]);
 
   return {
@@ -241,6 +362,7 @@ export async function collectRuntimeDiagnostics(args: {
     probes: {
       deployedGatewayProxy,
       panoramaControlledGateway,
+      zicoRuntimeEvidence,
     },
   };
 }
