@@ -484,9 +484,9 @@ export function SeniorAppShell({ children, pageTitle = 'Panorama Block' }: Senio
                                         </div>
                                       </button>
                                       <button
-                                        onClick={(e) => {
+                                        onClick={async (e) => {
                                           e.stopPropagation();
-                                          deleteConversation(conversationId);
+                                          await deleteConversation(conversationId);
                                         }}
                                         className="shrink-0 p-1.5 mr-1.5 rounded-md opacity-0 group-hover/chat:opacity-100 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
                                         aria-label="Delete conversation"
