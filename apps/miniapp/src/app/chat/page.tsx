@@ -779,11 +779,13 @@ export default function ChatPage() {
   const setActiveConversation = useCallback((conversationId: string | null) => {
     setActiveConversationId(conversationId);
     setSidebarActiveConversationId(conversationId);
-    if (conversationId) {
-      try {
+    try {
+      if (conversationId) {
         localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, conversationId);
-      } catch { }
-    }
+      } else {
+        localStorage.removeItem(LAST_CONVERSATION_STORAGE_KEY);
+      }
+    } catch { }
   }, [setSidebarActiveConversationId]);
 
   const loadConversationMessages = useCallback(
@@ -1539,6 +1541,60 @@ export default function ChatPage() {
     setInitializationError(null);
     setActiveConversation(conversationIdFromUrl);
   }, [activeConversationId, conversationIdFromUrl, initializing, setActiveConversation]);
+
+  // Synchronise page-owned state after a durable sidebar deletion.
+  useEffect(() => {
+    const handleConversationDeleted = (event: Event) => {
+      const customEvent = event as CustomEvent<{ conversationId?: unknown }>;
+      const conversationId = normalizeConversationId(customEvent.detail?.conversationId);
+      if (!conversationId) return;
+
+      setConversations((prev) =>
+        prev.filter((conversation) => conversation.id !== conversationId)
+      );
+
+      setMessagesByConversation((prev) => {
+        const next = { ...prev };
+        delete next[conversationId];
+        return next;
+      });
+
+      if (userId) {
+        try {
+          localStorage.removeItem(buildMessageCacheKey(userId, conversationId));
+
+          const remainingIds = loadCachedConversationIds(userId)
+            .filter((id) => id !== conversationId);
+
+          localStorage.setItem(
+            `${CONVERSATION_LIST_KEY}:${userId}`,
+            JSON.stringify(remainingIds)
+          );
+        } catch (error) {
+          console.warn('[CHAT CACHE] Failed to remove deleted conversation', error);
+        }
+      }
+
+      if (activeConversationId === conversationId) {
+        setPendingNewChat(true);
+        setActiveConversation(null);
+        setInitializationError(null);
+        router.replace('/chat', { scroll: false });
+      }
+    };
+
+    window.addEventListener('panorama:conversationdeleted', handleConversationDeleted);
+    return () => {
+      window.removeEventListener('panorama:conversationdeleted', handleConversationDeleted);
+    };
+  }, [
+    activeConversationId,
+    buildMessageCacheKey,
+    loadCachedConversationIds,
+    router,
+    setActiveConversation,
+    userId,
+  ]);
 
   // Listen for custom event from sidebar "+" button
   useEffect(() => {

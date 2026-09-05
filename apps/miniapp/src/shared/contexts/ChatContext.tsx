@@ -61,11 +61,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const setActiveConversationId = useCallback((conversationId: string | null) => {
     setActiveConversationIdState(conversationId);
-    if (conversationId) {
-      try {
+    try {
+      if (conversationId) {
         localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, conversationId);
-      } catch { }
-    }
+      } else {
+        localStorage.removeItem(LAST_CONVERSATION_STORAGE_KEY);
+      }
+    } catch { }
   }, []);
 
   const refreshConversations = useCallback(async () => {
@@ -150,6 +152,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       if (activeConversationId === conversationId) {
         setActiveConversationId(null);
       }
+
+      window.dispatchEvent(new CustomEvent('panorama:conversationdeleted', {
+        detail: { conversationId },
+      }));
     } catch (err) {
       console.error('Error deleting conversation:', err);
     }
