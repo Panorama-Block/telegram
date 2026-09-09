@@ -112,8 +112,30 @@ describe('Vercel runtime evidence', () => {
     expect(JSON.stringify(evidence)).not.toContain(secret);
   });
 
-  it('redacts unclassified configuration values by default', () => {
-    const value = 'internal-value-that-is-not-proven-safe';
+  it('exports source-backed application configuration required for reconstruction', () => {
+    const value = 'https://auth.example.test';
+
+    const evidence = collectVercelRuntimeEvidence({
+      AUTH_API_BASE: value,
+    });
+
+    expect(
+      evidence.environment.variables.AUTH_API_BASE
+    ).toEqual({
+      present: true,
+      empty: false,
+      length: value.length,
+      classification: 'configuration',
+      migration: 'REPLICABLE_FROM_EXPORT',
+      redacted: false,
+      value,
+    });
+
+    expect(JSON.stringify(evidence)).toContain(value);
+  });
+
+  it('keeps unknown environment variables as redacted runtime observations', () => {
+    const value = 'unknown-runtime-value';
 
     const evidence = collectVercelRuntimeEvidence({
       INTERNAL_FEATURE_FLAG: value,
@@ -125,13 +147,126 @@ describe('Vercel runtime evidence', () => {
       present: true,
       empty: false,
       length: value.length,
-      classification: 'configuration',
-      migration: 'REPLICABLE_FROM_EXPORT',
+      classification: 'runtime',
+      migration: 'OBSERVATIONAL_ONLY',
       redacted: true,
       value: null,
     });
 
     expect(JSON.stringify(evidence)).not.toContain(value);
+  });
+
+  it('redacts credential-bearing Vercel system values', () => {
+    const deploymentKey =
+      'platform-generated-value-that-must-not-be-exported';
+
+    const evidence = collectVercelRuntimeEvidence({
+      VERCEL: '1',
+      VERCEL_DEPLOYMENT_KEY: deploymentKey,
+    });
+
+    const variable =
+      evidence.environment.variables.VERCEL_DEPLOYMENT_KEY;
+
+    expect(variable.present).toBe(true);
+    expect(variable.classification).toBe('secret');
+    expect(variable.migration).toBe(
+      'REQUIRES_PLATFORM_CONTROL_PLANE'
+    );
+    expect(variable.redacted).toBe(true);
+    expect(variable.value).toBeNull();
+
+    expect(variable.secretMigration).toEqual({
+      secretRef: 'vercel:production:VERCEL_DEPLOYMENT_KEY',
+      valueSource: 'vercel-system',
+      recoveryAction: 'PLATFORM_GENERATED_DO_NOT_COPY',
+    });
+
+    expect(
+      evidence.vercel.systemEnvironment.VERCEL_DEPLOYMENT_KEY
+    ).toEqual(variable);
+
+    expect(
+      evidence.vercel.systemEnvironment.VERCEL_DEPLOYMENT_KEY.value
+    ).toBeNull();
+
+    expect(JSON.stringify(evidence)).not.toContain(deploymentKey);
+  });
+
+  it('does not classify framework variables as secrets solely because PRIVATE appears in the name', () => {
+    const value = 'framework-runtime-sentinel-that-must-not-be-exported';
+
+    const evidence = collectVercelRuntimeEvidence({
+      __NEXT_PRIVATE_PREBUNDLED_REACT: value,
+    });
+
+    const variable =
+      evidence.environment.variables.__NEXT_PRIVATE_PREBUNDLED_REACT;
+
+    expect(variable.classification).toBe('runtime');
+    expect(variable.migration).toBe('OBSERVATIONAL_ONLY');
+    expect(variable.redacted).toBe(true);
+    expect(variable.value).toBeNull();
+    expect(JSON.stringify(evidence)).not.toContain(value);
+  });
+
+  it('adds reusable migration metadata to recoverable application secrets', () => {
+    const secret = 'must-remain-redacted';
+
+    const evidence = collectVercelRuntimeEvidence({
+      GOOGLE_CLIENT_SECRET: secret,
+    });
+
+    const variable =
+      evidence.environment.variables.GOOGLE_CLIENT_SECRET;
+
+    expect(variable.classification).toBe('secret');
+    expect(variable.redacted).toBe(true);
+    expect(variable.value).toBeNull();
+
+    expect(variable.secretMigration).toEqual({
+      secretRef: 'vercel:production:GOOGLE_CLIENT_SECRET',
+      valueSource: 'vercel-environment',
+      recoveryAction: 'RECOVER_OR_ROTATE_SECRET',
+    });
+
+    expect(JSON.stringify(evidence)).not.toContain(secret);
+  });
+
+  it('uses the actual Vercel target environment in secret migration references', () => {
+    const secret = 'must-remain-redacted';
+
+    const evidence = collectVercelRuntimeEvidence({
+      VERCEL: '1',
+      VERCEL_ENV: 'preview',
+      VERCEL_TARGET_ENV: 'preview',
+      GOOGLE_CLIENT_SECRET: secret,
+    });
+
+    const variable =
+      evidence.environment.variables.GOOGLE_CLIENT_SECRET;
+
+    expect(variable.secretMigration).toEqual({
+      secretRef: 'vercel:preview:GOOGLE_CLIENT_SECRET',
+      valueSource: 'vercel-environment',
+      recoveryAction: 'RECOVER_OR_ROTATE_SECRET',
+    });
+
+    expect(JSON.stringify(evidence)).not.toContain(secret);
+  });
+
+  it('describes unknown environment values as redacted runtime observations', () => {
+    const evidence = collectVercelRuntimeEvidence({
+      INTERNAL_FEATURE_FLAG: 'unknown-runtime-value',
+    });
+
+    expect(evidence.limitations).toContain(
+      'Secret values and unknown runtime environment values are intentionally redacted.'
+    );
+
+    expect(evidence.limitations).not.toContain(
+      'Secret and unclassified configuration values are intentionally redacted.'
+    );
   });
 
   it('records empty variables without inventing a value', () => {
@@ -157,7 +292,7 @@ describe('Vercel runtime evidence', () => {
       VERCEL: '1',
     });
 
-    expect(evidence.schemaVersion).toBe('1.0');
+    expect(evidence.schemaVersion).toBe('1.1');
     expect(evidence.type).toBe(
       'panoramablock-vercel-runtime-evidence'
     );

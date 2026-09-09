@@ -151,8 +151,8 @@ describe('Vercel runtime evidence route', () => {
     );
 
     vi.stubEnv(
-      'INTERNAL_FEATURE_FLAG',
-      'internal-value-that-remains-redacted'
+      'AUTH_API_BASE',
+      'https://auth.example.test'
     );
 
     const fetchMock = vi.fn().mockResolvedValue(
@@ -220,6 +220,7 @@ describe('Vercel runtime evidence route', () => {
     };
 
     expect(body.schemaVersion).toBe('1.0');
+    expect(body.evidence.schemaVersion).toBe('1.1');
     expect(body.type).toBe(
       'panoramablock-vercel-runtime-evidence-export'
     );
@@ -256,12 +257,13 @@ describe('Vercel runtime evidence route', () => {
     );
 
     expect(
-      body.evidence.environment.variables.INTERNAL_FEATURE_FLAG
+      body.evidence.environment.variables.AUTH_API_BASE
     ).toEqual(
       expect.objectContaining({
-        value: null,
-        redacted: true,
+        value: 'https://auth.example.test',
+        redacted: false,
         classification: 'configuration',
+        migration: 'REPLICABLE_FROM_EXPORT',
       })
     );
 
@@ -270,9 +272,6 @@ describe('Vercel runtime evidence route', () => {
     expect(serialized).not.toContain(SIGNATURE);
     expect(serialized).not.toContain(
       'production-secret-that-must-never-be-exported'
-    );
-    expect(serialized).not.toContain(
-      'internal-value-that-remains-redacted'
     );
   });
 

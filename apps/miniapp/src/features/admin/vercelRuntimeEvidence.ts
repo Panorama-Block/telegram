@@ -11,6 +11,14 @@ export type MigrationRequirement =
   | 'REQUIRES_PLATFORM_CONTROL_PLANE'
   | 'OBSERVATIONAL_ONLY';
 
+export interface SecretMigrationDescriptor {
+  secretRef: string;
+  valueSource: 'vercel-environment' | 'vercel-system';
+  recoveryAction:
+    | 'RECOVER_OR_ROTATE_SECRET'
+    | 'PLATFORM_GENERATED_DO_NOT_COPY';
+}
+
 export interface VercelEnvironmentVariableEvidence {
   present: boolean;
   empty: boolean;
@@ -19,10 +27,11 @@ export interface VercelEnvironmentVariableEvidence {
   migration: MigrationRequirement;
   redacted: boolean;
   value: string | null;
+  secretMigration?: SecretMigrationDescriptor;
 }
 
 export interface VercelRuntimeEvidence {
-  schemaVersion: '1.0';
+  schemaVersion: '1.1';
   type: 'panoramablock-vercel-runtime-evidence';
   generatedAt: string;
 
@@ -67,7 +76,66 @@ export interface VercelRuntimeEvidence {
 }
 
 const SECRET_NAME_PATTERN =
-  /(^|_)(SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE|PRIVATEKEY|PRIVATE_KEY|API_KEY|APIKEY|AUTH|AUTHORIZATION|COOKIE|SESSION|CREDENTIAL|CREDENTIALS|CLIENT_SECRET|SIGNING_KEY|ENCRYPTION_KEY|DATABASE_URL|DB_URL|CONNECTION_STRING)($|_)/i;
+  /(^|_)(SECRET|TOKEN|PASSWORD|PASSWD|PRIVATEKEY|PRIVATE_KEY|API_KEY|APIKEY|AUTHORIZATION|COOKIE|SESSION|CREDENTIAL|CREDENTIALS|CLIENT_SECRET|SIGNING_KEY|ENCRYPTION_KEY|DATABASE_URL|DB_URL|CONNECTION_STRING|KEY)($|_)/i;
+
+const PLATFORM_GENERATED_SECRET_NAMES = new Set([
+  'VERCEL_DEPLOYMENT_KEY',
+]);
+
+const APPLICATION_CONFIGURATION_NAMES = new Set([
+  'ADMIN_EMAIL',
+  'AGENTS_API_BASE',
+  'AGENTS_DEBUG_SHAPE',
+  'AGENTS_REQUEST_TIMEOUT_MS',
+  'AGENTS_RESPONSE_MESSAGE_PATH',
+  'AI_API_URL',
+  'AUTH_API_BASE',
+  'DCA_API_BASE',
+  'DEBUG',
+  'DEFAULT_CHAIN_ID',
+  'GMAIL_FROM',
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'GOOGLE_REFRESH_TOKEN',
+  'GOOGLE_SHEET_ID',
+  'MINIAPP_DEBUG_CHAT',
+  'NEXT_PUBLIC_AGENTS_API_BASE',
+  'NEXT_PUBLIC_AGENTS_REQUEST_TIMEOUT_MS',
+  'NEXT_PUBLIC_BASE_EXECUTION_API_URL',
+  'NEXT_PUBLIC_BRIDGE_API_BASE',
+  'NEXT_PUBLIC_DEMO_MODE',
+  'NEXT_PUBLIC_GATEWAY_URL',
+  'NEXT_PUBLIC_LENDING_API_URL',
+  'NEXT_PUBLIC_MINIAPP_DEBUG_CHAT',
+  'NEXT_PUBLIC_STAKING_API_URL',
+  'NEXT_PUBLIC_SWAP_API_BASE',
+  'NEXT_PUBLIC_THIRDWEB_CLIENT_ID',
+  'NEXT_PUBLIC_VERCEL_ENV',
+  'NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA',
+  'NEXT_PUBLIC_VERCEL_URL',
+  'NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID',
+  'NEXT_PUBLIC_WC_PROJECT_ID',
+  'NEXT_PUBLIC_YIELD_API_URL',
+  'NODE_ENV',
+  'PUBLIC_GATEWAY_URL',
+  'PUBLIC_WEBAPP_URL',
+  'SWAP_API_BASE',
+  'TELEGRAM_BOT_USERNAME',
+  'THIRDWEB_CLIENT_ID',
+  'TON_TWA_RETURN_URL',
+  'VITE_AGENTS_API_BASE',
+  'VITE_AUTH_API_BASE',
+  'VITE_GATEWAY_BASE',
+  'VITE_LENDING_API_BASE',
+  'VITE_STAKING_API_URL',
+  'VITE_SWAP_API_BASE',
+  'VITE_TELEGRAM_BOT_USERNAME',
+  'VITE_THIRDWEB_CLIENT_ID',
+  'VITE_TON_TWA_RETURN_URL',
+  'VITE_YIELD_API_URL',
+  'WALLETCONNECT_PROJECT_ID',
+  'YIELD_SERVICE_URL',
+]);
 
 function isExplicitlyPublicName(name: string): boolean {
   return (
@@ -86,7 +154,10 @@ function isVercelSystemName(name: string): boolean {
 function classifyEnvironmentVariable(
   name: string
 ): EnvironmentVariableClassification {
-  if (SECRET_NAME_PATTERN.test(name)) {
+  if (
+    PLATFORM_GENERATED_SECRET_NAMES.has(name) ||
+    SECRET_NAME_PATTERN.test(name)
+  ) {
     return 'secret';
   }
 
@@ -98,20 +169,21 @@ function classifyEnvironmentVariable(
     return 'vercel-system';
   }
 
-  if (
-    name === 'NODE_ENV' ||
-    name === 'TZ' ||
-    name === 'LANG'
-  ) {
-    return 'runtime';
+  if (APPLICATION_CONFIGURATION_NAMES.has(name)) {
+    return 'configuration';
   }
 
-  return 'configuration';
+  return 'runtime';
 }
 
 function migrationRequirement(
+  name: string,
   classification: EnvironmentVariableClassification
 ): MigrationRequirement {
+  if (PLATFORM_GENERATED_SECRET_NAMES.has(name)) {
+    return 'REQUIRES_PLATFORM_CONTROL_PLANE';
+  }
+
   if (classification === 'secret') {
     return 'REQUIRES_SECRET_RECOVERY';
   }
@@ -143,10 +215,13 @@ function mayExposeValue(
     return true;
   }
 
+  if (classification === 'configuration') {
+    return true;
+  }
+
   if (
-    name === 'NODE_ENV' ||
-    name === 'TZ' ||
-    name === 'LANG'
+    classification === 'runtime' &&
+    (name === 'TZ' || name === 'LANG')
   ) {
     return true;
   }
@@ -154,23 +229,59 @@ function mayExposeValue(
   return false;
 }
 
+function secretMigrationDescriptor(
+  name: string,
+  classification: EnvironmentVariableClassification,
+  deploymentEnvironment: string
+): SecretMigrationDescriptor | undefined {
+  if (classification !== 'secret') {
+    return undefined;
+  }
+
+  if (PLATFORM_GENERATED_SECRET_NAMES.has(name)) {
+    return {
+      secretRef: `vercel:${deploymentEnvironment}:${name}`,
+      valueSource: 'vercel-system',
+      recoveryAction: 'PLATFORM_GENERATED_DO_NOT_COPY',
+    };
+  }
+
+  return {
+    secretRef: `vercel:${deploymentEnvironment}:${name}`,
+    valueSource: 'vercel-environment',
+    recoveryAction: 'RECOVER_OR_ROTATE_SECRET',
+  };
+}
+
 function describeEnvironmentVariable(
   name: string,
-  value: string | undefined
+  value: string | undefined,
+  deploymentEnvironment: string
 ): VercelEnvironmentVariableEvidence {
   const present = value !== undefined;
   const actualValue = value ?? '';
   const classification = classifyEnvironmentVariable(name);
   const expose = present && mayExposeValue(name, classification);
 
+  const secretMigration =
+    secretMigrationDescriptor(
+      name,
+      classification,
+      deploymentEnvironment
+    );
+
   return {
     present,
     empty: present && actualValue.length === 0,
     length: present ? actualValue.length : 0,
     classification,
-    migration: migrationRequirement(classification),
+    migration: migrationRequirement(
+      name,
+      classification
+    ),
     redacted: present && !expose,
     value: expose ? actualValue : null,
+    ...(secretMigration ? { secretMigration } : {}),
   };
 }
 
@@ -179,10 +290,16 @@ function collectEnvironment(
 ): Record<string, VercelEnvironmentVariableEvidence> {
   const result: Record<string, VercelEnvironmentVariableEvidence> = {};
 
+  const deploymentEnvironment =
+    environment.VERCEL_TARGET_ENV ||
+    environment.VERCEL_ENV ||
+    'production';
+
   for (const name of Object.keys(environment).sort()) {
     result[name] = describeEnvironmentVariable(
       name,
-      environment[name]
+      environment[name],
+      deploymentEnvironment
     );
   }
 
@@ -208,7 +325,7 @@ export function collectVercelRuntimeEvidence(
   const memory = process.memoryUsage();
 
   return {
-    schemaVersion: '1.0',
+    schemaVersion: '1.1',
     type: 'panoramablock-vercel-runtime-evidence',
     generatedAt: new Date().toISOString(),
 
@@ -247,7 +364,7 @@ export function collectVercelRuntimeEvidence(
 
     limitations: [
       'This evidence contains only information visible to the running application process.',
-      'Secret and unclassified configuration values are intentionally redacted.',
+      'Secret values and unknown runtime environment values are intentionally redacted.',
       'Vercel account, team, billing, project-control-plane, domain and integration settings are not enumerable from process.env unless Vercel exposes them to this runtime.',
       'Redacted values must be recovered or rotated separately before replication.',
     ],
