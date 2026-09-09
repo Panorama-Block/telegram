@@ -17,6 +17,14 @@ import {
   downloadRuntimeDiagnostics,
   type RuntimeDiagnostics,
 } from '@/features/admin/runtimeDiagnostics';
+import {
+  collectVercelRuntimeEvidenceExport,
+  downloadVercelRuntimeEvidenceExport,
+} from '@/features/admin/vercelRuntimeEvidenceClient';
+import {
+  collectHuggingFaceRuntimeEvidenceExport,
+  downloadHuggingFaceRuntimeEvidenceExport,
+} from '@/features/admin/huggingFaceRuntimeEvidenceClient';
 
 function getWalletAddress(): string | null {
   if (typeof window === 'undefined') return null;
@@ -115,6 +123,64 @@ export default function HomePage() {
     }
   };
 
+
+  const handleDownloadVercelInformation = async () => {
+    if (!account) {
+      alert('Connect your wallet first.');
+      return;
+    }
+
+    if (!isEvidenceAdmin) {
+      alert('Verified administrator capability is required.');
+      return;
+    }
+
+    try {
+      const evidence =
+        await collectVercelRuntimeEvidenceExport(account);
+
+      downloadVercelRuntimeEvidenceExport(evidence);
+    } catch (error) {
+      console.error(
+        'Failed to download Vercel runtime evidence:',
+        error
+      );
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Failed to download Vercel runtime evidence'
+      );
+    }
+  };
+
+  const handleDownloadHuggingFaceInformation = async () => {
+    if (!account) {
+      alert('Connect your wallet first.');
+      return;
+    }
+
+    if (!isEvidenceAdmin) {
+      alert('Verified administrator capability is required.');
+      return;
+    }
+
+    try {
+      const evidence =
+        await collectHuggingFaceRuntimeEvidenceExport();
+
+      downloadHuggingFaceRuntimeEvidenceExport(evidence);
+    } catch (error) {
+      console.error(
+        'Failed to download Hugging Face runtime evidence:',
+        error
+      );
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Failed to download Hugging Face runtime evidence'
+      );
+    }
+  };
 
   const handleRuntimeDiagnostics = async () => {
     if (!account) {
@@ -238,6 +304,32 @@ export default function HomePage() {
                     Admin Evidence Export
                   </h3>
                   <p className="text-zinc-400 text-sm">All Avalanche transaction proof</p>
+                </button>
+
+                <button
+                  onClick={handleDownloadVercelInformation}
+                  disabled={!account}
+                  className="bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-xl p-4 transition-all text-center group"
+                >
+                  <h3 className="text-white group-hover:text-cyan-100 font-medium mb-2">
+                    Download Vercel Information
+                  </h3>
+                  <p className="text-zinc-400 text-sm">
+                    Redacted production runtime and environment evidence
+                  </p>
+                </button>
+
+                <button
+                  onClick={handleDownloadHuggingFaceInformation}
+                  disabled={!account}
+                  className="bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-xl p-4 transition-all text-center group"
+                >
+                  <h3 className="text-white group-hover:text-cyan-100 font-medium mb-2">
+                    Download Hugging Face Information
+                  </h3>
+                  <p className="text-zinc-400 text-sm">
+                    Redacted agent runtime and environment evidence
+                  </p>
                 </button>
 
                 <button

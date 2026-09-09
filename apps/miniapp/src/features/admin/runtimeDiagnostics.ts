@@ -151,7 +151,7 @@ function agentsApiBase(): string | null {
   );
 }
 
-async function probeZicoRuntimeEvidence(): Promise<ZicoRuntimeEvidenceProbeResult> {
+export async function probeZicoRuntimeEvidence(): Promise<ZicoRuntimeEvidenceProbeResult> {
   const baseUrl = agentsApiBase();
   const authToken =
     typeof window !== 'undefined'
