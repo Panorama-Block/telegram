@@ -8,62 +8,38 @@ function read(relativePath: string): string {
   return fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
 }
 
-describe('Zico runtime diagnostics admin UI contract', () => {
+describe('retired Zico runtime diagnostics admin UI contract', () => {
   const home = read('home/page.tsx');
+  const huggingFaceClient = read(
+    '../features/admin/huggingFaceRuntimeEvidenceClient.ts'
+  );
+  const runtimeDiagnostics = read(
+    '../features/admin/runtimeDiagnostics.ts'
+  );
 
-  test('stores collected runtime diagnostics only in component state', () => {
-    expect(home).toContain('runtimeDiagnostics');
-    expect(home).toContain('setRuntimeDiagnostics');
-    expect(home).not.toContain(
-      "localStorage.setItem('runtimeDiagnostics'"
+  test('removes the redundant combined Runtime Diagnostics home surface', () => {
+    expect(home).not.toContain('Runtime Diagnostics');
+    expect(home).not.toContain('Zico Runtime');
+    expect(home).not.toContain('handleRuntimeDiagnostics');
+    expect(home).not.toContain('runtimeDiagnostics');
+    expect(home).not.toContain('showRuntimeDiagnosticsJson');
+    expect(home).not.toContain('downloadRuntimeDiagnostics');
+  });
+
+  test('retains the dedicated Vercel and Hugging Face evidence actions', () => {
+    expect(home).toContain('Download Vercel Information');
+    expect(home).toContain('Download Hugging Face Information');
+    expect(home).toContain('handleDownloadVercelInformation');
+    expect(home).toContain('handleDownloadHuggingFaceInformation');
+  });
+
+  test('retains the Zico evidence probe required by the Hugging Face export', () => {
+    expect(huggingFaceClient).toContain('probeZicoRuntimeEvidence');
+    expect(huggingFaceClient).toContain(
+      "@/features/admin/runtimeDiagnostics"
     );
-    expect(home).not.toContain(
-      'localStorage.setItem("runtimeDiagnostics"'
+    expect(runtimeDiagnostics).toContain(
+      'export async function probeZicoRuntimeEvidence'
     );
-  });
-
-  test('collects diagnostics and retains the redacted result for inspection', () => {
-    expect(home).toContain('collectRuntimeDiagnostics');
-    expect(home).toContain('setRuntimeDiagnostics(diagnostics)');
-  });
-
-  test('renders an admin-only Zico Runtime diagnostic surface', () => {
-    expect(home).toContain('Zico Runtime');
-    expect(home).toContain('zicoRuntimeEvidence');
-    expect(home).toContain('effective_auth_mode');
-    expect(home).toContain('service');
-    expect(home).toContain('tenant');
-  });
-
-  test('provides explicit View JSON and Download JSON actions', () => {
-    expect(home).toContain('View JSON');
-    expect(home).toContain('Download JSON');
-    expect(home).toContain('downloadRuntimeDiagnostics(runtimeDiagnostics)');
-  });
-
-  test('renders JSON only from the collected redacted diagnostic object', () => {
-    expect(home).toContain(
-      'JSON.stringify(runtimeDiagnostics, null, 2)'
-    );
-    expect(home).not.toContain(
-      "JSON.stringify(localStorage.getItem('authToken')"
-    );
-    expect(home).not.toContain(
-      'JSON.stringify(localStorage.getItem("authToken")'
-    );
-  });
-
-  test('supports closing the JSON inspection surface', () => {
-    expect(home).toContain('showRuntimeDiagnosticsJson');
-    expect(home).toContain('setShowRuntimeDiagnosticsJson(false)');
-    expect(home).toContain('Close');
-  });
-
-  test('keeps the diagnostics surface behind the existing verified admin gate', () => {
-    const adminGate = home.indexOf('{isEvidenceAdmin && (');
-    const zicoRuntime = home.indexOf('Zico Runtime');
-
-    expect(adminGate).toBeGreaterThanOrEqual(0);
-    expect(zicoRuntime).toBeGreaterThan(adminGate);
   });
 });
