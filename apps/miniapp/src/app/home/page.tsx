@@ -10,6 +10,7 @@ import { Plus } from 'lucide-react';
 import {
   downloadAvaxAdminEvidenceExport,
   downloadAvaxEvidenceExport,
+  downloadUserEstateEvidenceExport,
   getAvaxAdminEvidenceStatus,
 } from '@/features/swap/avaxSwapApi';
 import {
@@ -200,6 +201,43 @@ export default function HomePage() {
     }
   };
 
+  const handleDownloadUserEstateEvidence = async () => {
+    if (!account) {
+      alert('Connect your wallet first.');
+      return;
+    }
+
+    if (!isEvidenceAdmin) {
+      alert('Verified administrator capability is required.');
+      return;
+    }
+
+    try {
+      const res = await downloadUserEstateEvidenceExport(account);
+      const blob = await res.blob();
+      const disposition = res.headers.get('content-disposition');
+      const match = disposition?.match(/filename="?([^";]+)"?/i);
+      const filename =
+        match?.[1] || 'panoramablock-user-estate-evidence.json';
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download user estate evidence:', error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Failed to download user estate evidence'
+      );
+    }
+  };
+
 
   return (
     <ProtectedRoute>
@@ -266,6 +304,19 @@ export default function HomePage() {
                     Admin Evidence Export
                   </h3>
                   <p className="text-zinc-400 text-sm">All Avalanche transaction proof</p>
+                </button>
+
+                <button
+                  onClick={handleDownloadUserEstateEvidence}
+                  disabled={!account}
+                  className="bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-xl p-4 transition-all text-center group"
+                >
+                  <h3 className="text-white group-hover:text-cyan-100 font-medium mb-2">
+                    User Estate Evidence Export
+                  </h3>
+                  <p className="text-zinc-400 text-sm">
+                    Registered users, profiles and wallet relationships
+                  </p>
                 </button>
 
                 <button
