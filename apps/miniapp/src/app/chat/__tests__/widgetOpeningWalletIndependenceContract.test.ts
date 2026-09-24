@@ -14,6 +14,14 @@ describe('widget opening wallet-independence contract', () => {
     effectStart,
   );
 
+  const routerStart = source.indexOf(
+    '<LiquidStakingRouter',
+  );
+  const routerEnd = source.indexOf(
+    '</AnimatePresence>',
+    routerStart,
+  );
+
   test('locates the query-driven widget-opening effect', () => {
     expect(effectStart).toBeGreaterThanOrEqual(0);
     expect(effectEnd).toBeGreaterThan(effectStart);
@@ -47,7 +55,20 @@ describe('widget opening wallet-independence contract', () => {
     expect(widgetOpeningEffect).toContain('setShowYieldWidget(true)');
   });
 
-  test('does not remove the legacy network-switch helper from unrelated flows', () => {
+  test('opens Lido protocol selection without wallet or network interaction', () => {
+    expect(routerStart).toBeGreaterThanOrEqual(0);
+    expect(routerEnd).toBeGreaterThan(routerStart);
+
+    const liquidStakingRouter = source.slice(routerStart, routerEnd);
+
+    expect(liquidStakingRouter).toContain('onSelectLido=');
+    expect(liquidStakingRouter).toContain('setShowStakingWidget(true)');
+    expect(liquidStakingRouter).not.toContain('autoSwitchNetwork');
+    expect(liquidStakingRouter).not.toContain('window.ethereum');
+    expect(liquidStakingRouter).not.toContain('ethereum.request');
+  });
+
+  test('keeps the legacy network-switch helper only for flows not yet migrated by this contract', () => {
     expect(source).toContain(
       'async function autoSwitchNetwork(networkName: string): Promise<boolean>',
     );

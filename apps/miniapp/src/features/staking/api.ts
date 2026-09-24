@@ -1,11 +1,10 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useActiveAccount, useActiveWallet, useSwitchActiveWalletChain } from 'thirdweb/react';
+import { useActiveAccount, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { defineChain } from 'thirdweb';
 import {
   sendAccountTransactionNonEvidence,
-  sendProviderTransactionNonEvidence,
 } from '@/features/execution/nonEvidenceTransactionExecutor';
 import { parseAmountToWei } from '@/features/swap/utils';
 import { safeExecuteTransactionV2 } from '@/shared/utils/transactionUtilsV2';
@@ -160,7 +159,6 @@ function buildStakingExecutionKey(input: {
 class StakingApiClient {
   private baseUrl: string;
   private account: any;
-  private activeWallet: any;
   private switchChain: SwitchChainFn | null;
 
   // Cache for Lido protocol data to prevent over-fetching and UI flicker.
@@ -170,8 +168,7 @@ class StakingApiClient {
   private readonly NULL_APY_CACHE_DURATION = 15 * 1000; // retry quickly when APY is missing
   private readonly STALE_AFTER_MS = 15 * 60 * 1000; // 15 minutes
 
-  constructor(account: any, switchChain?: SwitchChainFn, activeWallet?: any) {
-    this.activeWallet = activeWallet ?? null;
+  constructor(account: any, switchChain?: SwitchChainFn) {
     this.switchChain = switchChain || null;
 
     // Use env var for direct access (SSR/tests), otherwise use Next.js rewrite proxy.
@@ -185,178 +182,6 @@ class StakingApiClient {
     }
 
     this.account = account;
-  }
-
-  private getPreferredInjectedProviderId(): string {
-    const raw =
-      this.activeWallet?.id ||
-      this.activeWallet?.walletId ||
-      this.account?.walletId ||
-      this.account?.wallet?.id ||
-      '';
-    return typeof raw === 'string' ? raw.toLowerCase() : '';
-  }
-
-  private providerMatchesPreferredWallet(provider: any, preferredWalletId: string): boolean {
-    if (!preferredWalletId) return false;
-    if (preferredWalletId.includes('metamask')) return !!provider?.isMetaMask;
-    if (preferredWalletId.includes('phantom')) return !!provider?.isPhantom;
-    if (preferredWalletId.includes('coinbase')) return !!provider?.isCoinbaseWallet;
-    if (preferredWalletId.includes('rabby')) return !!provider?.isRabby;
-    return false;
-  }
-
-  private async resolveInjectedProvider(address?: string): Promise<any | null> {
-    const ethereum = typeof window !== 'undefined' ? (window as any)?.ethereum : null;
-    if (!ethereum) return null;
-
-    const candidates = Array.isArray(ethereum?.providers) && ethereum.providers.length > 0
-      ? ethereum.providers
-      : [ethereum];
-
-    const normalizedAddress = typeof address === 'string' ? address.toLowerCase() : '';
-    const preferredWalletId = this.getPreferredInjectedProviderId();
-
-    if (normalizedAddress) {
-      const selectedAddressMatch = candidates.find((provider: any) => {
-        const selected = typeof provider?.selectedAddress === 'string' ? provider.selectedAddress.toLowerCase() : null;
-        return selected === normalizedAddress;
-      });
-      if (selectedAddressMatch) return selectedAddressMatch;
-    }
-
-    if (normalizedAddress) {
-      for (const provider of candidates) {
-        if (typeof provider?.request !== 'function') continue;
-        try {
-          const accounts = await provider.request({ method: 'eth_accounts' });
-          if (Array.isArray(accounts) && accounts.some((item) => typeof item === 'string' && item.toLowerCase() === normalizedAddress)) {
-            return provider;
-          }
-        } catch {}
-      }
-    }
-
-    const preferredProvider = candidates.find((provider: any) =>
-      this.providerMatchesPreferredWallet(provider, preferredWalletId),
-    );
-    if (preferredProvider) return preferredProvider;
-
-    return candidates[0] ?? null;
-  }
-
-  private isUnsupportedProviderRequest(error: unknown): boolean {
-    const anyError = error as any;
-    const code = Number(anyError?.code);
-    const message = String(anyError?.message || anyError?.shortMessage || anyError || '').toLowerCase();
-    return (
-      code === -32601 ||
-      message.includes('method not found') ||
-      message.includes('unsupported method') ||
-      message.includes('not implemented')
-    );
-  }
-
-  private normalizeAddress(value: unknown): string | null {
-    if (typeof value !== 'string') return null;
-    const trimmed = value.trim();
-    if (!/^0x[a-fA-F0-9]{40}$/.test(trimmed)) return null;
-    return trimmed.toLowerCase();
-  }
-
-  private normalizeHexData(value: unknown): string | null {
-    if (typeof value !== 'string') return null;
-    const trimmed = value.trim().toLowerCase();
-    if (!trimmed.startsWith('0x')) return null;
-    if (!/^0x[0-9a-f]*$/.test(trimmed)) return null;
-    return trimmed;
-  }
-
-  private async recoverRecentTxHashByPayload(params: {
-    provider: any;
-    expectedChainId: number;
-    from: string;
-    to?: string | null;
-    data?: string | null;
-    timeoutMs?: number;
-    lookbackBlocks?: number;
-  }): Promise<string | null> {
-    const {
-      provider,
-      expectedChainId,
-      from,
-      to,
-      data,
-      timeoutMs = 25_000,
-      lookbackBlocks = 12,
-    } = params;
-
-    if (!provider || typeof provider.request !== 'function') return null;
-    const normalizedFrom = this.normalizeAddress(from);
-    if (!normalizedFrom) return null;
-    const normalizedTo = this.normalizeAddress(to);
-    const normalizedData = this.normalizeHexData(data);
-
-    if (!normalizedTo && !normalizedData) return null;
-
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < timeoutMs) {
-      try {
-        const chainHex = await provider.request({ method: 'eth_chainId' });
-        const chainId =
-          typeof chainHex === 'string' && /^0x[0-9a-fA-F]+$/.test(chainHex)
-            ? Number.parseInt(chainHex, 16)
-            : null;
-        if (chainId != null && chainId !== expectedChainId) {
-          return null;
-        }
-
-        const latestHex = await provider.request({ method: 'eth_blockNumber' });
-        const latest =
-          typeof latestHex === 'string' && /^0x[0-9a-fA-F]+$/.test(latestHex)
-            ? Number.parseInt(latestHex, 16)
-            : null;
-        if (latest == null) break;
-
-        for (let offset = 0; offset <= lookbackBlocks; offset++) {
-          const blockNum = latest - offset;
-          if (blockNum < 0) break;
-
-          const blockHex = `0x${blockNum.toString(16)}`;
-          const block = await provider.request({
-            method: 'eth_getBlockByNumber',
-            params: [blockHex, true],
-          });
-
-          const txs = Array.isArray((block as any)?.transactions) ? (block as any).transactions : [];
-          for (const tx of txs) {
-            const txFrom = this.normalizeAddress((tx as any)?.from);
-            if (txFrom !== normalizedFrom) continue;
-
-            if (normalizedTo) {
-              const txTo = this.normalizeAddress((tx as any)?.to);
-              if (txTo !== normalizedTo) continue;
-            }
-
-            if (normalizedData) {
-              const txData = this.normalizeHexData((tx as any)?.input ?? (tx as any)?.data);
-              if (txData !== normalizedData) continue;
-            }
-
-            const txHash = (tx as any)?.hash;
-            if (typeof txHash === 'string' && /^0x[a-fA-F0-9]{64}$/.test(txHash)) {
-              return txHash;
-            }
-          }
-        }
-      } catch {
-        // Ignore and retry.
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-    }
-
-    return null;
   }
 
   private toWei(amount: string, decimals: number = 18): string {
@@ -1052,33 +877,6 @@ class StakingApiClient {
     return result.transactionHash;
   }
 
-  async recoverTransactionHashByPayload(params: {
-    chainId?: number;
-    to?: string | null;
-    data?: string | null;
-    timeoutMs?: number;
-    lookbackBlocks?: number;
-  }): Promise<string | null> {
-    if (!this.account?.address) return null;
-
-    const selectedProvider = await this.resolveInjectedProvider(this.account.address);
-    if (!selectedProvider || typeof selectedProvider.request !== 'function') return null;
-
-    const chainId = Number.isFinite(Number(params.chainId)) ? Number(params.chainId) : 1;
-    const to = typeof params.to === 'string' ? params.to : undefined;
-    const data = typeof params.data === 'string' ? params.data : undefined;
-
-    return await this.recoverRecentTxHashByPayload({
-      provider: selectedProvider,
-      expectedChainId: chainId,
-      from: this.account.address,
-      to,
-      data,
-      timeoutMs: params.timeoutMs,
-      lookbackBlocks: params.lookbackBlocks,
-    });
-  }
-
   async executeTransactionWithStatus(txData: any): Promise<TransactionExecutionStatus> {
     const describeUnknown = (err: unknown): string => {
       if (err instanceof Error) return err.message || 'Unknown error';
@@ -1172,18 +970,6 @@ class StakingApiClient {
 
       if (expectedChainId !== 1) {
         throw new Error('This transaction must be executed on Ethereum Mainnet (chainId 1). Please switch network in the app and try again.');
-      }
-
-      // Trust-first UX: never trigger chain switch popups automatically.
-      // If we can detect the current chain and it's not Ethereum mainnet, fail fast with a clear message.
-      const walletProvider = await this.resolveInjectedProvider(this.account?.address);
-      const currentChainHex = typeof walletProvider?.chainId === 'string' ? walletProvider.chainId : null;
-      const currentChainId =
-        currentChainHex && /^0x[0-9a-fA-F]+$/.test(currentChainHex)
-          ? Number.parseInt(currentChainHex, 16)
-          : null;
-      if (currentChainId != null && currentChainId !== expectedChainId) {
-        throw new Error(`Wrong network (chainId ${currentChainId}). Switch to Ethereum Mainnet (chainId 1) and try again.`);
       }
 
       // Extract transaction data
@@ -1304,217 +1090,33 @@ class StakingApiClient {
         return await existingExecution;
       }
       const executionPromise = (async (): Promise<TransactionExecutionStatus> => {
-        const executionAttempt = safeExecuteTransactionV2(async () => {
-          const selectedProvider = await this.resolveInjectedProvider(this.account?.address);
-          const recoverHashFromWallet = async (options?: { timeoutMs?: number; lookbackBlocks?: number }) => {
-            return await this.recoverRecentTxHashByPayload({
-              provider: selectedProvider,
-              expectedChainId: expectedChainId,
-              from: this.account.address,
-              to: formattedTxData.to,
-              data: formattedTxData.data,
-              timeoutMs: options?.timeoutMs,
-              lookbackBlocks: options?.lookbackBlocks,
-            });
-          };
-          const sleep = async (ms: number) => {
-            await new Promise((resolve) => setTimeout(resolve, ms));
-          };
-          const raceBroadcastWithRecovery = async (
-            send: () => Promise<unknown>,
-          ): Promise<{ transactionHash: string }> => {
-            let settled = false;
-            const sendPromise = requestWithTimeout(
-              Promise.resolve(send()),
-              45_000,
-              'Wallet transaction broadcast',
-            )
-              .then((value) => {
-                settled = true;
-                return value;
-              })
-              .catch((error) => {
-                settled = true;
-                throw error;
-              });
-
-            const recoveryPromise = (async () => {
-              const startedAt = Date.now();
-              while (!settled && Date.now() - startedAt < 55_000) {
-                const recoveredHash = await recoverHashFromWallet({
-                  timeoutMs: 2_500,
-                  lookbackBlocks: 24,
-                });
-                if (recoveredHash) return recoveredHash;
-                if (settled) break;
-                await sleep(600);
-              }
-              return null;
-            })();
-
-            const raceResult = await Promise.race([
-              sendPromise.then((value) => ({ type: 'send' as const, value })),
-              (async () => {
-                const recoveredHash = await recoveryPromise;
-                if (!recoveredHash) {
-                  return await new Promise<never>(() => {});
-                }
-                settled = true;
-                return { type: 'recovered' as const, hash: recoveredHash };
-              })(),
-            ]);
-
-            if (raceResult.type === 'recovered') {
-              void sendPromise.catch(() => {});
-              return { transactionHash: raceResult.hash };
-            }
-
-            const directHash = extractTxHash(raceResult.value);
-            if (directHash) {
-              return { transactionHash: directHash };
-            }
-
-            const recoveredAfterSend = await recoverHashFromWallet({
-              timeoutMs: 8_000,
-              lookbackBlocks: 24,
-            });
-            if (recoveredAfterSend) {
-              return { transactionHash: recoveredAfterSend };
-            }
-
-            throw new Error('Wallet submitted transaction without a hash.');
-          };
-          const canUseInjectedProvider =
-            !!selectedProvider &&
-            typeof selectedProvider.request === 'function' &&
-            typeof this.account?.address === 'string';
-
-          if (canUseInjectedProvider) {
-            const providerTxPayload: Record<string, unknown> = {
-              from: this.account.address,
-              to: formattedTxData.to,
-              data: formattedTxData.data,
-              value: formattedTxData.value ?? '0x0',
-            };
-            if (formattedTxData.gas) providerTxPayload.gas = formattedTxData.gas;
-            if (formattedTxData.gasPrice) providerTxPayload.gasPrice = formattedTxData.gasPrice;
-
-            try {
-              return await raceBroadcastWithRecovery(() =>
-                Promise.resolve(
-                  sendProviderTransactionNonEvidence({
-                    chainId: expectedChainId,
-                    provider: selectedProvider,
-                    transaction: providerTxPayload,
-                  }),
-                ),
-              );
-            } catch (providerError) {
-              const providerErrorMessage =
-                providerError instanceof Error
-                  ? providerError.message
-                  : String(providerError);
-
-              if (
-                /requires evidence-bound execution|does not match declared chain/i.test(
-                  providerErrorMessage
-                )
-              ) {
-                throw providerError;
-              }
-
-              if (!this.isUnsupportedProviderRequest(providerError)) {
-                const recoveredProviderHash =
-                  await recoverHashFromWallet();
-
-                if (recoveredProviderHash) {
-                  return {
-                    transactionHash:
-                      recoveredProviderHash,
-                  };
-                }
-
-                throw providerError;
-              }
-
-              console.warn('[STAKING] Injected provider does not support eth_sendTransaction, falling back to account.sendTransaction.');
-            }
-          }
-
-          try {
-            return await raceBroadcastWithRecovery(() =>
-              Promise.resolve(
-                sendAccountTransactionNonEvidence({
-                  chainId: expectedChainId,
-                  account: this.account,
-                  transaction: formattedTxData,
-                })
-              ),
-            );
-          } catch (accountSendError) {
-            const accountSendErrorMessage =
-              accountSendError instanceof Error
-                ? accountSendError.message
-                : String(accountSendError);
-
-            if (
-              /requires evidence-bound execution|does not match declared chain/i.test(
-                accountSendErrorMessage
-              )
-            ) {
-              throw accountSendError;
-            }
-
-            const recoveredAccountHash =
-              await recoverHashFromWallet();
-
-            if (recoveredAccountHash) {
-              return {
-                transactionHash:
-                  recoveredAccountHash,
-              };
-            }
-
-            throw accountSendError;
-          }
-        });
-
-        let result: Awaited<ReturnType<typeof safeExecuteTransactionV2>>;
-        try {
-          result = await requestWithTimeout(
-            executionAttempt,
-            70_000,
-            'Wallet confirmation',
-          );
-        } catch (executionError) {
-          const timeoutMessage = describeUnknown(executionError);
-          const isTimeout = /timed out/i.test(timeoutMessage);
-          if (!isTimeout) {
-            throw executionError;
-          }
-
-          // Fallback: wallet may have broadcasted but never returned hash to the dapp.
-          const recoveryProvider = await this.resolveInjectedProvider(this.account?.address);
-          const recoveredHash = await this.recoverRecentTxHashByPayload({
-            provider: recoveryProvider,
-            expectedChainId: expectedChainId,
-            from: this.account.address,
-            to: formattedTxData.to,
-            data: formattedTxData.data,
-            timeoutMs: 15_000,
-            lookbackBlocks: 48,
-          });
-          if (recoveredHash) {
-            console.warn('[STAKING] Wallet confirmation timed out, but tx hash was recovered:', recoveredHash);
-            return { transactionHash: recoveredHash, confirmed: false };
-          }
-
+        if (!this.switchChain) {
           throw new Error(
-            `${timeoutMessage}. If you already approved in wallet, check explorer and then press "Try again".`,
+            'Wallet network switching is unavailable. Please reconnect your wallet.'
           );
-        } finally {
-          void executionAttempt.catch(() => {});
         }
+
+        try {
+          await this.switchChain(defineChain(expectedChainId));
+        } catch (switchError) {
+          throw new Error(
+            `Unable to switch selected wallet to Ethereum Mainnet: ${describeUnknown(switchError)}`
+          );
+        }
+
+        const executionAttempt = safeExecuteTransactionV2(() =>
+          sendAccountTransactionNonEvidence({
+            chainId: expectedChainId,
+            account: this.account,
+            transaction: formattedTxData,
+          })
+        );
+
+        const result = await requestWithTimeout(
+          executionAttempt,
+          70_000,
+          'Wallet confirmation',
+        );
 
         if (!result.success || !result.transactionHash) {
           throw new Error(result.error || 'Transaction failed');
@@ -1576,9 +1178,8 @@ class StakingApiClient {
 
 export const useStakingApi = () => {
   const account = useActiveAccount();
-  const activeWallet = useActiveWallet();
   const switchChain = useSwitchActiveWalletChain();
-  return useMemo(() => new StakingApiClient(account, switchChain, activeWallet), [account, switchChain, activeWallet]);
+  return useMemo(() => new StakingApiClient(account, switchChain), [account, switchChain]);
 };
 
 export default StakingApiClient;
