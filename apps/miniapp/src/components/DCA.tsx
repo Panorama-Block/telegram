@@ -190,6 +190,7 @@ export function DCA({ onClose }: DCAProps) {
   );
   const [showAccountSelector, setShowAccountSelector] = useState(false);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
 
   // Creation state
   const [isCreating, setIsCreating] = useState(false);
@@ -246,14 +247,18 @@ export function DCA({ onClose }: DCAProps) {
       if (!account?.address) return;
 
       setIsLoadingAccounts(true);
+      setAccountsError(null);
+      setSmartAccounts([]);
+      setSelectedAccount(null);
       try {
         const accounts = await getUserAccounts(account.address);
         setSmartAccounts(accounts);
-        if (accounts.length > 0 && !selectedAccount) {
+        if (accounts.length > 0) {
           setSelectedAccount(accounts[0]);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error loading smart accounts:", err);
+        setAccountsError(err?.message || "Unable to load Panorama Wallets. Please try again.");
       } finally {
         setIsLoadingAccounts(false);
       }
@@ -521,6 +526,13 @@ export function DCA({ onClose }: DCAProps) {
                       <div className="flex items-center gap-2 p-3 bg-black/40 border border-white/5 rounded-xl text-zinc-500">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         <span className="text-sm">Loading wallets...</span>
+                      </div>
+                    ) : accountsError ? (
+                      <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">
+                        <AlertCircle className="w-4 h-4" />
+                        <span className="text-sm">
+                          Unable to load Panorama Wallets. Please try again.
+                        </span>
                       </div>
                     ) : smartAccounts.length === 0 ? (
                       <div className="flex items-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-400">

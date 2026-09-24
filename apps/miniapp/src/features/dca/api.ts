@@ -152,19 +152,22 @@ export async function getUserAccounts(userId: string): Promise<SmartAccount[]> {
     }
 
     if (!isJson) {
-      console.warn('[getUserAccounts] Non-JSON response, returning empty array');
-      return [];
+      const text = await response.text();
+      console.error('[getUserAccounts] Unexpected non-JSON response:', text.slice(0, 200));
+      throw new DCAApiError('DCA service returned an invalid account response.');
     }
 
     const data = await response.json();
-    return data.accounts || [];
+    if (!Array.isArray(data?.accounts)) {
+      throw new DCAApiError('DCA service returned an invalid account response.');
+    }
+
+    return data.accounts;
   } catch (error: any) {
     if (error instanceof DCAApiError) {
       throw error;
     }
-    // Silently fail for network errors (service not running)
-    console.warn('[getUserAccounts] Error fetching accounts:', error.message);
-    return [];
+    throw new DCAApiError(error?.message || 'Failed to fetch accounts');
   }
 }
 

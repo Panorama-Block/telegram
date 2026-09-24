@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useActiveAccount, useActiveWalletChain } from 'thirdweb/react';
+import { useActiveAccount, useActiveWalletChain, useSwitchActiveWalletChain } from 'thirdweb/react';
 import { prepareTransaction, toWei, defineChain } from 'thirdweb';
 import { sendThirdwebTransactionNonEvidence } from '@/features/execution/nonEvidenceTransactionExecutor';
 import { createThirdwebClient, type Address } from 'thirdweb';
@@ -69,6 +69,7 @@ export default function DepositModal({
 }: DepositModalProps) {
   const account = useActiveAccount();
   const activeChain = useActiveWalletChain();
+  const switchActiveWalletChain = useSwitchActiveWalletChain();
   const [chainId, setChainId] = useState<number>(8453);
   const [amount, setAmount] = useState('0.01');
   const [isDepositing, setIsDepositing] = useState(false);
@@ -76,15 +77,8 @@ export default function DepositModal({
   const [sessionKeyAddress, setSessionKeyAddress] = useState<string>('');
   const [isLoadingSessionKey, setIsLoadingSessionKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [walletChainId, setWalletChainId] = useState<number | null>(null);
 
   const client = createThirdwebClient({ clientId: THIRDWEB_CLIENT_ID || '' });
-
-  useEffect(() => {
-    if (activeChain?.id != null) {
-      setWalletChainId(activeChain.id);
-    }
-  }, [activeChain]);
 
   const currentNetwork = useMemo(() => {
     return networks.find((n) => n.chainId === chainId);
@@ -124,24 +118,21 @@ export default function DepositModal({
   }, [isOpen, smartAccountAddress, account?.address]);
 
   const isWrongNetwork = useMemo(() => {
-    const currentChain = walletChainId ?? activeChain?.id;
-    if (currentChain == null) return false;
-    return currentChain !== chainId;
-  }, [walletChainId, activeChain, chainId]);
+    if (activeChain?.id == null) return true;
+    return activeChain.id !== chainId;
+  }, [activeChain?.id, chainId]);
 
   const switchToChain = async (targetChainId: number) => {
-    if (!window.ethereum) return;
-
-    const chainIdHex = `0x${targetChainId.toString(16)}`;
-
+    setError(null);
     try {
-      await window.ethereum.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: chainIdHex }],
-      });
-      setWalletChainId(targetChainId);
+      await switchActiveWalletChain(defineChain(targetChainId));
     } catch (err: any) {
-      console.error('Error switching network:', err);
+      console.error('Error switching selected wallet network:', err);
+      setError(
+        err?.message
+          ? `Unable to switch selected wallet: ${err.message}`
+          : 'Unable to switch selected wallet to the requested network.'
+      );
     }
   };
 
