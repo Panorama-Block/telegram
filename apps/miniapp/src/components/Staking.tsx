@@ -565,25 +565,7 @@ export function Staking({
         let latestHash = txHashes[txHashes.length - 1] || txHash;
 
         if (!latestHash) {
-          const recoveryMeta = timeoutRecoveryMetaRef.current;
-          if (!recoveryMeta) return;
-
-          const recoveredHash = await stakingApi.recoverTransactionHashByPayload({
-            chainId: recoveryMeta.chainId,
-            to: recoveryMeta.to,
-            data: recoveryMeta.data,
-            timeoutMs: 25_000,
-            lookbackBlocks: 96,
-          });
-
-          if (!recoveredHash || cancelled || !isMountedRef.current) return;
-
-          latestHash = recoveredHash;
-          safeSet(() => {
-            setTxHash(recoveredHash);
-            setTxHashes((prev) => (prev.includes(recoveredHash) ? prev : [...prev, recoveredHash]));
-            setTxWarning((prev) => prev ?? "Recovered transaction hash from wallet. Waiting for on-chain confirmation.");
-          });
+          return;
         }
 
         if (timeoutSyncHashRef.current === latestHash) return;

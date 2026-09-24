@@ -3508,9 +3508,8 @@ export default function ChatPage() {
             {showStakingRouter && (
               <LiquidStakingRouter
                 onClose={() => setShowStakingRouter(false)}
-                onSelectLido={async () => {
+                onSelectLido={() => {
                   setShowStakingRouter(false);
-                  await autoSwitchNetwork('ethereum');
                   setShowStakingWidget(true);
                 }}
                 onSelectAvax={() => {

@@ -56,50 +56,27 @@ describe('StakingApiClient', () => {
     ).rejects.toThrow(/does not match authenticated address/i);
   });
 
-  test('fails fast on wrong wallet network for staking tx', async () => {
-    Object.defineProperty(window, 'ethereum', {
-      configurable: true,
-      value: {
-        chainId: '0xa86a',
-      },
-    });
-
-    const api = new StakingApiClient({
-      address: '0x1111111111111111111111111111111111111111',
-      sendTransaction: vi.fn(),
-    });
-
-    await expect(
-      api.executeTransaction({
-        to: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84',
-        data: '0x1234',
-        value: '0',
-        chainId: 1,
-      }),
-    ).rejects.toThrow(/Wrong network/i);
-  });
-
-  test('maps wallet execution result to tx hash', async () => {
+  test('switches the selected Thirdweb wallet to Ethereum before submission', async () => {
+    const switchChainMock = vi.fn().mockResolvedValue(undefined);
     const sendTransactionMock = vi.fn().mockResolvedValue({
       transactionHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     });
 
-    Object.defineProperty(window, 'ethereum', {
-      configurable: true,
-      value: {
-        chainId: '0x1',
-      },
-    });
-
     safeExecuteTransactionV2Mock.mockImplementation(async (fn: () => Promise<{ transactionHash: string }>) => {
       const result = await fn();
-      return { success: true, transactionHash: result.transactionHash };
+      return {
+        success: true,
+        transactionHash: result.transactionHash,
+      };
     });
 
-    const api = new StakingApiClient({
-      address: '0x1111111111111111111111111111111111111111',
-      sendTransaction: sendTransactionMock,
-    });
+    const api = new StakingApiClient(
+      {
+        address: '0x1111111111111111111111111111111111111111',
+        sendTransaction: sendTransactionMock,
+      },
+      switchChainMock,
+    );
 
     const hash = await api.executeTransaction({
       to: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84',
@@ -109,7 +86,18 @@ describe('StakingApiClient', () => {
       chainId: 1,
     });
 
-    expect(hash).toBe('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    expect(hash).toBe(
+      '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    );
+
+    expect(switchChainMock).toHaveBeenCalledTimes(1);
+    expect(switchChainMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 1,
+      }),
+    );
+
+    expect(sendTransactionMock).toHaveBeenCalledTimes(1);
     expect(sendTransactionMock).toHaveBeenCalledWith(
       expect.objectContaining({
         chainId: 1,
@@ -119,28 +107,91 @@ describe('StakingApiClient', () => {
     );
   });
 
-  test('does not fallback to second submission when direct wallet response has no hash', async () => {
-    const sendTransactionMock = vi.fn().mockResolvedValue({
-      transactionHash: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-    });
-    const requestMock = vi.fn().mockResolvedValue({ ok: true });
-
-    safeExecuteTransactionV2Mock.mockImplementation(async (fn: () => Promise<{ transactionHash: string }>) => {
-      try {
-        const result = await fn();
-        return { success: true, transactionHash: result.transactionHash };
-      } catch (error) {
-        return { success: false, error: error instanceof Error ? error.message : String(error) };
-      }
+  test('does not touch an injected browser wallet during Lido execution', async () => {
+    const injectedRequestMock = vi.fn(() => {
+      throw new Error('Injected browser provider must not be touched');
     });
 
     Object.defineProperty(window, 'ethereum', {
       configurable: true,
       value: {
-        chainId: '0x1',
-        request: requestMock,
+        chainId: '0xa86a',
+        providers: [
+          {
+            isPhantom: true,
+            request: injectedRequestMock,
+          },
+        ],
+        request: injectedRequestMock,
       },
     });
+
+    const switchChainMock = vi.fn().mockResolvedValue(undefined);
+    const sendTransactionMock = vi.fn().mockResolvedValue({
+      transactionHash: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    });
+
+    safeExecuteTransactionV2Mock.mockImplementation(async (fn: () => Promise<{ transactionHash: string }>) => {
+      const result = await fn();
+      return {
+        success: true,
+        transactionHash: result.transactionHash,
+      };
+    });
+
+    const api = new StakingApiClient(
+      {
+        address: '0x1111111111111111111111111111111111111111',
+        sendTransaction: sendTransactionMock,
+      },
+      switchChainMock,
+    );
+
+    const hash = await api.executeTransaction({
+      to: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84',
+      data: '0x1234',
+      value: '1',
+      chainId: 1,
+    });
+
+    expect(hash).toBe(
+      '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    );
+    expect(injectedRequestMock).not.toHaveBeenCalled();
+    expect(switchChainMock).toHaveBeenCalledTimes(1);
+    expect(sendTransactionMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not submit when Thirdweb wallet chain switching fails', async () => {
+    const switchChainMock = vi.fn().mockRejectedValue(
+      new Error('Wallet refused chain switch'),
+    );
+    const sendTransactionMock = vi.fn();
+
+    const api = new StakingApiClient(
+      {
+        address: '0x1111111111111111111111111111111111111111',
+        sendTransaction: sendTransactionMock,
+      },
+      switchChainMock,
+    );
+
+    await expect(
+      api.executeTransaction({
+        to: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84',
+        data: '0x1234',
+        value: '1',
+        chainId: 1,
+      }),
+    ).rejects.toThrow(/network|switch/i);
+
+    expect(switchChainMock).toHaveBeenCalledTimes(1);
+    expect(sendTransactionMock).not.toHaveBeenCalled();
+    expect(safeExecuteTransactionV2Mock).not.toHaveBeenCalled();
+  });
+
+  test('requires the Thirdweb chain-control path before transaction submission', async () => {
+    const sendTransactionMock = vi.fn();
 
     const api = new StakingApiClient({
       address: '0x1111111111111111111111111111111111111111',
@@ -154,77 +205,130 @@ describe('StakingApiClient', () => {
         value: '1',
         chainId: 1,
       }),
-    ).rejects.toThrow(/without a hash|submission failed/i);
+    ).rejects.toThrow(/network switching is unavailable|network/i);
 
-    expect(requestMock).toHaveBeenCalled();
-    const requestMethods = requestMock.mock.calls.map((args) => args?.[0]?.method);
-    expect(requestMethods).toContain('eth_sendTransaction');
     expect(sendTransactionMock).not.toHaveBeenCalled();
+    expect(safeExecuteTransactionV2Mock).not.toHaveBeenCalled();
+  });
+
+  test('does not perform a second submission when the selected wallet returns no hash', async () => {
+    const switchChainMock = vi.fn().mockResolvedValue(undefined);
+    const sendTransactionMock = vi.fn().mockResolvedValue({});
+
+    safeExecuteTransactionV2Mock.mockImplementation(async (fn: () => Promise<unknown>) => {
+      await fn();
+      return {
+        success: false,
+        error: 'Wallet submitted transaction without a hash.',
+      };
+    });
+
+    const api = new StakingApiClient(
+      {
+        address: '0x1111111111111111111111111111111111111111',
+        sendTransaction: sendTransactionMock,
+      },
+      switchChainMock,
+    );
+
+    await expect(
+      api.executeTransaction({
+        to: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84',
+        data: '0x1234',
+        value: '1',
+        chainId: 1,
+      }),
+    ).rejects.toThrow(/without a hash/i);
+
+    expect(switchChainMock).toHaveBeenCalledTimes(1);
+    expect(sendTransactionMock).toHaveBeenCalledTimes(1);
     expect(safeExecuteTransactionV2Mock).toHaveBeenCalledTimes(1);
   });
 
-  test('recovers tx hash while wallet send promise is still pending', async () => {
-    const neverSettlingPromise = new Promise<string>(() => {});
-    const recoveredHash = '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
-    const fromAddress = '0x1111111111111111111111111111111111111111';
-    const toAddress = '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84';
-    const data = '0x1234';
 
-    const requestMock = vi.fn(async ({ method }: { method: string }) => {
-      if (method === 'eth_accounts') return [fromAddress];
-      if (method === 'eth_sendTransaction') return neverSettlingPromise;
-      if (method === 'eth_chainId') return '0x1';
-      if (method === 'eth_blockNumber') return '0x10';
-      if (method === 'eth_getBlockByNumber') {
-        return {
-          transactions: [
-            {
-              hash: recoveredHash,
-              from: fromAddress,
-              to: toAddress,
-              input: data,
-            },
-          ],
-        };
-      }
-      return null;
-    });
+  test('validates transaction data before touching the selected wallet network', async () => {
+    const switchChainMock = vi.fn();
+    const sendTransactionMock = vi.fn();
 
-    Object.defineProperty(window, 'ethereum', {
-      configurable: true,
-      value: {
-        chainId: '0x1',
-        request: requestMock,
+    const api = new StakingApiClient(
+      {
+        address: '0x1111111111111111111111111111111111111111',
+        sendTransaction: sendTransactionMock,
       },
+      switchChainMock,
+    );
+
+    await expect(
+      api.executeTransaction({
+        to: '',
+        data: '',
+        value: '1',
+        chainId: 1,
+      }),
+    ).rejects.toThrow(/invalid|missing/i);
+
+    expect(switchChainMock).not.toHaveBeenCalled();
+    expect(sendTransactionMock).not.toHaveBeenCalled();
+    expect(safeExecuteTransactionV2Mock).not.toHaveBeenCalled();
+  });
+
+  test('deduplicates concurrent identical executions before wallet control and submission', async () => {
+    const transactionHash =
+      '0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd';
+
+    let releaseSubmission!: () => void;
+    const submissionGate = new Promise<void>((resolve) => {
+      releaseSubmission = resolve;
     });
 
-    safeExecuteTransactionV2Mock.mockImplementation(async (fn: () => Promise<{ transactionHash: string }>) => {
-      const result = await fn();
-      return { success: true, transactionHash: result.transactionHash };
+    const switchChainMock = vi.fn().mockResolvedValue(undefined);
+    const sendTransactionMock = vi.fn().mockImplementation(async () => {
+      await submissionGate;
+      return { transactionHash };
     });
 
-    const sendTransactionMock = vi.fn().mockResolvedValue({
-      transactionHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    safeExecuteTransactionV2Mock.mockImplementation(async (fn: () => Promise<unknown>) => {
+      const result = await fn() as { transactionHash: string };
+      return {
+        success: true,
+        transactionHash: result.transactionHash,
+      };
     });
 
-    const api = new StakingApiClient({
-      address: fromAddress,
-      sendTransaction: sendTransactionMock,
-    });
+    const api = new StakingApiClient(
+      {
+        address: '0x1111111111111111111111111111111111111111',
+        sendTransaction: sendTransactionMock,
+      },
+      switchChainMock,
+    );
 
-    const hash = await api.executeTransaction({
-      to: toAddress,
-      data,
+    const transaction = {
+      to: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84',
+      data: '0x1234',
       value: '1',
       chainId: 1,
+    };
+
+    const first = api.executeTransaction(transaction);
+    const second = api.executeTransaction(transaction);
+
+    await vi.waitFor(() => {
+      expect(sendTransactionMock).toHaveBeenCalledTimes(1);
     });
 
-    expect(hash).toBe(recoveredHash);
-    expect(sendTransactionMock).not.toHaveBeenCalled();
-    expect(requestMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        method: 'eth_sendTransaction',
-      }),
-    );
+    expect(switchChainMock).toHaveBeenCalledTimes(1);
+    expect(safeExecuteTransactionV2Mock).toHaveBeenCalledTimes(1);
+
+    releaseSubmission();
+
+    const [firstHash, secondHash] = await Promise.all([first, second]);
+
+    expect(firstHash).toBe(transactionHash);
+    expect(secondHash).toBe(transactionHash);
+    expect(switchChainMock).toHaveBeenCalledTimes(1);
+    expect(sendTransactionMock).toHaveBeenCalledTimes(1);
+    expect(safeExecuteTransactionV2Mock).toHaveBeenCalledTimes(1);
   });
+
 });
