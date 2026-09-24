@@ -1483,8 +1483,7 @@ export default function ChatPage() {
 
     let cancelled = false;
 
-    const openWidgetFromQuery = async () => {
-      await autoSwitchNetwork(openWidgetPlan.network);
+    const openWidgetFromQuery = () => {
       if (cancelled) return;
 
       if (openWidgetPlan.target === 'lending') {
@@ -1503,7 +1502,7 @@ export default function ChatPage() {
       }
     };
 
-    void openWidgetFromQuery();
+    openWidgetFromQuery();
 
     return () => {
       cancelled = true;
